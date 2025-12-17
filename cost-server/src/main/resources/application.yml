@@ -1,0 +1,50 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: cost-server
+
+  datasource:
+    url: jdbc:oracle:thin:@//192.168.11.5:1521/orcl
+    username: cmx
+    password: cmx
+    driver-class-name: oracle.jdbc.OracleDriver
+    type: com.alibaba.druid.pool.DruidDataSource
+    # Druid 连接池配置
+    druid:
+      initial-size: 5
+      min-idle: 5
+      max-active: 20
+      max-wait: 60000
+      # SQL 防火墙
+      filter:
+        wall:
+          enabled: true
+          config:
+            multi-statement-allow: false
+            drop-table-allow: false
+            truncate-allow: false
+
+# MyBatis-Plus 配置
+mybatis-plus:
+  configuration:
+    # Oracle 字段大写转驼峰
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+  global-config:
+    db-config:
+      # Oracle 主键策略
+      id-type: input
+
+# Knife4j 文档配置
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+  api-docs:
+    path: /v3/api-docs
+
+knife4j:
+  enable: true
+  setting:
+    language: zh_cn
