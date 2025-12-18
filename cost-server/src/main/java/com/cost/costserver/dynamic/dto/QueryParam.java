@@ -12,6 +12,8 @@ public class QueryParam {
     private List<QueryCondition> conditions;
 
     @Data
+    @lombok.AllArgsConstructor
+    @lombok.NoArgsConstructor
     public static class QueryCondition {
         private String field;
         private String operator;

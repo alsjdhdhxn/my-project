@@ -1,26 +1,20 @@
 <template>
   <div class="h-full p-16px">
-    <NCard :title="pageTitle" class="h-full">
-      <NEmpty description="动态页面开发中...">
-        <template #extra>
-          <NText depth="3">pageCode: {{ pageCode }}</NText>
-        </template>
-      </NEmpty>
-    </NCard>
+    <DynamicPage v-if="pageCode" :page-code="pageCode" />
+    <NEmpty v-else description="未配置 pageCode" />
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useRoute } from 'vue-router';
-import { NCard, NEmpty, NText } from 'naive-ui';
+import { NEmpty } from 'naive-ui';
+import DynamicPage from '@/components/meta/DynamicPage.vue';
 
 defineOptions({
-  name: 'DynamicPage'
+  name: 'DynamicPageView'
 });
 
 const route = useRoute();
-
-const pageCode = computed(() => route.meta?.pageCode as string || route.name as string);
-const pageTitle = computed(() => route.meta?.title || '动态页面');
+const pageCode = computed(() => (route.meta?.pageCode as string) || '');
 </script>

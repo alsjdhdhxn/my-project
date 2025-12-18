@@ -16,7 +16,7 @@ public class PageComponent {
     private String componentType;
     private String parentKey;
     private String componentConfig;
-    private Long refMetadataId;
+    private String refTableCode;
     private String slotName;
     private Integer sortOrder;
     private String description;

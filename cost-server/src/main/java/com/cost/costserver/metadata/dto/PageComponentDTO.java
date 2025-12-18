@@ -11,7 +11,7 @@ public record PageComponentDTO(
     String componentType,
     String parentKey,
     String componentConfig,
-    Long refMetadataId,
+    String refTableCode,
     String slotName,
     Integer sortOrder,
     String description,
@@ -25,7 +25,7 @@ public record PageComponentDTO(
             entity.getComponentType(),
             entity.getParentKey(),
             entity.getComponentConfig(),
-            entity.getRefMetadataId(),
+            entity.getRefTableCode(),
             entity.getSlotName(),
             entity.getSortOrder(),
             entity.getDescription(),
@@ -36,7 +36,7 @@ public record PageComponentDTO(
     public PageComponentDTO withChildren(List<PageComponentDTO> children) {
         return new PageComponentDTO(
             id, pageCode, componentKey, componentType, parentKey,
-            componentConfig, refMetadataId, slotName, sortOrder, description, children
+            componentConfig, refTableCode, slotName, sortOrder, description, children
         );
     }
 }

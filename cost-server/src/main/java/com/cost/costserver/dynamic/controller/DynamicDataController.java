@@ -10,6 +10,10 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
+
 import java.util.Map;
 
 @Tag(name = "动态数据接口")
@@ -27,13 +31,29 @@ public class DynamicDataController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int pageSize,
             @RequestParam(required = false) String sortField,
-            @RequestParam(required = false) String sortOrder) {
+            @RequestParam(required = false) String sortOrder,
+            @RequestParam Map<String, String> allParams) {
 
         QueryParam param = new QueryParam();
         param.setPage(page);
         param.setPageSize(pageSize);
         param.setSortField(sortField);
         param.setSortOrder(sortOrder);
+
+        // 将其他参数转为查询条件（排除分页和排序参数）
+        List<QueryParam.QueryCondition> conditions = new ArrayList<>();
+        for (Map.Entry<String, String> entry : allParams.entrySet()) {
+            String key = entry.getKey();
+            if (Set.of("page", "pageSize", "sortField", "sortOrder").contains(key)) {
+                continue;
+            }
+            if (entry.getValue() != null && !entry.getValue().isEmpty()) {
+                // 支持大写下划线格式，自动转为小驼峰
+                String fieldName = key.contains("_") ? underscoreToCamel(key) : key;
+                conditions.add(new QueryParam.QueryCondition(fieldName, "eq", entry.getValue(), null));
+            }
+        }
+        param.setConditions(conditions);
 
         return Result.ok(dynamicDataService.query(tableCode, param));
     }
@@ -94,5 +114,19 @@ public class DynamicDataController {
             @PathVariable Long id) {
         dynamicDataService.delete(tableCode, id);
         return Result.ok();
+    }
+
+    private String underscoreToCamel(String name) {
+        StringBuilder sb = new StringBuilder();
+        boolean upper = false;
+        for (char c : name.toLowerCase().toCharArray()) {
+            if (c == '_') {
+                upper = true;
+            } else {
+                sb.append(upper ? Character.toUpperCase(c) : c);
+                upper = false;
+            }
+        }
+        return sb.toString();
     }
 }

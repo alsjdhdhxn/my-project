@@ -120,7 +120,7 @@ CREATE TABLE T_COST_PAGE_COMPONENT (
     COMPONENT_TYPE      VARCHAR2(32)    NOT NULL,
     PARENT_KEY          VARCHAR2(64),
     COMPONENT_CONFIG    CLOB,
-    REF_METADATA_ID     NUMBER(19),
+    REF_TABLE_CODE      VARCHAR2(64),
     SLOT_NAME           VARCHAR2(32),
     SORT_ORDER          NUMBER(5)       DEFAULT 0,
     DELETED             NUMBER(1)       DEFAULT 0,
@@ -245,26 +245,18 @@ END;
 -- =====================================================
 -- 初始化数据：页面组件树
 -- =====================================================
-DECLARE
-    v_comp_id NUMBER;
 BEGIN
     INSERT INTO T_COST_PAGE_COMPONENT (ID, PAGE_CODE, COMPONENT_KEY, COMPONENT_TYPE, PARENT_KEY, COMPONENT_CONFIG, SORT_ORDER, CREATE_BY)
-    VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'cost-demo', 'root', 'LAYOUT', NULL, '{"direction":"COLUMN","gap":16}', 0, 'system');
+    VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'cost-demo', 'root', 'LAYOUT', NULL, '{"type":"card","title":"成本示例"}', 0, 'system');
     
-    INSERT INTO T_COST_PAGE_COMPONENT (ID, PAGE_CODE, COMPONENT_KEY, COMPONENT_TYPE, PARENT_KEY, COMPONENT_CONFIG, REF_METADATA_ID, SORT_ORDER, CREATE_BY)
-    VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'cost-demo', 'searchForm', 'FORM', 'root', '{"columns":4,"labelWidth":80}', 1, 1, 'system');
-    
-    INSERT INTO T_COST_PAGE_COMPONENT (ID, PAGE_CODE, COMPONENT_KEY, COMPONENT_TYPE, PARENT_KEY, COMPONENT_CONFIG, SORT_ORDER, CREATE_BY)
-    VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'cost-demo', 'toolbar', 'LAYOUT', 'root', '{"direction":"ROW","gap":8}', 2, 'system');
+    INSERT INTO T_COST_PAGE_COMPONENT (ID, PAGE_CODE, COMPONENT_KEY, COMPONENT_TYPE, PARENT_KEY, COMPONENT_CONFIG, REF_TABLE_CODE, SORT_ORDER, CREATE_BY)
+    VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'cost-demo', 'searchForm', 'FORM', 'root', '{"title":"查询条件"}', 'CostDemo', 1, 'system');
     
     INSERT INTO T_COST_PAGE_COMPONENT (ID, PAGE_CODE, COMPONENT_KEY, COMPONENT_TYPE, PARENT_KEY, COMPONENT_CONFIG, SORT_ORDER, CREATE_BY)
-    VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'cost-demo', 'btnCreate', 'BUTTON', 'toolbar', '{"label":"新增","icon":"i-carbon-add","type":"primary","actionType":"CREATE"}', 1, 'system');
+    VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'cost-demo', 'toolbar', 'BUTTON', 'root', '{"targetGrid":"mainGrid","tableCode":"CostDemo"}', 2, 'system');
     
-    INSERT INTO T_COST_PAGE_COMPONENT (ID, PAGE_CODE, COMPONENT_KEY, COMPONENT_TYPE, PARENT_KEY, COMPONENT_CONFIG, SORT_ORDER, CREATE_BY)
-    VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'cost-demo', 'btnDelete', 'BUTTON', 'toolbar', '{"label":"删除","icon":"i-carbon-trash-can","type":"danger","actionType":"DELETE"}', 2, 'system');
-    
-    INSERT INTO T_COST_PAGE_COMPONENT (ID, PAGE_CODE, COMPONENT_KEY, COMPONENT_TYPE, PARENT_KEY, COMPONENT_CONFIG, REF_METADATA_ID, SORT_ORDER, CREATE_BY)
-    VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'cost-demo', 'mainGrid', 'GRID', 'root', '{"pageSize":20,"showCheckbox":true,"showRowNumber":true}', 1, 3, 'system');
+    INSERT INTO T_COST_PAGE_COMPONENT (ID, PAGE_CODE, COMPONENT_KEY, COMPONENT_TYPE, PARENT_KEY, COMPONENT_CONFIG, REF_TABLE_CODE, SORT_ORDER, CREATE_BY)
+    VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'cost-demo', 'mainGrid', 'GRID', 'root', '{"pageSize":20}', 'CostDemo', 3, 'system');
     
     COMMIT;
 END;

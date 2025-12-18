@@ -23,6 +23,14 @@ declare namespace Api {
     /** common search params of table */
     type CommonSearchParams = Pick<Common.PaginatingCommonParams, 'current' | 'size'>;
 
+    /** 分页结果（后端格式） */
+    interface PageResult<T = any> {
+      list: T[];
+      total: number;
+      page: number;
+      pageSize: number;
+    }
+
     /**
      * enable status
      *
