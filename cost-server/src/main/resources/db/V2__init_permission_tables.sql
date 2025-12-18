@@ -241,13 +241,20 @@ VALUES (SEQ_COST_USER_GRID.NEXTVAL, 2, 'cost-demo', 'mainGrid', '{"columnOrder":
 -- =====================================================
 -- 初始化数据：菜单资源
 -- =====================================================
+-- 首页（顶级菜单）
 INSERT INTO T_COST_RESOURCE (ID, RESOURCE_CODE, RESOURCE_NAME, RESOURCE_TYPE, PAGE_CODE, ICON, ROUTE, PARENT_ID, SORT_ORDER, CREATE_BY)
-VALUES (SEQ_COST_RESOURCE.NEXTVAL, 'cost-manage', '成本管理', 'DIRECTORY', NULL, 'i-carbon-cost', NULL, NULL, 1, 'system');
+VALUES (SEQ_COST_RESOURCE.NEXTVAL, 'home', '首页', 'PAGE', 'home', 'mdi:monitor-dashboard', '/home', NULL, 0, 'system');
+
+-- 成本管理模块
 INSERT INTO T_COST_RESOURCE (ID, RESOURCE_CODE, RESOURCE_NAME, RESOURCE_TYPE, PAGE_CODE, ICON, ROUTE, PARENT_ID, SORT_ORDER, CREATE_BY)
-VALUES (SEQ_COST_RESOURCE.NEXTVAL, 'cost-demo', '成本示例', 'PAGE', 'cost-demo', 'i-carbon-document', '/cost/demo', 1, 1, 'system');
+VALUES (SEQ_COST_RESOURCE.NEXTVAL, 'cost-manage', '成本管理', 'DIRECTORY', NULL, 'mdi:currency-usd', NULL, NULL, 1, 'system');
 INSERT INTO T_COST_RESOURCE (ID, RESOURCE_CODE, RESOURCE_NAME, RESOURCE_TYPE, PAGE_CODE, ICON, ROUTE, PARENT_ID, SORT_ORDER, CREATE_BY)
-VALUES (SEQ_COST_RESOURCE.NEXTVAL, 'system-manage', '系统管理', 'DIRECTORY', NULL, 'i-carbon-settings', NULL, NULL, 2, 'system');
+VALUES (SEQ_COST_RESOURCE.NEXTVAL, 'cost-demo', '成本示例', 'PAGE', 'cost-demo', 'mdi:file-document-outline', '/cost/demo', (SELECT ID FROM T_COST_RESOURCE WHERE RESOURCE_CODE = 'cost-manage'), 1, 'system');
+
+-- 系统管理模块
 INSERT INTO T_COST_RESOURCE (ID, RESOURCE_CODE, RESOURCE_NAME, RESOURCE_TYPE, PAGE_CODE, ICON, ROUTE, PARENT_ID, SORT_ORDER, CREATE_BY)
-VALUES (SEQ_COST_RESOURCE.NEXTVAL, 'user-manage', '用户管理', 'PAGE', 'user-manage', 'i-carbon-user', '/system/user', 3, 1, 'system');
+VALUES (SEQ_COST_RESOURCE.NEXTVAL, 'system-manage', '系统管理', 'DIRECTORY', NULL, 'mdi:cog', NULL, NULL, 2, 'system');
+INSERT INTO T_COST_RESOURCE (ID, RESOURCE_CODE, RESOURCE_NAME, RESOURCE_TYPE, PAGE_CODE, ICON, ROUTE, PARENT_ID, SORT_ORDER, CREATE_BY)
+VALUES (SEQ_COST_RESOURCE.NEXTVAL, 'user-manage', '用户管理', 'PAGE', 'user-manage', 'mdi:account', '/system/user', (SELECT ID FROM T_COST_RESOURCE WHERE RESOURCE_CODE = 'system-manage'), 1, 'system');
 
 COMMIT;

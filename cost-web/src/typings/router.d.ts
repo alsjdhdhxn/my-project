@@ -68,5 +68,7 @@ declare module 'vue-router' {
     fixedIndexInTab?: number | null;
     /** if set query parameters, it will be automatically carried when entering the route */
     query?: { key: string; value: string }[] | null;
+    /** 动态页面的 pageCode */
+    pageCode?: string | null;
   }
 }
