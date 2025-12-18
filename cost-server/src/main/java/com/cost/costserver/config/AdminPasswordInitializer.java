@@ -17,13 +17,13 @@ public class AdminPasswordInitializer implements CommandLineRunner {
 
     @Override
     public void run(String... args) {
-        String encodedPassword = passwordEncoder.encode("admin");
+        String encodedPassword = passwordEncoder.encode("admin123..");
         int rows = jdbcTemplate.update(
             "UPDATE T_COST_USER SET PASSWORD = ? WHERE USERNAME = 'admin' AND DELETED = 0",
             encodedPassword
         );
         if (rows > 0) {
-            log.info("admin 用户密码已重置为 admin");
+            log.info("admin 用户密码已重置为 admin123..");
         }
     }
 }

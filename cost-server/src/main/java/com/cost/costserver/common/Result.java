@@ -5,12 +5,12 @@ import lombok.Data;
 @Data
 public class Result<T> {
     private int code;
-    private String message;
+    private String msg;
     private T data;
 
-    private Result(int code, String message, T data) {
+    private Result(int code, String msg, T data) {
         this.code = code;
-        this.message = message;
+        this.msg = msg;
         this.data = data;
     }
 
@@ -22,11 +22,11 @@ public class Result<T> {
         return new Result<>(200, "success", null);
     }
 
-    public static <T> Result<T> fail(String message) {
-        return new Result<>(500, message, null);
+    public static <T> Result<T> fail(String msg) {
+        return new Result<>(500, msg, null);
     }
 
-    public static <T> Result<T> fail(int code, String message) {
-        return new Result<>(code, message, null);
+    public static <T> Result<T> fail(int code, String msg) {
+        return new Result<>(code, msg, null);
     }
 }
