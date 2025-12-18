@@ -92,6 +92,17 @@
 - 新增业务表只需配置 `T_COST_TABLE_METADATA` 和 `T_COST_COLUMN_METADATA`，前端自动渲染
 - 动态查询使用 `DynamicMapper` + `QueryWrapper`，禁止为每个表创建独立 Mapper
 
+### 1.2 数据访问分层
+
+| 表类型 | 访问方式 | 说明 |
+|--------|----------|------|
+| 元数据表 | MyBatis-Plus + 实体类 | T_COST_TABLE_METADATA、T_COST_COLUMN_METADATA 等 |
+| 基础数据/权限表 | MyBatis-Plus + 实体类 | T_COST_USER、T_COST_ROLE、T_COST_DEPARTMENT 等 |
+| 业务数据表 | DynamicMapper | T_COST_DEMO 等，通过元数据驱动 |
+
+- 元数据表和基础数据/权限表可以使用实体类，因为是系统基础设施
+- 业务数据表禁止创建实体类，必须走 DynamicMapper 动态查询
+
 ### 1.2 组件树驱动页面
 
 - 页面结构由 `T_COST_PAGE_COMPONENT` 组件树定义，前端只需一个通用渲染器
