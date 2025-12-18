@@ -303,6 +303,7 @@ VALUES ('cost-master', 'agg_total', 'LOGIC_AGG', '{"sourceComponent":"detailGrid
 6. ❌ 禁止在前端硬编码计算逻辑，必须配置在元数据中
 7. ❌ 禁止使用 Element Plus、Ant Design 等非 Naive UI 组件
 8. ❌ 禁止使用 Vuex 替代 Pinia
+9. ❌ 禁止擅自创建实体类（Entity）或 Service，必须先征求主管意见
 
 ---
 

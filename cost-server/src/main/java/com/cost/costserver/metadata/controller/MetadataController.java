@@ -1,12 +1,16 @@
 package com.cost.costserver.metadata.controller;
 
 import com.cost.costserver.common.Result;
+import com.cost.costserver.metadata.dto.DictionaryItemDTO;
+import com.cost.costserver.metadata.dto.PageComponentDTO;
+import com.cost.costserver.metadata.dto.TableMetadataDTO;
 import com.cost.costserver.metadata.service.MetadataService;
-import com.cost.costserver.metadata.vo.TableMetadataVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 @Tag(name = "元数据接口")
 @RestController
@@ -16,10 +20,22 @@ public class MetadataController {
 
     private final MetadataService metadataService;
 
-    @Operation(summary = "获取表元数据")
+    @Operation(summary = "获取表元数据（原始）")
     @GetMapping("/table/{tableCode}")
-    public Result<TableMetadataVO> getTableMetadata(@PathVariable String tableCode) {
+    public Result<TableMetadataDTO> getTableMetadata(@PathVariable String tableCode) {
         return Result.ok(metadataService.getTableMetadata(tableCode));
+    }
+
+    @Operation(summary = "获取页面组件树")
+    @GetMapping("/page/{pageCode}")
+    public Result<List<PageComponentDTO>> getPageComponents(@PathVariable String pageCode) {
+        return Result.ok(metadataService.getPageComponents(pageCode));
+    }
+
+    @Operation(summary = "获取字典项")
+    @GetMapping("/dict/{dictType}")
+    public Result<List<DictionaryItemDTO>> getDictItems(@PathVariable String dictType) {
+        return Result.ok(metadataService.getDictItems(dictType));
     }
 
     @Operation(summary = "清除元数据缓存")

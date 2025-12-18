@@ -2,6 +2,7 @@ package com.cost.costserver.dynamic.controller;
 
 import com.cost.costserver.common.PageResult;
 import com.cost.costserver.common.Result;
+import com.cost.costserver.dynamic.dto.MasterDetailSaveParam;
 import com.cost.costserver.dynamic.dto.QueryParam;
 import com.cost.costserver.dynamic.service.DynamicDataService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -45,6 +46,15 @@ public class DynamicDataController {
         return Result.ok(dynamicDataService.query(tableCode, param));
     }
 
+    @Operation(summary = "查询全部（不分页）")
+    @GetMapping("/{tableCode}/all")
+    public Result<java.util.List<Map<String, Object>>> queryAll(
+            @PathVariable String tableCode,
+            @RequestParam(required = false) String sortField,
+            @RequestParam(required = false) String sortOrder) {
+        return Result.ok(dynamicDataService.queryAll(tableCode, sortField, sortOrder));
+    }
+
     @Operation(summary = "查询单条")
     @GetMapping("/{tableCode}/{id}")
     public Result<Map<String, Object>> getById(
@@ -59,6 +69,12 @@ public class DynamicDataController {
             @PathVariable String tableCode,
             @RequestBody Map<String, Object> data) {
         return Result.ok(dynamicDataService.insert(tableCode, data));
+    }
+
+    @Operation(summary = "主从表保存")
+    @PostMapping("/master-detail")
+    public Result<Long> saveMasterDetail(@RequestBody MasterDetailSaveParam param) {
+        return Result.ok(dynamicDataService.saveMasterDetail(param));
     }
 
     @Operation(summary = "更新")

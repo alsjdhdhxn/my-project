@@ -32,6 +32,8 @@ mybatis-plus:
     # Oracle 字段大写转驼峰
     map-underscore-to-camel-case: true
     log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+    # Oracle null 值处理
+    jdbc-type-for-null: 'null'
   global-config:
     db-config:
       # Oracle 主键策略

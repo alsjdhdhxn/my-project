@@ -5,24 +5,21 @@ import lombok.Data;
 import java.time.LocalDateTime;
 
 @Data
-@TableName("T_COST_TABLE_METADATA")
-public class TableMetadata {
+@TableName("T_COST_PAGE_COMPONENT")
+public class PageComponent {
 
     @TableId(type = IdType.INPUT)
     private Long id;
 
-    private String tableCode;
-    private String tableName;
-    private String queryView;
-    private String targetTable;
-    private String sequenceName;
-    private String pkColumn;
-
-    /** 父表编码（从表才有） */
-    private String parentTableCode;
-
-    /** 关联父表的外键列名 */
-    private String parentFkColumn;
+    private String pageCode;
+    private String componentKey;
+    private String componentType;
+    private String parentKey;
+    private String componentConfig;
+    private Long refMetadataId;
+    private String slotName;
+    private Integer sortOrder;
+    private String description;
 
     @TableLogic
     private Integer deleted;

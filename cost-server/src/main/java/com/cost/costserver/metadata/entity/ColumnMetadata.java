@@ -14,6 +14,8 @@ public class ColumnMetadata {
     private Long tableMetadataId;
     private String fieldName;
     private String columnName;
+    private String queryColumn;
+    private String targetColumn;
     private String headerText;
     private String dataType;
     private Integer displayOrder;
@@ -24,7 +26,7 @@ public class ColumnMetadata {
     private Integer searchable;
     private Integer sortable;
     private String dictType;
-    private String lookupCode;
+    private Long lookupConfigId;
     private String defaultValue;
     private String rulesConfig;
 

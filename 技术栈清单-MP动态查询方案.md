@@ -726,3 +726,70 @@ const response = await axios.put('/api/data/CostMaster/123', data);
 - 团队熟悉 MyBatis-Plus，维护成本低
 - 文档完善，遇到问题好查
 - 三道防线保证安全
+
+
+---
+
+## 7. 更新记录（2025-12-18）
+
+### 7.1 实体类与 DTO 规范
+
+**VO 改为 Record DTO**：
+- 使用 Java Record 替代传统 VO 类
+- Integer 布尔字段（0/1）在 DTO 中转为 Boolean
+- 示例：`TableMetadataDTO`、`ColumnMetadataDTO`
+
+```java
+public record ColumnMetadataDTO(
+    Long id,
+    String fieldName,
+    Boolean visible,  // 数据库是 NUMBER(1)，DTO 转为 Boolean
+    ...
+) {
+    public static ColumnMetadataDTO from(ColumnMetadata entity) {
+        return new ColumnMetadataDTO(
+            entity.getId(),
+            entity.getFieldName(),
+            entity.getVisible() != null && entity.getVisible() == 1,
+            ...
+        );
+    }
+}
+```
+
+### 7.2 权限合并机制
+
+**三层合并**：基础层 → 限制层 → 偏好层
+
+| 层级 | 数据来源 | 规则 |
+|------|----------|------|
+| 基础层 | `T_COST_COLUMN_METADATA` | 列的默认 visible/editable |
+| 限制层 | `T_COST_ROLE_PAGE.COLUMN_POLICY` | 角色权限只能收紧，不能放宽 |
+| 偏好层 | `T_COST_USER_GRID_CONFIG` | 用户可隐藏列，但不能突破角色限制 |
+
+**按钮权限**：
+- `["*"]` 表示全部权限
+- `["CREATE","EDIT","DELETE"]` 表示指定权限
+
+### 7.3 菜单与组件树分离
+
+| 表 | 职责 |
+|-----|------|
+| `T_COST_RESOURCE` | 菜单导航（DIRECTORY 目录 / PAGE 页面入口） |
+| `T_COST_PAGE_COMPONENT` | 页面内部结构（LAYOUT/GRID/FORM/BUTTON 等） |
+
+**关联方式**：`RESOURCE.PAGE_CODE` → `PAGE_COMPONENT.PAGE_CODE`
+
+### 7.4 新增接口
+
+| 接口 | 说明 |
+|------|------|
+| `GET /api/metadata/table/{tableCode}/with-permission?userId=xxx` | 带权限合并的表元数据 |
+| `GET /api/metadata/page/{pageCode}` | 页面组件树 |
+| `GET /api/metadata/dict/{dictType}` | 字典项 |
+| `GET /api/data/{tableCode}/all` | 查询全部（不分页） |
+
+### 7.5 字段变更
+
+`T_COST_COLUMN_METADATA` 实体类：
+- `lookupCode` → `lookupConfigId`（与数据库字段一致）
