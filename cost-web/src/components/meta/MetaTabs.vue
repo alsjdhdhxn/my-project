@@ -1,22 +1,20 @@
 <template>
-  <NCard size="small">
-    <NTabs v-model:value="activeTab" type="card">
-      <NTabPane
-        v-for="child in sortedChildren"
-        :key="child.componentKey"
-        :name="child.componentKey"
-        :tab="getTabLabel(child)"
-        display-directive="show"
-      >
-        <MetaComponent :config="child" :page-context="pageContext" />
-      </NTabPane>
-    </NTabs>
-  </NCard>
+  <NTabs v-model:value="activeTab" type="line" size="small">
+    <NTabPane
+      v-for="child in sortedChildren"
+      :key="child.componentKey"
+      :name="child.componentKey"
+      :tab="getTabLabel(child)"
+      display-directive="show"
+    >
+      <MetaComponent :config="child" :page-context="pageContext" />
+    </NTabPane>
+  </NTabs>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
-import { NCard, NTabs, NTabPane } from 'naive-ui';
+import { NTabs, NTabPane } from 'naive-ui';
 import MetaComponent from './MetaComponent.vue';
 
 const props = defineProps<{

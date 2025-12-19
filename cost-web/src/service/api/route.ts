@@ -1,8 +1,8 @@
 import { request } from '../request';
 
-/** get constant routes */
+/** get constant routes - 返回错误让框架使用静态路由 */
 export function fetchGetConstantRoutes() {
-  return request<Api.Route.MenuRoute[]>({ url: '/route/getConstantRoutes' });
+  return Promise.resolve({ data: null, error: 'use static routes' });
 }
 
 /** get user routes */

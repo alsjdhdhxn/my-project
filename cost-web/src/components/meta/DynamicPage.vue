@@ -1,5 +1,5 @@
 <template>
-  <div class="h-full flex flex-col">
+  <div class="dynamic-page">
     <NSpin :show="loading" class="h-full">
       <template v-if="components.length">
         <MetaComponent
@@ -27,7 +27,6 @@ const props = defineProps<{
 const loading = ref(false);
 const components = ref<Api.Metadata.PageComponent[]>([]);
 
-// 页面上下文：共享数据、元数据缓存、事件
 const pageContext = reactive({
   pageCode: props.pageCode,
   metadata: {} as Record<string, Api.Metadata.TableMetadata>,
@@ -38,13 +37,12 @@ const pageContext = reactive({
 
 provide('pageContext', pageContext);
 
-// 加载页面组件树
 async function loadPage() {
   loading.value = true;
   try {
     const { data, error } = await fetchPageComponents(props.pageCode);
     if (!error && data) {
-      components.value = data; // 后端已返回树形结构
+      components.value = data;
       await preloadMetadata(data);
     }
   } finally {
@@ -52,10 +50,8 @@ async function loadPage() {
   }
 }
 
-// 预加载元数据（递归收集所有 tableCode）
 async function preloadMetadata(list: Api.Metadata.PageComponent[]) {
   const tableCodes = new Set<string>();
-  
   function collect(items: Api.Metadata.PageComponent[]) {
     items.forEach(item => {
       if (item.refTableCode) tableCodes.add(item.refTableCode);
@@ -74,3 +70,13 @@ async function preloadMetadata(list: Api.Metadata.PageComponent[]) {
 
 onMounted(loadPage);
 </script>
+
+<style scoped>
+.dynamic-page {
+  height: 100%;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+</style>
