@@ -1,7 +1,15 @@
 import type { ProxyOptions } from 'vite';
+import http from 'node:http';
 import { bgRed, bgYellow, green, lightBlue } from 'kolorist';
 import { consola } from 'consola';
 import { createServiceConfig } from '../../src/utils/service';
+
+// 创建一个共享的 HTTP Agent，保持长连接
+const keepAliveAgent = new http.Agent({
+  keepAlive: true,
+  keepAliveMsecs: 300000, // 5分钟
+  maxSockets: 10
+});
 
 /**
  * Set http proxy
@@ -33,6 +41,7 @@ function createProxyItem(item: App.Service.ServiceConfigItem, enableLog: boolean
   proxy[item.proxyPattern] = {
     target: item.baseURL,
     changeOrigin: true,
+    agent: keepAliveAgent,
     configure: (_proxy, options) => {
       _proxy.on('proxyReq', (_proxyReq, req, _res) => {
         if (!enableLog) return;

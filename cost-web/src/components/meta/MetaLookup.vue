@@ -39,7 +39,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, nextTick } from 'vue';
 import { NModal, NInput, NButton, NSpace } from 'naive-ui';
 import { AgGridVue } from 'ag-grid-vue3';
 import { themeQuartz } from 'ag-grid-community';
@@ -68,6 +68,7 @@ const searchText = ref('');
 const gridApi = ref<GridApi>();
 const rowData = ref<any[]>([]);
 const metadata = ref<Api.Metadata.TableMetadata | null>(null);
+const loading = ref(false);
 
 const title = computed(() => props.config.title || '选择');
 
@@ -88,12 +89,20 @@ const defaultColDef: ColDef = { resizable: true, sortable: true };
 const rowSelection = { mode: 'singleRow', checkboxes: false, enableClickSelection: true } as const;
 
 // 打开弹窗
-async function open() {
-  visible.value = true;
+function open() {
   searchText.value = '';
-  await loadMetadata();
-  await loadData();
+  rowData.value = [];
+  visible.value = true;
 }
+
+// 监听弹窗显示，Grid 准备好后加载数据
+watch(visible, async (val) => {
+  if (val && props.config.tableCode) {
+    await nextTick();
+    await loadMetadata();
+    await loadData();
+  }
+});
 
 // 加载元数据
 async function loadMetadata() {
@@ -105,8 +114,10 @@ async function loadMetadata() {
 // 加载数据
 async function loadData() {
   if (!props.config.tableCode) return;
+  loading.value = true;
   const { data } = await fetchDynamicData(props.config.tableCode, {});
   if (data) rowData.value = data.list || [];
+  loading.value = false;
 }
 
 function onGridReady(params: { api: GridApi }) {

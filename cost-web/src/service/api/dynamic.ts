@@ -40,3 +40,15 @@ export function deleteDynamicData(tableCode: string, id: number | string) {
     method: 'DELETE'
   });
 }
+
+/** 通用保存（支持单表/主从表/主从多Tab，含变更追踪和乐观锁） */
+export function saveDynamicData(param: {
+  master: any;
+  details?: Record<string, any[]>;
+}) {
+  return request<number>({
+    url: '/api/data/save',
+    method: 'POST',
+    data: param
+  });
+}

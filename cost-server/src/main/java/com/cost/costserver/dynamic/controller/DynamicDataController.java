@@ -4,6 +4,7 @@ import com.cost.costserver.common.PageResult;
 import com.cost.costserver.common.Result;
 import com.cost.costserver.dynamic.dto.MasterDetailSaveParam;
 import com.cost.costserver.dynamic.dto.QueryParam;
+import com.cost.costserver.dynamic.dto.SaveParam;
 import com.cost.costserver.dynamic.service.DynamicDataService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -95,6 +96,12 @@ public class DynamicDataController {
     @PostMapping("/master-detail")
     public Result<Long> saveMasterDetail(@RequestBody MasterDetailSaveParam param) {
         return Result.ok(dynamicDataService.saveMasterDetail(param));
+    }
+
+    @Operation(summary = "通用保存（支持单表/主从表/主从多Tab，含变更追踪和乐观锁）")
+    @PostMapping("/save")
+    public Result<Long> save(@RequestBody SaveParam param) {
+        return Result.ok(dynamicDataService.save(param));
     }
 
     @Operation(summary = "更新")

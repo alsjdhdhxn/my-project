@@ -438,4 +438,78 @@ public class DynamicDataService {
         }
         return col.columnName();
     }
+
+    /**
+     * 通用保存 - 支持单表/主从表/主从多Tab
+     */
+    @org.springframework.transaction.annotation.Transactional(rollbackFor = Exception.class)
+    public Long save(com.cost.costserver.dynamic.dto.SaveParam param) {
+        if (param == null || param.getMaster() == null) {
+            throw new BusinessException(400, "主表数据不能为空");
+        }
+
+        Long masterId = null;
+        String masterTableCode = null;
+
+        // 1. 处理主表
+        var master = param.getMaster();
+        masterTableCode = (String) master.getData().get("_tableCode");
+        if (StrUtil.isBlank(masterTableCode)) {
+            throw new BusinessException(400, "主表 tableCode 不能为空");
+        }
+        master.getData().remove("_tableCode");
+
+        switch (master.getStatus()) {
+            case "added" -> masterId = insert(masterTableCode, master.getData());
+            case "modified" -> {
+                masterId = master.getId();
+                update(masterTableCode, masterId, master.getData());
+                logChanges(masterTableCode, masterId, master.getChanges());
+            }
+            case "unchanged" -> masterId = master.getId();
+            default -> throw new BusinessException(400, "无效的主表状态: " + master.getStatus());
+        }
+
+        // 2. 处理从表
+        if (param.getDetails() != null && !param.getDetails().isEmpty()) {
+            for (var entry : param.getDetails().entrySet()) {
+                String detailTableCode = entry.getKey();
+                List<com.cost.costserver.dynamic.dto.SaveParam.RecordItem> items = entry.getValue();
+
+                if (items == null || items.isEmpty()) continue;
+
+                TableMetadataDTO detailMeta = metadataService.getTableMetadata(detailTableCode);
+                String fkColumn = detailMeta.parentFkColumn();
+                String fkFieldName = StrUtil.isNotBlank(fkColumn) ? underscoreToCamel(fkColumn) : null;
+
+                for (var item : items) {
+                    if (item == null || "unchanged".equals(item.getStatus())) continue;
+
+                    switch (item.getStatus()) {
+                        case "added" -> {
+                            if (fkFieldName != null && masterId != null) {
+                                item.getData().put(fkFieldName, masterId);
+                            }
+                            insert(detailTableCode, item.getData());
+                        }
+                        case "modified" -> {
+                            update(detailTableCode, item.getId(), item.getData());
+                            logChanges(detailTableCode, item.getId(), item.getChanges());
+                        }
+                        case "deleted" -> delete(detailTableCode, item.getId());
+                    }
+                }
+            }
+        }
+
+        return masterId;
+    }
+
+    /**
+     * 记录变更日志（预留，后续对接审计日志表）
+     */
+    private void logChanges(String tableCode, Long recordId, List<com.cost.costserver.dynamic.dto.SaveParam.FieldChange> changes) {
+        if (changes == null || changes.isEmpty()) return;
+        log.info("变更记录 - 表:{}, ID:{}, 变更:{}", tableCode, recordId, changes);
+    }
 }

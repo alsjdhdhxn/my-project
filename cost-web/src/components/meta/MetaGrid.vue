@@ -42,6 +42,7 @@
         @grid-ready="onGridReady"
         @selection-changed="onSelectionChanged"
         @cell-clicked="onCellClicked"
+        @cell-value-changed="onCellValueChanged"
       />
     </div>
 
@@ -104,9 +105,9 @@
 import { ref, computed, watch, reactive, h } from 'vue';
 import { AgGridVue } from 'ag-grid-vue3';
 import { ModuleRegistry, AllCommunityModule, themeQuartz } from 'ag-grid-community';
-import type { GridApi, ColDef, CellClickedEvent } from 'ag-grid-community';
+import type { GridApi, ColDef, CellClickedEvent, CellValueChangedEvent } from 'ag-grid-community';
 import { NInput, NButton, NModal, NForm, NFormItemGi, NGrid, NInputNumber, NDatePicker, NSpace, NDropdown, useMessage, useDialog } from 'naive-ui';
-import { fetchDynamicData, deleteDynamicData } from '@/service/api';
+import { fetchDynamicData } from '@/service/api';
 import MetaLookup from './MetaLookup.vue';
 
 if (!(window as any).__AG_GRID_REGISTERED__) {
@@ -121,11 +122,6 @@ const dialog = useDialog();
 const props = defineProps<{
   config: Api.Metadata.PageComponent;
   pageContext: any;
-}>();
-
-const emit = defineEmits<{
-  create: [];
-  edit: [row: any];
 }>();
 
 const gridApi = ref<GridApi>();
@@ -145,9 +141,11 @@ const lookupRef = ref<InstanceType<typeof MetaLookup>>();
 const currentLookupConfig = ref({ tableCode: '', displayField: '', mapping: {} });
 const currentLookupRowIndex = ref<number>(-1);
 
+// 变更追踪器
+const changeTracker = computed(() => props.pageContext.changeTracker);
+
 const contextMenuOptions = computed(() => [
   { label: '新增', key: 'create', icon: renderIcon('i-carbon-add') },
-  { label: '编辑', key: 'edit', icon: renderIcon('i-carbon-edit'), disabled: selectedCount.value === 0 },
   { label: '删除', key: 'delete', icon: renderIcon('i-carbon-trash-can'), disabled: selectedCount.value === 0 },
   { type: 'divider', key: 'd1' },
   { label: '刷新', key: 'refresh', icon: renderIcon('i-carbon-refresh') }
@@ -166,15 +164,15 @@ const gridConfig = computed(() => {
 });
 
 const gridHeight = computed(() => gridConfig.value.height || 300);
-const gridTitle = computed(() => gridConfig.value.title || props.config.refTableCode || '');
+const gridTitle = computed(() => gridConfig.value.title || metadata.value?.tableName || '');
+const tableCode = computed(() => props.config.refTableCode || '');
 
-const metadata = computed(() => props.pageContext.metadata[props.config.refTableCode || '']);
+const metadata = computed(() => props.pageContext.metadata[tableCode.value]);
 const isDetailGrid = computed(() => !!metadata.value?.parentTableCode);
 const isMasterGrid = computed(() => {
-  const currentTableCode = props.config.refTableCode;
-  if (!currentTableCode) return false;
+  if (!tableCode.value) return false;
   for (const key in props.pageContext.metadata) {
-    if (props.pageContext.metadata[key]?.parentTableCode === currentTableCode) return true;
+    if (props.pageContext.metadata[key]?.parentTableCode === tableCode.value) return true;
   }
   return false;
 });
@@ -198,7 +196,6 @@ const currentMasterLabel = computed(() => {
   return '-';
 });
 
-// 解析列的 rulesConfig
 function parseRulesConfig(col: Api.Metadata.ColumnMetadata) {
   try {
     return JSON.parse(col.rulesConfig || '{}');
@@ -207,7 +204,6 @@ function parseRulesConfig(col: Api.Metadata.ColumnMetadata) {
   }
 }
 
-// 生成列定义，支持 lookup 类型
 const columnDefs = computed<ColDef[]>(() => {
   if (!metadata.value?.columns) return [];
   return metadata.value.columns
@@ -221,9 +217,8 @@ const columnDefs = computed<ColDef[]>(() => {
         width: col.width || 120,
         sortable: true,
         filter: col.searchable,
-        editable: col.editable && !rules.lookup // lookup 列不直接编辑
+        editable: col.editable && !rules.lookup
       };
-      // 如果是 lookup 类型，添加样式标识
       if (rules.lookup) {
         colDef.cellClass = 'lookup-cell';
         colDef.cellStyle = { cursor: 'pointer', color: '#1890ff' };
@@ -232,7 +227,6 @@ const columnDefs = computed<ColDef[]>(() => {
     });
 });
 
-// 获取列的 lookup 配置
 function getLookupConfig(fieldName: string) {
   const col = metadata.value?.columns?.find((c: Api.Metadata.ColumnMetadata) => c.fieldName === fieldName);
   if (!col) return null;
@@ -261,18 +255,82 @@ function onGridReady(params: { api: GridApi }) {
 }
 
 function onSelectionChanged() {
-  props.pageContext.selectedRows[props.config.componentKey] = gridApi.value?.getSelectedRows() || [];
+  const selected = gridApi.value?.getSelectedRows() || [];
+  props.pageContext.selectedRows[props.config.componentKey] = selected;
+
+  // 主表选中时，初始化变更追踪
+  if (isMasterGrid.value && selected.length === 1 && changeTracker.value) {
+    const row = selected[0];
+    // 检查是否切换了主表行
+    if (props.pageContext.currentMasterId !== row.id) {
+      // 如果有未保存的修改，提示用户
+      if (changeTracker.value.isDirty.value) {
+        dialog.warning({
+          title: '提示',
+          content: '有未保存的修改，是否放弃？',
+          positiveText: '放弃',
+          negativeText: '取消',
+          onPositiveClick: () => {
+            changeTracker.value.reset();
+            initMasterTracking(row);
+          },
+          onNegativeClick: () => {
+            // 恢复选中之前的行
+            const prevId = props.pageContext.currentMasterId;
+            if (prevId) {
+              const prevRow = rowData.value.find(r => r.id === prevId);
+              if (prevRow) {
+                setTimeout(() => {
+                  gridApi.value?.forEachNode(node => {
+                    if (node.data?.id === prevId) node.setSelected(true);
+                  });
+                }, 0);
+              }
+            }
+          }
+        });
+      } else {
+        initMasterTracking(row);
+      }
+    }
+  }
+}
+
+function initMasterTracking(row: any) {
+  props.pageContext.currentMasterId = row.id;
+  changeTracker.value?.initMaster(tableCode.value, row);
 }
 
 function onQuickFilterChange(value: string) {
   gridApi.value?.setGridOption('quickFilterText', value);
 }
 
-// 单元格点击 - 处理 Lookup
+// 单元格值变更 - 追踪变更
+function onCellValueChanged(event: CellValueChangedEvent) {
+  if (!changeTracker.value || !event.colDef.field) return;
+
+  const field = event.colDef.field;
+  const oldValue = event.oldValue;
+  const newValue = event.newValue;
+  const rowId = event.data?.id;
+
+  if (isMasterGrid.value) {
+    changeTracker.value.trackMasterChange(field, oldValue, newValue);
+  } else if (rowId) {
+    changeTracker.value.trackDetailChange(tableCode.value, rowId, field, oldValue, newValue);
+  }
+
+  // 同步到 rowData
+  const idx = rowData.value.findIndex(r => r.id === rowId);
+  if (idx >= 0) {
+    rowData.value[idx][field] = newValue;
+  }
+}
+
 function onCellClicked(event: CellClickedEvent) {
   const fieldName = event.colDef.field;
   if (!fieldName) return;
-  
+
   const lookupConfig = getLookupConfig(fieldName);
   if (lookupConfig) {
     currentLookupConfig.value = lookupConfig;
@@ -281,22 +339,34 @@ function onCellClicked(event: CellClickedEvent) {
   }
 }
 
-// Lookup 选择回调
 function onLookupSelect(data: Record<string, any>) {
   if (currentLookupRowIndex.value < 0) return;
-  
+
   const rowNode = gridApi.value?.getDisplayedRowAtIndex(currentLookupRowIndex.value);
   if (rowNode) {
-    // 更新行数据
+    const oldData = { ...rowNode.data };
     const updatedData = { ...rowNode.data, ...data };
     rowNode.setData(updatedData);
-    // 同步到 rowData
+
+    // 追踪变更
+    if (changeTracker.value) {
+      for (const [field, newValue] of Object.entries(data)) {
+        const oldValue = oldData[field];
+        if (oldValue !== newValue) {
+          if (isMasterGrid.value) {
+            changeTracker.value.trackMasterChange(field, oldValue, newValue);
+          } else if (oldData.id) {
+            changeTracker.value.trackDetailChange(tableCode.value, oldData.id, field, oldValue, newValue);
+          }
+        }
+      }
+    }
+
     const idx = rowData.value.findIndex(r => r.id === updatedData.id);
     if (idx >= 0) rowData.value[idx] = updatedData;
   }
 }
 
-// 右键菜单
 function onContextMenu(e: MouseEvent) {
   e.preventDefault();
   showContextMenu.value = true;
@@ -308,10 +378,7 @@ function onContextMenuSelect(key: string) {
   showContextMenu.value = false;
   switch (key) {
     case 'create':
-      emit('create');
-      break;
-    case 'edit':
-      handleEdit();
+      handleCreate();
       break;
     case 'delete':
       handleDelete();
@@ -322,34 +389,59 @@ function onContextMenuSelect(key: string) {
   }
 }
 
-function handleEdit() {
-  const selected = props.pageContext.selectedRows[props.config.componentKey];
-  if (selected?.length === 1) {
-    emit('edit', selected[0]);
-  } else {
-    message.warning('请选择一条数据');
+function handleCreate() {
+  // 新增空行
+  const newRow: Record<string, any> = { id: null };
+  metadata.value?.columns?.forEach((col: Api.Metadata.ColumnMetadata) => {
+    newRow[col.fieldName] = null;
+  });
+
+  if (isDetailGrid.value && parentFkColumn.value) {
+    const masterGridKey = gridConfig.value.masterGrid || findMasterGridKey();
+    const selectedMaster = props.pageContext.selectedRows[masterGridKey];
+    if (selectedMaster?.length) {
+      const fkFieldName = parentFkColumn.value.replace(/_([a-z])/g, (_, c) => c.toUpperCase()).replace(/^./, c => c.toLowerCase());
+      newRow[fkFieldName] = selectedMaster[0].id;
+    }
   }
+
+  rowData.value.push(newRow);
+  changeTracker.value?.addDetailRow(tableCode.value, newRow);
+
+  // 滚动到新行并开始编辑
+  setTimeout(() => {
+    const lastIndex = rowData.value.length - 1;
+    gridApi.value?.ensureIndexVisible(lastIndex);
+    const firstEditableCol = columnDefs.value.find(c => c.editable);
+    if (firstEditableCol?.field) {
+      gridApi.value?.startEditingCell({ rowIndex: lastIndex, colKey: firstEditableCol.field });
+    }
+  }, 100);
 }
 
-async function handleDelete() {
+function handleDelete() {
   const selected = props.pageContext.selectedRows[props.config.componentKey];
   if (!selected?.length) {
     message.warning('请选择要删除的数据');
     return;
   }
+
   dialog.warning({
     title: '确认删除',
     content: `确定删除选中的 ${selected.length} 条数据？`,
     positiveText: '确定',
     negativeText: '取消',
-    onPositiveClick: async () => {
-      const tableCode = props.config.refTableCode;
-      if (!tableCode) return;
+    onPositiveClick: () => {
       for (const row of selected) {
-        await deleteDynamicData(tableCode, row.id);
+        if (row.id) {
+          // 已有数据标记删除
+          changeTracker.value?.deleteDetailRow(tableCode.value, row.id);
+        }
+        // 从显示中移除
+        const idx = rowData.value.findIndex(r => r.id === row.id);
+        if (idx >= 0) rowData.value.splice(idx, 1);
       }
-      message.success('删除成功');
-      loadData();
+      message.success('已标记删除，保存后生效');
     }
   });
 }
@@ -364,7 +456,8 @@ function handleResetAdvanced() {
 }
 
 async function loadData() {
-  if (!props.config.refTableCode) return;
+  if (!tableCode.value) return;
+
   const params: Record<string, any> = { ...advancedForm };
 
   if (isDetailGrid.value && parentFkColumn.value) {
@@ -375,13 +468,34 @@ async function loadData() {
       totalCount.value = 0;
       return;
     }
-    params[parentFkColumn.value] = selectedMaster[0].id;
+    const currentMasterId = selectedMaster[0].id;
+    params[parentFkColumn.value] = currentMasterId;
+
+    // 从表：检查是否有当前主表对应的缓存数据
+    if (changeTracker.value) {
+      const cachedData = changeTracker.value.getDetailData(tableCode.value);
+      const fkFieldName = parentFkColumn.value
+        .replace(/_([a-z])/g, (_: string, c: string) => c.toUpperCase())
+        .replace(/^./, (c: string) => c.toLowerCase());
+      if (cachedData.length > 0 && cachedData[0]?.[fkFieldName] === currentMasterId) {
+        rowData.value = cachedData;
+        totalCount.value = cachedData.length;
+        return;
+      }
+    }
   }
 
-  const { data, error } = await fetchDynamicData(props.config.refTableCode, params);
+  const { data, error } = await fetchDynamicData(tableCode.value, params);
   if (!error && data) {
     rowData.value = data.list || [];
     totalCount.value = data.total || 0;
+
+    // 初始化从表变更追踪
+    if (isDetailGrid.value && changeTracker.value) {
+      changeTracker.value.initDetails(tableCode.value, rowData.value);
+    }
+
+    // 主表自动选中第一行
     if (!isDetailGrid.value && rowData.value.length > 0) {
       setTimeout(() => gridApi.value?.getDisplayedRowAtIndex(0)?.setSelected(true), 0);
     }
@@ -399,13 +513,7 @@ watch(() => metadata.value, (meta) => {
   if (meta && !meta.parentTableCode && gridApi.value) loadData();
 }, { immediate: true });
 
-watch(() => {
-  if (!isDetailGrid.value) return null;
-  const masterGridKey = gridConfig.value.masterGrid || findMasterGridKey();
-  return props.pageContext.selectedRows[masterGridKey];
-}, (newVal) => {
-  if (isDetailGrid.value && newVal !== null) loadData();
-}, { deep: true });
+// 从表不再自动监听主表变化，由 MetaTabs 控制按需加载
 </script>
 
 <style scoped>

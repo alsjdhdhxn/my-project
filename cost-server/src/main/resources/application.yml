@@ -1,5 +1,10 @@
 server:
   port: 8080
+  # 保持连接配置，减少 TCP 握手开销
+  tomcat:
+    connection-timeout: 20000
+    keep-alive-timeout: 300000
+    max-keep-alive-requests: 1000
 
 spring:
   application:

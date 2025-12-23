@@ -69,4 +69,10 @@ SET RULES_CONFIG = '{"lookup":{"tableCode":"Customer","displayField":"customerNa
 WHERE TABLE_METADATA_ID = (SELECT ID FROM T_COST_TABLE_METADATA WHERE TABLE_CODE = 'CostOrder')
 AND FIELD_NAME = 'customerName';
 
+UPDATE T_COST_COLUMN_METADATA 
+SET RULES_CONFIG = '{"lookup":{"tableCode":"Customer","displayField":"customerName","title":"选择客户","mapping":{"customerName":"customerName","remark":"contactPerson"}}}'
+WHERE TABLE_METADATA_ID = (SELECT ID FROM T_COST_TABLE_METADATA WHERE TABLE_CODE = 'CostOrder')
+AND FIELD_NAME = 'customerName';
+
 COMMIT;
+ 
