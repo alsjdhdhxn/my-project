@@ -1,5 +1,5 @@
 <template>
-  <div class="meta-grid" :style="{ height: height }">
+  <div class="meta-grid" :style="{ height: height }" @keydown="onKeyDown">
     <AgGridVue
       style="height: 100%; width: 100%"
       :theme="theme"
@@ -46,6 +46,10 @@ const props = withDefaults(defineProps<{
   selectionMode?: 'single' | 'multi';
   /** 是否显示复选框 */
   showCheckbox?: boolean;
+  /** 新增行默认值 */
+  defaultNewRow?: Record<string, any>;
+  /** 新增后聚焦的字段 */
+  firstEditableField?: string;
 }>(), {
   height: '100%',
   pkField: 'id',
@@ -58,6 +62,8 @@ const emit = defineEmits<{
   (e: 'ready', api: GridApi): void;
   (e: 'selectionChanged', rows: any[]): void;
   (e: 'cellChanged', params: { field: string; rowId: any; oldValue: any; newValue: any; data: any }): void;
+  (e: 'rowAdded', row: any): void;
+  (e: 'rowsDeleted', rows: any[]): void;
 }>();
 
 const theme = themeQuartz;
@@ -75,11 +81,19 @@ const columnDefs = computed<ColDef[]>(() => {
 const rowData = computed(() => props.store.visibleRows.value);
 
 // 监听 store 数据变化，自动刷新 Grid
-watch(() => props.store.rows.value, () => {
-  if (gridApi.value) {
-    gridApi.value.setGridOption('rowData', [...props.store.visibleRows.value]);
+// 使用 visibleRows 的 JSON 序列化作为依赖，确保任何数据变化都能触发
+watch(
+  () => JSON.stringify(props.store.visibleRows.value),
+  () => {
+    if (gridApi.value) {
+      // 使用 applyTransaction 更新，保持选中状态
+      const currentRows = props.store.visibleRows.value;
+      gridApi.value.setGridOption('rowData', [...currentRows]);
+      // 强制刷新所有单元格样式
+      gridApi.value.refreshCells({ force: true });
+    }
   }
-}, { deep: true });
+);
 
 // 默认列配置
 const defaultColDef: ColDef = {
@@ -114,6 +128,67 @@ function getCellStyle(params: CellClassParams) {
 function onGridReady(params: { api: GridApi }) {
   gridApi.value = params.api;
   emit('ready', params.api);
+}
+
+// 键盘事件处理
+function onKeyDown(event: KeyboardEvent) {
+  // 只有当前 Grid 有焦点时才处理
+  if (!gridApi.value?.getFocusedCell()) return;
+  
+  // 检查是否在编辑状态
+  const isEditing = gridApi.value.getEditingCells().length > 0;
+  
+  // Delete 删除选中行（非编辑状态）
+  if (event.key === 'Delete' && !isEditing) {
+    const selectedRows = gridApi.value.getSelectedRows();
+    if (selectedRows.length > 0) {
+      event.preventDefault();
+      handleDelete(selectedRows);
+    }
+  }
+  
+  // Ctrl+Enter 新增行
+  if (event.ctrlKey && event.key === 'Enter') {
+    event.preventDefault();
+    handleAdd();
+  }
+}
+
+// 内部新增行处理
+function handleAdd() {
+  const newRow = props.store.addRow(props.defaultNewRow || {});
+  refreshAll();
+  
+  // 聚焦到新行
+  setTimeout(() => {
+    if (gridApi.value) {
+      const rowNode = gridApi.value.getRowNode(String(newRow[props.pkField]));
+      if (rowNode) {
+        gridApi.value.ensureIndexVisible(rowNode.rowIndex!);
+        rowNode.setSelected(true);
+        
+        // 如果指定了首个可编辑字段，聚焦并开始编辑
+        if (props.firstEditableField) {
+          gridApi.value.setFocusedCell(rowNode.rowIndex!, props.firstEditableField);
+          gridApi.value.startEditingCell({ rowIndex: rowNode.rowIndex!, colKey: props.firstEditableField });
+        }
+      }
+    }
+  }, 50);
+  
+  emit('rowAdded', newRow);
+}
+
+// 内部删除行处理
+function handleDelete(rows: any[]) {
+  if (rows.length === 0) return;
+  
+  rows.forEach(row => {
+    props.store.deleteRow(row[props.pkField]);
+  });
+  
+  refreshAll();
+  emit('rowsDeleted', rows);
 }
 
 // 选择变化
@@ -175,10 +250,32 @@ function refreshRow(rowId: any) {
 // 刷新所有行
 function refreshAll() {
   if (gridApi.value) {
-    // 使用 applyTransaction 强制刷新所有行
     const rows = props.store.visibleRows.value;
-    gridApi.value.applyTransaction({ update: rows });
+    // 先清空再重新设置，确保新增/删除的行也能正确显示
+    gridApi.value.setGridOption('rowData', [...rows]);
   }
+}
+
+// 添加行到 Grid
+function addRow(row: any) {
+  if (gridApi.value) {
+    gridApi.value.applyTransaction({ add: [row] });
+  }
+}
+
+// 从 Grid 删除行
+function removeRow(rowId: any) {
+  if (gridApi.value) {
+    const rowNode = gridApi.value.getRowNode(String(rowId));
+    if (rowNode) {
+      gridApi.value.applyTransaction({ remove: [rowNode.data] });
+    }
+  }
+}
+
+// 获取选中行
+function getSelectedRows(): any[] {
+  return gridApi.value?.getSelectedRows() || [];
 }
 
 // 前端搜索
@@ -191,6 +288,9 @@ defineExpose({
   gridApi,
   refreshRow,
   refreshAll,
+  addRow,
+  removeRow,
+  getSelectedRows,
   quickFilter
 });
 </script>

@@ -38,10 +38,12 @@ export interface CalcEngineOptions {
   context?: Record<string, any>;
   /** 小数位数，默认2 */
   precision?: number;
+  /** 聚合结果回调 */
+  onAggregateChange?: (results: Record<string, number>) => void;
 }
 
 export function useCalcEngine(store: GridStore, options: CalcEngineOptions = {}) {
-  const { precision = 2 } = options;
+  const { precision = 2, onAggregateChange } = options;
   
   const calcRules: CompiledRule[] = [];
   const aggRules: AggRule[] = [];
@@ -223,6 +225,11 @@ export function useCalcEngine(store: GridStore, options: CalcEngineOptions = {})
 
       results[rule.targetField] = round(result);
     });
+
+    // 触发回调
+    if (onAggregateChange && Object.keys(results).length > 0) {
+      onAggregateChange(results);
+    }
 
     return results;
   }

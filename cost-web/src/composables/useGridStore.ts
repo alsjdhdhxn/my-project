@@ -76,8 +76,10 @@ export function useGridStore<T extends RowData = RowData>(options: GridStoreOpti
    * 新增行
    */
   function addRow(data: Partial<T> = {}): T {
+    // 生成临时ID（负数，避免和数据库ID冲突）
+    const tempId = -Date.now() - Math.random();
     const newRow = {
-      [pkField]: null,
+      [pkField]: tempId,
       ...data,
       _changeType: {},
       _isNew: true
