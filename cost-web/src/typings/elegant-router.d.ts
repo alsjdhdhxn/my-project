@@ -22,6 +22,7 @@ declare module "@elegant-router/types" {
     "500": "/500";
     "cost": "/cost";
     "cost_eval-v2": "/cost/eval-v2";
+    "cost_eval-v3": "/cost/eval-v3";
     "dynamic": "/dynamic";
     "home": "/home";
     "iframe-page": "/iframe-page/:url";
@@ -87,6 +88,7 @@ declare module "@elegant-router/types" {
     | "iframe-page"
     | "login"
     | "cost_eval-v2"
+    | "cost_eval-v3"
     | "dynamic"
     | "home"
   >;

@@ -44,7 +44,8 @@ export const generatedRoutes: GeneratedRoute[] = [
     path: '/cost',
     component: 'layout.base',
     meta: {
-      title: '成本管理'
+      title: '成本管理',
+      i18nKey: 'route.cost'
     },
     children: [
       {
@@ -53,7 +54,17 @@ export const generatedRoutes: GeneratedRoute[] = [
         component: 'view.cost_eval-v2',
         meta: {
           title: '评估单V2',
-          icon: 'mdi:calculator'
+          icon: 'mdi:calculator',
+          i18nKey: 'route.cost_eval-v2'
+        }
+      },
+      {
+        name: 'cost_eval-v3',
+        path: '/cost/eval-v3',
+        component: 'view.cost_eval-v3',
+        meta: {
+          title: 'cost_eval-v3',
+          i18nKey: 'route.cost_eval-v3'
         }
       }
     ]
@@ -63,7 +74,8 @@ export const generatedRoutes: GeneratedRoute[] = [
     path: '/dynamic',
     component: 'layout.base$view.dynamic',
     meta: {
-      title: '动态页面'
+      title: '动态页面',
+      i18nKey: 'route.dynamic'
     }
   },
   {

@@ -51,18 +51,31 @@
 - [x] V6__add_package_support.sql（包材字段 + 测试数据）
 - [x] V7__add_test_data.sql（3个额外评估单）
 
-## Phase 2: 抽象为通用模块（待开始）
+## Phase 2: 抽象为通用模块
 
-### Task 2.1: 通用 DataStore
-- [ ] 泛型支持任意表结构
-- [ ] 从 useDataStore 提取公共逻辑
+### Task 2.1: 通用 GridStore
+- [x] `cost-web/src/composables/useGridStore.ts`
+- [x] 泛型支持任意表结构
+- [x] load, getRow, updateField, markChange
+- [x] addRow, deleteRow（标记删除）
+- [x] isDirty, changedRows, visibleRows
 
 ### Task 2.2: 通用 CalcEngine
-- [ ] registerCalcRule(field, expression, dependencies)
-- [ ] registerAggRule(source, target, algorithm, filter)
+- [x] `cost-web/src/composables/useCalcEngine.ts`
+- [x] registerCalcRule(field, expression, dependencies)
+- [x] registerAggRule(source, target, algorithm, filter)
+- [x] onFieldChange, onContextChange, initCalc
+- [x] BFS 级联依赖解析
 
-### Task 2.3: 通用 ChangeTracker
-- [ ] 从当前实现提取公共逻辑
+### Task 2.3: 通用组件
+- [x] `cost-web/src/components/meta-v2/MetaGrid.vue`
+- [x] `cost-web/src/components/meta-v2/MetaToolbar.vue`
+- [x] 前端搜索（quickFilter）
+- [x] 高级查询按钮（占位）
+
+### Task 2.4: 测试页面
+- [x] `cost-web/src/views/cost/eval-v3/index.vue`
+- [x] 使用通用组件重构评估单页面
 
 ## Phase 3: 元数据驱动（待开始）
 
@@ -91,6 +104,6 @@
 | Phase | 状态 |
 |-------|------|
 | Phase 1 | ✅ 完成 |
-| Phase 2 | 待开始 |
+| Phase 2 | ✅ 完成（已验证主从联动） |
 | Phase 3 | 待开始 |
 | Phase 4 | 待开始 |
