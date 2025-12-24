@@ -31,6 +31,7 @@ CREATE TABLE T_COST_EVAL (
     OUT_PRICE_RMB   NUMBER(18,4)    DEFAULT 0,      -- 出厂价
     TOTAL_YL        NUMBER(18,2)    DEFAULT 0,      -- 原料合计
     TOTAL_FL        NUMBER(18,2)    DEFAULT 0,      -- 辅料合计
+    TOTAL_PACK      NUMBER(18,2)    DEFAULT 0,      -- 包材合计
     TOTAL_COST      NUMBER(18,2)    DEFAULT 0,      -- 总成本
     DELETED         NUMBER(1)       DEFAULT 0,
     CREATE_TIME     TIMESTAMP       DEFAULT SYSTIMESTAMP,
@@ -47,11 +48,14 @@ CREATE TABLE T_COST_EVAL_DETAIL (
     ID              NUMBER(19)      PRIMARY KEY,
     EVAL_ID         NUMBER(19)      NOT NULL,
     MATERIAL_NAME   VARCHAR2(128)   NOT NULL,
-    USE_FLAG        VARCHAR2(32)    NOT NULL,       -- 物料类型：原料/辅料
+    USE_FLAG        VARCHAR2(32)    NOT NULL,       -- 物料类型：原料/辅料/包材
     PER_HL          NUMBER(18,6)    DEFAULT 0,      -- 百万片用量
     PRICE           NUMBER(18,4)    DEFAULT 0,      -- 单价
-    BATCH_QTY       NUMBER(18,4)    DEFAULT 0,      -- 批用量（虚拟计算列）
-    COST_BATCH      NUMBER(18,2)    DEFAULT 0,      -- 批成本（虚拟计算列）
+    BATCH_QTY       NUMBER(18,4)    DEFAULT 0,      -- 批用量（计算列）
+    COST_BATCH      NUMBER(18,2)    DEFAULT 0,      -- 批成本（计算列）
+    PACK_SPEC       VARCHAR2(64),                   -- 包材规格
+    PACK_QTY        NUMBER(18,4)    DEFAULT 0,      -- 包装数量（计算列）
+    PACK_COST       NUMBER(18,2)    DEFAULT 0,      -- 包装成本（计算列）
     DELETED         NUMBER(1)       DEFAULT 0,
     CREATE_TIME     TIMESTAMP       DEFAULT SYSTIMESTAMP,
     UPDATE_TIME     TIMESTAMP       DEFAULT SYSTIMESTAMP,
@@ -93,7 +97,9 @@ BEGIN
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY) 
     VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_eval_id, 'totalFl', 'TOTAL_FL', '辅料合计', 'number', 7, 0, 100, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY) 
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_eval_id, 'totalCost', 'TOTAL_COST', '总成本', 'number', 8, 0, 100, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_eval_id, 'totalPack', 'TOTAL_PACK', '包材合计', 'number', 8, 0, 100, 'system');
+    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY) 
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_eval_id, 'totalCost', 'TOTAL_COST', '总成本', 'number', 9, 0, 100, 'system');
 
     -- 从表元数据
     SELECT SEQ_COST_TABLE_METADATA.NEXTVAL INTO v_detail_id FROM DUAL;
@@ -108,17 +114,30 @@ BEGIN
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY) 
     VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'materialName', 'MATERIAL_NAME', '物料名称', 'text', 2, 1, 150, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY) 
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'useFlag', 'USE_FLAG', '物料类型', 'text', 3, 1, 80, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'useFlag', 'USE_FLAG', '物料类型', 'text', 3, 0, 80, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY) 
     VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'perHl', 'PER_HL', '百万片用量', 'number', 4, 1, 100, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY) 
     VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'price', 'PRICE', '单价', 'number', 5, 1, 100, 'system');
-    -- 虚拟列：批用量 = 批量 * 百万片用量 / 100 / 收率 * 100
+    -- 计算列：批用量 = 批量 * 百万片用量 / 100 / 收率 * 100
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, IS_VIRTUAL, WIDTH, RULES_CONFIG, CREATE_BY) 
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'batchQty', 'BATCH_QTY', '批用量', 'number', 6, 0, 1, 100, '{"expression":"_ctx.apexPl * perHl / 100 / _ctx.yield * 100"}', 'system');
-    -- 虚拟列：批成本 = 批用量 * 单价
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'batchQty', 'BATCH_QTY', '批用量', 'number', 6, 0, 1, 100, 
+    '{"calculate":{"expression":"apexPl * perHl / 100 / yield * 100","triggerFields":["perHl"]}}', 'system');
+    -- 计算列：批成本 = 批用量 * 单价
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, IS_VIRTUAL, WIDTH, RULES_CONFIG, CREATE_BY) 
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'costBatch', 'COST_BATCH', '批成本', 'number', 7, 0, 1, 100, '{"expression":"batchQty * price"}', 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'costBatch', 'COST_BATCH', '批成本', 'number', 7, 0, 1, 100, 
+    '{"calculate":{"expression":"batchQty * price","triggerFields":["batchQty","price"]}}', 'system');
+    -- 包材规格
+    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY) 
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'packSpec', 'PACK_SPEC', '规格', 'text', 8, 1, 100, 'system');
+    -- 计算列：包装数量 = 批量 * 1000
+    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, IS_VIRTUAL, WIDTH, RULES_CONFIG, CREATE_BY) 
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'packQty', 'PACK_QTY', '包装数量', 'number', 9, 0, 1, 100, 
+    '{"calculate":{"expression":"apexPl * 1000","triggerFields":[]}}', 'system');
+    -- 计算列：包装成本 = 包装数量 * 单价
+    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, IS_VIRTUAL, WIDTH, RULES_CONFIG, CREATE_BY) 
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'packCost', 'PACK_COST', '包装成本', 'number', 10, 0, 1, 100, 
+    '{"calculate":{"expression":"packQty * price","triggerFields":["packQty","price"]}}', 'system');
     
     COMMIT;
 END;
@@ -158,10 +177,15 @@ INSERT INTO T_COST_PAGE_COMPONENT (ID, PAGE_CODE, COMPONENT_KEY, COMPONENT_TYPE,
 VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'cost-eval', 'agg_totalFl', 'LOGIC_AGG', 'root', 12, 
 '{"source":"detailGrid","target":"masterGrid","sourceField":"costBatch","targetField":"totalFl","algorithm":"SUM","filter":"useFlag==''辅料''"}', 'system');
 
--- 聚合配置：从表 → 主表（总成本）
+-- 聚合配置：从表 → 主表（包材合计）
 INSERT INTO T_COST_PAGE_COMPONENT (ID, PAGE_CODE, COMPONENT_KEY, COMPONENT_TYPE, PARENT_KEY, SORT_ORDER, COMPONENT_CONFIG, CREATE_BY)
-VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'cost-eval', 'agg_totalCost', 'LOGIC_AGG', 'root', 13, 
-'{"source":"detailGrid","target":"masterGrid","sourceField":"costBatch","targetField":"totalCost","algorithm":"SUM"}', 'system');
+VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'cost-eval', 'agg_totalPack', 'LOGIC_AGG', 'root', 13, 
+'{"source":"detailGrid","target":"masterGrid","sourceField":"packCost","targetField":"totalPack","algorithm":"SUM","filter":"useFlag==''包材''"}', 'system');
+
+-- 聚合配置：从表 → 主表（总成本 = 原料 + 辅料 + 包材）
+INSERT INTO T_COST_PAGE_COMPONENT (ID, PAGE_CODE, COMPONENT_KEY, COMPONENT_TYPE, PARENT_KEY, SORT_ORDER, COMPONENT_CONFIG, CREATE_BY)
+VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'cost-eval', 'agg_totalCost', 'LOGIC_AGG', 'root', 14, 
+'{"target":"masterGrid","targetField":"totalCost","expression":"totalYl + totalFl + totalPack"}', 'system');
 
 COMMIT;
 
@@ -188,6 +212,7 @@ END;
 -- =====================================================
 DECLARE
     v_eval_id NUMBER;
+    v_eval_id2 NUMBER;
 BEGIN
     SELECT SEQ_COST_EVAL.NEXTVAL INTO v_eval_id FROM DUAL;
     
@@ -205,6 +230,30 @@ BEGIN
     VALUES (SEQ_COST_EVAL_DETAIL.NEXTVAL, v_eval_id, '空心胶囊', '辅料', 1050, 0.035, 'system');
     INSERT INTO T_COST_EVAL_DETAIL (ID, EVAL_ID, MATERIAL_NAME, USE_FLAG, PER_HL, PRICE, CREATE_BY)
     VALUES (SEQ_COST_EVAL_DETAIL.NEXTVAL, v_eval_id, '硬脂酸镁', '辅料', 2.5, 45, 'system');
+    
+    -- 包材
+    INSERT INTO T_COST_EVAL_DETAIL (ID, EVAL_ID, MATERIAL_NAME, USE_FLAG, PACK_SPEC, PRICE, CREATE_BY)
+    VALUES (SEQ_COST_EVAL_DETAIL.NEXTVAL, v_eval_id, '铝塑板', '包材', '10粒/板', 0.12, 'system');
+    INSERT INTO T_COST_EVAL_DETAIL (ID, EVAL_ID, MATERIAL_NAME, USE_FLAG, PACK_SPEC, PRICE, CREATE_BY)
+    VALUES (SEQ_COST_EVAL_DETAIL.NEXTVAL, v_eval_id, '纸盒', '包材', '2板/盒', 0.35, 'system');
+    
+    -- 第二条测试数据
+    SELECT SEQ_COST_EVAL.NEXTVAL INTO v_eval_id2 FROM DUAL;
+    
+    INSERT INTO T_COST_EVAL (ID, EVAL_NO, PRODUCT_NAME, APEX_PL, YIELD, OUT_PRICE_RMB, CREATE_BY)
+    VALUES (v_eval_id2, 'EVAL-2025-002', '头孢克肟片', 80, 95, 42.0, 'system');
+    
+    -- 原料
+    INSERT INTO T_COST_EVAL_DETAIL (ID, EVAL_ID, MATERIAL_NAME, USE_FLAG, PER_HL, PRICE, CREATE_BY)
+    VALUES (SEQ_COST_EVAL_DETAIL.NEXTVAL, v_eval_id2, '头孢克肟原料', '原料', 200, 450, 'system');
+    
+    -- 辅料
+    INSERT INTO T_COST_EVAL_DETAIL (ID, EVAL_ID, MATERIAL_NAME, USE_FLAG, PER_HL, PRICE, CREATE_BY)
+    VALUES (SEQ_COST_EVAL_DETAIL.NEXTVAL, v_eval_id2, '微晶纤维素', '辅料', 80, 25, 'system');
+    
+    -- 包材
+    INSERT INTO T_COST_EVAL_DETAIL (ID, EVAL_ID, MATERIAL_NAME, USE_FLAG, PACK_SPEC, PRICE, CREATE_BY)
+    VALUES (SEQ_COST_EVAL_DETAIL.NEXTVAL, v_eval_id2, '铝塑板', '包材', '12粒/板', 0.15, 'system');
     
     COMMIT;
 END;

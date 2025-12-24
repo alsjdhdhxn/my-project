@@ -123,6 +123,7 @@ export function useCalcEngine(store: GridStore, options: CalcEngineOptions = {})
    */
   function onContextChange(field: string) {
     const affected = getAffectedRules(field, true);
+    console.log('[CalcEngine] onContextChange:', field, 'affected rules:', affected.map(r => r.field));
     
     if (affected.length > 0) {
       store.rows.value.forEach(row => {
@@ -133,6 +134,7 @@ export function useCalcEngine(store: GridStore, options: CalcEngineOptions = {})
           try {
             const result = rule.compiled.evaluate(scope);
             const rounded = round(result);
+            console.log('[CalcEngine] calc:', rule.field, '=', rounded, 'scope:', scope);
             store.updateField(row.id, rule.field, rounded);
             store.markChange(row.id, rule.field, 'cascade');
           } catch (e) {

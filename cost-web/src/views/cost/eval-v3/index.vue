@@ -30,12 +30,12 @@
     </MetaFloatToolbar>
 
     <!-- 主表区域 -->
-    <div class="master-section">
+    <div v-if="isMetaLoaded" class="master-section">
       <MetaGrid
         ref="masterGridRef"
         :columns="masterColumns"
         :store="masterStore"
-        :defaultNewRow="masterDefaultRow"
+        :defaultNewRow="getMasterDefaultRow()"
         firstEditableField="productName"
         height="100%"
         @selectionChanged="onMasterSelectionChanged"
@@ -45,7 +45,7 @@
     </div>
 
     <!-- 从表区域 -->
-    <div class="detail-section">
+    <div v-if="isMetaLoaded" class="detail-section">
       <!-- 从表内容（多 Tab 并排） -->
       <div class="detail-grids">
         <div 
@@ -75,17 +75,21 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onUnmounted } from 'vue';
-import { NButton, NDivider, NInput, useMessage } from 'naive-ui';
+import { NButton, NInput, useMessage } from 'naive-ui';
 import type { ColDef } from 'ag-grid-community';
 import { fetchDynamicData } from '@/service/api';
 import { useGridStore } from '@/composables/useGridStore';
-import { useCalcEngine, type CalcRule } from '@/composables/useCalcEngine';
+import { useCalcEngine } from '@/composables/useCalcEngine';
+import { loadTableMeta } from '@/composables/useMetaColumns';
 import MetaGrid from '@/components/meta-v2/MetaGrid.vue';
 import MetaFloatToolbar from '@/components/meta-v2/MetaFloatToolbar.vue';
 
 type TabKey = 'material' | 'auxiliary' | 'package';
 
 const message = useMessage();
+
+// ========== 元数据加载状态 ==========
+const isMetaLoaded = ref(false);
 
 // ========== 数据存储 ==========
 const masterStore = useGridStore();
@@ -96,25 +100,11 @@ const detailStores = {
 };
 
 // ========== 计算引擎 ==========
-const materialCalcRules: CalcRule[] = [
-  { field: 'batchQty', expression: 'apexPl * perHl / 100 / yield * 100', dependencies: ['perHl'], order: 1 },
-  { field: 'costBatch', expression: 'batchQty * price', dependencies: ['batchQty', 'price'], order: 2 }
-];
-
-const packageCalcRules: CalcRule[] = [
-  { field: 'packQty', expression: 'apexPl * 1000', dependencies: [], order: 1 },
-  { field: 'packCost', expression: 'packQty * price', dependencies: ['packQty', 'price'], order: 2 }
-];
-
 const detailCalcEngines = {
   material: useCalcEngine(detailStores.material),
   auxiliary: useCalcEngine(detailStores.auxiliary),
   package: useCalcEngine(detailStores.package)
 };
-
-detailCalcEngines.material.registerCalcRules(materialCalcRules);
-detailCalcEngines.auxiliary.registerCalcRules(materialCalcRules);
-detailCalcEngines.package.registerCalcRules(packageCalcRules);
 
 // ========== Tab 配置 ==========
 const tabs = ref([
@@ -130,64 +120,62 @@ function toggleTab(key: TabKey) {
   if (tab) tab.visible = !tab.visible;
 }
 
-// ========== 列定义 ==========
-const masterColumns: ColDef[] = [
-  { field: 'evalNo', headerName: '评估单号', width: 120, editable: false },
-  { field: 'productName', headerName: '产品名称', width: 150, editable: true },
-  { field: 'apexPl', headerName: '批量(万片)', width: 100, editable: true },
-  { field: 'yield', headerName: '收率(%)', width: 80, editable: true },
-  { field: 'outPriceRmb', headerName: '出厂价', width: 100, editable: true },
-  { field: 'totalYl', headerName: '原料合计', width: 100, editable: false },
-  { field: 'totalFl', headerName: '辅料合计', width: 100, editable: false },
-  { field: 'totalPack', headerName: '包材合计', width: 100, editable: false },
-  { field: 'totalCost', headerName: '总成本', width: 100, editable: false }
-];
+// ========== 列定义（从元数据加载） ==========
+const masterColumns = ref<ColDef[]>([]);
+const detailColumns = ref<ColDef[]>([]);
+const masterDefaultValues = ref<Record<string, any>>({});
+const detailDefaultValues = ref<Record<string, any>>({});
 
-const materialColumns: ColDef[] = [
-  { field: 'materialName', headerName: '物料名称', width: 150, editable: true },
-  { field: 'perHl', headerName: '百万片用量', width: 100, editable: true },
-  { field: 'price', headerName: '单价', width: 100, editable: true },
-  { field: 'batchQty', headerName: '批用量', width: 100, editable: false },
-  { field: 'costBatch', headerName: '批成本', width: 100, editable: false }
-];
-
-const packageColumns: ColDef[] = [
-  { field: 'materialName', headerName: '包材名称', width: 150, editable: true },
-  { field: 'packSpec', headerName: '规格', width: 100, editable: true },
-  { field: 'price', headerName: '单价', width: 100, editable: true },
-  { field: 'packQty', headerName: '包装数量', width: 100, editable: false },
-  { field: 'packCost', headerName: '包装成本', width: 100, editable: false }
-];
+// 原料/辅料使用的字段
+const materialFields = ['evalId', 'materialName', 'useFlag', 'perHl', 'price', 'batchQty', 'costBatch'];
+// 包材使用的字段
+const packageFields = ['evalId', 'materialName', 'useFlag', 'packSpec', 'price', 'packQty', 'packCost'];
 
 function getDetailColumns(tabKey: TabKey): ColDef[] {
-  return tabKey === 'package' ? packageColumns : materialColumns;
+  const fields = tabKey === 'package' ? packageFields : materialFields;
+  return detailColumns.value.filter(col => fields.includes(col.field as string));
+}
+
+// ========== 加载元数据 ==========
+async function loadMetadata() {
+  const [masterMeta, detailMeta] = await Promise.all([
+    loadTableMeta('CostEval'),
+    loadTableMeta('CostEvalDetail')
+  ]);
+
+  if (masterMeta) {
+    masterColumns.value = masterMeta.columns;
+    masterDefaultValues.value = masterMeta.defaultValues;
+  }
+
+  if (detailMeta) {
+    detailColumns.value = detailMeta.columns;
+    detailDefaultValues.value = detailMeta.defaultValues;
+    
+    // 从元数据注册计算规则
+    if (detailMeta.calcRules.length > 0) {
+      detailCalcEngines.material.registerCalcRules(detailMeta.calcRules);
+      detailCalcEngines.auxiliary.registerCalcRules(detailMeta.calcRules);
+      detailCalcEngines.package.registerCalcRules(detailMeta.calcRules);
+    }
+  }
+
+  isMetaLoaded.value = true;
 }
 
 // ========== 默认新增行配置 ==========
-const masterDefaultRow = {
-  evalNo: `EVAL-${Date.now()}`,
-  productName: '',
-  apexPl: 0,
-  yield: 100,
-  outPriceRmb: 0,
-  totalYl: 0,
-  totalFl: 0,
-  totalPack: 0,
-  totalCost: 0
-};
+function getMasterDefaultRow() {
+  return {
+    ...masterDefaultValues.value,
+    evalNo: `EVAL-${Date.now()}`
+  };
+}
 
 function getDetailDefaultRow(tabKey: TabKey) {
   return {
+    ...detailDefaultValues.value,
     evalId: currentMaster.value?.id,
-    useFlag: tabKey === 'material' ? '原料' : tabKey === 'auxiliary' ? '辅料' : '包材',
-    materialName: '',
-    perHl: 0,
-    price: 0,
-    batchQty: 0,
-    costBatch: 0,
-    packSpec: '',
-    packQty: 0,
-    packCost: 0
+    useFlag: tabKey === 'material' ? '原料' : tabKey === 'auxiliary' ? '辅料' : '包材'
   };
 }
 
@@ -413,7 +401,12 @@ onUnmounted(() => {
 });
 
 // ========== 初始化 ==========
-loadMasterList();
+async function init() {
+  await loadMetadata();
+  await loadMasterList();
+}
+
+init();
 </script>
 
 <style scoped>
