@@ -40,12 +40,30 @@ export const generatedRoutes: GeneratedRoute[] = [
     }
   },
   {
+    name: 'cost',
+    path: '/cost',
+    component: 'layout.base',
+    meta: {
+      title: '成本管理'
+    },
+    children: [
+      {
+        name: 'cost_eval-v2',
+        path: '/cost/eval-v2',
+        component: 'view.cost_eval-v2',
+        meta: {
+          title: '评估单V2',
+          icon: 'mdi:calculator'
+        }
+      }
+    ]
+  },
+  {
     name: 'dynamic',
     path: '/dynamic',
     component: 'layout.base$view.dynamic',
     meta: {
-      title: 'dynamic',
-      i18nKey: 'route.dynamic'
+      title: '动态页面'
     }
   },
   {

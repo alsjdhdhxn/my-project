@@ -35,6 +35,7 @@ import { NSpin, NEmpty, NButton, NSpace, useMessage, useDialog } from 'naive-ui'
 import { fetchPageComponents, fetchTableMetadata, saveDynamicData } from '@/service/api';
 import MetaComponent from './MetaComponent.vue';
 import { useChangeTracker } from './useChangeTracker';
+import { useCalcEngine, type CalcEngineConfig, type BroadcastConfig, type AggConfig } from './useCalcEngine';
 
 const props = defineProps<{
   pageCode: string;
@@ -50,6 +51,12 @@ const components = ref<Api.Metadata.PageComponent[]>([]);
 const changeTracker = useChangeTracker();
 const isDirty = computed(() => changeTracker.isDirty.value);
 
+// 计算引擎配置
+const calcEngineConfig = ref<CalcEngineConfig>({ broadcasts: [], aggregates: [] });
+
+// 计算引擎实例（延迟初始化）
+let calcEngine: ReturnType<typeof useCalcEngine> | null = null;
+
 const pageContext = reactive({
   pageCode: props.pageCode,
   metadata: {} as Record<string, Api.Metadata.TableMetadata>,
@@ -59,10 +66,68 @@ const pageContext = reactive({
   // 变更追踪相关
   changeTracker,
   // 当前选中的主表行
-  currentMasterId: null as number | null
+  currentMasterId: null as number | null,
+  // 计算引擎（由 initCalcEngine 填充）
+  calcEngine: null as ReturnType<typeof useCalcEngine> | null
 });
 
 provide('pageContext', pageContext);
+
+/** 从组件树解析计算配置 */
+function parseCalcConfig(comps: Api.Metadata.PageComponent[]): CalcEngineConfig {
+  const broadcasts: BroadcastConfig[] = [];
+  const aggregates: AggConfig[] = [];
+
+  function traverse(items: Api.Metadata.PageComponent[]) {
+    for (const item of items) {
+      if (item.componentType === 'LOGIC_BROADCAST' || item.componentType === 'LOGIC_AGG') {
+        try {
+          const cfg = JSON.parse(item.componentConfig || '{}');
+          
+          if (item.componentType === 'LOGIC_BROADCAST') {
+            broadcasts.push({
+              source: cfg.source,
+              target: cfg.target,
+              fields: cfg.fields || []
+            });
+          } else if (item.componentType === 'LOGIC_AGG') {
+            aggregates.push({
+              source: cfg.source,
+              target: cfg.target,
+              sourceField: cfg.sourceField,
+              targetField: cfg.targetField,
+              algorithm: cfg.algorithm || 'SUM',
+              filter: cfg.filter,
+              postProcess: cfg.postProcess
+            });
+          }
+        } catch (e) {
+          console.warn('[DynamicPage] 解析计算配置失败:', item.componentKey, e);
+        }
+      }
+      
+      if (item.children?.length) {
+        traverse(item.children);
+      }
+    }
+  }
+
+  traverse(comps);
+  return { broadcasts, aggregates };
+}
+
+/** 初始化计算引擎 */
+function initCalcEngine() {
+  if (calcEngineConfig.value.broadcasts.length === 0 && calcEngineConfig.value.aggregates.length === 0) {
+    console.log('[DynamicPage] 无计算配置，跳过引擎初始化');
+    return;
+  }
+
+  calcEngine = useCalcEngine(calcEngineConfig.value);
+  pageContext.calcEngine = calcEngine;
+  
+  console.log('[DynamicPage] 计算引擎初始化完成', calcEngineConfig.value);
+}
 
 async function loadPage() {
   loading.value = true;
@@ -71,6 +136,10 @@ async function loadPage() {
     if (!error && data) {
       components.value = data;
       await preloadMetadata(data);
+      
+      // 解析计算配置并初始化引擎
+      calcEngineConfig.value = parseCalcConfig(data);
+      initCalcEngine();
     }
   } finally {
     loading.value = false;

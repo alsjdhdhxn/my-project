@@ -29,6 +29,8 @@ declare namespace Api {
       dictType?: string;
       lookupCode?: string;
       rulesConfig?: string;
+      /** 是否虚拟列：不存不取，只有公式计算 */
+      isVirtual?: boolean;
     }
 
     /** 页面组件 */

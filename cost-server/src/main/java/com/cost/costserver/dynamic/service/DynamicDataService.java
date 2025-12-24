@@ -97,6 +97,12 @@ public class DynamicDataService {
 
         for (Map.Entry<String, Object> entry : data.entrySet()) {
             ColumnMetadataDTO col = columnMap.get(entry.getKey());
+            
+            // 跳过虚拟列
+            if (col != null && Boolean.TRUE.equals(col.isVirtual())) {
+                continue;
+            }
+            
             // 优先用 targetColumn，其次 columnName，最后转换
             String columnName = getTargetColumnName(col, entry.getKey());
 
@@ -188,6 +194,12 @@ public class DynamicDataService {
         StringBuilder setClause = new StringBuilder();
         for (Map.Entry<String, Object> entry : data.entrySet()) {
             ColumnMetadataDTO col = columnMap.get(entry.getKey());
+            
+            // 跳过虚拟列
+            if (col != null && Boolean.TRUE.equals(col.isVirtual())) {
+                continue;
+            }
+            
             String columnName = getTargetColumnName(col, entry.getKey());
 
             if (col == null && !isAuditField(entry.getKey())) {

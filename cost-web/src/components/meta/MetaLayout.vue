@@ -22,11 +22,14 @@ const layoutConfig = computed(() => {
 
 const layoutStyle = computed(() => {
   const cfg = layoutConfig.value;
+  // direction: vertical -> 上下排列(column), horizontal -> 左右排列(row)
+  const dir = cfg.direction === 'vertical' ? 'column' : cfg.direction === 'horizontal' ? 'row' : 'column';
   return {
     display: 'flex',
-    flexDirection: cfg.direction || 'column',
-    gap: (cfg.gap || 8) + 'px',
-    height: cfg.height || 'auto'
+    flexDirection: dir,
+    gap: (cfg.gap || 16) + 'px',
+    height: '100%',
+    minHeight: 0
   };
 });
 </script>
@@ -34,5 +37,7 @@ const layoutStyle = computed(() => {
 <style scoped>
 .meta-layout {
   width: 100%;
+  flex: 1;
+  overflow: hidden;
 }
 </style>

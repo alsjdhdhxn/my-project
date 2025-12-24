@@ -29,6 +29,9 @@ public class ColumnMetadata {
     private Long lookupConfigId;
     private String defaultValue;
     private String rulesConfig;
+    
+    /** 是否虚拟列：0-物理列 1-虚拟列（不存不取，只有公式） */
+    private Integer isVirtual;
 
     @TableLogic
     private Integer deleted;

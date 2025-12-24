@@ -23,7 +23,8 @@ public record ColumnMetadataDTO(
     String dictType,
     Long lookupConfigId,
     String defaultValue,
-    String rulesConfig
+    String rulesConfig,
+    Boolean isVirtual
 ) {
     public static ColumnMetadataDTO from(ColumnMetadata entity) {
         return new ColumnMetadataDTO(
@@ -44,7 +45,8 @@ public record ColumnMetadataDTO(
             entity.getDictType(),
             entity.getLookupConfigId(),
             entity.getDefaultValue(),
-            entity.getRulesConfig()
+            entity.getRulesConfig(),
+            intToBoolean(entity.getIsVirtual())
         );
     }
 

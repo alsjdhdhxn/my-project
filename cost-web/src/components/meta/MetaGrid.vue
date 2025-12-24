@@ -144,6 +144,9 @@ const currentLookupRowIndex = ref<number>(-1);
 // 变更追踪器
 const changeTracker = computed(() => props.pageContext.changeTracker);
 
+// 计算引擎
+const calcEngine = computed(() => props.pageContext.calcEngine);
+
 const contextMenuOptions = computed(() => [
   { label: '新增', key: 'create', icon: renderIcon('i-carbon-add') },
   { label: '删除', key: 'delete', icon: renderIcon('i-carbon-trash-can'), disabled: selectedCount.value === 0 },
@@ -204,21 +207,101 @@ function parseRulesConfig(col: Api.Metadata.ColumnMetadata) {
   }
 }
 
+/** 获取虚拟列的表达式映射 */
+function getVirtualColumnExpressions(): Record<string, string> {
+  const result: Record<string, string> = {};
+  metadata.value?.columns?.forEach((col: Api.Metadata.ColumnMetadata) => {
+    if ((col as any).isVirtual) {
+      const rules = parseRulesConfig(col);
+      if (rules.expression) {
+        result[col.fieldName] = rules.expression;
+      }
+    }
+  });
+  return result;
+}
+
+/** 计算虚拟列的值（支持依赖其他虚拟列） */
+function evalVirtualColumn(fieldName: string, row: Record<string, any>, ctx: Record<string, any>, virtualExprs: Record<string, string>, computed: Record<string, number> = {}): number {
+  if (computed[fieldName] !== undefined) return computed[fieldName];
+  
+  const expr = virtualExprs[fieldName];
+  if (!expr) return Number(row[fieldName]) || 0;
+  
+  // 替换 _ctx.xxx 为实际值
+  let processedExpr = expr.replace(/_ctx\.(\w+)/g, (_, f) => {
+    const val = ctx[f];
+    return val !== undefined && val !== null ? String(val) : '0';
+  });
+  
+  // 递归计算依赖的虚拟列
+  Object.keys(virtualExprs).forEach(vf => {
+    if (processedExpr.includes(vf) && vf !== fieldName) {
+      const val = evalVirtualColumn(vf, row, ctx, virtualExprs, computed);
+      computed[vf] = val;
+      processedExpr = processedExpr.replace(new RegExp(`\\b${vf}\\b`, 'g'), String(val));
+    }
+  });
+  
+  // 替换普通字段
+  Object.keys(row).forEach(key => {
+    if (key !== '_ctx' && processedExpr.includes(key)) {
+      const val = row[key];
+      processedExpr = processedExpr.replace(new RegExp(`\\b${key}\\b`, 'g'), String(val !== undefined && val !== null ? val : 0));
+    }
+  });
+  
+  try {
+    const result = eval(processedExpr);
+    computed[fieldName] = result || 0;
+    return result || 0;
+  } catch (e) {
+    console.warn('[MetaGrid] evalVirtualColumn 错误:', fieldName, processedExpr, e);
+    return 0;
+  }
+}
+
+/** 创建虚拟列的 valueGetter */
+function createValueGetter(fieldName: string, expression: string) {
+  return (params: any) => {
+    if (!params.data) return 0;
+    try {
+      const row = params.data;
+      const ctx = row._ctx || {};
+      const virtualExprs = getVirtualColumnExpressions();
+      const result = evalVirtualColumn(fieldName, row, ctx, virtualExprs);
+      return isNaN(result) ? 0 : Math.round(result * 100) / 100;
+    } catch (e) {
+      console.warn('[MetaGrid] valueGetter 计算错误:', expression, e);
+      return 0;
+    }
+  };
+}
+
 const columnDefs = computed<ColDef[]>(() => {
   if (!metadata.value?.columns) return [];
   return metadata.value.columns
-    .filter(col => col.fieldName !== 'id' && col.fieldName !== 'orderId')
+    .filter(col => col.fieldName !== 'id' && col.fieldName !== 'orderId' && col.fieldName !== 'evalId')
     .sort((a, b) => a.displayOrder - b.displayOrder)
     .map(col => {
       const rules = parseRulesConfig(col);
+      const isVirtual = (col as any).isVirtual;
+      
       const colDef: ColDef = {
         field: col.fieldName,
         headerName: col.headerText,
         width: col.width || 120,
         sortable: true,
         filter: col.searchable,
-        editable: col.editable && !rules.lookup
+        editable: col.editable && !rules.lookup && !isVirtual
       };
+      
+      // 虚拟列：使用 valueGetter
+      if (isVirtual && rules.expression) {
+        colDef.valueGetter = createValueGetter(col.fieldName, rules.expression);
+        colDef.editable = false;
+      }
+      
       if (rules.lookup) {
         colDef.cellClass = 'lookup-cell';
         colDef.cellStyle = { cursor: 'pointer', color: '#1890ff' };
@@ -252,7 +335,30 @@ const defaultColDef: ColDef = { resizable: true, sortable: true };
 function onGridReady(params: { api: GridApi }) {
   gridApi.value = params.api;
   props.pageContext.refresh[props.config.componentKey] = loadData;
+  
+  // 注册到计算引擎
+  registerToCalcEngine(params.api);
 }
+
+// 注册 Grid 到计算引擎
+function registerToCalcEngine(api: GridApi) {
+  if (calcEngine.value) {
+    calcEngine.value.registerGrid({
+      key: props.config.componentKey,
+      api: api,
+      getData: () => rowData.value,
+      setData: (data: any[]) => { rowData.value = data; }
+    });
+    console.log('[MetaGrid] 注册到计算引擎:', props.config.componentKey);
+  }
+}
+
+// 监听计算引擎初始化，延迟注册
+watch(calcEngine, (engine) => {
+  if (engine && gridApi.value) {
+    registerToCalcEngine(gridApi.value);
+  }
+}, { immediate: true });
 
 function onSelectionChanged() {
   const selected = gridApi.value?.getSelectedRows() || [];
@@ -299,31 +405,50 @@ function onSelectionChanged() {
 function initMasterTracking(row: any) {
   props.pageContext.currentMasterId = row.id;
   changeTracker.value?.initMaster(tableCode.value, row);
+  
+  // 设置主表数据到计算引擎
+  if (calcEngine.value) {
+    calcEngine.value.setMasterData(row);
+  }
 }
 
 function onQuickFilterChange(value: string) {
   gridApi.value?.setGridOption('quickFilterText', value);
 }
 
-// 单元格值变更 - 追踪变更
+// 单元格值变更 - 追踪变更 + 触发计算
 function onCellValueChanged(event: CellValueChangedEvent) {
-  if (!changeTracker.value || !event.colDef.field) return;
+  if (!event.colDef.field) return;
 
   const field = event.colDef.field;
   const oldValue = event.oldValue;
   const newValue = event.newValue;
   const rowId = event.data?.id;
 
-  if (isMasterGrid.value) {
-    changeTracker.value.trackMasterChange(field, oldValue, newValue);
-  } else if (rowId) {
-    changeTracker.value.trackDetailChange(tableCode.value, rowId, field, oldValue, newValue);
+  // 变更追踪
+  if (changeTracker.value) {
+    if (isMasterGrid.value) {
+      changeTracker.value.trackMasterChange(field, oldValue, newValue);
+    } else if (rowId) {
+      changeTracker.value.trackDetailChange(tableCode.value, rowId, field, oldValue, newValue);
+    }
   }
 
   // 同步到 rowData
   const idx = rowData.value.findIndex(r => r.id === rowId);
   if (idx >= 0) {
     rowData.value[idx][field] = newValue;
+  }
+
+  // 计算引擎处理
+  if (calcEngine.value) {
+    if (isMasterGrid.value) {
+      // 主表变更：广播到从表
+      calcEngine.value.broadcast(field);
+    } else {
+      // 从表变更：触发聚合
+      calcEngine.value.onDetailChange();
+    }
   }
 }
 
@@ -487,12 +612,44 @@ async function loadData() {
 
   const { data, error } = await fetchDynamicData(tableCode.value, params);
   if (!error && data) {
-    rowData.value = data.list || [];
+    const list = data.list || [];
+    
+    // 从表：立即初始化 _ctx（在设置 rowData 之前）
+    if (isDetailGrid.value) {
+      const masterGridKey = gridConfig.value.masterGrid || findMasterGridKey();
+      const selectedMaster = props.pageContext.selectedRows[masterGridKey];
+      if (selectedMaster?.length) {
+        const masterRow = selectedMaster[0];
+        // 从广播配置获取需要的字段
+        const broadcastFields = getBroadcastFields();
+        const ctx: Record<string, any> = {};
+        broadcastFields.forEach(f => {
+          ctx[f] = masterRow[f];
+        });
+        // 给每行添加 _ctx
+        list.forEach((row: any) => {
+          row._ctx = { ...ctx };
+        });
+        console.log('[MetaGrid] 从表数据加载，初始化 _ctx:', ctx);
+      }
+    }
+    
+    rowData.value = list;
     totalCount.value = data.total || 0;
 
     // 初始化从表变更追踪
     if (isDetailGrid.value && changeTracker.value) {
       changeTracker.value.initDetails(tableCode.value, rowData.value);
+    }
+    
+    // 从表：注册到计算引擎并执行聚合
+    if (isDetailGrid.value && calcEngine.value) {
+      calcEngine.value.initDetailCtx(props.config.componentKey);
+      // 刷新显示
+      setTimeout(() => {
+        gridApi.value?.refreshCells();
+        calcEngine.value.runAggregates();
+      }, 0);
     }
 
     // 主表自动选中第一行
@@ -500,6 +657,23 @@ async function loadData() {
       setTimeout(() => gridApi.value?.getDisplayedRowAtIndex(0)?.setSelected(true), 0);
     }
   }
+}
+
+/** 从页面组件配置获取广播字段 */
+function getBroadcastFields(): string[] {
+  const components = props.pageContext.components || [];
+  for (const comp of components) {
+    if (comp.componentType === 'LOGIC_BROADCAST') {
+      try {
+        const cfg = JSON.parse(comp.componentConfig || '{}');
+        if (cfg.target === props.config.componentKey && cfg.fields) {
+          return cfg.fields;
+        }
+      } catch {}
+    }
+  }
+  // 默认返回常用字段
+  return ['apexPl', 'yield'];
 }
 
 function findMasterGridKey(): string {
@@ -513,7 +687,20 @@ watch(() => metadata.value, (meta) => {
   if (meta && !meta.parentTableCode && gridApi.value) loadData();
 }, { immediate: true });
 
-// 从表不再自动监听主表变化，由 MetaTabs 控制按需加载
+// 从表监听主表选中变化
+watch(
+  () => {
+    if (!isDetailGrid.value) return null;
+    const masterGridKey = gridConfig.value.masterGrid || findMasterGridKey();
+    return props.pageContext.selectedRows[masterGridKey]?.[0]?.id;
+  },
+  (newMasterId, oldMasterId) => {
+    if (isDetailGrid.value && newMasterId && newMasterId !== oldMasterId) {
+      console.log('[MetaGrid] 主表选中变化，加载从表:', newMasterId);
+      loadData();
+    }
+  }
+);
 </script>
 
 <style scoped>
