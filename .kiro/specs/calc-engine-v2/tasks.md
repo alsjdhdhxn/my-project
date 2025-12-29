@@ -72,8 +72,20 @@
 - [x] `cost-web/src/components/meta-v2/MetaToolbar.vue`
 - [x] 前端搜索（quickFilter）
 - [x] 高级查询按钮（占位）
+- [x] 表头自动换行（wrapHeaderText + autoHeaderHeight）
+- [x] 主从表可拖动分隔（NSplit）
+- [x] 鼠标悬停自动聚焦（mouseenter → focus）
+- [x] 空表格支持 Ctrl+Enter 新增
 
-### Task 2.4: 测试页面
+### Task 2.4: 元数据驱动的单元格样式
+- [x] `cost-web/src/composables/useMetaColumns.ts`
+- [x] 解析 RULES_CONFIG.style 配置
+- [x] 使用 cellClassRules 实现条件样式
+- [x] 动态 CSS 注入（injectDynamicStyles）
+- [x] 支持 contains/startsWith/endsWith/equals/compare 条件
+- [x] 编辑后样式实时更新
+
+### Task 2.5: 测试页面
 - [x] `cost-web/src/views/cost/eval-v3/index.vue`
 - [x] 使用通用组件重构评估单页面
 

@@ -58,6 +58,30 @@ const expr = compile('master.apexPl * perHl / 100');
 const result = expr.evaluate({ master: { apexPl: 100 }, perHl: 125.5 });
 ```
 
+### 10. 元数据驱动的单元格样式
+- 通过 `COLUMN_METADATA.RULES_CONFIG` 配置条件样式
+- 配置格式：
+```json
+{
+  "style": [
+    {
+      "condition": { "type": "contains", "pattern": "瓶" },
+      "style": { "color": "red" }
+    }
+  ]
+}
+```
+- 支持的条件类型：
+  - `contains`: 包含指定文本
+  - `startsWith`: 以指定文本开头
+  - `endsWith`: 以指定文本结尾
+  - `equals`: 等于指定值
+  - `compare`: 数值比较（>, >=, <, <=, ==, !=）
+- 编辑后实时更新样式
+
+- [ ] 元数据配置的条件样式正确应用
+- [ ] 编辑单元格后样式实时更新
+
 ## 验收标准
 
 - [ ] 选中主表行后，从表数据加载到 JSON Store

@@ -1,5 +1,12 @@
 <template>
-  <div class="meta-grid" :style="{ height: height }" @keydown="onKeyDown">
+  <div 
+    ref="containerRef"
+    class="meta-grid" 
+    :style="{ height: height }" 
+    tabindex="0" 
+    @keydown="onKeyDown"
+    @mouseenter="onMouseEnter"
+  >
     <AgGridVue
       style="height: 100%; width: 100%"
       :theme="theme"
@@ -11,6 +18,7 @@
       @grid-ready="onGridReady"
       @selection-changed="onSelectionChanged"
       @cell-value-changed="onCellValueChanged"
+      @cell-editing-stopped="onCellEditingStopped"
     />
   </div>
 </template>
@@ -68,6 +76,12 @@ const emit = defineEmits<{
 
 const theme = themeQuartz;
 const gridApi = ref<GridApi>();
+const containerRef = ref<HTMLElement>();
+
+// 鼠标进入时自动聚焦
+function onMouseEnter() {
+  containerRef.value?.focus();
+}
 
 // 列定义（添加单元格样式）
 const columnDefs = computed<ColDef[]>(() => {
@@ -134,7 +148,14 @@ function onGridReady(params: { api: GridApi }) {
 
 // 键盘事件处理
 function onKeyDown(event: KeyboardEvent) {
-  // 只有当前 Grid 有焦点时才处理
+  // Ctrl+Enter 新增行（不需要焦点，只要在 Grid 容器内就行）
+  if (event.ctrlKey && event.key === 'Enter') {
+    event.preventDefault();
+    handleAdd();
+    return;
+  }
+  
+  // 以下操作需要 Grid 有焦点
   if (!gridApi.value?.getFocusedCell()) return;
   
   // 检查是否在编辑状态
@@ -147,12 +168,6 @@ function onKeyDown(event: KeyboardEvent) {
       event.preventDefault();
       handleDelete(selectedRows);
     }
-  }
-  
-  // Ctrl+Enter 新增行
-  if (event.ctrlKey && event.key === 'Enter') {
-    event.preventDefault();
-    handleAdd();
   }
 }
 
@@ -233,6 +248,24 @@ function onCellValueChanged(event: CellValueChangedEvent) {
     newValue: event.newValue,
     data: event.data
   });
+}
+
+// 编辑停止时刷新样式
+function onCellEditingStopped(event: any) {
+  const rowId = event.data?.[props.pkField];
+  const colId = event.column?.getId();
+  
+  if (rowId !== undefined && rowId !== null && colId && gridApi.value) {
+    const rowNode = gridApi.value.getRowNode(String(rowId));
+    if (rowNode) {
+      // 强制刷新该单元格的样式（必须加 force: true）
+      gridApi.value.refreshCells({
+        rowNodes: [rowNode],
+        columns: [colId],
+        force: true
+      });
+    }
+  }
 }
 
 // 刷新行

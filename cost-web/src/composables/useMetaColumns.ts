@@ -42,7 +42,71 @@ export function metaToColDef(col: ColumnMetadata): ColDef {
       break;
   }
 
+  // 样式规则 - 使用 cellClassRules 实现动态样式
+  if (col.rulesConfig) {
+    try {
+      const config = JSON.parse(col.rulesConfig);
+      if (config.style && Array.isArray(config.style)) {
+        const cellClassRules: Record<string, (params: any) => boolean> = {};
+        
+        config.style.forEach((rule: any, index: number) => {
+          const className = `meta-style-${col.fieldName}-${index}`;
+          const condition = rule.condition;
+          
+          // 为每个规则创建判断函数
+          cellClassRules[className] = (params: any) => {
+            const value = params.value;
+            if (value == null) return false;
+            return matchStyleRule(value, condition);
+          };
+        });
+        
+        colDef.cellClassRules = cellClassRules;
+        
+        // 存储样式规则用于 CSS 注入
+        colDef.context = {
+          styleRules: config.style,
+          fieldName: col.fieldName
+        };
+      }
+    } catch (e) {
+      console.warn(`[useMetaColumns] 解析 rulesConfig 失败: ${col.fieldName}`, e);
+    }
+  }
+
   return colDef;
+}
+
+/**
+ * 匹配样式规则
+ */
+function matchStyleRule(value: any, condition: any): boolean {
+  if (!condition) return false;
+
+  const { type, pattern, operator, compareValue } = condition;
+
+  switch (type) {
+    case 'contains':
+      return String(value).includes(pattern);
+    case 'startsWith':
+      return String(value).startsWith(pattern);
+    case 'endsWith':
+      return String(value).endsWith(pattern);
+    case 'equals':
+      return value === compareValue;
+    case 'compare':
+      switch (operator) {
+        case '>': return Number(value) > Number(compareValue);
+        case '>=': return Number(value) >= Number(compareValue);
+        case '<': return Number(value) < Number(compareValue);
+        case '<=': return Number(value) <= Number(compareValue);
+        case '==': return value == compareValue;
+        case '!=': return value != compareValue;
+        default: return false;
+      }
+    default:
+      return false;
+  }
 }
 
 /**
@@ -110,10 +174,75 @@ export async function loadTableMeta(tableCode: string) {
     return null;
   }
 
+  const columns = metaToColDefs(data.columns);
+  
+  // 生成动态样式
+  injectDynamicStyles(columns);
+
   return {
     metadata: data,
-    columns: metaToColDefs(data.columns),
+    columns,
     calcRules: extractCalcRules(data.columns),
     defaultValues: extractDefaultValues(data.columns)
   };
+}
+
+/**
+ * 注入动态样式到页面
+ */
+function injectDynamicStyles(columns: ColDef[]) {
+  // 使用唯一的 style 元素
+  const styleId = 'meta-dynamic-styles';
+  let styleEl = document.getElementById(styleId) as HTMLStyleElement;
+  
+  if (!styleEl) {
+    styleEl = document.createElement('style');
+    styleEl.id = styleId;
+    document.head.appendChild(styleEl);
+  }
+
+  // 收集所有已有的 CSS 规则（避免重复）
+  const existingRules = new Set<string>();
+  const existingContent = styleEl.textContent || '';
+  existingContent.split('\n').forEach(line => {
+    const match = line.match(/^\.(meta-style-[^\s{]+)/);
+    if (match) existingRules.add(match[1]);
+  });
+
+  // 生成新的 CSS 规则
+  const newRules: string[] = [];
+  
+  columns.forEach(col => {
+    const styleRules = col.context?.styleRules;
+    const fieldName = col.context?.fieldName;
+    
+    if (styleRules && fieldName) {
+      styleRules.forEach((rule: any, index: number) => {
+        const className = `meta-style-${fieldName}-${index}`;
+        
+        // 跳过已存在的规则
+        if (existingRules.has(className)) return;
+        
+        const styles = rule.style || {};
+        
+        // 将样式对象转换为 CSS 字符串
+        const styleStr = Object.entries(styles)
+          .map(([key, value]) => {
+            // 将 camelCase 转换为 kebab-case
+            const cssKey = key.replace(/([A-Z])/g, '-$1').toLowerCase();
+            return `${cssKey}: ${value}`;
+          })
+          .join('; ');
+        
+        if (styleStr) {
+          newRules.push(`.${className} { ${styleStr} !important; }`);
+        }
+      });
+    }
+  });
+
+  // 追加新规则
+  if (newRules.length > 0) {
+    styleEl.textContent = existingContent + (existingContent ? '\n' : '') + newRules.join('\n');
+  }
 }
