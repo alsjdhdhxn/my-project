@@ -23,41 +23,47 @@
 
 ## 模块设计
 
-### 1. DataStore (useDataStore.ts)
+### 1. GridStore (useGridStore.ts)
+
+> 实际实现使用 composable 而非 Pinia Store，支持多实例（主表、多个从表各自独立）
 
 ```typescript
-// Pinia Store
-export const useDataStore = defineStore('dataStore', () => {
-  const master = ref<Record<string, any>>({});
-  const details = ref<Record<string, any>[]>([]);
+export function useGridStore<T extends RowData = RowData>(options: GridStoreOptions = {}) {
+  const rows: Ref<T[]> = ref([]);
   const isLoaded = ref(false);
 
-  function loadMaster(row: Record<string, any>) {
-    master.value = { ...row };
+  // 加载数据，保存原始值快照用于变更追踪
+  function load(data: Record<string, any>[], preserveState = false) {
+    rows.value = data.map(row => ({
+      ...row,
+      _changeType: preserveState ? (row._changeType || {}) : {},
+      _originalValues: preserveState ? (row._originalValues || {...row}) : {...row}
+    })) as T[];
     isLoaded.value = true;
   }
 
-  function loadDetails(rows: Record<string, any>[]) {
-    details.value = rows.map(r => ({ ...r }));
-  }
+  // 更新字段
+  function updateField(rowId: number | string, field: string, value: any) { ... }
 
-  function updateMasterField(field: string, value: any) {
-    master.value[field] = value;
-  }
+  // 标记变更（比较原始值，相同则移除标记）
+  function markChange(rowId: number | string, field: string, type: 'user' | 'cascade') { ... }
 
-  function updateDetailField(rowId: number, field: string, value: any) {
-    const row = details.value.find(r => r.id === rowId);
-    if (row) row[field] = value;
-  }
+  // 新增行（临时负数ID）
+  function addRow(data: Partial<T> = {}): T { ... }
 
-  function reset() {
-    master.value = {};
-    details.value = [];
-    isLoaded.value = false;
-  }
+  // 删除行（标记删除或直接移除新增行）
+  function deleteRow(rowId: number | string) { ... }
 
-  return { master, details, isLoaded, loadMaster, loadDetails, updateMasterField, updateDetailField, reset };
-});
+  // 清除变更标记（保存成功后调用）
+  function clearChanges() { ... }
+
+  // 计算属性
+  const isDirty = computed(() => ...);      // 是否有未保存修改
+  const changedRows = computed(() => ...);  // 变更的行
+  const visibleRows = computed(() => ...);  // 可见行（排除已删除）
+
+  return { rows, visibleRows, isLoaded, isDirty, changedRows, load, getRow, updateField, markChange, addRow, deleteRow, reset, clearChanges };
+}
 ```
 
 ### 2. CalcEngine (useCalcEngine.ts)
@@ -323,120 +329,168 @@ export function useCalcEngine(store: DataStore) {
 | math.js 预编译 | 表达式只编译一次，执行时直接 evaluate |
 ```
 
-### 3. ChangeTracker (useChangeTracker.ts)
+### 3. AggEngine (useAggEngine.ts)
+
+> 聚合计算从 CalcEngine 拆分为独立模块，支持从 PAGE_COMPONENT 的 LOGIC_AGG 配置读取规则
 
 ```typescript
-interface FieldChange {
-  field: string;
-  oldValue: any;
-  newValue: any;
-  changeType: 'user' | 'cascade';
-  timestamp: number;
-}
+export function useAggEngine() {
+  const rules: AggRule[] = [];
+  let dataSources: DataSourceMap = {};
+  let targetStore: GridStore | null = null;
 
-export function useChangeTracker() {
-  const masterChanges = ref<FieldChange[]>([]);
-  const detailChanges = ref<Map<number, FieldChange[]>>(new Map());
-  const isDirty = computed(() => masterChanges.value.length > 0 || detailChanges.value.size > 0);
+  // 注册聚合规则（从 LOGIC_AGG 组件配置解析）
+  function registerAggRules(aggRules: AggRule[]) { ... }
 
-  function trackUserChange(target: 'master' | 'detail', rowId: number | null, field: string, oldValue: any, newValue: any) {
-    const change: FieldChange = { field, oldValue, newValue, changeType: 'user', timestamp: Date.now() };
-    if (target === 'master') {
-      masterChanges.value.push(change);
-    } else if (rowId !== null) {
-      if (!detailChanges.value.has(rowId)) {
-        detailChanges.value.set(rowId, []);
+  // 设置数据源映射（组件Key → Store）
+  function setDataSources(sources: DataSourceMap) { ... }
+
+  // 设置目标 Store 和当前行 ID
+  function setTarget(store: GridStore, rowId: any) { ... }
+
+  // 执行聚合计算（两轮：先聚合，再表达式）
+  function calculate() {
+    // 第一轮：SUM/AVG/COUNT 等聚合
+    rules.forEach(rule => {
+      if (rule.algorithm && rule.source && rule.sourceField) {
+        const value = aggregate(filteredRows, rule.sourceField, rule.algorithm);
+        results[rule.targetField] = value;
       }
-      detailChanges.value.get(rowId)!.push(change);
-    }
+    });
+
+    // 第二轮：表达式计算（依赖第一轮结果）
+    rules.forEach(rule => {
+      if (rule.expression && !rule.algorithm) {
+        const context = { ...currentRow, ...results };
+        results[rule.targetField] = compile(rule.expression).evaluate(context);
+      }
+    });
+
+    // 更新目标 Store 并标记为级联计算
+    targetStore.updateFields(targetRowId, results);
+    Object.keys(results).forEach(field => targetStore.markChange(targetRowId, field, 'cascade'));
   }
 
-  function getUserChanges() {
-    // 只返回用户操作，用于日志记录
-    return {
-      master: masterChanges.value.filter(c => c.changeType === 'user'),
-      details: Array.from(detailChanges.value.entries()).map(([id, changes]) => ({
-        rowId: id,
-        changes: changes.filter(c => c.changeType === 'user')
-      }))
-    };
-  }
-
-  function reset() {
-    masterChanges.value = [];
-    detailChanges.value.clear();
-  }
-
-  return { isDirty, trackUserChange, getUserChanges, reset };
+  return { registerAggRules, setDataSources, setTarget, calculate };
 }
+
+// 从 PAGE_COMPONENT 提取聚合规则
+export function extractAggRules(components: PageComponent[]): AggRule[] { ... }
 ```
 
-### 4. MetaGrid 改造
+### 4. ChangeTracker（已集成到 GridStore）
+
+> 变更追踪已集成到 useGridStore，通过 `_changeType` 和 `_originalValues` 字段实现
 
 ```typescript
-// 数据绑定
-const rowData = computed(() => {
-  if (isMasterGrid) return [dataStore.master];
-  return dataStore.details;
-});
+interface RowData {
+  id: number | null;
+  _changeType?: Record<string, 'user' | 'cascade'>;  // 字段变更类型
+  _originalValues?: Record<string, any>;              // 原始值快照
+  _isNew?: boolean;                                   // 是否新增行
+  _isDeleted?: boolean;                               // 是否已删除
+  [key: string]: any;
+}
 
-// 单元格样式
-const cellStyle = (params: CellClassParams) => {
-  const changeType = params.data?._changeType?.[params.colDef.field];
+// markChange 会比较当前值和原始值
+// - 相同：移除变更标记
+// - 不同：标记变更类型
+```
+```
+
+### 5. MetaGrid 组件
+
+> 纯渲染组件，数据来自 GridStore，支持 Lookup 弹窗
+
+```typescript
+const props = defineProps<{
+  columns: ColDef[];
+  store: GridStore;
+  calcEngine?: CalcEngine;
+  columnMeta?: ColumnMetadata[];  // 用于 Lookup 配置
+  defaultNewRow?: Record<string, any>;
+  firstEditableField?: string;
+}>();
+
+// 数据绑定
+const rowData = computed(() => props.store.visibleRows.value);
+
+// 单元格样式（变更追踪）
+function getCellStyle(params: CellClassParams) {
+  const changeType = params.data?._changeType?.[params.colDef?.field || ''];
   if (changeType === 'user') return { backgroundColor: '#e6ffe6' };
   if (changeType === 'cascade') return { backgroundColor: '#fffde6' };
   return null;
-};
+}
 
 // 编辑回调
 function onCellValueChanged(event: CellValueChangedEvent) {
-  const field = event.colDef.field;
-  const rowId = event.data?.id;
-  
-  // 标记为用户编辑
-  event.data._changeType = event.data._changeType || {};
-  event.data._changeType[field] = 'user';
-  
-  // 更新 DataStore
-  if (isMasterGrid) {
-    dataStore.updateMasterField(field, event.newValue);
-    changeTracker.trackUserChange('master', null, field, event.oldValue, event.newValue);
-    calcEngine.onMasterChange(field);
-  } else {
-    dataStore.updateDetailField(rowId, field, event.newValue);
-    changeTracker.trackUserChange('detail', rowId, field, event.oldValue, event.newValue);
-    calcEngine.onDetailChange(rowId, field);
+  props.store.markChange(rowId, field, 'user');
+  if (props.calcEngine) {
+    props.calcEngine.onFieldChange(rowId, field);
+  }
+  // 刷新 Grid 显示
+  gridApi.value.applyTransaction({ update: [row] });
+  gridApi.value.refreshCells({ rowNodes: [rowNode], force: true });
+}
+
+// Lookup 点击处理
+function onCellClicked(event: CellClickedEvent) {
+  const lookupConfig = getLookupConfig(fieldName);
+  if (lookupConfig) {
+    lookupRef.value?.open();
   }
 }
+
+// Lookup 选择回调（多字段回填）
+function onLookupSelect(data: Record<string, any>) {
+  for (const [targetField, newValue] of Object.entries(data)) {
+    props.store.updateField(rowId, targetField, newValue);
+    props.store.markChange(rowId, targetField, 'user');
+  }
+  // 触发计算引擎
+  changedFields.forEach(field => props.calcEngine?.onFieldChange(rowId, field));
+}
+
+// 快捷键
+// Ctrl+Enter: 新增行
+// Delete: 删除选中行
+```
 ```
 
-### 5. 布局 (50/50)
+### 6. 布局（NSplit 可拖动分隔）
 
 ```vue
 <template>
-  <div class="page-container">
-    <div class="master-section">
-      <MetaGrid :config="masterConfig" />
-    </div>
-    <div class="detail-section">
-      <MetaGrid :config="detailConfig" />
-    </div>
-  </div>
+  <NSplit
+    direction="vertical"
+    :default-size="0.5"
+    :min="0.2"
+    :max="0.8"
+    class="split-container"
+  >
+    <template #1>
+      <div class="master-section">
+        <MetaGrid :store="masterStore" ... />
+      </div>
+    </template>
+    <template #2>
+      <div class="detail-section">
+        <!-- 多 Tab 并排显示 -->
+        <div class="detail-grids">
+          <div v-for="tab in visibleTabs" :key="tab.key" class="detail-grid-wrapper">
+            <MetaGrid :store="detailStores[tab.key]" ... />
+          </div>
+        </div>
+      </div>
+    </template>
+  </NSplit>
 </template>
 
 <style scoped>
-.page-container {
-  height: 100vh;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-.master-section,
-.detail-section {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-}
+.split-container { flex: 1; min-height: 0; }
+.detail-grids { display: flex; gap: 1px; }
+.detail-grid-wrapper { flex: 1; min-width: 0; }
 </style>
 ```
 

@@ -45,6 +45,7 @@
             ref="masterGridRef"
             :columns="masterColumns"
             :store="masterStore"
+            :columnMeta="masterColumnMeta"
             :defaultNewRow="getMasterDefaultRow()"
             firstEditableField="productName"
             height="100%"
@@ -70,6 +71,7 @@
             :columns="getDetailColumns(tab.key)"
             :store="detailStores[tab.key]"
             :calcEngine="detailCalcEngines[tab.key]"
+            :columnMeta="detailColumnMeta"
             :defaultNewRow="getDetailDefaultRow(tab.key)"
             firstEditableField="materialName"
             height="100%"
@@ -159,6 +161,8 @@ const masterColumns = ref<ColDef[]>([]);
 const detailColumns = ref<ColDef[]>([]);
 const masterDefaultValues = ref<Record<string, any>>({});
 const detailDefaultValues = ref<Record<string, any>>({});
+const masterColumnMeta = ref<Api.Metadata.ColumnMetadata[]>([]);
+const detailColumnMeta = ref<Api.Metadata.ColumnMetadata[]>([]);
 
 // ========== 验证规则 ==========
 const masterValidateRules = ref<Map<string, ValidateRule[]>>(new Map());
@@ -185,6 +189,7 @@ async function loadMetadata() {
   if (masterMeta) {
     masterColumns.value = masterMeta.columns;
     masterDefaultValues.value = masterMeta.defaultValues;
+    masterColumnMeta.value = masterMeta.rawColumns || [];
     // 提取主表验证规则
     masterValidateRules.value = extractValidateRules(masterMeta.rawColumns || []);
   }
@@ -192,6 +197,7 @@ async function loadMetadata() {
   if (detailMeta) {
     detailColumns.value = detailMeta.columns;
     detailDefaultValues.value = detailMeta.defaultValues;
+    detailColumnMeta.value = detailMeta.rawColumns || [];
     // 提取从表验证规则
     detailValidateRules.value = extractValidateRules(detailMeta.rawColumns || []);
     
@@ -306,13 +312,21 @@ function onDetailCellChanged(tabKey: TabKey, params: { field: string; rowId: any
 }
 
 // ========== 数据加载 ==========
-async function loadMasterList() {
+async function loadMasterList(selectId?: number) {
   const { data, error } = await fetchDynamicData('CostEval', {});
   if (!error && data) {
     masterStore.load(data.list || []);
     if (masterStore.rows.value.length > 0) {
       setTimeout(() => {
-        masterGridRef.value?.gridApi?.getDisplayedRowAtIndex(0)?.setSelected(true);
+        // 如果指定了要选中的ID，选中它；否则选中第一行
+        const targetId = selectId ?? masterStore.rows.value[0]?.id;
+        if (targetId) {
+          masterGridRef.value?.gridApi?.forEachNode(node => {
+            if (node.data?.id === targetId) {
+              node.setSelected(true);
+            }
+          });
+        }
       }, 100);
     }
   }
@@ -449,6 +463,9 @@ async function handleSave() {
     
     message.success('保存成功');
     
+    // 记住当前选中的主表ID
+    const selectedMasterId = currentMaster.value?.id;
+    
     // 清除变更标记
     masterStore.clearChanges();
     detailStores.material.clearChanges();
@@ -458,8 +475,8 @@ async function handleSave() {
     // 清除缓存，重新加载
     Object.keys(detailCache).forEach(key => delete detailCache[Number(key)]);
     
-    // 刷新数据
-    await loadMasterList();
+    // 刷新数据（不自动选中第一行）
+    await loadMasterList(selectedMasterId);
   } catch (e: any) {
     message.error('保存失败: ' + (e.message || '网络错误'));
   }

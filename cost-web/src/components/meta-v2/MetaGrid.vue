@@ -19,7 +19,11 @@
       @selection-changed="onSelectionChanged"
       @cell-value-changed="onCellValueChanged"
       @cell-editing-stopped="onCellEditingStopped"
+      @cell-clicked="onCellClicked"
     />
+    
+    <!-- Lookup 弹窗 -->
+    <MetaLookup ref="lookupRef" :config="currentLookupConfig" @select="onLookupSelect" />
   </div>
 </template>
 
@@ -27,9 +31,10 @@
 import { ref, computed, watch } from 'vue';
 import { AgGridVue } from 'ag-grid-vue3';
 import { ModuleRegistry, AllCommunityModule, themeQuartz } from 'ag-grid-community';
-import type { GridApi, ColDef, CellValueChangedEvent, GetRowIdParams, CellClassParams } from 'ag-grid-community';
+import type { GridApi, ColDef, CellValueChangedEvent, GetRowIdParams, CellClassParams, CellClickedEvent } from 'ag-grid-community';
 import type { GridStore } from '@/composables/useGridStore';
 import type { CalcEngine } from '@/composables/useCalcEngine';
+import MetaLookup from '@/components/meta/MetaLookup.vue';
 
 // 注册 AG Grid 模块（全局只注册一次）
 if (!(window as any).__AG_GRID_REGISTERED__) {
@@ -58,6 +63,8 @@ const props = withDefaults(defineProps<{
   defaultNewRow?: Record<string, any>;
   /** 新增后聚焦的字段 */
   firstEditableField?: string;
+  /** 列元数据（用于 Lookup 配置） */
+  columnMeta?: Api.Metadata.ColumnMetadata[];
 }>(), {
   height: '100%',
   pkField: 'id',
@@ -78,6 +85,11 @@ const theme = themeQuartz;
 const gridApi = ref<GridApi>();
 const containerRef = ref<HTMLElement>();
 
+// Lookup 相关
+const lookupRef = ref<InstanceType<typeof MetaLookup>>();
+const currentLookupConfig = ref({ tableCode: '', displayField: '', mapping: {}, title: '' });
+const currentLookupRowId = ref<any>(null);
+
 // 鼠标进入时自动聚焦
 function onMouseEnter() {
   containerRef.value?.focus();
@@ -85,11 +97,34 @@ function onMouseEnter() {
 
 // 列定义（添加单元格样式）
 const columnDefs = computed<ColDef[]>(() => {
-  return props.columns.map(col => ({
-    ...col,
-    cellStyle: col.cellStyle || getCellStyle
-  }));
+  return props.columns.map(col => {
+    const lookupConfig = getLookupConfig(col.field || '');
+    return {
+      ...col,
+      cellStyle: lookupConfig ? getLookupCellStyle : (col.cellStyle || getCellStyle),
+      editable: lookupConfig ? false : col.editable // Lookup 列不可直接编辑
+    };
+  });
 });
+
+// 获取 Lookup 配置
+function getLookupConfig(fieldName: string) {
+  if (!props.columnMeta || !fieldName) return null;
+  const col = props.columnMeta.find(c => c.fieldName === fieldName);
+  if (!col?.rulesConfig) return null;
+  try {
+    const rules = JSON.parse(col.rulesConfig);
+    return rules.lookup || null;
+  } catch {
+    return null;
+  }
+}
+
+// Lookup 单元格样式
+function getLookupCellStyle(params: CellClassParams) {
+  const baseStyle = getCellStyle(params) || {};
+  return { ...baseStyle, cursor: 'pointer', color: '#1890ff' };
+}
 
 // 行数据
 const rowData = computed(() => props.store.visibleRows.value);
@@ -268,6 +303,83 @@ function onCellEditingStopped(event: any) {
   }
 }
 
+// 单元格点击 - 处理 Lookup
+function onCellClicked(event: CellClickedEvent) {
+  const fieldName = event.colDef.field;
+  if (!fieldName) return;
+
+  const lookupConfig = getLookupConfig(fieldName);
+  if (lookupConfig) {
+    currentLookupConfig.value = lookupConfig;
+    currentLookupRowId.value = event.data?.[props.pkField];
+    lookupRef.value?.open();
+  }
+}
+
+// Lookup 选择回调
+function onLookupSelect(data: Record<string, any>) {
+  if (currentLookupRowId.value === null || currentLookupRowId.value === undefined) return;
+
+  const row = props.store.getRow(currentLookupRowId.value);
+  if (!row) return;
+
+  const changedFields: string[] = [];
+
+  // 先把所有字段都更新到 store
+  for (const [targetField, newValue] of Object.entries(data)) {
+    const oldValue = row[targetField];
+    if (oldValue !== newValue) {
+      props.store.updateField(currentLookupRowId.value, targetField, newValue);
+      props.store.markChange(currentLookupRowId.value, targetField, 'user');
+      changedFields.push(targetField);
+    }
+  }
+
+  // 刷新 Grid 显示
+  if (gridApi.value) {
+    const updatedRow = props.store.getRow(currentLookupRowId.value);
+    if (updatedRow) {
+      gridApi.value.applyTransaction({ update: [updatedRow] });
+      const rowNode = gridApi.value.getRowNode(String(currentLookupRowId.value));
+      if (rowNode) {
+        gridApi.value.refreshCells({ rowNodes: [rowNode], force: true });
+      }
+    }
+  }
+
+  // 触发计算引擎（所有字段更新完后再统一触发）
+  if (props.calcEngine && changedFields.length > 0) {
+    // 只需触发一次，传入任意一个变更字段即可触发级联计算
+    // 但为了确保所有依赖都被触发，逐个调用
+    changedFields.forEach(field => {
+      props.calcEngine!.onFieldChange(currentLookupRowId.value, field);
+    });
+    
+    // 再次刷新 Grid（计算后数据可能变化）
+    if (gridApi.value) {
+      const finalRow = props.store.getRow(currentLookupRowId.value);
+      if (finalRow) {
+        gridApi.value.applyTransaction({ update: [finalRow] });
+        const rowNode = gridApi.value.getRowNode(String(currentLookupRowId.value));
+        if (rowNode) {
+          gridApi.value.refreshCells({ rowNodes: [rowNode], force: true });
+        }
+      }
+    }
+  }
+
+  // 通知外部（用于聚合计算等）
+  changedFields.forEach(field => {
+    emit('cellChanged', {
+      field,
+      rowId: currentLookupRowId.value,
+      oldValue: row[field],
+      newValue: data[field],
+      data: props.store.getRow(currentLookupRowId.value)
+    });
+  });
+}
+
 // 刷新行
 function refreshRow(rowId: any) {
   const row = props.store.getRow(rowId);
@@ -285,9 +397,22 @@ function refreshRow(rowId: any) {
 // 刷新所有行
 function refreshAll() {
   if (gridApi.value) {
+    // 保存当前选中的行ID
+    const selectedIds = gridApi.value.getSelectedRows().map(r => r[props.pkField]);
+    
     const rows = props.store.visibleRows.value;
-    // 先清空再重新设置，确保新增/删除的行也能正确显示
     gridApi.value.setGridOption('rowData', [...rows]);
+    
+    // 恢复选中状态
+    if (selectedIds.length > 0) {
+      setTimeout(() => {
+        gridApi.value?.forEachNode(node => {
+          if (selectedIds.includes(node.data?.[props.pkField])) {
+            node.setSelected(true);
+          }
+        });
+      }, 0);
+    }
   }
 }
 
@@ -357,5 +482,15 @@ defineExpose({
   white-space: normal !important;
   word-wrap: break-word;
   overflow: visible !important;
+}
+
+/* Lookup 单元格样式 */
+.meta-grid :deep(.lookup-cell) {
+  cursor: pointer;
+  color: #1890ff;
+}
+
+.meta-grid :deep(.lookup-cell:hover) {
+  text-decoration: underline;
 }
 </style>

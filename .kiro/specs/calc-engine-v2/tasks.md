@@ -76,6 +76,8 @@
 - [x] 主从表可拖动分隔（NSplit）
 - [x] 鼠标悬停自动聚焦（mouseenter → focus）
 - [x] 空表格支持 Ctrl+Enter 新增
+- [x] Lookup 弹窗回填（打开弹窗时根据当前值查询并回显）
+- [x] Lookup 恢复选中行（弹窗打开时自动定位并选中已有数据）
 
 ### Task 2.4: 元数据驱动的单元格样式
 - [x] `cost-web/src/composables/useMetaColumns.ts`
