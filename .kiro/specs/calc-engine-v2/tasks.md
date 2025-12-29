@@ -89,15 +89,19 @@
 - [x] `cost-web/src/views/cost/eval-v3/index.vue`
 - [x] 使用通用组件重构评估单页面
 
-## Phase 3: 元数据驱动（待开始）
+## Phase 3: 元数据驱动（已完成）
 
 ### Task 3.1: 解析 RULES_CONFIG
-- [ ] 从 COLUMN_METADATA.RULES_CONFIG 读取表达式
-- [ ] 自动注册到 CalcEngine
+- [x] 从 COLUMN_METADATA.RULES_CONFIG 读取表达式
+- [x] 自动注册到 CalcEngine
 
 ### Task 3.2: 解析 LOGIC_AGG
-- [ ] 从 PAGE_COMPONENT 读取聚合配置
-- [ ] 自动注册到 CalcEngine
+- [x] 从 PAGE_COMPONENT 读取聚合配置
+- [x] 自动注册到 AggEngine
+- [x] 创建 useAggEngine.ts 聚合引擎
+- [x] 支持 SUM/AVG/COUNT/MAX/MIN 算法
+- [x] 支持 filter 过滤条件
+- [x] 支持 expression 表达式计算
 
 ## Phase 4: 后端支持
 
@@ -117,5 +121,5 @@
 |-------|------|
 | Phase 1 | ✅ 完成 |
 | Phase 2 | ✅ 完成（已验证主从联动） |
-| Phase 3 | 待开始 |
+| Phase 3 | ✅ 完成 |
 | Phase 4 | 待开始 |

@@ -38,7 +38,7 @@ declare namespace Api {
       id: number;
       pageCode: string;
       componentKey: string;
-      componentType: 'LAYOUT' | 'GRID' | 'FORM' | 'BUTTON' | 'TABS' | 'LOGIC_AGG' | 'LOGIC_FIELD' | 'LOGIC_MAPPING';
+      componentType: 'LAYOUT' | 'GRID' | 'FORM' | 'BUTTON' | 'TABS' | 'LOGIC_AGG' | 'LOGIC_BROADCAST' | 'LOGIC_FIELD' | 'LOGIC_MAPPING';
       parentKey?: string;
       refTableCode?: string;
       componentConfig?: string;

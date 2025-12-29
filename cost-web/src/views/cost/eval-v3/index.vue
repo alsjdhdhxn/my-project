@@ -91,9 +91,10 @@
 import { ref, reactive, computed, onMounted, onUnmounted } from 'vue';
 import { NButton, NInput, NSplit, useMessage } from 'naive-ui';
 import type { ColDef } from 'ag-grid-community';
-import { fetchDynamicData } from '@/service/api';
+import { fetchDynamicData, fetchPageComponents } from '@/service/api';
 import { useGridStore } from '@/composables/useGridStore';
 import { useCalcEngine } from '@/composables/useCalcEngine';
+import { useAggEngine, extractAggRules } from '@/composables/useAggEngine';
 import { loadTableMeta } from '@/composables/useMetaColumns';
 import MetaGrid from '@/components/meta-v2/MetaGrid.vue';
 import MetaFloatToolbar from '@/components/meta-v2/MetaFloatToolbar.vue';
@@ -119,6 +120,24 @@ const detailCalcEngines = {
   auxiliary: useCalcEngine(detailStores.auxiliary),
   package: useCalcEngine(detailStores.package)
 };
+
+// ========== 聚合引擎 ==========
+const aggEngine = useAggEngine();
+
+// 数据源映射（组件Key → Store）
+// 注意：数据库配置的 source 是 detailGrid，但实际我们按 useFlag 分成了三个 store
+// 这里需要创建一个虚拟的 detailGrid store，合并三个从表数据
+const detailGridStore = useGridStore();
+
+function syncDetailGridStore() {
+  // 合并三个从表的数据到 detailGrid
+  const allRows = [
+    ...detailStores.material.visibleRows.value,
+    ...detailStores.auxiliary.visibleRows.value,
+    ...detailStores.package.visibleRows.value
+  ];
+  detailGridStore.load(allRows, true);
+}
 
 // ========== Tab 配置 ==========
 const tabs = ref([
@@ -152,9 +171,10 @@ function getDetailColumns(tabKey: TabKey): ColDef[] {
 
 // ========== 加载元数据 ==========
 async function loadMetadata() {
-  const [masterMeta, detailMeta] = await Promise.all([
+  const [masterMeta, detailMeta, pageComponents] = await Promise.all([
     loadTableMeta('CostEval'),
-    loadTableMeta('CostEvalDetail')
+    loadTableMeta('CostEvalDetail'),
+    fetchPageComponents('cost-eval')
   ]);
 
   if (masterMeta) {
@@ -171,6 +191,19 @@ async function loadMetadata() {
       detailCalcEngines.material.registerCalcRules(detailMeta.calcRules);
       detailCalcEngines.auxiliary.registerCalcRules(detailMeta.calcRules);
       detailCalcEngines.package.registerCalcRules(detailMeta.calcRules);
+    }
+  }
+
+  // 从页面组件配置加载聚合规则
+  if (pageComponents.data) {
+    const aggRules = extractAggRules(pageComponents.data);
+    if (aggRules.length > 0) {
+      aggEngine.registerAggRules(aggRules);
+      // 设置数据源映射
+      aggEngine.setDataSources({
+        detailGrid: detailGridStore,
+        masterGrid: masterStore
+      });
     }
   }
 
@@ -313,27 +346,17 @@ async function loadDetails(masterId: number) {
 function updateMasterAggregates() {
   if (!currentMaster.value) return;
 
-  const totalYl = detailStores.material.visibleRows.value.reduce((sum, r) => sum + (Number(r.costBatch) || 0), 0);
-  const totalFl = detailStores.auxiliary.visibleRows.value.reduce((sum, r) => sum + (Number(r.costBatch) || 0), 0);
-  const totalPack = detailStores.package.visibleRows.value.reduce((sum, r) => sum + (Number(r.packCost) || 0), 0);
-  const totalCost = totalYl + totalFl + totalPack;
-
-  const round2 = (v: number) => Math.round(v * 100) / 100;
-  masterStore.updateFields(currentMaster.value.id, {
-    totalYl: round2(totalYl),
-    totalFl: round2(totalFl),
-    totalPack: round2(totalPack),
-    totalCost: round2(totalCost)
-  });
-  masterStore.markChange(currentMaster.value.id, 'totalYl', 'cascade');
-  masterStore.markChange(currentMaster.value.id, 'totalFl', 'cascade');
-  masterStore.markChange(currentMaster.value.id, 'totalPack', 'cascade');
-  masterStore.markChange(currentMaster.value.id, 'totalCost', 'cascade');
-
-  currentMaster.value.totalYl = round2(totalYl);
-  currentMaster.value.totalFl = round2(totalFl);
-  currentMaster.value.totalPack = round2(totalPack);
-  currentMaster.value.totalCost = round2(totalCost);
+  // 同步从表数据到虚拟的 detailGrid store
+  syncDetailGridStore();
+  
+  // 设置目标并执行聚合计算
+  aggEngine.setTarget(masterStore, currentMaster.value.id);
+  const results = aggEngine.calculate();
+  
+  // 同步到 currentMaster 引用
+  if (results) {
+    Object.assign(currentMaster.value, results);
+  }
 }
 
 // ========== 工具栏事件 ==========
