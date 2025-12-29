@@ -3,6 +3,9 @@ package com.cost.costserver.log;
 import cn.hutool.json.JSONUtil;
 import com.cost.costserver.dynamic.dto.SaveParam;
 import com.cost.costserver.dynamic.mapper.DynamicMapper;
+import com.cost.costserver.metadata.dto.ColumnMetadataDTO;
+import com.cost.costserver.metadata.dto.TableMetadataDTO;
+import com.cost.costserver.metadata.service.MetadataService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
@@ -22,6 +25,7 @@ import java.util.stream.Collectors;
 public class AuditLogService {
 
     private final DynamicMapper dynamicMapper;
+    private final MetadataService metadataService;
 
     /**
      * 异步记录审计日志
@@ -54,8 +58,8 @@ public class AuditLogService {
             return;
         }
 
-        String changesJson = userChanges != null && !userChanges.isEmpty() 
-            ? JSONUtil.toJsonStr(userChanges) : null;
+        // 转换为可读文本
+        String changesText = formatChanges(tableCode, userChanges);
 
         String sql = String.format(
             "INSERT INTO T_COST_AUDIT_LOG (ID, USER_NAME, PAGE_CODE, TABLE_CODE, TABLE_NAME, RECORD_ID, OPERATION_TYPE, FIELD_CHANGES) " +
@@ -66,7 +70,7 @@ public class AuditLogService {
             escape(tableName),
             recordId != null ? recordId : "NULL",
             operationType,
-            changesJson != null ? "'" + escape(changesJson) + "'" : "NULL"
+            changesText != null ? "'" + escape(changesText) + "'" : "NULL"
         );
 
         dynamicMapper.insert(sql);
@@ -74,24 +78,41 @@ public class AuditLogService {
     }
 
     /**
-     * 记录新增操作（记录所有字段作为变更）
+     * 记录新增操作
      */
     public void logInsert(String userName, String pageCode, String tableCode, String tableName,
                           Long recordId, Map<String, Object> data) {
-        // 新增时，所有字段都算用户输入
-        List<SaveParam.FieldChange> changes = data.entrySet().stream()
-            .filter(e -> !isSystemField(e.getKey()))
-            .map(e -> {
-                SaveParam.FieldChange change = new SaveParam.FieldChange();
-                change.setField(e.getKey());
-                change.setOldValue(null);
-                change.setNewValue(e.getValue());
-                change.setChangeType("user");
-                return change;
-            })
-            .collect(Collectors.toList());
+        // 新增时，记录所有非系统字段
+        StringBuilder sb = new StringBuilder();
+        Map<String, String> fieldNameMap = getFieldNameMap(tableCode);
+        
+        for (Map.Entry<String, Object> entry : data.entrySet()) {
+            String field = entry.getKey();
+            if (isSystemField(field)) continue;
+            
+            String fieldLabel = fieldNameMap.getOrDefault(field, field);
+            Object value = entry.getValue();
+            
+            if (sb.length() > 0) sb.append("；");
+            sb.append("字段「").append(fieldLabel).append("」值「").append(formatValue(value)).append("」");
+        }
 
-        log(userName, pageCode, tableCode, tableName, recordId, "INSERT", changes);
+        String changesText = sb.length() > 0 ? sb.toString() : null;
+
+        String sql = String.format(
+            "INSERT INTO T_COST_AUDIT_LOG (ID, USER_NAME, PAGE_CODE, TABLE_CODE, TABLE_NAME, RECORD_ID, OPERATION_TYPE, FIELD_CHANGES) " +
+            "VALUES (SEQ_COST_AUDIT_LOG.NEXTVAL, '%s', '%s', '%s', '%s', %s, '%s', %s)",
+            escape(userName),
+            escape(pageCode),
+            escape(tableCode),
+            escape(tableName),
+            recordId != null ? recordId : "NULL",
+            "INSERT",
+            changesText != null ? "'" + escape(changesText) + "'" : "NULL"
+        );
+
+        dynamicMapper.insert(sql);
+        log.debug("[审计日志] {} INSERT {} #{}", userName, tableCode, recordId);
     }
 
     /**
@@ -99,6 +120,50 @@ public class AuditLogService {
      */
     public void logDelete(String userName, String pageCode, String tableCode, String tableName, Long recordId) {
         log(userName, pageCode, tableCode, tableName, recordId, "DELETE", null);
+    }
+
+    /**
+     * 格式化变更为可读文本
+     */
+    private String formatChanges(String tableCode, List<SaveParam.FieldChange> changes) {
+        if (changes == null || changes.isEmpty()) return null;
+        
+        Map<String, String> fieldNameMap = getFieldNameMap(tableCode);
+        
+        StringBuilder sb = new StringBuilder();
+        for (SaveParam.FieldChange change : changes) {
+            String fieldLabel = fieldNameMap.getOrDefault(change.getField(), change.getField());
+            
+            if (sb.length() > 0) sb.append("；");
+            sb.append("字段「").append(fieldLabel).append("」")
+              .append("原值「").append(formatValue(change.getOldValue())).append("」")
+              .append("新值「").append(formatValue(change.getNewValue())).append("」");
+        }
+        
+        return sb.toString();
+    }
+
+    /**
+     * 获取字段名到中文名的映射
+     */
+    private Map<String, String> getFieldNameMap(String tableCode) {
+        try {
+            TableMetadataDTO meta = metadataService.getTableMetadata(tableCode);
+            return meta.columns().stream()
+                .collect(Collectors.toMap(
+                    ColumnMetadataDTO::fieldName,
+                    ColumnMetadataDTO::headerText,
+                    (a, b) -> a
+                ));
+        } catch (Exception e) {
+            log.warn("获取表元数据失败: {}", tableCode);
+            return Map.of();
+        }
+    }
+
+    private String formatValue(Object value) {
+        if (value == null) return "空";
+        return value.toString();
     }
 
     private boolean isSystemField(String field) {
