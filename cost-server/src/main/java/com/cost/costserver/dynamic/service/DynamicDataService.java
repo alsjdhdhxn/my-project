@@ -3,6 +3,7 @@ package com.cost.costserver.dynamic.service;
 import cn.hutool.core.util.StrUtil;
 import com.cost.costserver.common.BusinessException;
 import com.cost.costserver.common.PageResult;
+import com.cost.costserver.common.SecurityUtils;
 import com.cost.costserver.dynamic.dto.MasterDetailSaveParam;
 import com.cost.costserver.dynamic.dto.QueryParam;
 import com.cost.costserver.dynamic.mapper.DynamicMapper;
@@ -466,6 +467,12 @@ public class DynamicDataService {
             throw new BusinessException(400, "主表数据不能为空");
         }
 
+        // 获取当前操作用户
+        String currentUser = SecurityUtils.getCurrentUsername();
+        if (StrUtil.isBlank(currentUser)) {
+            currentUser = "anonymous";
+        }
+
         Long masterId = null;
         String masterTableCode = null;
 
@@ -480,8 +487,9 @@ public class DynamicDataService {
         // 开始操作日志记录
         String operationType = "added".equals(master.getStatus()) ? "INSERT" : 
                               "deleted".equals(master.getStatus()) ? "DELETE" : "UPDATE";
-        OperationLogContext.start(operationType, masterTableCode, "system"); // TODO: 从 SecurityContext 获取真实用户
+        OperationLogContext.start(operationType, masterTableCode, currentUser);
 
+        final String userName = currentUser; // for lambda
         try {
             // 2. 后端验证 - 主表
             if (!"deleted".equals(master.getStatus())) {
@@ -500,7 +508,7 @@ public class DynamicDataService {
                     masterId = insert(masterTableCode, master.getData());
                     // 审计日志 - 新增
                     TableMetadataDTO masterMeta = metadataService.getTableMetadata(masterTableCode);
-                    auditLogService.logInsert("system", param.getPageCode(), masterTableCode, 
+                    auditLogService.logInsert(userName, param.getPageCode(), masterTableCode, 
                         masterMeta.tableName(), masterId, master.getData());
                 }
                 case "modified" -> {
@@ -508,7 +516,7 @@ public class DynamicDataService {
                     update(masterTableCode, masterId, master.getData());
                     // 审计日志 - 修改（只记录用户变更）
                     TableMetadataDTO masterMeta = metadataService.getTableMetadata(masterTableCode);
-                    auditLogService.logAsync("system", param.getPageCode(), masterTableCode,
+                    auditLogService.logAsync(userName, param.getPageCode(), masterTableCode,
                         masterMeta.tableName(), masterId, "UPDATE", master.getChanges());
                 }
                 case "unchanged" -> masterId = master.getId();
@@ -552,19 +560,19 @@ public class DynamicDataService {
                                 }
                                 Long detailId = insert(detailTableCode, item.getData());
                                 // 审计日志 - 从表新增
-                                auditLogService.logInsert("system", param.getPageCode(), detailTableCode,
+                                auditLogService.logInsert(userName, param.getPageCode(), detailTableCode,
                                     detailMeta.tableName(), detailId, item.getData());
                             }
                             case "modified" -> {
                                 update(detailTableCode, item.getId(), item.getData());
                                 // 审计日志 - 从表修改
-                                auditLogService.logAsync("system", param.getPageCode(), detailTableCode,
+                                auditLogService.logAsync(userName, param.getPageCode(), detailTableCode,
                                     detailMeta.tableName(), item.getId(), "UPDATE", item.getChanges());
                             }
                             case "deleted" -> {
                                 delete(detailTableCode, item.getId());
                                 // 审计日志 - 从表删除
-                                auditLogService.logDelete("system", param.getPageCode(), detailTableCode,
+                                auditLogService.logDelete(userName, param.getPageCode(), detailTableCode,
                                     detailMeta.tableName(), item.getId());
                             }
                         }
