@@ -519,6 +519,14 @@ public class DynamicDataService {
                     auditLogService.logAsync(userName, param.getPageCode(), masterTableCode,
                         masterMeta.tableName(), masterId, "UPDATE", master.getChanges());
                 }
+                case "deleted" -> {
+                    masterId = master.getId();
+                    delete(masterTableCode, masterId);
+                    // 审计日志 - 删除
+                    TableMetadataDTO masterMeta = metadataService.getTableMetadata(masterTableCode);
+                    auditLogService.logDelete(userName, param.getPageCode(), masterTableCode,
+                        masterMeta.tableName(), masterId);
+                }
                 case "unchanged" -> masterId = master.getId();
                 default -> throw new BusinessException(400, "无效的主表状态: " + master.getStatus());
             }
