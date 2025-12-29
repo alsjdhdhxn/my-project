@@ -182,6 +182,7 @@ export async function loadTableMeta(tableCode: string) {
   return {
     metadata: data,
     columns,
+    rawColumns: data.columns, // 原始列元数据，用于提取验证规则
     calcRules: extractCalcRules(data.columns),
     defaultValues: extractDefaultValues(data.columns)
   };

@@ -17,6 +17,7 @@ public record TableMetadataDTO(
     String pkColumn,
     String parentTableCode,
     String parentFkColumn,
+    String validationRules,
     List<ColumnMetadataDTO> columns
 ) {
     public static TableMetadataDTO from(TableMetadata table, List<ColumnMetadata> columns) {
@@ -34,6 +35,7 @@ public record TableMetadataDTO(
             table.getPkColumn(),
             table.getParentTableCode(),
             underscoreToCamel(table.getParentFkColumn()),
+            table.getValidationRules(),
             columnDTOs
         );
     }

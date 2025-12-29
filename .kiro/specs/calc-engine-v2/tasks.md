@@ -106,10 +106,22 @@
 ## Phase 4: 后端支持
 
 ### Task 4.1: 保存功能
-- [ ] 主从表批量保存接口
-- [ ] 计算列也写入数据库
+- [x] 主从表批量保存接口（后端已有 /api/data/save）
+- [x] 前端 handleSave 实现
+- [x] 构建 SaveParam（status: added/modified/deleted/unchanged）
+- [x] 变更追踪（_changeType）转换为 changes 数组
+- [x] 保存后清除变更标记并刷新
 
-### Task 4.2: 操作日志
+### Task 4.2: 验证器 + 执行器
+- [x] 后端 `ValidationService.java` - 验证服务
+- [x] `TableMetadata` / `TableMetadataDTO` 添加 `validationRules` 字段
+- [x] `DynamicDataService.save()` 集成后端验证
+- [x] 前端 `useValidator.ts` - 前端验证器
+- [x] `eval-v3/index.vue` handleSave 集成前端验证
+- [x] SQL 迁移 `V8__add_validation_rules.sql`
+- [x] 验证流程：前端1→2 → 后端1→执行器1 → 后端2→执行器2 → 后端3→执行器3
+
+### Task 4.3: 操作日志
 - [ ] T_COST_OPERATION_LOG 表结构
 - [ ] 前端耗时采集：validation, serialize, request
 - [ ] 后端耗时采集：connection, validation, sqlExecution, commit
@@ -122,4 +134,4 @@
 | Phase 1 | ✅ 完成 |
 | Phase 2 | ✅ 完成（已验证主从联动） |
 | Phase 3 | ✅ 完成 |
-| Phase 4 | 待开始 |
+| Phase 4 | 🔄 进行中（4.1 已完成，4.2 已完成，4.3 待开始） |

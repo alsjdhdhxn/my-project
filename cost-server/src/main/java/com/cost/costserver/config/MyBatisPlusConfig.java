@@ -15,4 +15,12 @@ public class MyBatisPlusConfig {
         interceptor.addInnerInterceptor(new PaginationInnerInterceptor(DbType.ORACLE));
         return interceptor;
     }
+
+    /**
+     * SQL 日志拦截器 - 按顺序显示 SQL 及执行时间
+     */
+    @Bean
+    public SqlLogInterceptor sqlLogInterceptor() {
+        return new SqlLogInterceptor();
+    }
 }

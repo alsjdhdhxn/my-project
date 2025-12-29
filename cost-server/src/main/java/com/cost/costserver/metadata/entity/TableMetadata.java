@@ -24,6 +24,9 @@ public class TableMetadata {
     /** 关联父表的外键列名 */
     private String parentFkColumn;
 
+    /** 后端验证规则 JSON */
+    private String validationRules;
+
     @TableLogic
     private Integer deleted;
 

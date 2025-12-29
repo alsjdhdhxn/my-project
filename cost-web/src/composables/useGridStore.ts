@@ -7,6 +7,7 @@ import { ref, computed, type Ref } from 'vue';
 export interface RowData {
   id: number | null;
   _changeType?: Record<string, 'user' | 'cascade'>;
+  _originalValues?: Record<string, any>;
   _isNew?: boolean;
   _isDeleted?: boolean;
   [key: string]: any;
@@ -27,10 +28,20 @@ export function useGridStore<T extends RowData = RowData>(options: GridStoreOpti
    * 加载数据
    */
   function load(data: Record<string, any>[], preserveState = false) {
-    rows.value = data.map(row => ({
-      ...row,
-      _changeType: preserveState ? (row._changeType || {}) : {}
-    })) as T[];
+    rows.value = data.map(row => {
+      // 保存原始值快照（排除内部字段）
+      const originalValues: Record<string, any> = {};
+      for (const [key, value] of Object.entries(row)) {
+        if (!key.startsWith('_')) {
+          originalValues[key] = value;
+        }
+      }
+      return {
+        ...row,
+        _changeType: preserveState ? (row._changeType || {}) : {},
+        _originalValues: preserveState ? (row._originalValues || originalValues) : originalValues
+      };
+    }) as T[];
     isLoaded.value = true;
   }
 
@@ -63,12 +74,28 @@ export function useGridStore<T extends RowData = RowData>(options: GridStoreOpti
 
   /**
    * 标记变更类型
+   * 只有当前值与原始值不同时才标记
    */
   function markChange(rowId: number | string, field: string, type: 'user' | 'cascade') {
     const row = getRow(rowId);
     if (row) {
       if (!row._changeType) row._changeType = {};
-      row._changeType[field] = type;
+      
+      const currentValue = row[field];
+      const originalValue = row._originalValues?.[field];
+      
+      // 比较当前值和原始值（处理数字精度问题）
+      const isEqual = currentValue === originalValue || 
+        (typeof currentValue === 'number' && typeof originalValue === 'number' && 
+         Math.abs(currentValue - originalValue) < 0.0001);
+      
+      if (isEqual) {
+        // 值恢复到原始值，移除变更标记
+        delete row._changeType[field];
+      } else {
+        // 值确实变了，标记变更
+        row._changeType[field] = type;
+      }
     }
   }
 
@@ -115,9 +142,18 @@ export function useGridStore<T extends RowData = RowData>(options: GridStoreOpti
 
   /**
    * 清除变更标记
+   * 保存成功后调用，更新原始值快照
    */
   function clearChanges() {
     rows.value.forEach(row => {
+      // 更新原始值快照为当前值
+      const originalValues: Record<string, any> = {};
+      for (const [key, value] of Object.entries(row)) {
+        if (!key.startsWith('_')) {
+          originalValues[key] = value;
+        }
+      }
+      row._originalValues = originalValues;
       row._changeType = {};
       row._isNew = false;
     });

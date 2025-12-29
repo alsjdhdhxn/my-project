@@ -6,6 +6,8 @@ import com.cost.costserver.common.PageResult;
 import com.cost.costserver.dynamic.dto.MasterDetailSaveParam;
 import com.cost.costserver.dynamic.dto.QueryParam;
 import com.cost.costserver.dynamic.mapper.DynamicMapper;
+import com.cost.costserver.log.OperationLogContext;
+import com.cost.costserver.log.OperationLogService;
 import com.cost.costserver.metadata.dto.ColumnMetadataDTO;
 import com.cost.costserver.metadata.dto.TableMetadataDTO;
 import com.cost.costserver.metadata.service.MetadataService;
@@ -25,6 +27,8 @@ public class DynamicDataService {
 
     private final DynamicMapper dynamicMapper;
     private final MetadataService metadataService;
+    private final ValidationService validationService;
+    private final OperationLogService operationLogService;
     private static final DateTimeFormatter DT_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     public PageResult<Map<String, Object>> query(String tableCode, QueryParam param) {
@@ -471,50 +475,93 @@ public class DynamicDataService {
         }
         master.getData().remove("_tableCode");
 
-        switch (master.getStatus()) {
-            case "added" -> masterId = insert(masterTableCode, master.getData());
-            case "modified" -> {
-                masterId = master.getId();
-                update(masterTableCode, masterId, master.getData());
-                logChanges(masterTableCode, masterId, master.getChanges());
+        // 开始操作日志记录
+        String operationType = "added".equals(master.getStatus()) ? "INSERT" : 
+                              "deleted".equals(master.getStatus()) ? "DELETE" : "UPDATE";
+        OperationLogContext.start(operationType, masterTableCode, "system"); // TODO: 从 SecurityContext 获取真实用户
+
+        try {
+            // 2. 后端验证 - 主表
+            if (!"deleted".equals(master.getStatus())) {
+                Map<String, Object> validateData = new HashMap<>(master.getData());
+                if (master.getId() != null) {
+                    validateData.put("id", master.getId());
+                }
+                ValidationService.ValidationResult validationResult = validationService.validate(masterTableCode, validateData);
+                if (!validationResult.isValid()) {
+                    throw new BusinessException(400, validationResult.getMessage());
+                }
             }
-            case "unchanged" -> masterId = master.getId();
-            default -> throw new BusinessException(400, "无效的主表状态: " + master.getStatus());
-        }
 
-        // 2. 处理从表
-        if (param.getDetails() != null && !param.getDetails().isEmpty()) {
-            for (var entry : param.getDetails().entrySet()) {
-                String detailTableCode = entry.getKey();
-                List<com.cost.costserver.dynamic.dto.SaveParam.RecordItem> items = entry.getValue();
+            switch (master.getStatus()) {
+                case "added" -> masterId = insert(masterTableCode, master.getData());
+                case "modified" -> {
+                    masterId = master.getId();
+                    update(masterTableCode, masterId, master.getData());
+                    logChanges(masterTableCode, masterId, master.getChanges());
+                }
+                case "unchanged" -> masterId = master.getId();
+                default -> throw new BusinessException(400, "无效的主表状态: " + master.getStatus());
+            }
 
-                if (items == null || items.isEmpty()) continue;
+            // 设置记录信息
+            OperationLogContext.setRecordInfo(masterId, masterTableCode + "#" + masterId);
 
-                TableMetadataDTO detailMeta = metadataService.getTableMetadata(detailTableCode);
-                String fkColumn = detailMeta.parentFkColumn();
-                String fkFieldName = StrUtil.isNotBlank(fkColumn) ? underscoreToCamel(fkColumn) : null;
+            // 3. 处理从表
+            if (param.getDetails() != null && !param.getDetails().isEmpty()) {
+                for (var entry : param.getDetails().entrySet()) {
+                    String detailTableCode = entry.getKey();
+                    List<com.cost.costserver.dynamic.dto.SaveParam.RecordItem> items = entry.getValue();
 
-                for (var item : items) {
-                    if (item == null || "unchanged".equals(item.getStatus())) continue;
+                    if (items == null || items.isEmpty()) continue;
 
-                    switch (item.getStatus()) {
-                        case "added" -> {
-                            if (fkFieldName != null && masterId != null) {
-                                item.getData().put(fkFieldName, masterId);
+                    TableMetadataDTO detailMeta = metadataService.getTableMetadata(detailTableCode);
+                    String fkColumn = detailMeta.parentFkColumn();
+                    String fkFieldName = StrUtil.isNotBlank(fkColumn) ? underscoreToCamel(fkColumn) : null;
+
+                    for (var item : items) {
+                        if (item == null || "unchanged".equals(item.getStatus())) continue;
+
+                        // 后端验证 - 从表（非删除操作）
+                        if (!"deleted".equals(item.getStatus())) {
+                            Map<String, Object> validateData = new HashMap<>(item.getData());
+                            if (item.getId() != null) {
+                                validateData.put("id", item.getId());
                             }
-                            insert(detailTableCode, item.getData());
+                            ValidationService.ValidationResult validationResult = validationService.validate(detailTableCode, validateData);
+                            if (!validationResult.isValid()) {
+                                throw new BusinessException(400, validationResult.getMessage());
+                            }
                         }
-                        case "modified" -> {
-                            update(detailTableCode, item.getId(), item.getData());
-                            logChanges(detailTableCode, item.getId(), item.getChanges());
+
+                        switch (item.getStatus()) {
+                            case "added" -> {
+                                if (fkFieldName != null && masterId != null) {
+                                    item.getData().put(fkFieldName, masterId);
+                                }
+                                insert(detailTableCode, item.getData());
+                            }
+                            case "modified" -> {
+                                update(detailTableCode, item.getId(), item.getData());
+                                logChanges(detailTableCode, item.getId(), item.getChanges());
+                            }
+                            case "deleted" -> delete(detailTableCode, item.getId());
                         }
-                        case "deleted" -> delete(detailTableCode, item.getId());
                     }
                 }
             }
-        }
 
-        return masterId;
+            // 保存操作日志 - 成功
+            OperationLogContext.LogSession session = OperationLogContext.end();
+            operationLogService.saveAsync(session, "SUCCESS", null);
+
+            return masterId;
+        } catch (Exception e) {
+            // 保存操作日志 - 失败
+            OperationLogContext.LogSession session = OperationLogContext.end();
+            operationLogService.saveAsync(session, "FAILED", e.getMessage());
+            throw e;
+        }
     }
 
     /**
