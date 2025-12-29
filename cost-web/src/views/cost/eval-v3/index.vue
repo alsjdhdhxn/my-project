@@ -585,7 +585,7 @@ function buildRecordItem(row: any, tableCode: string, parentId?: number) {
   const isNew = row._isNew === true;
   const isDeleted = row._isDeleted === true;
   const changeType = row._changeType || {};
-  const originalData = row._originalData || {};
+  const originalValues = row._originalValues || {};
   const hasChanges = Object.keys(changeType).length > 0;
 
   // 确定状态
@@ -617,7 +617,7 @@ function buildRecordItem(row: any, tableCode: string, parentId?: number) {
   for (const [field, type] of Object.entries(changeType)) {
     changes.push({
       field,
-      oldValue: originalData[field] ?? null,
+      oldValue: originalValues[field] ?? null,
       newValue: row[field],
       changeType: type as string
     });
