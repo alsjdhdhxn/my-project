@@ -29,25 +29,37 @@
       </div>
     </MetaFloatToolbar>
 
-    <!-- 主表区域 -->
-    <div v-if="isMetaLoaded" class="master-section">
-      <MetaGrid
-        ref="masterGridRef"
-        :columns="masterColumns"
-        :store="masterStore"
-        :defaultNewRow="getMasterDefaultRow()"
-        firstEditableField="productName"
-        height="100%"
-        @selectionChanged="onMasterSelectionChanged"
-        @cellChanged="onMasterCellChanged"
-        @rowsDeleted="onMasterRowsDeleted"
-      />
-    </div>
+    <!-- 可拖动分隔的主从表区域 -->
+    <NSplit
+      v-if="isMetaLoaded"
+      direction="vertical"
+      :default-size="0.5"
+      :min="0.2"
+      :max="0.8"
+      class="split-container"
+    >
+      <!-- 主表区域 -->
+      <template #1>
+        <div class="master-section">
+          <MetaGrid
+            ref="masterGridRef"
+            :columns="masterColumns"
+            :store="masterStore"
+            :defaultNewRow="getMasterDefaultRow()"
+            firstEditableField="productName"
+            height="100%"
+            @selectionChanged="onMasterSelectionChanged"
+            @cellChanged="onMasterCellChanged"
+            @rowsDeleted="onMasterRowsDeleted"
+          />
+        </div>
+      </template>
 
-    <!-- 从表区域 -->
-    <div v-if="isMetaLoaded" class="detail-section">
-      <!-- 从表内容（多 Tab 并排） -->
-      <div class="detail-grids">
+      <!-- 从表区域 -->
+      <template #2>
+        <div class="detail-section">
+          <!-- 从表内容（多 Tab 并排） -->
+          <div class="detail-grids">
         <div 
           v-for="tab in visibleTabs" 
           :key="tab.key"
@@ -70,12 +82,14 @@
         </div>
       </div>
     </div>
+      </template>
+    </NSplit>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onUnmounted } from 'vue';
-import { NButton, NInput, useMessage } from 'naive-ui';
+import { NButton, NInput, NSplit, useMessage } from 'naive-ui';
 import type { ColDef } from 'ag-grid-community';
 import { fetchDynamicData } from '@/service/api';
 import { useGridStore } from '@/composables/useGridStore';
@@ -419,29 +433,25 @@ init();
   gap: 8px;
 }
 
-.master-section {
+.split-container {
   flex: 1;
   min-height: 0;
+}
+
+.master-section {
+  height: 100%;
   background: #fff;
   border-radius: 4px;
   overflow: hidden;
 }
 
 .detail-section {
-  flex: 1;
-  min-height: 0;
+  height: 100%;
   display: flex;
   flex-direction: column;
   background: #fff;
   border-radius: 4px;
   overflow: hidden;
-}
-
-.detail-header {
-  padding: 6px 8px;
-  border-bottom: 1px solid #e8e8e8;
-  display: flex;
-  gap: 4px;
 }
 
 .detail-grids {
