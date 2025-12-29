@@ -98,7 +98,9 @@ watch(
 // 默认列配置
 const defaultColDef: ColDef = {
   resizable: true,
-  sortable: true
+  sortable: true,
+  wrapHeaderText: true,
+  autoHeaderHeight: true
 };
 
 // 行选择配置
@@ -299,5 +301,28 @@ defineExpose({
 .meta-grid {
   width: 100%;
   overflow: hidden;
+}
+
+/* 表头自动换行 */
+.meta-grid :deep(.ag-header-cell-label) {
+  white-space: normal !important;
+  word-wrap: break-word;
+  line-height: 1.4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.meta-grid :deep(.ag-header-cell) {
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+
+/* 表头文字容器 */
+.meta-grid :deep(.ag-header-cell-text) {
+  white-space: normal !important;
+  word-wrap: break-word;
+  overflow: visible !important;
 }
 </style>
