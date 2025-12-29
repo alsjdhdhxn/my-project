@@ -34,24 +34,9 @@ public record TableMetadataDTO(
             table.getSequenceName(),
             table.getPkColumn(),
             table.getParentTableCode(),
-            underscoreToCamel(table.getParentFkColumn()),
+            table.getParentFkColumn(), // 保持原样，是数据库列名
             table.getValidationRules(),
             columnDTOs
         );
-    }
-
-    private static String underscoreToCamel(String name) {
-        if (name == null) return null;
-        StringBuilder sb = new StringBuilder();
-        boolean upper = false;
-        for (char c : name.toLowerCase().toCharArray()) {
-            if (c == '_') {
-                upper = true;
-            } else {
-                sb.append(upper ? Character.toUpperCase(c) : c);
-                upper = false;
-            }
-        }
-        return sb.toString();
     }
 }
