@@ -10,6 +10,9 @@ import java.util.Map;
 @Data
 public class SaveParam {
 
+    /** 页面编码（用于审计日志） */
+    private String pageCode;
+
     /** 主表数据 */
     private RecordItem master;
 
@@ -44,5 +47,8 @@ public class SaveParam {
 
         /** 新值 */
         private Object newValue;
+
+        /** 变更类型：user(用户修改) / cascade(级联计算) */
+        private String changeType;
     }
 }

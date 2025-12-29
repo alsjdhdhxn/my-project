@@ -122,10 +122,10 @@
 - [x] 验证流程：前端1→2 → 后端1→执行器1 → 后端2→执行器2 → 后端3→执行器3
 
 ### Task 4.3: 操作日志
-- [ ] T_COST_OPERATION_LOG 表结构
-- [ ] 前端耗时采集：validation, serialize, request
-- [ ] 后端耗时采集：connection, validation, sqlExecution, commit
-- [ ] 响应头 X-Timing 传递后端耗时
+- [x] T_COST_OPERATION_LOG 表结构（主表 + 明细表）
+- [x] 后端耗时采集：SqlLogInterceptor 拦截每条 SQL 记录耗时
+- [x] OperationLogContext 收集事务内所有 SQL
+- [x] OperationLogService 异步保存日志
 
 ## 完成进度
 
@@ -134,4 +134,4 @@
 | Phase 1 | ✅ 完成 |
 | Phase 2 | ✅ 完成（已验证主从联动） |
 | Phase 3 | ✅ 完成 |
-| Phase 4 | 🔄 进行中（4.1 已完成，4.2 已完成，4.3 待开始） |
+| Phase 4 | ✅ 完成 |

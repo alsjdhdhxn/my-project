@@ -468,8 +468,8 @@ async function handleSave() {
 /**
  * 构建保存参数（支持多主从）
  */
-function buildSaveParams(): Array<{ master: any; details?: Record<string, any[]> }> {
-  const result: Array<{ master: any; details?: Record<string, any[]> }> = [];
+function buildSaveParams(): Array<{ pageCode: string; master: any; details?: Record<string, any[]> }> {
+  const result: Array<{ pageCode: string; master: any; details?: Record<string, any[]> }> = [];
   
   // 遍历所有变更的主表行
   const changedMasters = masterStore.changedRows.value;
@@ -503,7 +503,10 @@ function buildSaveParams(): Array<{ master: any; details?: Record<string, any[]>
       .filter(row => row._isNew || row._isDeleted || Object.keys(row._changeType || {}).length > 0)
       .map(row => buildRecordItem(row, 'CostEvalDetail', masterId));
     
-    const param: { master: any; details?: Record<string, any[]> } = { master: masterItem };
+    const param: { pageCode: string; master: any; details?: Record<string, any[]> } = { 
+      pageCode: 'cost-eval',
+      master: masterItem 
+    };
     if (detailItems.length > 0) {
       param.details = { CostEvalDetail: detailItems };
     }
@@ -532,6 +535,7 @@ function buildSaveParams(): Array<{ master: any; details?: Record<string, any[]>
         .map(row => buildRecordItem(row, 'CostEvalDetail', masterId));
       
       result.push({
+        pageCode: 'cost-eval',
         master: masterItem,
         details: { CostEvalDetail: detailItems }
       });
@@ -562,6 +566,7 @@ function buildSaveParams(): Array<{ master: any; details?: Record<string, any[]>
             .map(row => buildRecordItem(row, 'CostEvalDetail', masterId));
           
           result.push({
+            pageCode: 'cost-eval',
             master: masterItem,
             details: { CostEvalDetail: detailItems }
           });
@@ -607,15 +612,14 @@ function buildRecordItem(row: any, tableCode: string, parentId?: number) {
   }
 
   // 构建变更记录（只记录用户编辑的字段）
-  const changes: Array<{ field: string; oldValue: any; newValue: any }> = [];
+  const changes: Array<{ field: string; oldValue: any; newValue: any; changeType: string }> = [];
   for (const [field, type] of Object.entries(changeType)) {
-    if (type === 'user') {
-      changes.push({
-        field,
-        oldValue: null, // 暂时不记录原值
-        newValue: row[field]
-      });
-    }
+    changes.push({
+      field,
+      oldValue: null, // 暂时不记录原值
+      newValue: row[field],
+      changeType: type as string
+    });
   }
 
   return {

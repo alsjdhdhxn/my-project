@@ -6,6 +6,7 @@ import com.cost.costserver.common.PageResult;
 import com.cost.costserver.dynamic.dto.MasterDetailSaveParam;
 import com.cost.costserver.dynamic.dto.QueryParam;
 import com.cost.costserver.dynamic.mapper.DynamicMapper;
+import com.cost.costserver.log.AuditLogService;
 import com.cost.costserver.log.OperationLogContext;
 import com.cost.costserver.log.OperationLogService;
 import com.cost.costserver.metadata.dto.ColumnMetadataDTO;
@@ -29,6 +30,7 @@ public class DynamicDataService {
     private final MetadataService metadataService;
     private final ValidationService validationService;
     private final OperationLogService operationLogService;
+    private final AuditLogService auditLogService;
     private static final DateTimeFormatter DT_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     public PageResult<Map<String, Object>> query(String tableCode, QueryParam param) {
@@ -494,11 +496,20 @@ public class DynamicDataService {
             }
 
             switch (master.getStatus()) {
-                case "added" -> masterId = insert(masterTableCode, master.getData());
+                case "added" -> {
+                    masterId = insert(masterTableCode, master.getData());
+                    // 审计日志 - 新增
+                    TableMetadataDTO masterMeta = metadataService.getTableMetadata(masterTableCode);
+                    auditLogService.logInsert("system", param.getPageCode(), masterTableCode, 
+                        masterMeta.tableName(), masterId, master.getData());
+                }
                 case "modified" -> {
                     masterId = master.getId();
                     update(masterTableCode, masterId, master.getData());
-                    logChanges(masterTableCode, masterId, master.getChanges());
+                    // 审计日志 - 修改（只记录用户变更）
+                    TableMetadataDTO masterMeta = metadataService.getTableMetadata(masterTableCode);
+                    auditLogService.logAsync("system", param.getPageCode(), masterTableCode,
+                        masterMeta.tableName(), masterId, "UPDATE", master.getChanges());
                 }
                 case "unchanged" -> masterId = master.getId();
                 default -> throw new BusinessException(400, "无效的主表状态: " + master.getStatus());
@@ -539,13 +550,23 @@ public class DynamicDataService {
                                 if (fkFieldName != null && masterId != null) {
                                     item.getData().put(fkFieldName, masterId);
                                 }
-                                insert(detailTableCode, item.getData());
+                                Long detailId = insert(detailTableCode, item.getData());
+                                // 审计日志 - 从表新增
+                                auditLogService.logInsert("system", param.getPageCode(), detailTableCode,
+                                    detailMeta.tableName(), detailId, item.getData());
                             }
                             case "modified" -> {
                                 update(detailTableCode, item.getId(), item.getData());
-                                logChanges(detailTableCode, item.getId(), item.getChanges());
+                                // 审计日志 - 从表修改
+                                auditLogService.logAsync("system", param.getPageCode(), detailTableCode,
+                                    detailMeta.tableName(), item.getId(), "UPDATE", item.getChanges());
                             }
-                            case "deleted" -> delete(detailTableCode, item.getId());
+                            case "deleted" -> {
+                                delete(detailTableCode, item.getId());
+                                // 审计日志 - 从表删除
+                                auditLogService.logDelete("system", param.getPageCode(), detailTableCode,
+                                    detailMeta.tableName(), item.getId());
+                            }
                         }
                     }
                 }
@@ -562,13 +583,5 @@ public class DynamicDataService {
             operationLogService.saveAsync(session, "FAILED", e.getMessage());
             throw e;
         }
-    }
-
-    /**
-     * 记录变更日志（预留，后续对接审计日志表）
-     */
-    private void logChanges(String tableCode, Long recordId, List<com.cost.costserver.dynamic.dto.SaveParam.FieldChange> changes) {
-        if (changes == null || changes.isEmpty()) return;
-        log.info("变更记录 - 表:{}, ID:{}, 变更:{}", tableCode, recordId, changes);
     }
 }
