@@ -57,10 +57,11 @@
     - 通过 cellClassRules 实现
     - _Requirements: 15.1, 15.2, 15.3_
 
-- [ ] 4. Checkpoint - 核心层完成
-  - 确保 calculator 纯函数可独立测试
-  - 确保 Store 数据流正确
-  - 确保 Adapter 同步正常
+- [x] 4. Checkpoint - 核心层完成
+  - [x] 确保 calculator 纯函数可独立测试
+  - [x] 确保 Store 数据流正确
+  - [x] 确保 Adapter 同步正常
+  - 验证通过：从表编辑触发行级计算+聚合，主表编辑触发从表重算+聚合
 
 - [x] 5. View Layer: 通用主从页面组件
   - [x] 5.1 创建 `src/components/meta-v2/MasterDetailPage.vue`
@@ -84,13 +85,13 @@
     - Delete 删除选中行（待完善）
     - _Requirements: 17.1, 17.2, 17.3, 17.4_
 
-- [ ] 6. Checkpoint - 基础功能完成
-  - 确保主从表联动正常
-  - 确保计算和聚合正确
-  - 确保切换主表不丢失数据
+- [x] 6. Checkpoint - 基础功能完成
+  - [x] 确保主从表联动正常
+  - [x] 确保计算和聚合正确
+  - [x] 确保切换主表不丢失数据（已验证通过）
 
-- [ ] 7. 保存与验证
-  - [ ] 7.1 实现数据验证
+- [x] 7. 保存与验证
+  - [x] 7.1 实现数据验证
     - 从 COLUMN_METADATA.RULES_CONFIG 提取验证规则
     - 支持 required, notZero, min, max, pattern
     - _Requirements: 10.1, 10.2, 10.3, 10.4_
@@ -108,10 +109,10 @@
     - 只需一行：`<MasterDetailPage pageCode="cost-eval" />`
     - _Requirements: 7.1_
 
-- [ ] 9. Final Checkpoint
-  - 确保所有功能正常
-  - 确保与 v3 功能对等
-  - 确保组件可复用（换个 pageCode 就能用）
+- [x] 9. Final Checkpoint
+  - [x] 确保所有功能正常
+  - [x] 确保与 v3 功能对等
+  - [x] 确保组件可复用（换个 pageCode 就能用）
 
 ## Notes
 

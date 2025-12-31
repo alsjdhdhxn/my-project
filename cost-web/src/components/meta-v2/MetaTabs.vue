@@ -110,6 +110,16 @@ function onCellValueChanged(tabKey: string, event: CellValueChangedEvent) {
     field,
     value: event.newValue
   });
+
+  // 刷新当前单元格样式（因为 _changeType 是在值变化后才设置的）
+  const api = gridApis.get(tabKey);
+  if (api && event.node) {
+    api.refreshCells({
+      rowNodes: [event.node],
+      columns: [field],
+      force: true
+    });
+  }
 }
 
 function onCellEditingStarted(_tabKey: string, _event: CellEditingStartedEvent) {
@@ -122,14 +132,24 @@ function onCellEditingStopped(_tabKey: string, _event: CellEditingStoppedEvent) 
 
 // ==================== Watch ====================
 
-// 监听 detailRows 变化，刷新 Grid 单元格
-// AG Grid 的 :rowData 绑定不会检测行对象内部属性变化
+// 监听 detailRows 变化，更新 Grid 数据
 watch(
   () => props.store.detailRows,
   () => {
-    gridApis.forEach(api => api.refreshCells({ force: true }));
+    gridApis.forEach((api, tabKey) => {
+      const rows = props.store.detailRowsByTab[tabKey] || [];
+      api.setGridOption('rowData', rows);
+    });
   },
   { deep: true }
+);
+
+// 监听 updateVersion 变化，刷新单元格样式
+watch(
+  () => props.store.updateVersion,
+  () => {
+    gridApis.forEach(api => api.refreshCells({ force: true }));
+  }
 );
 
 // ==================== Expose ====================
@@ -177,5 +197,27 @@ defineExpose({
   color: #333;
   background: #fafafa;
   border-bottom: 1px solid #e8e8e8;
+}
+
+/* 表头自动换行 */
+.tab-grid-wrapper :deep(.ag-header-cell-label) {
+  white-space: normal !important;
+  word-wrap: break-word;
+  line-height: 1.4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.tab-grid-wrapper :deep(.ag-header-cell) {
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+
+.tab-grid-wrapper :deep(.ag-header-cell-text) {
+  white-space: normal !important;
+  word-wrap: break-word;
+  overflow: visible !important;
 }
 </style>

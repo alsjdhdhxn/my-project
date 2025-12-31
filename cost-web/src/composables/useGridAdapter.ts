@@ -175,8 +175,18 @@ export function useGridAdapter(options: GridAdapterOptions) {
 
     if (!field || rowId == null) return;
 
-    // 通知 Store 更新
+    // 通知 Store 更新（会设置 _changeType）
     onFieldUpdate?.(rowId, field, event.newValue);
+
+    // 刷新当前单元格样式（因为 _changeType 是在值变化后才设置的）
+    const api = gridApi.value;
+    if (api && event.node) {
+      api.refreshCells({
+        rowNodes: [event.node],
+        columns: [field],
+        force: true
+      });
+    }
   }
 
   /**

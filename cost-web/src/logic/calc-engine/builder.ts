@@ -42,39 +42,30 @@ export interface SaveParams {
 // ==================== 构建函数 ====================
 
 /**
- * 构建保存参数（支持多主从）
+ * 构建保存参数（支持嵌套结构）
  */
 export function buildSaveParams(
   pageCode: string,
-  masterRows: RowData[],
-  detailCache: Map<number, RowData[]>,
-  currentMasterId: number | null,
-  currentDetails: RowData[],
+  masterRows: MasterRowData[],
+  masterTableCode: string,
   detailTableCode: string,
   parentFkColumn: string
 ): SaveParams[] {
   const result: SaveParams[] = [];
 
-  // 获取所有变更的主表行
-  const changedMasters = masterRows.filter(isRowChanged);
+  for (const masterRow of masterRows) {
+    const detailRows = masterRow._details?.rows || [];
+    const masterChanged = isRowChanged(masterRow);
+    const detailsChanged = detailRows.some(isRowChanged);
 
-  for (const masterRow of changedMasters) {
-    const masterId = masterRow.id!;
-
-    // 获取对应的从表数据
-    let detailRows: RowData[];
-    if (masterId === currentMasterId) {
-      detailRows = currentDetails;
-    } else if (detailCache.has(masterId)) {
-      detailRows = detailCache.get(masterId)!;
-    } else {
-      detailRows = [];
-    }
+    // 主表或从表有变更才需要保存
+    if (!masterChanged && !detailsChanged) continue;
 
     const param = buildSingleSaveParam(
       pageCode,
       masterRow,
       detailRows,
+      masterTableCode,
       detailTableCode,
       parentFkColumn
     );
@@ -84,46 +75,12 @@ export function buildSaveParams(
     }
   }
 
-  // 检查只修改从表但主表未变的情况
-  // 1. 检查缓存
-  for (const [masterId, rows] of detailCache.entries()) {
-    if (changedMasters.some(m => m.id === masterId)) continue;
-
-    const hasDetailChanges = rows.some(isRowChanged);
-    if (hasDetailChanges) {
-      const masterRow = masterRows.find(r => r.id === masterId);
-      if (masterRow) {
-        const param = buildSingleSaveParam(
-          pageCode,
-          masterRow,
-          rows,
-          detailTableCode,
-          parentFkColumn
-        );
-        if (param) result.push(param);
-      }
-    }
-  }
-
-  // 2. 检查当前从表
-  if (currentMasterId && !result.some(r => r.master.id === currentMasterId)) {
-    const hasDetailChanges = currentDetails.some(isRowChanged);
-    if (hasDetailChanges) {
-      const masterRow = masterRows.find(r => r.id === currentMasterId);
-      if (masterRow) {
-        const param = buildSingleSaveParam(
-          pageCode,
-          masterRow,
-          currentDetails,
-          detailTableCode,
-          parentFkColumn
-        );
-        if (param) result.push(param);
-      }
-    }
-  }
-
   return result;
+}
+
+/** 主表行（含从表数据） */
+export interface MasterRowData extends RowData {
+  _details?: { loaded: boolean; rows: RowData[] } | null;
 }
 
 /**
@@ -133,14 +90,15 @@ function buildSingleSaveParam(
   pageCode: string,
   masterRow: RowData,
   detailRows: RowData[],
+  masterTableCode: string,
   detailTableCode: string,
   parentFkColumn: string
 ): SaveParams | null {
-  const masterItem = buildRecordItem(masterRow);
+  const masterItem = buildRecordItem(masterRow, masterTableCode);
 
   const changedDetails = detailRows.filter(isRowChanged);
   const detailItems = changedDetails.map(row =>
-    buildRecordItem(row, masterRow.id, parentFkColumn)
+    buildRecordItem(row, detailTableCode, masterRow.id, parentFkColumn)
   );
 
   const param: SaveParams = {
@@ -160,6 +118,7 @@ function buildSingleSaveParam(
  */
 export function buildRecordItem(
   row: RowData,
+  tableCode: string,
   parentId?: number | null,
   parentFkColumn?: string
 ): RecordItem {
@@ -181,8 +140,8 @@ export function buildRecordItem(
     status = 'unchanged';
   }
 
-  // 构建数据（排除内部字段）
-  const data: Record<string, any> = {};
+  // 构建数据（排除内部字段，添加 tableCode）
+  const data: Record<string, any> = { _tableCode: tableCode };
   for (const [key, value] of Object.entries(row)) {
     if (!key.startsWith('_')) {
       data[key] = value;
@@ -223,28 +182,6 @@ export function isRowChanged(row: RowData): boolean {
     row._isDeleted === true ||
     Object.keys(row._changeType || {}).length > 0
   );
-}
-
-/**
- * 判断是否有未保存的修改
- */
-export function checkDirty(
-  masterRows: RowData[],
-  detailRows: RowData[],
-  detailCache: Map<number, RowData[]>
-): boolean {
-  // 检查主表
-  if (masterRows.some(isRowChanged)) return true;
-
-  // 检查当前从表
-  if (detailRows.some(isRowChanged)) return true;
-
-  // 检查缓存
-  for (const rows of detailCache.values()) {
-    if (rows.some(isRowChanged)) return true;
-  }
-
-  return false;
 }
 
 /**

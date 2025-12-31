@@ -86,8 +86,16 @@ import { AgGridVue } from 'ag-grid-vue3';
 import { ModuleRegistry, AllCommunityModule, themeQuartz } from 'ag-grid-community';
 import type { GridApi, ColDef, GridReadyEvent, CellValueChangedEvent } from 'ag-grid-community';
 import { useMasterDetailStore } from '@/store/modules/master-detail';
-import { useGridAdapter, getCellClassRules } from '@/composables/useGridAdapter';
-import { parsePageComponents, buildSaveParams, type ParsedPageConfig } from '@/logic/calc-engine';
+import { useGridAdapter, getCellClassRules, cellStyleCSS } from '@/composables/useGridAdapter';
+import {
+  parsePageComponents,
+  buildSaveParams,
+  parseValidationRules,
+  validateRows,
+  formatValidationErrors,
+  type ParsedPageConfig,
+  type ValidationRule
+} from '@/logic/calc-engine';
 import { fetchDynamicData, fetchPageComponents, saveDynamicData } from '@/service/api';
 import { loadTableMeta } from '@/composables/useMetaColumns';
 import MetaFloatToolbar from './MetaFloatToolbar.vue';
@@ -117,6 +125,17 @@ const masterGridApi = shallowRef<GridApi | null>(null);
 const searchText = ref('');
 const visibleTabKeys = ref(new Set<string>());
 
+// 验证规则
+const masterValidationRules = shallowRef<ValidationRule[]>([]);
+const detailValidationRules = shallowRef<ValidationRule[]>([]);
+
+// 原始列元数据（用于验证时获取 headerText）
+const masterColumnMeta = shallowRef<any[]>([]);
+const detailColumnMeta = shallowRef<any[]>([]);
+
+// 从表外键字段名（从元数据读取）
+const detailFkColumn = ref<string>('');
+
 // ==================== Computed ====================
 
 const tabs = computed(() => store.config?.tabs || []);
@@ -139,7 +158,9 @@ const defaultColDef: ColDef = {
   sortable: true,
   filter: true,
   resizable: true,
-  minWidth: 80
+  minWidth: 50,
+  wrapHeaderText: true,
+  autoHeaderHeight: true
 };
 
 const masterRowSelection = { mode: 'singleRow', checkboxes: false, enableClickSelection: true } as const;
@@ -217,13 +238,28 @@ async function loadMetadata() {
     return;
   }
 
-  // 3. 初始化 Store（传入转换后的 ColDef 和原始列元数据）
+  // 保存原始列元数据（用于验证）
+  masterColumnMeta.value = masterMeta.rawColumns || [];
+  detailColumnMeta.value = detailMeta.rawColumns || [];
+
+  // 解析验证规则
+  masterValidationRules.value = parseValidationRules(masterColumnMeta.value);
+  detailValidationRules.value = parseValidationRules(detailColumnMeta.value);
+
+  // 保存从表外键字段名（数据库列名转驼峰）
+  const fkCol = detailMeta.metadata?.parentFkColumn;
+  if (fkCol) {
+    // EVAL_ID -> evalId
+    detailFkColumn.value = fkCol
+      .toLowerCase()
+      .replace(/_([a-z])/g, (_: string, c: string) => c.toUpperCase());
+  }
+
+  // 3. 初始化 Store
   store.init(
     pageConfig,
-    masterMeta.columns,      // AG Grid ColDef[]
-    detailMeta.columns,      // AG Grid ColDef[]
-    masterMeta.rawColumns,   // 原始列元数据，用于验证等
-    detailMeta.rawColumns
+    masterMeta.columns,
+    detailMeta.columns
   );
 
   // 4. 初始化可见 Tab
@@ -254,9 +290,9 @@ async function loadMasterData() {
 
 async function loadDetailData(masterId: number) {
   const tableCode = store.config?.detailTableCode;
-  const fkColumn = 'evalId'; // TODO: 从 TABLE_METADATA.PARENT_FK_COLUMN 读取
+  const fkColumn = detailFkColumn.value;
 
-  if (!tableCode) return;
+  if (!tableCode || !fkColumn) return;
 
   const { data, error } = await fetchDynamicData(tableCode, { [fkColumn]: masterId });
   if (error) {
@@ -292,16 +328,38 @@ async function handleSave() {
     return;
   }
 
-  // TODO: 验证
+  // 验证主表数据
+  const masterResult = validateRows(
+    store.masterRows,
+    masterValidationRules.value,
+    masterColumnMeta.value
+  );
+  if (!masterResult.valid) {
+    message.error('主表数据验证失败:\n' + formatValidationErrors(masterResult.errors));
+    return;
+  }
+
+  // 验证从表数据（所有主表的从表）
+  for (const master of store.masterRows) {
+    if (master._isDeleted || !master._details?.rows) continue;
+
+    const detailResult = validateRows(
+      master._details.rows,
+      detailValidationRules.value,
+      detailColumnMeta.value
+    );
+    if (!detailResult.valid) {
+      message.error(`从表数据验证失败 (主表ID: ${master.id}):\n` + formatValidationErrors(detailResult.errors));
+      return;
+    }
+  }
 
   const params = buildSaveParams(
     props.pageCode,
-    store.masterRows,
-    new Map(), // detailCache - 从 store 内部获取
-    store.currentMasterId,
-    store.detailRows,
+    store.masterRows as any,
+    store.config?.masterTableCode || '',
     store.config?.detailTableCode || '',
-    'evalId' // TODO: 从元数据读取
+    detailFkColumn.value
   );
 
   if (params.length === 0) {
@@ -335,11 +393,29 @@ function onKeyDown(e: KeyboardEvent) {
   }
 }
 
+// ==================== Watch ====================
+
+// 监听 updateVersion 变化，刷新主表 Grid 单元格样式
+watch(
+  () => store.updateVersion,
+  () => {
+    masterGridApi.value?.refreshCells({ force: true });
+  }
+);
+
 // ==================== Lifecycle ====================
 
 onMounted(async () => {
   document.addEventListener('keydown', onKeyDown);
   window.addEventListener('beforeunload', onBeforeUnload);
+
+  // 注入单元格样式
+  if (!document.getElementById('cell-change-styles')) {
+    const style = document.createElement('style');
+    style.id = 'cell-change-styles';
+    style.textContent = cellStyleCSS;
+    document.head.appendChild(style);
+  }
 
   await loadMetadata();
   await loadMasterData();
@@ -379,6 +455,31 @@ function onBeforeUnload(e: BeforeUnloadEvent) {
   background: #fff;
   border-radius: 4px;
   overflow: hidden;
+}
+
+/* 表头自动换行 */
+.master-section :deep(.ag-header-cell-label),
+.detail-section :deep(.ag-header-cell-label) {
+  white-space: normal !important;
+  word-wrap: break-word;
+  line-height: 1.4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.master-section :deep(.ag-header-cell),
+.detail-section :deep(.ag-header-cell) {
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+
+.master-section :deep(.ag-header-cell-text),
+.detail-section :deep(.ag-header-cell-text) {
+  white-space: normal !important;
+  word-wrap: break-word;
+  overflow: visible !important;
 }
 
 .loading-container {

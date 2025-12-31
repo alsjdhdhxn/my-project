@@ -32,14 +32,27 @@ export {
 // 构建器
 export {
   type RowData,
+  type MasterRowData,
   type ChangeRecord,
   type RecordItem,
   type SaveParams,
   buildSaveParams,
   buildRecordItem,
   isRowChanged,
-  checkDirty,
   generateTempId,
   initRowData,
   clearRowChanges
 } from './builder';
+
+// 验证器
+export {
+  type ValidationRule,
+  type ValidationError,
+  type ValidationResult,
+  type ColumnMetadata,
+  parseValidationRules,
+  validateRow,
+  validateRows,
+  formatValidationErrors,
+  getErrorFields
+} from './validator';
