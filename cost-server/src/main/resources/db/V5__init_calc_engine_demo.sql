@@ -155,13 +155,10 @@ VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'cost-eval', 'root', 'LAYOUT', NULL, 0,
 INSERT INTO T_COST_PAGE_COMPONENT (ID, PAGE_CODE, COMPONENT_KEY, COMPONENT_TYPE, PARENT_KEY, SORT_ORDER, REF_TABLE_CODE, COMPONENT_CONFIG, CREATE_BY)
 VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'cost-eval', 'masterGrid', 'GRID', 'root', 1, 'CostEval', '{"height":250,"master":true}', 'system');
 
--- Tab容器
-INSERT INTO T_COST_PAGE_COMPONENT (ID, PAGE_CODE, COMPONENT_KEY, COMPONENT_TYPE, PARENT_KEY, SORT_ORDER, COMPONENT_CONFIG, CREATE_BY)
-VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'cost-eval', 'detailTabs', 'TABS', 'root', 2, '{"masterGrid":"masterGrid"}', 'system');
-
--- 从表Grid（放在Tab容器内）
+-- Tab容器（单表分组模式）
 INSERT INTO T_COST_PAGE_COMPONENT (ID, PAGE_CODE, COMPONENT_KEY, COMPONENT_TYPE, PARENT_KEY, SORT_ORDER, REF_TABLE_CODE, COMPONENT_CONFIG, CREATE_BY)
-VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'cost-eval', 'detailGrid', 'GRID', 'detailTabs', 1, 'CostEvalDetail', '{"tabLabel":"物料明细","height":300,"editable":true}', 'system');
+VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'cost-eval', 'detailTabs', 'TABS', 'root', 2, 'CostEvalDetail', 
+'{"mode":"single-table-group","masterGrid":"masterGrid","groupField":"useFlag","tabs":[{"key":"material","title":"原料","groupValue":"原料","columns":["materialName","perHl","price","batchQty","costBatch"]},{"key":"auxiliary","title":"辅料","groupValue":"辅料","columns":["materialName","perHl","price","batchQty","costBatch"]},{"key":"package","title":"包材","groupValue":"包材","columns":["materialName","packSpec","price","packQty","packCost"]}]}', 'system');
 
 -- 广播配置：主表 → 从表
 INSERT INTO T_COST_PAGE_COMPONENT (ID, PAGE_CODE, COMPONENT_KEY, COMPONENT_TYPE, PARENT_KEY, SORT_ORDER, COMPONENT_CONFIG, CREATE_BY)

@@ -151,6 +151,11 @@ export function useCalcEngine(store: GridStore, options: CalcEngineOptions = {})
    * 初始化计算（加载数据后调用）
    */
   function initCalc() {
+    if (!store?.rows?.value) {
+      console.warn('[CalcEngine] store.rows 未初始化，跳过 initCalc');
+      return;
+    }
+    
     store.rows.value.forEach(row => {
       if (row._isDeleted) return;
       
