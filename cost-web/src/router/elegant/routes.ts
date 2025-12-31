@@ -66,6 +66,15 @@ export const generatedRoutes: GeneratedRoute[] = [
           title: 'cost_eval-v3',
           i18nKey: 'route.cost_eval-v3'
         }
+      },
+      {
+        name: 'cost_eval-v4',
+        path: '/cost/eval-v4',
+        component: 'view.cost_eval-v4',
+        meta: {
+          title: 'cost_eval-v4',
+          i18nKey: 'route.cost_eval-v4'
+        }
       }
     ]
   },

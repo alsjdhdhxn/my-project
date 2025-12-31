@@ -120,70 +120,62 @@ BEGIN
     VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'perHl', 'PER_HL', '百万片用量', 'number', 4, 1, 100, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY) 
     VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'price', 'PRICE', '单价', 'number', 5, 1, 100, 'system');
-    -- 计算列：批用量 = 批量 * 百万片用量 / 100 / 收率 * 100
-    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, IS_VIRTUAL, WIDTH, RULES_CONFIG, CREATE_BY) 
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'batchQty', 'BATCH_QTY', '批用量', 'number', 6, 0, 1, 100, 
-    '{"calculate":{"expression":"apexPl * perHl / 100 / yield * 100","triggerFields":["perHl"]}}', 'system');
-    -- 计算列：批成本 = 批用量 * 单价
-    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, IS_VIRTUAL, WIDTH, RULES_CONFIG, CREATE_BY) 
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'costBatch', 'COST_BATCH', '批成本', 'number', 7, 0, 1, 100, 
-    '{"calculate":{"expression":"batchQty * price","triggerFields":["batchQty","price"]}}', 'system');
+    -- 计算列：批用量（计算规则移到 PAGE_COMPONENT）
+    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, IS_VIRTUAL, WIDTH, CREATE_BY) 
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'batchQty', 'BATCH_QTY', '批用量', 'number', 6, 0, 1, 100, 'system');
+    -- 计算列：批成本
+    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, IS_VIRTUAL, WIDTH, CREATE_BY) 
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'costBatch', 'COST_BATCH', '批成本', 'number', 7, 0, 1, 100, 'system');
     -- 包材规格
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY) 
     VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'packSpec', 'PACK_SPEC', '规格', 'text', 8, 1, 100, 'system');
-    -- 计算列：包装数量 = 批量 * 1000
-    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, IS_VIRTUAL, WIDTH, RULES_CONFIG, CREATE_BY) 
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'packQty', 'PACK_QTY', '包装数量', 'number', 9, 0, 1, 100, 
-    '{"calculate":{"expression":"apexPl * 1000","triggerFields":[]}}', 'system');
-    -- 计算列：包装成本 = 包装数量 * 单价
-    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, IS_VIRTUAL, WIDTH, RULES_CONFIG, CREATE_BY) 
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'packCost', 'PACK_COST', '包装成本', 'number', 10, 0, 1, 100, 
-    '{"calculate":{"expression":"packQty * price","triggerFields":["packQty","price"]}}', 'system');
+    -- 计算列：包装数量
+    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, IS_VIRTUAL, WIDTH, CREATE_BY) 
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'packQty', 'PACK_QTY', '包装数量', 'number', 9, 0, 1, 100, 'system');
+    -- 计算列：包装成本
+    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, IS_VIRTUAL, WIDTH, CREATE_BY) 
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'packCost', 'PACK_COST', '包装成本', 'number', 10, 0, 1, 100, 'system');
     
     COMMIT;
 END;
 /
 
 -- =====================================================
--- 4. 页面组件配置
+-- 4. 页面组件配置（精简版：只需 3 条记录）
 -- =====================================================
 -- 页面根节点
 INSERT INTO T_COST_PAGE_COMPONENT (ID, PAGE_CODE, COMPONENT_KEY, COMPONENT_TYPE, PARENT_KEY, SORT_ORDER, COMPONENT_CONFIG, CREATE_BY)
-VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'cost-eval', 'root', 'LAYOUT', NULL, 0, '{"direction":"vertical","gap":16}', 'system');
+VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'cost-eval', 'root', 'LAYOUT', NULL, 0, '{"direction":"vertical","gap":8}', 'system');
 
--- 主表Grid
+-- 主表 Grid
 INSERT INTO T_COST_PAGE_COMPONENT (ID, PAGE_CODE, COMPONENT_KEY, COMPONENT_TYPE, PARENT_KEY, SORT_ORDER, REF_TABLE_CODE, COMPONENT_CONFIG, CREATE_BY)
-VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'cost-eval', 'masterGrid', 'GRID', 'root', 1, 'CostEval', '{"height":250,"master":true}', 'system');
+VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'cost-eval', 'masterGrid', 'GRID', 'root', 1, 'CostEval', '{"height":"50%","selectionMode":"single"}', 'system');
 
--- Tab容器（单表分组模式）
+-- 从表 Tabs（约定：主表组件 key 固定为 masterGrid，无需配置）
 INSERT INTO T_COST_PAGE_COMPONENT (ID, PAGE_CODE, COMPONENT_KEY, COMPONENT_TYPE, PARENT_KEY, SORT_ORDER, REF_TABLE_CODE, COMPONENT_CONFIG, CREATE_BY)
 VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'cost-eval', 'detailTabs', 'TABS', 'root', 2, 'CostEvalDetail', 
-'{"mode":"single-table-group","masterGrid":"masterGrid","groupField":"useFlag","tabs":[{"key":"material","title":"原料","groupValue":"原料","columns":["materialName","perHl","price","batchQty","costBatch"]},{"key":"auxiliary","title":"辅料","groupValue":"辅料","columns":["materialName","perHl","price","batchQty","costBatch"]},{"key":"package","title":"包材","groupValue":"包材","columns":["materialName","packSpec","price","packQty","packCost"]}]}', 'system');
-
--- 广播配置：主表 → 从表
-INSERT INTO T_COST_PAGE_COMPONENT (ID, PAGE_CODE, COMPONENT_KEY, COMPONENT_TYPE, PARENT_KEY, SORT_ORDER, COMPONENT_CONFIG, CREATE_BY)
-VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'cost-eval', 'broadcast_master', 'LOGIC_BROADCAST', 'root', 10, 
-'{"source":"masterGrid","target":"detailGrid","fields":["apexPl","yield"]}', 'system');
-
--- 聚合配置：从表 → 主表（原料合计）
-INSERT INTO T_COST_PAGE_COMPONENT (ID, PAGE_CODE, COMPONENT_KEY, COMPONENT_TYPE, PARENT_KEY, SORT_ORDER, COMPONENT_CONFIG, CREATE_BY)
-VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'cost-eval', 'agg_totalYl', 'LOGIC_AGG', 'root', 11, 
-'{"source":"detailGrid","target":"masterGrid","sourceField":"costBatch","targetField":"totalYl","algorithm":"SUM","filter":"useFlag==''原料''"}', 'system');
-
--- 聚合配置：从表 → 主表（辅料合计）
-INSERT INTO T_COST_PAGE_COMPONENT (ID, PAGE_CODE, COMPONENT_KEY, COMPONENT_TYPE, PARENT_KEY, SORT_ORDER, COMPONENT_CONFIG, CREATE_BY)
-VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'cost-eval', 'agg_totalFl', 'LOGIC_AGG', 'root', 12, 
-'{"source":"detailGrid","target":"masterGrid","sourceField":"costBatch","targetField":"totalFl","algorithm":"SUM","filter":"useFlag==''辅料''"}', 'system');
-
--- 聚合配置：从表 → 主表（包材合计）
-INSERT INTO T_COST_PAGE_COMPONENT (ID, PAGE_CODE, COMPONENT_KEY, COMPONENT_TYPE, PARENT_KEY, SORT_ORDER, COMPONENT_CONFIG, CREATE_BY)
-VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'cost-eval', 'agg_totalPack', 'LOGIC_AGG', 'root', 13, 
-'{"source":"detailGrid","target":"masterGrid","sourceField":"packCost","targetField":"totalPack","algorithm":"SUM","filter":"useFlag==''包材''"}', 'system');
-
--- 聚合配置：从表 → 主表（总成本 = 原料 + 辅料 + 包材）
-INSERT INTO T_COST_PAGE_COMPONENT (ID, PAGE_CODE, COMPONENT_KEY, COMPONENT_TYPE, PARENT_KEY, SORT_ORDER, COMPONENT_CONFIG, CREATE_BY)
-VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'cost-eval', 'agg_totalCost', 'LOGIC_AGG', 'root', 14, 
-'{"target":"masterGrid","targetField":"totalCost","expression":"totalYl + totalFl + totalPack"}', 'system');
+'{
+  "mode": "group",
+  "groupField": "useFlag",
+  "tabs": [
+    {"key": "material", "title": "原料", "value": "原料", "columns": ["materialName", "perHl", "price", "batchQty", "costBatch"]},
+    {"key": "auxiliary", "title": "辅料", "value": "辅料", "columns": ["materialName", "perHl", "price", "batchQty", "costBatch"]},
+    {"key": "package", "title": "包材", "value": "包材", "columns": ["materialName", "packSpec", "price", "packQty", "packCost"]}
+  ],
+  "broadcast": ["apexPl", "yield"],
+  "calcRules": [
+    {"field": "batchQty", "expression": "apexPl * perHl / 100 / yield * 100", "triggerFields": ["perHl"], "condition": "useFlag !== ''包材''"},
+    {"field": "costBatch", "expression": "batchQty * price", "triggerFields": ["batchQty", "price"], "condition": "useFlag !== ''包材''"},
+    {"field": "packQty", "expression": "apexPl * 1000", "triggerFields": [], "condition": "useFlag === ''包材''"},
+    {"field": "packCost", "expression": "packQty * price", "triggerFields": ["packQty", "price"], "condition": "useFlag === ''包材''"}
+  ],
+  "aggregates": [
+    {"sourceField": "costBatch", "targetField": "totalYl", "algorithm": "SUM", "filter": "useFlag === ''原料''"},
+    {"sourceField": "costBatch", "targetField": "totalFl", "algorithm": "SUM", "filter": "useFlag === ''辅料''"},
+    {"sourceField": "packCost", "targetField": "totalPack", "algorithm": "SUM", "filter": "useFlag === ''包材''"},
+    {"targetField": "totalCost", "expression": "totalYl + totalFl + totalPack"}
+  ]
+}', 'system');
 
 COMMIT;
 

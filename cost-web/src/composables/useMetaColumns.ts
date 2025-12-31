@@ -15,7 +15,7 @@ export function metaToColDef(col: ColumnMetadata): ColDef {
   const colDef: ColDef = {
     field: col.fieldName,
     headerName: col.headerText,
-    editable: col.editable,
+    editable: Boolean(col.editable),
     sortable: true,
     resizable: true
   };

@@ -22,6 +22,7 @@ export const views: Record<LastLevelRouteKey, RouteComponent | (() => Promise<Ro
   login: () => import("@/views/_builtin/login/index.vue"),
   "cost_eval-v2": () => import("@/views/cost/eval-v2/index.vue"),
   "cost_eval-v3": () => import("@/views/cost/eval-v3/index.vue"),
+  "cost_eval-v4": () => import("@/views/cost/eval-v4/index.vue"),
   dynamic: () => import("@/views/dynamic/index.vue"),
   home: () => import("@/views/home/index.vue"),
 };

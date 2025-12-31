@@ -169,6 +169,7 @@ const routeMap: RouteMap = {
   "cost": "/cost",
   "cost_eval-v2": "/cost/eval-v2",
   "cost_eval-v3": "/cost/eval-v3",
+  "cost_eval-v4": "/cost/eval-v4",
   "dynamic": "/dynamic",
   "home": "/home",
   "iframe-page": "/iframe-page/:url",
