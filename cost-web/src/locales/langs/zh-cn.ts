@@ -227,8 +227,7 @@ const local: App.I18n.Schema = {
     home: '首页',
     cost: '成本管理',
     cost_eval: '成本测算',
-    'cost_eval-v4': '成本测算',
-    dynamic: '动态页面'
+    'cost_eval-v4': '成本测算'
   },
   page: {
     login: {

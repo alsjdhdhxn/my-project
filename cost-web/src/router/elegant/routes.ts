@@ -60,15 +60,6 @@ export const generatedRoutes: GeneratedRoute[] = [
     ]
   },
   {
-    name: 'dynamic',
-    path: '/dynamic',
-    component: 'layout.base$view.dynamic',
-    meta: {
-      title: '动态页面',
-      i18nKey: 'route.dynamic'
-    }
-  },
-  {
     name: 'home',
     path: '/home',
     component: 'layout.base$view.home',

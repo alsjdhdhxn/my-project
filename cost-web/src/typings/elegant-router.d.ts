@@ -22,7 +22,6 @@ declare module "@elegant-router/types" {
     "500": "/500";
     "cost": "/cost";
     "cost_eval-v4": "/cost/eval-v4";
-    "dynamic": "/dynamic";
     "home": "/home";
     "iframe-page": "/iframe-page/:url";
     "login": "/login/:module(pwd-login|code-login|register|reset-pwd|bind-wechat)?";
@@ -61,7 +60,6 @@ declare module "@elegant-router/types" {
     | "404"
     | "500"
     | "cost"
-    | "dynamic"
     | "home"
     | "iframe-page"
     | "login"
@@ -87,7 +85,6 @@ declare module "@elegant-router/types" {
     | "iframe-page"
     | "login"
     | "cost_eval-v4"
-    | "dynamic"
     | "home"
   >;
 
