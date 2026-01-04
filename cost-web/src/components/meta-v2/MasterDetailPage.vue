@@ -29,48 +29,68 @@
     </MetaFloatToolbar>
 
     <!-- 主从表分隔区域 -->
-    <NSplit
-      v-if="store.isReady"
-      direction="vertical"
-      :default-size="0.5"
-      :min="0.2"
-      :max="0.8"
-      class="split-container"
-    >
-      <!-- 主表 -->
-      <template #1>
-        <div class="master-section">
-          <AgGridVue
-            class="ag-theme-alpine"
-            style="width: 100%; height: 100%"
-            :rowData="store.visibleMasterRows"
-            :columnDefs="masterColumnDefs"
-            :defaultColDef="defaultColDef"
-            :getRowId="getRowId"
-            :rowSelection="masterRowSelection"
-            @grid-ready="onMasterGridReady"
-            @selection-changed="onMasterSelectionChanged"
-            @cell-value-changed="onMasterCellValueChanged"
-            @cell-editing-started="masterAdapter.onCellEditingStarted"
-            @cell-editing-stopped="masterAdapter.onCellEditingStopped"
-          />
-        </div>
-      </template>
+    <template v-if="store.isReady">
+      <!-- 有从表：上下分隔 -->
+      <NSplit
+        v-if="hasDetail"
+        direction="vertical"
+        :default-size="0.5"
+        :min="0.2"
+        :max="0.8"
+        class="split-container"
+      >
+        <!-- 主表 -->
+        <template #1>
+          <div class="master-section">
+            <AgGridVue
+              class="ag-theme-alpine"
+              style="width: 100%; height: 100%"
+              :rowData="store.visibleMasterRows"
+              :columnDefs="masterColumnDefs"
+              :defaultColDef="defaultColDef"
+              :getRowId="getRowId"
+              :rowSelection="masterRowSelection"
+              @grid-ready="onMasterGridReady"
+              @selection-changed="onMasterSelectionChanged"
+              @cell-value-changed="onMasterCellValueChanged"
+              @cell-editing-started="masterAdapter.onCellEditingStarted"
+              @cell-editing-stopped="masterAdapter.onCellEditingStopped"
+            />
+          </div>
+        </template>
 
-      <!-- 从表 Tabs -->
-      <template #2>
-        <div class="detail-section">
-          <MetaTabs
-            :tabs="tabs"
-            :visibleKeys="visibleTabKeys"
-            :store="store"
-            :detailColumnDefs="detailColumnDefs"
-            :defaultColDef="defaultColDef"
-            @cell-value-changed="onDetailCellValueChanged"
-          />
-        </div>
-      </template>
-    </NSplit>
+        <!-- 从表 Tabs -->
+        <template #2>
+          <div class="detail-section">
+            <MetaTabs
+              :tabs="tabs"
+              :visibleKeys="visibleTabKeys"
+              :store="store"
+              :detailColumnDefs="detailColumnDefs"
+              :defaultColDef="defaultColDef"
+              @cell-value-changed="onDetailCellValueChanged"
+            />
+          </div>
+        </template>
+      </NSplit>
+
+      <!-- 无从表：主表铺满 -->
+      <div v-else class="master-section full">
+        <AgGridVue
+          class="ag-theme-alpine"
+          style="width: 100%; height: 100%"
+          :rowData="store.visibleMasterRows"
+          :columnDefs="masterColumnDefs"
+          :defaultColDef="defaultColDef"
+          :getRowId="getRowId"
+          :rowSelection="masterRowSelection"
+          @grid-ready="onMasterGridReady"
+          @cell-value-changed="onMasterCellValueChanged"
+          @cell-editing-started="masterAdapter.onCellEditingStarted"
+          @cell-editing-stopped="masterAdapter.onCellEditingStopped"
+        />
+      </div>
+    </template>
 
     <!-- 加载中 -->
     <div v-else class="loading-container">
@@ -139,6 +159,9 @@ const detailFkColumn = ref<string>('');
 // ==================== Computed ====================
 
 const tabs = computed(() => store.config?.tabs || []);
+
+/** 是否有从表 */
+const hasDetail = computed(() => !!store.config?.detailTableCode);
 
 const masterColumnDefs = computed<ColDef[]>(() => {
   return store.masterColumns.map(col => ({
@@ -227,43 +250,48 @@ async function loadMetadata() {
     return;
   }
 
-  // 2. 加载主从表元数据并转换为 ColDef
-  const [masterMeta, detailMeta] = await Promise.all([
-    loadTableMeta(pageConfig.masterTableCode),
-    loadTableMeta(pageConfig.detailTableCode)
-  ]);
-
-  if (!masterMeta || !detailMeta) {
-    message.error('加载表元数据失败');
+  // 2. 加载主表元数据
+  const masterMeta = await loadTableMeta(pageConfig.masterTableCode);
+  if (!masterMeta) {
+    message.error('加载主表元数据失败');
     return;
   }
 
   // 保存原始列元数据（用于验证）
   masterColumnMeta.value = masterMeta.rawColumns || [];
-  detailColumnMeta.value = detailMeta.rawColumns || [];
-
-  // 解析验证规则
   masterValidationRules.value = parseValidationRules(masterColumnMeta.value);
-  detailValidationRules.value = parseValidationRules(detailColumnMeta.value);
 
-  // 保存从表外键字段名（数据库列名转驼峰）
-  const fkCol = detailMeta.metadata?.parentFkColumn;
-  if (fkCol) {
-    // EVAL_ID -> evalId
-    detailFkColumn.value = fkCol
-      .toLowerCase()
-      .replace(/_([a-z])/g, (_: string, c: string) => c.toUpperCase());
+  // 3. 加载从表元数据（如果有）
+  let detailCols: ColDef[] = [];
+  if (pageConfig.detailTableCode) {
+    const detailMeta = await loadTableMeta(pageConfig.detailTableCode);
+    if (!detailMeta) {
+      message.error('加载从表元数据失败');
+      return;
+    }
+
+    detailColumnMeta.value = detailMeta.rawColumns || [];
+    detailValidationRules.value = parseValidationRules(detailColumnMeta.value);
+    detailCols = detailMeta.columns;
+
+    // 保存从表外键字段名（数据库列名转驼峰）
+    const fkCol = detailMeta.metadata?.parentFkColumn;
+    if (fkCol) {
+      detailFkColumn.value = fkCol
+        .toLowerCase()
+        .replace(/_([a-z])/g, (_: string, c: string) => c.toUpperCase());
+    }
+
+    // 初始化可见 Tab
+    pageConfig.tabs.forEach(tab => visibleTabKeys.value.add(tab.key));
   }
 
-  // 3. 初始化 Store
+  // 4. 初始化 Store
   store.init(
     pageConfig,
     masterMeta.columns,
-    detailMeta.columns
+    detailCols
   );
-
-  // 4. 初始化可见 Tab
-  pageConfig.tabs.forEach(tab => visibleTabKeys.value.add(tab.key));
 }
 
 async function loadMasterData() {
@@ -455,6 +483,11 @@ function onBeforeUnload(e: BeforeUnloadEvent) {
   background: #fff;
   border-radius: 4px;
   overflow: hidden;
+}
+
+.master-section.full {
+  flex: 1;
+  min-height: 0;
 }
 
 /* 表头自动换行 */
