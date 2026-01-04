@@ -85,9 +85,11 @@ public class MenuService {
 
     private String buildPath(Resource resource, boolean isTopLevel) {
         if (resource.getRoute() != null) {
-            // 子路由使用相对路径
-            if (!isTopLevel && resource.getRoute().startsWith("/")) {
-                return resource.getRoute().substring(1);
+            // 子路由使用相对路径（只取最后一段）
+            if (!isTopLevel) {
+                String route = resource.getRoute();
+                int lastSlash = route.lastIndexOf('/');
+                return lastSlash >= 0 ? route.substring(lastSlash + 1) : route;
             }
             return resource.getRoute();
         }

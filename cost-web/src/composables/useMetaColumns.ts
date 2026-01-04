@@ -59,10 +59,18 @@ export function metaToColDef(col: ColumnMetadata): ColDef {
       };
       break;
     case 'date':
-      colDef.type = 'dateColumn';
+      colDef.valueFormatter = (params) => {
+        if (!params.value) return '';
+        const date = new Date(params.value);
+        return isNaN(date.getTime()) ? params.value : date.toLocaleDateString('zh-CN');
+      };
       break;
     case 'datetime':
-      colDef.type = 'dateColumn';
+      colDef.valueFormatter = (params) => {
+        if (!params.value) return '';
+        const date = new Date(params.value);
+        return isNaN(date.getTime()) ? params.value : date.toLocaleString('zh-CN');
+      };
       break;
   }
 

@@ -95,10 +95,15 @@ export function useMasterDetailStore(pageCode: string) {
       const groupField = config.value?.groupField;
 
       for (const tab of tabs) {
-        if (tab.mode === 'group' && groupField) {
-          result[tab.key] = visibleDetailRows.value.filter(
-            r => r[groupField] === tab.groupValue
-          );
+        if (tab.mode === 'group') {
+          // groupValue 为 * 或未设置时，显示所有数据（不分组）
+          if (!tab.groupValue || tab.groupValue === '*' || !groupField) {
+            result[tab.key] = visibleDetailRows.value;
+          } else {
+            result[tab.key] = visibleDetailRows.value.filter(
+              r => r[groupField] === tab.groupValue
+            );
+          }
         } else if (tab.mode === 'multi') {
           result[tab.key] = [];
         }

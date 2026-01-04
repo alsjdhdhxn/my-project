@@ -74,11 +74,19 @@ export function parsePageComponents(components: PageComponent[]): ParsedPageConf
     return null;
   }
 
-  // 约定：从表组件 type = TABS
+  // 约定：从表组件 type = TABS（可选，单表页面没有）
   const detailTabs = findComponentByType(components, 'TABS');
   if (!detailTabs) {
-    console.warn('[Parser] 未找到 TABS 组件');
-    return null;
+    // 单表模式
+    return {
+      masterTableCode: masterGrid.refTableCode || '',
+      detailTableCode: '',
+      tabs: [],
+      broadcast: [],
+      calcRules: [],
+      aggregates: [],
+      mode: 'group'
+    };
   }
 
   const config = parseComponentConfig<TabsComponentConfig>(detailTabs.componentConfig);

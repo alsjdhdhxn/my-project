@@ -63,15 +63,15 @@ VALUES (SEQ_COST_RESOURCE.NEXTVAL, 'home', '首页', 'PAGE', 'home', 'mdi:monito
 
 -- 成本管理模块
 INSERT INTO T_COST_RESOURCE (ID, RESOURCE_CODE, RESOURCE_NAME, RESOURCE_TYPE, PAGE_CODE, ICON, ROUTE, PARENT_ID, SORT_ORDER, CREATE_BY)
-VALUES (SEQ_COST_RESOURCE.NEXTVAL, 'cost-management', '成本管理', 'DIRECTORY', NULL, 'mdi:currency-usd', NULL, NULL, 1, 'system');
+VALUES (SEQ_COST_RESOURCE.NEXTVAL, 'cost', '成本管理', 'DIRECTORY', NULL, 'mdi:currency-usd', '/cost', NULL, 1, 'system');
 
 -- 评估单V4
 DECLARE
     v_parent_id NUMBER;
 BEGIN
-    SELECT ID INTO v_parent_id FROM T_COST_RESOURCE WHERE RESOURCE_CODE = 'cost-management';
+    SELECT ID INTO v_parent_id FROM T_COST_RESOURCE WHERE RESOURCE_CODE = 'cost';
     INSERT INTO T_COST_RESOURCE (ID, RESOURCE_CODE, RESOURCE_NAME, RESOURCE_TYPE, PAGE_CODE, ICON, ROUTE, PARENT_ID, SORT_ORDER, CREATE_BY)
-    VALUES (SEQ_COST_RESOURCE.NEXTVAL, 'cost-eval-v4', '评估单', 'PAGE', 'cost-eval', 'mdi:calculator', '/cost/eval-v4', v_parent_id, 1, 'system');
+    VALUES (SEQ_COST_RESOURCE.NEXTVAL, 'eval-v4', '评估单', 'PAGE', 'cost-eval', 'mdi:calculator', '/cost/eval-v4', v_parent_id, 1, 'system');
 END;
 /
 

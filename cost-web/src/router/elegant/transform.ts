@@ -168,6 +168,7 @@ const routeMap: RouteMap = {
   "500": "/500",
   "cost": "/cost",
   "cost_eval-v4": "/cost/eval-v4",
+  "dynamic": "/dynamic",
   "home": "/home",
   "iframe-page": "/iframe-page/:url",
   "login": "/login/:module(pwd-login|code-login|register|reset-pwd|bind-wechat)?"
