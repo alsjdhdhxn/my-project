@@ -20,3 +20,10 @@ export function fetchDictItems(dictType: string) {
     url: `/api/metadata/dict/${dictType}`
   });
 }
+
+/** 获取弹窗选择器配置 */
+export function fetchLookupConfig(lookupCode: string) {
+  return request<Api.Metadata.LookupConfig>({
+    url: `/api/metadata/lookup/${lookupCode}`
+  });
+}

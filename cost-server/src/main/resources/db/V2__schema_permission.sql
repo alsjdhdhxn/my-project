@@ -1,5 +1,5 @@
 -- =====================================================
--- 权限模块表结构 + 初始化数据
+-- 权限模块表结构
 -- =====================================================
 
 -- 删除已有对象
@@ -103,7 +103,6 @@ CREATE TABLE T_COST_USER_ROLE (
 CREATE SEQUENCE SEQ_COST_USER_ROLE START WITH 1 INCREMENT BY 1;
 CREATE UNIQUE INDEX UK_USER_ROLE ON T_COST_USER_ROLE(USER_ID, ROLE_ID);
 
-
 -- =====================================================
 -- 5. 角色页面权限表（含按钮权限、列权限）
 -- =====================================================
@@ -172,89 +171,5 @@ CREATE TABLE T_COST_RESOURCE (
     UPDATE_TIME     TIMESTAMP DEFAULT SYSTIMESTAMP
 );
 CREATE SEQUENCE SEQ_COST_RESOURCE START WITH 1 INCREMENT BY 1;
-
--- =====================================================
--- 初始化数据：部门
--- =====================================================
-INSERT INTO T_COST_DEPARTMENT (ID, DEPT_CODE, DEPT_NAME, PARENT_ID, SORT_ORDER, CREATE_BY)
-VALUES (SEQ_COST_DEPARTMENT.NEXTVAL, 'ROOT', '总公司', NULL, 0, 'system');
-INSERT INTO T_COST_DEPARTMENT (ID, DEPT_CODE, DEPT_NAME, PARENT_ID, SORT_ORDER, CREATE_BY)
-VALUES (SEQ_COST_DEPARTMENT.NEXTVAL, 'FINANCE', '财务部', 1, 1, 'system');
-INSERT INTO T_COST_DEPARTMENT (ID, DEPT_CODE, DEPT_NAME, PARENT_ID, SORT_ORDER, CREATE_BY)
-VALUES (SEQ_COST_DEPARTMENT.NEXTVAL, 'PURCHASE', '采购部', 1, 2, 'system');
-
--- =====================================================
--- 初始化数据：角色
--- =====================================================
-INSERT INTO T_COST_ROLE (ID, ROLE_CODE, ROLE_NAME, DESCRIPTION, CREATE_BY)
-VALUES (SEQ_COST_ROLE.NEXTVAL, 'ADMIN', '系统管理员', '拥有所有权限', 'system');
-INSERT INTO T_COST_ROLE (ID, ROLE_CODE, ROLE_NAME, DESCRIPTION, CREATE_BY)
-VALUES (SEQ_COST_ROLE.NEXTVAL, 'FINANCE_MANAGER', '财务经理', '财务部门管理权限', 'system');
-INSERT INTO T_COST_ROLE (ID, ROLE_CODE, ROLE_NAME, DESCRIPTION, CREATE_BY)
-VALUES (SEQ_COST_ROLE.NEXTVAL, 'FINANCE_STAFF', '财务专员', '财务部门普通权限', 'system');
-
--- =====================================================
--- 初始化数据：用户 (密码: 123456)
--- =====================================================
-INSERT INTO T_COST_USER (ID, USERNAME, PASSWORD, REAL_NAME, DEPARTMENT_ID, CREATE_BY)
-VALUES (SEQ_COST_USER.NEXTVAL, 'admin', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iKt6Z5EH', '系统管理员', 1, 'system');
-INSERT INTO T_COST_USER (ID, USERNAME, PASSWORD, REAL_NAME, DEPARTMENT_ID, CREATE_BY)
-VALUES (SEQ_COST_USER.NEXTVAL, 'zhangsan', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iKt6Z5EH', '张三', 2, 'system');
-INSERT INTO T_COST_USER (ID, USERNAME, PASSWORD, REAL_NAME, DEPARTMENT_ID, CREATE_BY)
-VALUES (SEQ_COST_USER.NEXTVAL, 'lisi', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iKt6Z5EH', '李四', 2, 'system');
-
--- =====================================================
--- 初始化数据：用户角色关联
--- =====================================================
-INSERT INTO T_COST_USER_ROLE (ID, USER_ID, ROLE_ID, CREATE_BY) VALUES (SEQ_COST_USER_ROLE.NEXTVAL, 1, 1, 'system');
-INSERT INTO T_COST_USER_ROLE (ID, USER_ID, ROLE_ID, CREATE_BY) VALUES (SEQ_COST_USER_ROLE.NEXTVAL, 2, 2, 'system');
-INSERT INTO T_COST_USER_ROLE (ID, USER_ID, ROLE_ID, CREATE_BY) VALUES (SEQ_COST_USER_ROLE.NEXTVAL, 3, 3, 'system');
-
--- =====================================================
--- 初始化数据：角色页面权限
--- =====================================================
--- ADMIN: 所有权限（* 表示全部）
-INSERT INTO T_COST_ROLE_PAGE (ID, ROLE_ID, PAGE_CODE, BUTTON_POLICY, COLUMN_POLICY, CREATE_BY)
-VALUES (SEQ_COST_ROLE_PAGE.NEXTVAL, 1, 'cost-demo', '["*"]', NULL, 'system');
-
--- FINANCE_MANAGER: 有增删改权限
-INSERT INTO T_COST_ROLE_PAGE (ID, ROLE_ID, PAGE_CODE, BUTTON_POLICY, COLUMN_POLICY, CREATE_BY)
-VALUES (SEQ_COST_ROLE_PAGE.NEXTVAL, 2, 'cost-demo', '["CREATE","EDIT","DELETE","EXPORT"]', NULL, 'system');
-
--- FINANCE_STAFF: 不能看金额，只有查看和导出权限
-INSERT INTO T_COST_ROLE_PAGE (ID, ROLE_ID, PAGE_CODE, BUTTON_POLICY, COLUMN_POLICY, CREATE_BY)
-VALUES (SEQ_COST_ROLE_PAGE.NEXTVAL, 3, 'cost-demo', '["EXPORT"]', '{"amount":{"visible":false}}', 'system');
-
--- =====================================================
--- 初始化数据：数据权限规则
--- =====================================================
--- FINANCE_STAFF: 只能看自己创建的数据
-INSERT INTO T_COST_ROLE_PAGE_DATA_RULE (ID, ROLE_PAGE_ID, RULE_TYPE, RULE_CONFIG, PRIORITY, CREATE_BY)
-VALUES (SEQ_COST_DATA_RULE.NEXTVAL, 3, 'USER', '{"field":"CREATE_BY","operator":"eq","value":"${currentUser}"}', 0, 'system');
-
--- =====================================================
--- 初始化数据：用户偏好
--- =====================================================
-INSERT INTO T_COST_USER_GRID_CONFIG (ID, USER_ID, PAGE_CODE, GRID_KEY, CONFIG_DATA)
-VALUES (SEQ_COST_USER_GRID.NEXTVAL, 2, 'cost-demo', 'mainGrid', '{"columnOrder":["code","name","amount"],"hiddenColumns":["remark"],"columnWidths":{"code":150}}');
-
--- =====================================================
--- 初始化数据：菜单资源
--- =====================================================
--- 首页（顶级菜单）
-INSERT INTO T_COST_RESOURCE (ID, RESOURCE_CODE, RESOURCE_NAME, RESOURCE_TYPE, PAGE_CODE, ICON, ROUTE, PARENT_ID, SORT_ORDER, CREATE_BY)
-VALUES (SEQ_COST_RESOURCE.NEXTVAL, 'home', '首页', 'PAGE', 'home', 'mdi:monitor-dashboard', '/home', NULL, 0, 'system');
-
--- 成本管理模块
-INSERT INTO T_COST_RESOURCE (ID, RESOURCE_CODE, RESOURCE_NAME, RESOURCE_TYPE, PAGE_CODE, ICON, ROUTE, PARENT_ID, SORT_ORDER, CREATE_BY)
-VALUES (SEQ_COST_RESOURCE.NEXTVAL, 'cost-manage', '成本管理', 'DIRECTORY', NULL, 'mdi:currency-usd', NULL, NULL, 1, 'system');
-INSERT INTO T_COST_RESOURCE (ID, RESOURCE_CODE, RESOURCE_NAME, RESOURCE_TYPE, PAGE_CODE, ICON, ROUTE, PARENT_ID, SORT_ORDER, CREATE_BY)
-VALUES (SEQ_COST_RESOURCE.NEXTVAL, 'cost-demo', '成本示例', 'PAGE', 'cost-demo', 'mdi:file-document-outline', '/cost/demo', (SELECT ID FROM T_COST_RESOURCE WHERE RESOURCE_CODE = 'cost-manage'), 1, 'system');
-
--- 系统管理模块
-INSERT INTO T_COST_RESOURCE (ID, RESOURCE_CODE, RESOURCE_NAME, RESOURCE_TYPE, PAGE_CODE, ICON, ROUTE, PARENT_ID, SORT_ORDER, CREATE_BY)
-VALUES (SEQ_COST_RESOURCE.NEXTVAL, 'system-manage', '系统管理', 'DIRECTORY', NULL, 'mdi:cog', NULL, NULL, 2, 'system');
-INSERT INTO T_COST_RESOURCE (ID, RESOURCE_CODE, RESOURCE_NAME, RESOURCE_TYPE, PAGE_CODE, ICON, ROUTE, PARENT_ID, SORT_ORDER, CREATE_BY)
-VALUES (SEQ_COST_RESOURCE.NEXTVAL, 'user-manage', '用户管理', 'PAGE', 'user-manage', 'mdi:account', '/system/user', (SELECT ID FROM T_COST_RESOURCE WHERE RESOURCE_CODE = 'system-manage'), 1, 'system');
 
 COMMIT;

@@ -52,5 +52,23 @@ declare namespace Api {
       label: string;
       sortOrder: number;
     }
+
+    /** 弹窗选择器配置 */
+    interface LookupConfig {
+      lookupCode: string;
+      lookupName: string;
+      dataSource: string;
+      displayColumns: LookupDisplayColumn[];
+      searchColumns: string[];
+      valueField: string;
+      labelField: string;
+    }
+
+    /** 弹窗选择器显示列 */
+    interface LookupDisplayColumn {
+      field: string;
+      header: string;
+      width?: number;
+    }
   }
 }

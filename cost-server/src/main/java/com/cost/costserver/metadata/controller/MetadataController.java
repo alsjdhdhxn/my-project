@@ -2,6 +2,7 @@ package com.cost.costserver.metadata.controller;
 
 import com.cost.costserver.common.Result;
 import com.cost.costserver.metadata.dto.DictionaryItemDTO;
+import com.cost.costserver.metadata.dto.LookupConfigDTO;
 import com.cost.costserver.metadata.dto.PageComponentDTO;
 import com.cost.costserver.metadata.dto.TableMetadataDTO;
 import com.cost.costserver.metadata.service.MetadataService;
@@ -36,6 +37,12 @@ public class MetadataController {
     @GetMapping("/dict/{dictType}")
     public Result<List<DictionaryItemDTO>> getDictItems(@PathVariable String dictType) {
         return Result.ok(metadataService.getDictItems(dictType));
+    }
+
+    @Operation(summary = "获取弹窗选择器配置")
+    @GetMapping("/lookup/{lookupCode}")
+    public Result<LookupConfigDTO> getLookupConfig(@PathVariable String lookupCode) {
+        return Result.ok(metadataService.getLookupConfig(lookupCode));
     }
 
     @Operation(summary = "清除元数据缓存")

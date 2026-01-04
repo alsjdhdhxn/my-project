@@ -22,6 +22,7 @@ public class MetadataService {
     private final PageComponentMapper pageComponentMapper;
     private final DictionaryTypeMapper dictionaryTypeMapper;
     private final DictionaryItemMapper dictionaryItemMapper;
+    private final LookupConfigMapper lookupConfigMapper;
 
     private final Map<String, TableMetadataDTO> cache = new ConcurrentHashMap<>();
 
@@ -144,5 +145,19 @@ public class MetadataService {
             }
         }
         return sb.toString();
+    }
+
+    /**
+     * 获取弹窗选择器配置
+     */
+    public LookupConfigDTO getLookupConfig(String lookupCode) {
+        LookupConfig config = lookupConfigMapper.selectOne(
+            new LambdaQueryWrapper<LookupConfig>()
+                .eq(LookupConfig::getLookupCode, lookupCode)
+        );
+        if (config == null) {
+            throw new BusinessException(400, "弹窗选择器配置不存在: " + lookupCode);
+        }
+        return LookupConfigDTO.from(config);
     }
 }

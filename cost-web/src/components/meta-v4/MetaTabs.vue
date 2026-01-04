@@ -14,9 +14,11 @@
           :columnDefs="getTabColumns(tab)"
           :defaultColDef="defaultColDef"
           :getRowId="getRowId"
+          :getRowClass="getRowClass"
           :rowSelection="detailRowSelection"
           @grid-ready="(e) => onGridReady(tab.key, e)"
           @cell-value-changed="(e) => onCellValueChanged(tab.key, e)"
+          @cell-clicked="(e) => onCellClicked(tab.key, e)"
           @cell-editing-started="(e) => onCellEditingStarted(tab.key, e)"
           @cell-editing-stopped="(e) => onCellEditingStopped(tab.key, e)"
         />
@@ -29,7 +31,7 @@
 import { computed, shallowReactive, watch } from 'vue';
 import { AgGridVue } from 'ag-grid-vue3';
 import { ModuleRegistry, AllCommunityModule } from 'ag-grid-community';
-import type { GridApi, ColDef, GridReadyEvent, CellValueChangedEvent, CellEditingStartedEvent, CellEditingStoppedEvent } from 'ag-grid-community';
+import type { GridApi, ColDef, GridReadyEvent, CellValueChangedEvent, CellEditingStartedEvent, CellEditingStoppedEvent, CellClickedEvent } from 'ag-grid-community';
 import type { TabConfig } from '@/logic/calc-engine';
 import type { MasterDetailStore } from '@/store/modules/master-detail';
 import { getCellClassRules } from '@/composables/useGridAdapter';
@@ -48,10 +50,12 @@ const props = defineProps<{
   store: MasterDetailStore;
   detailColumnDefs: ColDef[];
   defaultColDef: ColDef;
+  getRowClass?: (params: any) => string | undefined;
 }>();
 
 const emit = defineEmits<{
   (e: 'cell-value-changed', payload: { tabKey: string; rowId: number; field: string; value: any }): void;
+  (e: 'cell-clicked', payload: { tabKey: string; rowId: number; field: string; data: any }): void;
 }>();
 
 // ==================== Constants ====================
@@ -128,6 +132,20 @@ function onCellEditingStarted(_tabKey: string, _event: CellEditingStartedEvent) 
 
 function onCellEditingStopped(_tabKey: string, _event: CellEditingStoppedEvent) {
   // 可扩展：清除编辑状态
+}
+
+function onCellClicked(tabKey: string, event: CellClickedEvent) {
+  const field = event.colDef.field;
+  const rowId = event.data?.id;
+  
+  if (!field || rowId == null) return;
+  
+  emit('cell-clicked', {
+    tabKey,
+    rowId,
+    field,
+    data: event.data
+  });
 }
 
 // ==================== Watch ====================

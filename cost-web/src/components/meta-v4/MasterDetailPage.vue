@@ -49,6 +49,7 @@
               :columnDefs="masterColumnDefs"
               :defaultColDef="defaultColDef"
               :getRowId="getRowId"
+              :getRowClass="masterGetRowClass"
               :rowSelection="masterRowSelection"
               @grid-ready="onMasterGridReady"
               @selection-changed="onMasterSelectionChanged"
@@ -68,7 +69,9 @@
               :store="store"
               :detailColumnDefs="detailColumnDefs"
               :defaultColDef="defaultColDef"
+              :getRowClass="detailGetRowClass"
               @cell-value-changed="onDetailCellValueChanged"
+              @cell-clicked="onDetailCellClicked"
             />
           </div>
         </template>
@@ -83,6 +86,7 @@
           :columnDefs="masterColumnDefs"
           :defaultColDef="defaultColDef"
           :getRowId="getRowId"
+          :getRowClass="masterGetRowClass"
           :rowSelection="masterRowSelection"
           @grid-ready="onMasterGridReady"
           @cell-value-changed="onMasterCellValueChanged"
@@ -96,6 +100,16 @@
     <div v-else class="loading-container">
       <NSpin size="large" />
     </div>
+
+    <!-- Lookup 弹窗 -->
+    <LookupDialog
+      v-if="currentLookupRule"
+      ref="lookupDialogRef"
+      :lookupCode="currentLookupRule.lookupCode"
+      :mapping="currentLookupRule.mapping"
+      @select="onLookupSelect"
+      @cancel="onLookupCancel"
+    />
   </div>
 </template>
 
@@ -117,9 +131,10 @@ import {
   type ValidationRule
 } from '@/logic/calc-engine';
 import { fetchDynamicData, fetchPageComponents, saveDynamicData } from '@/service/api';
-import { loadTableMeta } from '@/composables/useMetaColumns';
+import { loadTableMeta, type RowStyleRule, type LookupRule, extractLookupRules } from '@/composables/useMetaColumns';
 import MetaFloatToolbar from './MetaFloatToolbar.vue';
 import MetaTabs from './MetaTabs.vue';
+import LookupDialog from './LookupDialog.vue';
 
 // 注册 AG Grid 模块（全局只注册一次）
 if (!(window as any).__AG_GRID_REGISTERED__) {
@@ -156,6 +171,18 @@ const detailColumnMeta = shallowRef<any[]>([]);
 // 从表外键字段名（从元数据读取）
 const detailFkColumn = ref<string>('');
 
+// 行样式类函数
+const masterGetRowClass = shallowRef<((params: any) => string | undefined) | undefined>(undefined);
+const detailGetRowClass = shallowRef<((params: any) => string | undefined) | undefined>(undefined);
+
+// Lookup 规则
+const detailLookupRules = shallowRef<LookupRule[]>([]);
+
+// Lookup 弹窗状态
+const lookupDialogRef = ref<InstanceType<typeof LookupDialog> | null>(null);
+const currentLookupRule = ref<LookupRule | null>(null);
+const currentLookupRowId = ref<number | null>(null);
+
 // ==================== Computed ====================
 
 const tabs = computed(() => store.config?.tabs || []);
@@ -166,14 +193,20 @@ const hasDetail = computed(() => !!store.config?.detailTableCode);
 const masterColumnDefs = computed<ColDef[]>(() => {
   return store.masterColumns.map(col => ({
     ...col,
-    cellClassRules: getCellClassRules()
+    cellClassRules: {
+      ...col.cellClassRules,  // 保留元数据中的样式规则
+      ...getCellClassRules()  // 添加变更状态样式
+    }
   }));
 });
 
 const detailColumnDefs = computed<ColDef[]>(() => {
   return store.detailColumns.map(col => ({
     ...col,
-    cellClassRules: getCellClassRules()
+    cellClassRules: {
+      ...col.cellClassRules,  // 保留元数据中的样式规则
+      ...getCellClassRules()  // 添加变更状态样式
+    }
   }));
 });
 
@@ -233,6 +266,35 @@ function onDetailCellValueChanged(event: { tabKey: string; rowId: number; field:
   store.updateField(event.rowId, event.field, event.value, 'user', false);
 }
 
+function onDetailCellClicked(event: { tabKey: string; rowId: number; field: string; data: any }) {
+  // 检查是否有 lookup 配置
+  const rule = detailLookupRules.value.find(r => r.fieldName === event.field);
+  if (!rule) return;
+  
+  // 保存当前上下文，打开弹窗
+  currentLookupRule.value = rule;
+  currentLookupRowId.value = event.rowId;
+  lookupDialogRef.value?.open();
+}
+
+function onLookupSelect(fillData: Record<string, any>) {
+  if (!currentLookupRowId.value) return;
+  
+  // 回填数据到当前行
+  for (const [field, value] of Object.entries(fillData)) {
+    store.updateField(currentLookupRowId.value, field, value, 'user', false);
+  }
+  
+  // 清理状态
+  currentLookupRule.value = null;
+  currentLookupRowId.value = null;
+}
+
+function onLookupCancel() {
+  currentLookupRule.value = null;
+  currentLookupRowId.value = null;
+}
+
 // ==================== Data Loading ====================
 
 async function loadMetadata() {
@@ -260,6 +322,9 @@ async function loadMetadata() {
   // 保存原始列元数据（用于验证）
   masterColumnMeta.value = masterMeta.rawColumns || [];
   masterValidationRules.value = parseValidationRules(masterColumnMeta.value);
+  
+  // 保存行样式类函数
+  masterGetRowClass.value = masterMeta.getRowClass;
 
   // 3. 加载从表元数据（如果有）
   let detailCols: ColDef[] = [];
@@ -273,6 +338,12 @@ async function loadMetadata() {
     detailColumnMeta.value = detailMeta.rawColumns || [];
     detailValidationRules.value = parseValidationRules(detailColumnMeta.value);
     detailCols = detailMeta.columns;
+    
+    // 保存从表行样式类函数
+    detailGetRowClass.value = detailMeta.getRowClass;
+    
+    // 提取 lookup 规则
+    detailLookupRules.value = detailMeta.lookupRules || [];
 
     // 保存从表外键字段名（数据库列名转驼峰）
     const fkCol = detailMeta.metadata?.parentFkColumn;

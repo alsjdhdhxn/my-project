@@ -34,7 +34,7 @@ public record TableMetadataDTO(
             table.getSequenceName(),
             table.getPkColumn(),
             table.getParentTableCode(),
-            table.getParentFkColumn(), // 保持原样，是数据库列名
+            table.getParentFkColumn(),
             table.getValidationRules(),
             columnDTOs
         );

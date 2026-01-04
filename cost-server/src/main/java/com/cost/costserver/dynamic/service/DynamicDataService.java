@@ -54,6 +54,9 @@ public class DynamicDataService {
         List<Map<String, Object>> list = dynamicMapper.selectList(dataSql);
         list = list.stream().map(row -> convertToCamelCase(row, columnMap)).collect(Collectors.toList());
 
+        // 合并历史对比数据
+        mergeHistoryData(list, metadata, columnMap);
+
         return new PageResult<>(list, total, param.getPage(), param.getPageSize());
     }
 
@@ -600,4 +603,111 @@ public class DynamicDataService {
             throw e;
         }
     }
+
+    /**
+     * 合并历史对比数据
+     * 1. 从列元数据中找出配置了 compare.enabled=true 的列
+     * 2. 查询历史表（表名_HIS）中昨天的数据
+     * 3. 按 ID 合并，添加 xxxHis 字段
+     */
+    private void mergeHistoryData(List<Map<String, Object>> list, TableMetadataDTO metadata, Map<String, ColumnMetadataDTO> columnMap) {
+        if (list == null || list.isEmpty()) return;
+        
+        // 1. 找出需要对比的列
+        List<CompareColumn> compareColumns = new ArrayList<>();
+        for (ColumnMetadataDTO col : metadata.columns()) {
+            if (StrUtil.isBlank(col.rulesConfig())) continue;
+            try {
+                cn.hutool.json.JSONObject config = cn.hutool.json.JSONUtil.parseObj(col.rulesConfig());
+                cn.hutool.json.JSONObject compare = config.getJSONObject("compare");
+                if (compare != null && compare.getBool("enabled", false)) {
+                    compareColumns.add(new CompareColumn(
+                        col.fieldName(),
+                        col.columnName(),
+                        compare.getStr("format", "value") // value/percent/both
+                    ));
+                }
+            } catch (Exception e) {
+                log.warn("解析 compare 配置失败: {}", col.fieldName(), e);
+            }
+        }
+        
+        if (compareColumns.isEmpty()) return;
+        
+        // 2. 构建历史表名（约定：TARGET_TABLE + _HIS）
+        String historyTable = metadata.targetTable() + "_HIS";
+        
+        // 3. 收集所有 ID
+        List<Long> ids = list.stream()
+            .map(row -> {
+                Object id = row.get("id");
+                if (id instanceof Number) return ((Number) id).longValue();
+                if (id instanceof String) return Long.parseLong((String) id);
+                return null;
+            })
+            .filter(Objects::nonNull)
+            .collect(Collectors.toList());
+        
+        if (ids.isEmpty()) return;
+        
+        // 4. 构建查询历史数据的 SQL
+        String idList = ids.stream().map(String::valueOf).collect(Collectors.joining(","));
+        String columnList = compareColumns.stream()
+            .map(c -> c.columnName)
+            .collect(Collectors.joining(", "));
+        
+        String historySql = String.format(
+            "SELECT ID, %s FROM %s WHERE ID IN (%s) AND TRUNC(HIS_TIME) = TRUNC(SYSDATE - 1)",
+            columnList, historyTable, idList
+        );
+        
+        // 5. 查询历史数据
+        Map<Long, Map<String, Object>> historyMap = new HashMap<>();
+        try {
+            List<Map<String, Object>> historyList = dynamicMapper.selectList(historySql);
+            for (Map<String, Object> row : historyList) {
+                Object idObj = row.get("ID");
+                Long id = idObj instanceof Number ? ((Number) idObj).longValue() : Long.parseLong(idObj.toString());
+                historyMap.put(id, row);
+            }
+        } catch (Exception e) {
+            log.warn("查询历史表失败: {}, SQL: {}", e.getMessage(), historySql);
+            return; // 历史表不存在或查询失败，静默跳过
+        }
+        
+        // 6. 合并到主数据
+        for (Map<String, Object> row : list) {
+            Object idObj = row.get("id");
+            Long id = idObj instanceof Number ? ((Number) idObj).longValue() : 
+                      idObj instanceof String ? Long.parseLong((String) idObj) : null;
+            if (id == null) continue;
+            
+            Map<String, Object> historyRow = historyMap.get(id);
+            
+            for (CompareColumn col : compareColumns) {
+                Object currentValue = row.get(col.fieldName);
+                Object historyValue = historyRow != null ? historyRow.get(col.columnName.toUpperCase()) : null;
+                
+                // 添加历史值字段
+                row.put(col.fieldName + "His", historyValue);
+                
+                // 计算差值（仅数值类型）
+                if (currentValue instanceof Number && historyValue instanceof Number) {
+                    double current = ((Number) currentValue).doubleValue();
+                    double history = ((Number) historyValue).doubleValue();
+                    double diff = current - history;
+                    
+                    row.put(col.fieldName + "Diff", diff);
+                    
+                    if (history != 0) {
+                        double percent = (diff / history) * 100;
+                        row.put(col.fieldName + "DiffPercent", Math.round(percent * 100) / 100.0); // 保留2位小数
+                    }
+                }
+            }
+        }
+    }
+    
+    /** 对比列配置 */
+    private record CompareColumn(String fieldName, String columnName, String format) {}
 }
