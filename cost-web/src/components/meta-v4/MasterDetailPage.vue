@@ -51,9 +51,12 @@
               :getRowId="getRowId"
               :getRowClass="masterGetRowClass"
               :rowSelection="masterRowSelection"
+              :suppressContextMenu="true"
+              :preventDefaultOnContextMenu="true"
               @grid-ready="onMasterGridReady"
               @selection-changed="onMasterSelectionChanged"
               @cell-value-changed="onMasterCellValueChanged"
+              @cell-context-menu="onMasterContextMenu"
               @cell-editing-started="masterAdapter.onCellEditingStarted"
               @cell-editing-stopped="masterAdapter.onCellEditingStopped"
             />
@@ -72,6 +75,7 @@
               :getRowClass="detailGetRowClass"
               @cell-value-changed="onDetailCellValueChanged"
               @cell-clicked="onDetailCellClicked"
+              @context-menu="onDetailContextMenu"
             />
           </div>
         </template>
@@ -88,8 +92,11 @@
           :getRowId="getRowId"
           :getRowClass="masterGetRowClass"
           :rowSelection="masterRowSelection"
+          :suppressContextMenu="true"
+          :preventDefaultOnContextMenu="true"
           @grid-ready="onMasterGridReady"
           @cell-value-changed="onMasterCellValueChanged"
+          @cell-context-menu="onMasterContextMenu"
           @cell-editing-started="masterAdapter.onCellEditingStarted"
           @cell-editing-stopped="masterAdapter.onCellEditingStopped"
         />
@@ -110,15 +117,28 @@
       @select="onLookupSelect"
       @cancel="onLookupCancel"
     />
+
+    <!-- 右键菜单 -->
+    <NDropdown
+      placement="bottom-start"
+      trigger="manual"
+      :x="contextMenuX"
+      :y="contextMenuY"
+      :options="contextMenuOptions"
+      :show="contextMenuVisible"
+      @select="onContextMenuSelect"
+      @clickoutside="onContextMenuClickOutside"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, shallowRef, computed, onMounted, onUnmounted, watch } from 'vue';
-import { NButton, NInput, NSplit, NSpin, useMessage } from 'naive-ui';
+import { ref, shallowRef, computed, onMounted, onUnmounted, watch, h } from 'vue';
+import { NButton, NInput, NSplit, NSpin, NDropdown, useMessage } from 'naive-ui';
+import type { DropdownOption } from 'naive-ui';
 import { AgGridVue } from 'ag-grid-vue3';
 import { ModuleRegistry, AllCommunityModule } from 'ag-grid-community';
-import type { GridApi, ColDef, GridReadyEvent, CellValueChangedEvent } from 'ag-grid-community';
+import type { GridApi, ColDef, GridReadyEvent, CellValueChangedEvent, CellContextMenuEvent } from 'ag-grid-community';
 import { useMasterDetailStore } from '@/store/modules/master-detail';
 import { useGridAdapter, getCellClassRules, cellStyleCSS } from '@/composables/useGridAdapter';
 import {
@@ -127,6 +147,7 @@ import {
   parseValidationRules,
   validateRows,
   formatValidationErrors,
+  generateTempId,
   type ParsedPageConfig,
   type ValidationRule
 } from '@/logic/calc-engine';
@@ -183,6 +204,12 @@ const lookupDialogRef = ref<InstanceType<typeof LookupDialog> | null>(null);
 const currentLookupRule = ref<LookupRule | null>(null);
 const currentLookupRowId = ref<number | null>(null);
 
+// 右键菜单状态
+const contextMenuVisible = ref(false);
+const contextMenuX = ref(0);
+const contextMenuY = ref(0);
+const contextMenuTarget = ref<{ isMaster: boolean; rowData: any; tabKey?: string } | null>(null);
+
 // ==================== Computed ====================
 
 const tabs = computed(() => store.config?.tabs || []);
@@ -220,6 +247,123 @@ const defaultColDef: ColDef = {
 };
 
 const masterRowSelection = { mode: 'singleRow', checkboxes: false, enableClickSelection: true } as const;
+
+// ==================== Context Menu ====================
+
+const contextMenuOptions = computed<DropdownOption[]>(() => {
+  const hasSelection = !!contextMenuTarget.value?.rowData;
+  const options: DropdownOption[] = [
+    { label: '新增行', key: 'add', icon: renderIcon('plus') }
+  ];
+  
+  if (hasSelection) {
+    options.push(
+      { label: '复制行', key: 'copy', icon: renderIcon('copy') },
+      { type: 'divider', key: 'd1' },
+      { label: '删除行', key: 'delete', icon: renderIcon('delete'), props: { style: { color: '#d03050' } } }
+    );
+  }
+  
+  return options;
+});
+
+function renderIcon(type: string) {
+  const icons: Record<string, string> = {
+    plus: '➕',
+    copy: '📋',
+    delete: '🗑️'
+  };
+  return () => h('span', { style: { marginRight: '8px' } }, icons[type] || '');
+}
+
+function onMasterContextMenu(event: CellContextMenuEvent) {
+  const e = event.event as MouseEvent;
+  if (!e) return;
+  
+  contextMenuX.value = e.clientX;
+  contextMenuY.value = e.clientY;
+  contextMenuTarget.value = { isMaster: true, rowData: event.data };
+  contextMenuVisible.value = true;
+}
+
+function onContextMenuSelect(key: string) {
+  contextMenuVisible.value = false;
+  const target = contextMenuTarget.value;
+  if (!target) return;
+
+  if (key === 'add') {
+    if (target.isMaster) {
+      const newRow = store.addMasterRow();
+      setTimeout(() => {
+        masterGridApi.value?.forEachNode(node => {
+          if (node.data?.id === newRow.id) node.setSelected(true);
+        });
+      }, 50);
+    } else if (target.tabKey) {
+      store.addDetailRow(target.tabKey, {});
+    }
+  } else if (key === 'copy' && target.rowData) {
+    const sourceData = { ...target.rowData };
+    delete sourceData.id;
+    delete sourceData._isNew;
+    delete sourceData._isDeleted;
+    delete sourceData._changeType;
+    delete sourceData._originalValues;
+    
+    if (target.isMaster) {
+      // 复制主表时，连带复制从表数据
+      const sourceDetails = sourceData._details;
+      delete sourceData._details;
+      
+      const newRow = store.addMasterRow(sourceData);
+      
+      // 复制从表数据
+      if (sourceDetails?.rows?.length > 0) {
+        const fkField = detailFkColumn.value;
+        for (const detailRow of sourceDetails.rows) {
+          if (detailRow._isDeleted) continue;
+          
+          const detailCopy = { ...detailRow };
+          delete detailCopy.id;
+          delete detailCopy._isNew;
+          delete detailCopy._isDeleted;
+          delete detailCopy._changeType;
+          delete detailCopy._originalValues;
+          
+          // 设置新的外键关联（临时 ID）
+          if (fkField) {
+            detailCopy[fkField] = newRow.id;
+          }
+          
+          // 直接添加到新主表的从表中
+          const newDetailId = generateTempId();
+          newRow._details!.rows.push({
+            ...detailCopy,
+            id: newDetailId,
+            _isNew: true,
+            _changeType: {},
+            _originalValues: {}
+          });
+        }
+      }
+      
+      setTimeout(() => {
+        masterGridApi.value?.forEachNode(node => {
+          if (node.data?.id === newRow.id) node.setSelected(true);
+        });
+      }, 50);
+    } else if (target.tabKey) {
+      delete sourceData._details;
+      store.addDetailRow(target.tabKey, sourceData);
+    }
+  } else if (key === 'delete' && target.rowData) {
+    store.deleteRow(target.rowData.id, target.isMaster);
+  }
+}
+
+function onContextMenuClickOutside() {
+  contextMenuVisible.value = false;
+}
 
 // ==================== Adapter ====================
 
@@ -293,6 +437,13 @@ function onLookupSelect(fillData: Record<string, any>) {
 function onLookupCancel() {
   currentLookupRule.value = null;
   currentLookupRowId.value = null;
+}
+
+function onDetailContextMenu(payload: { tabKey: string; rowData: any; x: number; y: number }) {
+  contextMenuX.value = payload.x;
+  contextMenuY.value = payload.y;
+  contextMenuTarget.value = { isMaster: false, rowData: payload.rowData, tabKey: payload.tabKey };
+  contextMenuVisible.value = true;
 }
 
 // ==================== Data Loading ====================
