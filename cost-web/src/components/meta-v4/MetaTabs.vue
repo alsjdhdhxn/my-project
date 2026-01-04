@@ -28,7 +28,7 @@
 <script setup lang="ts">
 import { computed, shallowReactive, watch } from 'vue';
 import { AgGridVue } from 'ag-grid-vue3';
-import { ModuleRegistry, AllCommunityModule, themeQuartz } from 'ag-grid-community';
+import { ModuleRegistry, AllCommunityModule } from 'ag-grid-community';
 import type { GridApi, ColDef, GridReadyEvent, CellValueChangedEvent, CellEditingStartedEvent, CellEditingStoppedEvent } from 'ag-grid-community';
 import type { TabConfig } from '@/logic/calc-engine';
 import type { MasterDetailStore } from '@/store/modules/master-detail';

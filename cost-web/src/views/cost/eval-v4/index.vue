@@ -3,5 +3,5 @@
 </template>
 
 <script setup lang="ts">
-import MasterDetailPage from '@/components/meta-v2/MasterDetailPage.vue';
+import MasterDetailPage from '@/components/meta-v4/MasterDetailPage.vue';
 </script>

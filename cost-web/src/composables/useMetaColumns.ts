@@ -4,7 +4,7 @@
  */
 import type { ColDef } from 'ag-grid-community';
 import { fetchTableMetadata } from '@/service/api';
-import type { CalcRule } from './useCalcEngine';
+import type { CalcRule } from '@/logic/calc-engine';
 
 type ColumnMetadata = Api.Metadata.ColumnMetadata;
 

@@ -49,25 +49,6 @@ export const generatedRoutes: GeneratedRoute[] = [
     },
     children: [
       {
-        name: 'cost_eval-v2',
-        path: '/cost/eval-v2',
-        component: 'view.cost_eval-v2',
-        meta: {
-          title: '评估单V2',
-          icon: 'mdi:calculator',
-          i18nKey: 'route.cost_eval-v2'
-        }
-      },
-      {
-        name: 'cost_eval-v3',
-        path: '/cost/eval-v3',
-        component: 'view.cost_eval-v3',
-        meta: {
-          title: 'cost_eval-v3',
-          i18nKey: 'route.cost_eval-v3'
-        }
-      },
-      {
         name: 'cost_eval-v4',
         path: '/cost/eval-v4',
         component: 'view.cost_eval-v4',
