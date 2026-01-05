@@ -20,8 +20,6 @@ declare module "@elegant-router/types" {
     "403": "/403";
     "404": "/404";
     "500": "/500";
-    "cost": "/cost";
-    "cost_eval-v4": "/cost/eval-v4";
     "dynamic": "/dynamic";
     "home": "/home";
     "iframe-page": "/iframe-page/:url";
@@ -60,7 +58,6 @@ declare module "@elegant-router/types" {
     | "403"
     | "404"
     | "500"
-    | "cost"
     | "dynamic"
     | "home"
     | "iframe-page"
@@ -87,7 +84,6 @@ declare module "@elegant-router/types" {
     | "dynamic"
     | "iframe-page"
     | "login"
-    | "cost_eval-v4"
     | "home"
   >;
 

@@ -37,6 +37,7 @@ export interface TabsComponentConfig {
   calcRules?: CalcRule[];
   aggregates?: AggRule[];
   postProcess?: string; // 聚合后处理表达式
+  masterCalcRules?: CalcRule[]; // 主表计算规则
 }
 
 /** 页面组件（从 API 返回） */
@@ -63,6 +64,7 @@ export interface ParsedPageConfig {
   groupField?: string;
   mode: 'group' | 'multi';
   postProcess?: string; // 聚合后处理表达式
+  masterCalcRules: CalcRule[]; // 主表计算规则
 }
 
 // ==================== 解析函数 ====================
@@ -89,7 +91,8 @@ export function parsePageComponents(components: PageComponent[]): ParsedPageConf
       broadcast: [],
       calcRules: [],
       aggregates: [],
-      mode: 'group'
+      mode: 'group',
+      masterCalcRules: []
     };
   }
 
@@ -111,7 +114,8 @@ export function parsePageComponents(components: PageComponent[]): ParsedPageConf
     aggregates: config.aggregates || [],
     groupField: config.groupField,
     mode: config.mode || 'group',
-    postProcess: config.postProcess
+    postProcess: config.postProcess,
+    masterCalcRules: config.masterCalcRules || []
   };
 }
 

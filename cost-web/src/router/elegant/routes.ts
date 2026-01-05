@@ -40,26 +40,6 @@ export const generatedRoutes: GeneratedRoute[] = [
     }
   },
   {
-    name: 'cost',
-    path: '/cost',
-    component: 'layout.base',
-    meta: {
-      title: '成本管理',
-      i18nKey: 'route.cost'
-    },
-    children: [
-      {
-        name: 'cost_eval-v4',
-        path: '/cost/eval-v4',
-        component: 'view.cost_eval-v4',
-        meta: {
-          title: 'cost_eval-v4',
-          i18nKey: 'route.cost_eval-v4'
-        }
-      }
-    ]
-  },
-  {
     name: 'dynamic',
     path: '/dynamic',
     component: 'layout.base$view.dynamic',

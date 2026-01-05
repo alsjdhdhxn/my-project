@@ -58,6 +58,7 @@ export function useMasterDetailStore(pageCode: string) {
     // 编译后的规则
     const compiledCalcRules = shallowRef<ReturnType<typeof compileCalcRules>>([]);
     const compiledAggRules = shallowRef<ReturnType<typeof compileAggRules>>([]);
+    const compiledMasterCalcRules = shallowRef<ReturnType<typeof compileCalcRules>>([]);
 
     // 计算防抖标记
     let calcPending = false;
@@ -153,6 +154,9 @@ export function useMasterDetailStore(pageCode: string) {
       if (pageConfig.aggregates.length > 0) {
         compiledAggRules.value = compileAggRules(pageConfig.aggregates, pageCode);
       }
+      if (pageConfig.masterCalcRules.length > 0) {
+        compiledMasterCalcRules.value = compileCalcRules(pageConfig.masterCalcRules, `${pageCode}-master`);
+      }
 
       isReady.value = true;
     }
@@ -237,14 +241,14 @@ export function useMasterDetailStore(pageCode: string) {
       // 触发响应式更新（通知 Grid 刷新）
       triggerReactiveUpdate();
 
-      // 主表广播字段变化 → 触发从表重算
+      // 主表广播字段变化 → 触发从表重算（全量）
       if (isMaster && config.value?.broadcast?.includes(field)) {
         triggerDetailCalc();
       }
 
-      // 从表用户修改 → 触发行级计算 + 聚合
+      // 从表用户修改 → 只计算受影响的规则
       if (!isMaster && changeType === 'user') {
-        triggerDetailCalc();
+        triggerDetailCalcForField(rowId, field);
         triggerAggCalc();
       }
     }
@@ -414,7 +418,7 @@ export function useMasterDetailStore(pageCode: string) {
       updateVersion.value++;
     }
 
-    /** 触发从表计算 */
+    /** 触发从表计算（全量） */
     function triggerDetailCalc() {
       if (calcPending || compiledCalcRules.value.length === 0) return;
 
@@ -425,7 +429,16 @@ export function useMasterDetailStore(pageCode: string) {
       });
     }
 
-    /** 执行从表计算 */
+    /** 触发从表计算（单行，只计算受影响的规则） */
+    function triggerDetailCalcForField(rowId: number, changedField: string) {
+      if (compiledCalcRules.value.length === 0) return;
+
+      nextTick(() => {
+        runDetailCalcForRow(rowId, changedField);
+      });
+    }
+
+    /** 执行从表计算（全量，用于广播字段变化） */
     function runDetailCalc() {
       const master = currentMaster.value;
       if (!master?._details?.rows) return;
@@ -466,9 +479,62 @@ export function useMasterDetailStore(pageCode: string) {
       triggerAggCalc();
     }
 
+    /** 执行从表计算（单行，只计算受影响的规则） */
+    function runDetailCalcForRow(rowId: number, changedField: string) {
+      const master = currentMaster.value;
+      if (!master?._details?.rows) return;
+
+      const row = master._details.rows.find(r => r.id === rowId);
+      if (!row || row._isDeleted) return;
+
+      const context: Record<string, any> = {};
+      for (const field of config.value?.broadcast || []) {
+        context[field] = master[field] ?? 0;
+      }
+
+      // 只获取受影响的规则
+      const affectedRules = compiledCalcRules.value.filter(rule => {
+        // 检查 triggerFields
+        if (rule.triggerFields?.includes(changedField)) return true;
+        // 多公式模式：检查各公式的 triggerFields
+        if (rule.formulas) {
+          for (const formula of Object.values(rule.formulas)) {
+            if (formula.triggerFields?.includes(changedField)) return true;
+          }
+        }
+        return false;
+      });
+
+      if (affectedRules.length === 0) return;
+
+      let hasChange = false;
+
+      // 多轮计算支持级联
+      for (let round = 0; round < MAX_CALC_ROUNDS; round++) {
+        let roundChange = false;
+        const results = calcRowFields(row, context, affectedRules);
+
+        for (const [field, value] of Object.entries(results)) {
+          if (!isValueEqual(row[field], value)) {
+            row[field] = value;
+            markChange(row, field, 'cascade');
+            roundChange = true;
+            hasChange = true;
+          }
+        }
+
+        if (!roundChange) break;
+      }
+
+      if (hasChange) {
+        triggerReactiveUpdate();
+      }
+    }
+
     /** 触发聚合计算 */
     function triggerAggCalc() {
-      if (aggPending || compiledAggRules.value.length === 0) return;
+      console.debug('[Store] triggerAggCalc called, aggRules:', compiledAggRules.value.length, 'masterCalcRules:', compiledMasterCalcRules.value.length);
+      if (aggPending || (compiledAggRules.value.length === 0 && compiledMasterCalcRules.value.length === 0)) return;
 
       aggPending = true;
       nextTick(() => {
@@ -496,6 +562,18 @@ export function useMasterDetailStore(pageCode: string) {
           master[field] = value;
           markChange(master, field, 'cascade');
           hasChange = true;
+        }
+      }
+
+      // 聚合完成后执行主表计算规则
+      if (compiledMasterCalcRules.value.length > 0) {
+        const masterResults = calcRowFields(master, {}, compiledMasterCalcRules.value);
+        for (const [field, value] of Object.entries(masterResults)) {
+          if (!isValueEqual(master[field], value)) {
+            master[field] = value;
+            markChange(master, field, 'cascade');
+            hasChange = true;
+          }
         }
       }
 

@@ -155,7 +155,33 @@ export function calcRowFields(
   precision = 2
 ): Record<string, number> {
   const results: Record<string, number> = {};
-  const scope = { ...context, ...row };
+  
+  // 构建 scope，确保数值字段有默认值（避免 null/undefined 导致 NaN）
+  const scope: Record<string, any> = {};
+  for (const [key, value] of Object.entries({ ...context, ...row })) {
+    // 数值类型字段：null/undefined 转为 0
+    scope[key] = value ?? 0;
+  }
+
+  // 从规则中提取所有依赖字段，确保都有默认值
+  for (const rule of rules) {
+    // 单公式模式的 triggerFields
+    for (const field of rule.triggerFields || []) {
+      if (!(field in scope)) {
+        scope[field] = 0;
+      }
+    }
+    // 多公式模式的各公式 triggerFields
+    if (rule.formulas) {
+      for (const formula of Object.values(rule.formulas)) {
+        for (const field of formula.triggerFields || []) {
+          if (!(field in scope)) {
+            scope[field] = 0;
+          }
+        }
+      }
+    }
+  }
 
   for (const rule of rules) {
     // 检查条件
@@ -174,8 +200,10 @@ export function calcRowFields(
         if (compiledFormula) {
           value = compiledFormula.evaluate(scope);
         } else {
-          // 没有匹配的公式，跳过或使用默认值
-          console.debug(`[Calculator] 未找到公式: ${rule.field}, key=${formulaKey}`);
+          // 没有匹配的公式，保持原值不变（不加入 results）
+          if (row[rule.field] != null) {
+            scope[rule.field] = row[rule.field];
+          }
           continue;
         }
       }

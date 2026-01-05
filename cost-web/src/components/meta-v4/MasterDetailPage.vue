@@ -506,6 +506,11 @@ async function loadMetadata() {
 
     // 初始化可见 Tab
     pageConfig.tabs.forEach(tab => visibleTabKeys.value.add(tab.key));
+    
+    // 合并从表列元数据中的计算规则（RULES_CONFIG 中定义的）
+    if (detailMeta.calcRules && detailMeta.calcRules.length > 0) {
+      pageConfig.calcRules = [...pageConfig.calcRules, ...detailMeta.calcRules];
+    }
   }
 
   // 4. 初始化 Store
