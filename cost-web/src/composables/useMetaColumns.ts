@@ -268,12 +268,28 @@ export function extractCalcRules(columns: ColumnMetadata[]): CalcRule[] {
       try {
         const config = JSON.parse(col.rulesConfig);
         if (config.calculate) {
-          rules.push({
-            field: col.fieldName,
-            expression: config.calculate.expression,
-            triggerFields: config.calculate.triggerFields || [],
-            order: index
-          });
+          const calc = config.calculate;
+          
+          // 多公式模式
+          if (calc.formulaField && calc.formulas) {
+            rules.push({
+              field: col.fieldName,
+              expression: '', // 多公式模式不使用单一表达式
+              triggerFields: [], // 触发字段在各公式中定义
+              formulaField: calc.formulaField,
+              formulas: calc.formulas,
+              order: index
+            });
+          }
+          // 单公式模式
+          else if (calc.expression) {
+            rules.push({
+              field: col.fieldName,
+              expression: calc.expression,
+              triggerFields: calc.triggerFields || [],
+              order: index
+            });
+          }
         }
       } catch (e) {
         console.warn(`[useMetaColumns] 解析 rulesConfig 失败: ${col.fieldName}`, e);

@@ -6,6 +6,12 @@ import { compile, type EvalFunction } from 'mathjs';
 
 // ==================== 类型定义 ====================
 
+/** 单个公式定义 */
+export interface FormulaDefinition {
+  expression: string;
+  triggerFields: string[];
+}
+
 /** 行级计算规则 */
 export interface CalcRule {
   field: string;
@@ -13,6 +19,9 @@ export interface CalcRule {
   triggerFields: string[];
   condition?: string; // JS 语法条件，如 "useFlag !== '包材'"
   order?: number;
+  // 多公式支持
+  formulaField?: string; // 指定用哪个字段的值来选公式
+  formulas?: Record<string, FormulaDefinition>; // 公式映射表
 }
 
 /** 聚合规则 */
@@ -24,9 +33,16 @@ export interface AggRule {
   expression?: string; // 表达式计算，如 "totalYl + totalFl"
 }
 
+/** 聚合配置（包含规则和后处理） */
+export interface AggConfig {
+  rules: AggRule[];
+  postProcess?: string; // 后处理表达式，如 "if (totalYl > 0) { totalYl /= 1.13; ... }"
+}
+
 /** 编译后的计算规则 */
 interface CompiledCalcRule extends CalcRule {
-  compiled: EvalFunction;
+  compiled?: EvalFunction; // 单公式时使用
+  compiledFormulas?: Record<string, EvalFunction>; // 多公式时使用
 }
 
 /** 编译后的聚合规则 */
@@ -49,11 +65,34 @@ export function compileCalcRules(rules: CalcRule[], cacheKey?: string): Compiled
     return calcRuleCache.get(cacheKey)!;
   }
 
-  const compiled = rules.map((rule, idx) => ({
-    ...rule,
-    order: rule.order ?? idx,
-    compiled: compile(rule.expression)
-  }));
+  const compiled = rules.map((rule, idx) => {
+    const result: CompiledCalcRule = {
+      ...rule,
+      order: rule.order ?? idx
+    };
+
+    // 多公式模式
+    if (rule.formulaField && rule.formulas) {
+      result.compiledFormulas = {};
+      for (const [key, formula] of Object.entries(rule.formulas)) {
+        try {
+          result.compiledFormulas[key] = compile(formula.expression);
+        } catch (e) {
+          console.warn(`[Calculator] 编译公式失败: ${rule.field}.${key}`, e);
+        }
+      }
+    } 
+    // 单公式模式
+    else if (rule.expression) {
+      try {
+        result.compiled = compile(rule.expression);
+      } catch (e) {
+        console.warn(`[Calculator] 编译公式失败: ${rule.field}`, e);
+      }
+    }
+
+    return result;
+  });
 
   // 按 order 排序
   compiled.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
@@ -125,13 +164,34 @@ export function calcRowFields(
     }
 
     try {
-      const value = rule.compiled.evaluate(scope);
+      let value: number;
+
+      // 多公式模式：根据 formulaField 的值选择公式
+      if (rule.formulaField && rule.compiledFormulas) {
+        const formulaKey = String(row[rule.formulaField] ?? '');
+        const compiledFormula = rule.compiledFormulas[formulaKey];
+        
+        if (compiledFormula) {
+          value = compiledFormula.evaluate(scope);
+        } else {
+          // 没有匹配的公式，跳过或使用默认值
+          console.debug(`[Calculator] 未找到公式: ${rule.field}, key=${formulaKey}`);
+          continue;
+        }
+      }
+      // 单公式模式
+      else if (rule.compiled) {
+        value = rule.compiled.evaluate(scope);
+      } else {
+        continue;
+      }
+
       const rounded = round(value, precision);
       results[rule.field] = rounded;
       // 更新 scope，支持级联计算
       scope[rule.field] = rounded;
     } catch (e) {
-      console.warn('[Calculator] 计算错误:', rule.field, rule.expression, e);
+      console.warn('[Calculator] 计算错误:', rule.field, e);
       results[rule.field] = 0;
     }
   }
@@ -157,9 +217,41 @@ export function getAffectedRules(
     const current = queue.shift()!;
 
     for (const rule of rules) {
-      const isDep = isBroadcast
-        ? rule.expression.includes(current)
-        : rule.triggerFields.includes(current);
+      let isDep = false;
+
+      if (isBroadcast) {
+        // 广播字段：检查表达式中是否包含该字段
+        if (rule.expression && rule.expression.includes(current)) {
+          isDep = true;
+        }
+        // 多公式模式：检查所有公式的表达式
+        if (rule.formulas) {
+          for (const formula of Object.values(rule.formulas)) {
+            if (formula.expression.includes(current)) {
+              isDep = true;
+              break;
+            }
+          }
+        }
+      } else {
+        // 普通字段：检查 triggerFields
+        if (rule.triggerFields.includes(current)) {
+          isDep = true;
+        }
+        // 多公式模式：检查所有公式的 triggerFields
+        if (rule.formulas) {
+          for (const formula of Object.values(rule.formulas)) {
+            if (formula.triggerFields.includes(current)) {
+              isDep = true;
+              break;
+            }
+          }
+        }
+        // 检查 formulaField 本身是否变化
+        if (rule.formulaField === current) {
+          isDep = true;
+        }
+      }
 
       if (isDep && !affected.has(rule.field)) {
         affected.add(rule.field);
@@ -177,13 +269,15 @@ export function getAffectedRules(
  * @param rules 编译后的聚合规则
  * @param currentMaster 当前主表行（用于表达式计算）
  * @param precision 小数精度
+ * @param postProcess 后处理表达式
  * @returns 聚合结果 Map
  */
 export function calcAggregates(
   rows: Record<string, any>[],
   rules: CompiledAggRule[],
   currentMaster: Record<string, any> = {},
-  precision = 2
+  precision = 2,
+  postProcess?: string
 ): Record<string, number> {
   const results: Record<string, number> = {};
 
@@ -207,6 +301,27 @@ export function calcAggregates(
         console.warn('[Calculator] 聚合表达式计算失败:', rule.expression, e);
         results[rule.targetField] = 0;
       }
+    }
+  }
+
+  // 第三轮：执行后处理（可修正聚合结果）
+  if (postProcess) {
+    try {
+      // 构建后处理函数，传入所有聚合结果作为可修改变量
+      const fields = Object.keys(results);
+      const fn = new Function(...fields, `
+        ${postProcess}
+        return { ${fields.join(', ')} };
+      `);
+      const processed = fn(...Object.values(results));
+      // 更新结果并四舍五入
+      for (const field of fields) {
+        if (typeof processed[field] === 'number') {
+          results[field] = round(processed[field], precision);
+        }
+      }
+    } catch (e) {
+      console.warn('[Calculator] 后处理执行失败:', postProcess, e);
     }
   }
 

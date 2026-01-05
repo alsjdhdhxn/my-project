@@ -14,6 +14,7 @@ export interface TabConfig {
   // group 模式
   groupField?: string;
   groupValue?: string;
+  groupValues?: string[]; // 多个分组值
   // multi 模式
   tableCode?: string;
   // 通用
@@ -28,12 +29,14 @@ export interface TabsComponentConfig {
     key: string;
     title: string;
     value?: string; // group 模式的分组值
+    values?: string[]; // group 模式的多个分组值
     tableCode?: string; // multi 模式的表代码
     columns: string[];
   }>;
   broadcast?: string[];
   calcRules?: CalcRule[];
   aggregates?: AggRule[];
+  postProcess?: string; // 聚合后处理表达式
 }
 
 /** 页面组件（从 API 返回） */
@@ -59,6 +62,7 @@ export interface ParsedPageConfig {
   aggregates: AggRule[];
   groupField?: string;
   mode: 'group' | 'multi';
+  postProcess?: string; // 聚合后处理表达式
 }
 
 // ==================== 解析函数 ====================
@@ -106,7 +110,8 @@ export function parsePageComponents(components: PageComponent[]): ParsedPageConf
     calcRules: config.calcRules || [],
     aggregates: config.aggregates || [],
     groupField: config.groupField,
-    mode: config.mode || 'group'
+    mode: config.mode || 'group',
+    postProcess: config.postProcess
   };
 }
 
@@ -120,6 +125,7 @@ export function parseTabConfig(config: TabsComponentConfig): TabConfig[] {
     mode: config.mode || 'group',
     groupField: config.groupField,
     groupValue: tab.value,
+    groupValues: tab.values, // 多个分组值
     tableCode: tab.tableCode,
     columns: tab.columns || []
   }));

@@ -6,6 +6,7 @@
 export {
   type CalcRule,
   type AggRule,
+  type FormulaDefinition,
   compileCalcRules,
   compileAggRules,
   calcRowFields,

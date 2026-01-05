@@ -96,8 +96,14 @@ export function useMasterDetailStore(pageCode: string) {
 
       for (const tab of tabs) {
         if (tab.mode === 'group') {
+          // groupValues 优先（多个分组值合并到一个 Tab）
+          if (tab.groupValues && tab.groupValues.length > 0 && groupField) {
+            result[tab.key] = visibleDetailRows.value.filter(
+              r => tab.groupValues!.includes(r[groupField] as string)
+            );
+          }
           // groupValue 为 * 或未设置时，显示所有数据（不分组）
-          if (!tab.groupValue || tab.groupValue === '*' || !groupField) {
+          else if (!tab.groupValue || tab.groupValue === '*' || !groupField) {
             result[tab.key] = visibleDetailRows.value;
           } else {
             result[tab.key] = visibleDetailRows.value.filter(
@@ -479,7 +485,9 @@ export function useMasterDetailStore(pageCode: string) {
       const aggResults = calcAggregates(
         visibleDetailRows.value,
         compiledAggRules.value,
-        master
+        master,
+        2,
+        config.value?.postProcess
       );
 
       let hasChange = false;
