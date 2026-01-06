@@ -53,6 +53,10 @@
               :rowSelection="masterRowSelection"
               :suppressContextMenu="true"
               :preventDefaultOnContextMenu="true"
+              :sideBar="sideBar"
+              :cellSelection="cellSelectionEnabled"
+              :autoGroupColumnDef="autoGroupColumnDef"
+              :groupDefaultExpanded="enableRowGrouping ? 1 : undefined"
               @grid-ready="onMasterGridReady"
               @selection-changed="onMasterSelectionChanged"
               @cell-value-changed="onMasterCellValueChanged"
@@ -94,6 +98,10 @@
           :rowSelection="masterRowSelection"
           :suppressContextMenu="true"
           :preventDefaultOnContextMenu="true"
+          :sideBar="sideBar"
+          :cellSelection="cellSelectionEnabled"
+          :autoGroupColumnDef="autoGroupColumnDef"
+          :groupDefaultExpanded="enableRowGrouping ? 1 : undefined"
           @grid-ready="onMasterGridReady"
           @cell-value-changed="onMasterCellValueChanged"
           @cell-context-menu="onMasterContextMenu"
@@ -137,8 +145,7 @@ import { ref, shallowRef, computed, onMounted, onUnmounted, watch, h } from 'vue
 import { NButton, NInput, NSplit, NSpin, NDropdown, useMessage } from 'naive-ui';
 import type { DropdownOption } from 'naive-ui';
 import { AgGridVue } from 'ag-grid-vue3';
-import { ModuleRegistry, AllCommunityModule } from 'ag-grid-community';
-import type { GridApi, ColDef, GridReadyEvent, CellValueChangedEvent, CellContextMenuEvent } from 'ag-grid-community';
+import type { GridApi, ColDef, GridReadyEvent, CellValueChangedEvent, CellContextMenuEvent, SideBarDef } from 'ag-grid-community';
 import { useMasterDetailStore } from '@/store/modules/master-detail';
 import { useGridAdapter, getCellClassRules, cellStyleCSS } from '@/composables/useGridAdapter';
 import {
@@ -153,15 +160,12 @@ import {
 } from '@/logic/calc-engine';
 import { fetchDynamicData, fetchPageComponents, saveDynamicData } from '@/service/api';
 import { loadTableMeta, type RowStyleRule, type LookupRule, extractLookupRules } from '@/composables/useMetaColumns';
+import { isEnterpriseEnabled } from '@/plugins/ag-grid';
 import MetaFloatToolbar from './MetaFloatToolbar.vue';
 import MetaTabs from './MetaTabs.vue';
 import LookupDialog from './LookupDialog.vue';
 
-// 注册 AG Grid 模块（全局只注册一次）
-if (!(window as any).__AG_GRID_REGISTERED__) {
-  ModuleRegistry.registerModules([AllCommunityModule]);
-  (window as any).__AG_GRID_REGISTERED__ = true;
-}
+// AG Grid 模块已在 main.ts 全局注册
 
 // ==================== Props ====================
 
@@ -218,13 +222,34 @@ const tabs = computed(() => store.config?.tabs || []);
 const hasDetail = computed(() => !!store.config?.detailTableCode);
 
 const masterColumnDefs = computed<ColDef[]>(() => {
-  return store.masterColumns.map(col => ({
-    ...col,
-    cellClassRules: {
-      ...col.cellClassRules,  // 保留元数据中的样式规则
-      ...getCellClassRules()  // 添加变更状态样式
+  const groupByFields = enterpriseConfig.value.groupBy || [];
+  const aggregations = enterpriseConfig.value.aggregations || [];
+  
+  return store.masterColumns.map(col => {
+    const colDef: ColDef = {
+      ...col,
+      cellClassRules: {
+        ...col.cellClassRules,  // 保留元数据中的样式规则
+        ...getCellClassRules()  // 添加变更状态样式
+      }
+    };
+    
+    // 企业版：配置分组列
+    if (enableRowGrouping.value && groupByFields.includes(col.field)) {
+      colDef.rowGroup = true;
+      colDef.hide = true;
     }
-  }));
+    
+    // 企业版：配置聚合列
+    if (enableRowGrouping.value) {
+      const agg = aggregations.find((a: any) => a.field === col.field);
+      if (agg) {
+        colDef.aggFunc = agg.aggFunc || 'sum';
+      }
+    }
+    
+    return colDef;
+  });
 });
 
 const detailColumnDefs = computed<ColDef[]>(() => {
@@ -241,12 +266,73 @@ const defaultColDef: ColDef = {
   sortable: true,
   filter: true,
   resizable: true,
-  minWidth: 50,
   wrapHeaderText: true,
   autoHeaderHeight: true
 };
 
 const masterRowSelection = { mode: 'singleRow', checkboxes: false, enableClickSelection: true } as const;
+
+// ==================== Enterprise Features ====================
+
+/** 企业版功能配置（从元数据读取） */
+const enterpriseConfig = computed(() => store.config?.enterpriseConfig || {});
+
+/** 是否启用侧边栏 */
+const enableSidebar = computed(() => isEnterpriseEnabled() && enterpriseConfig.value.enableSidebar !== false);
+
+/** 是否启用 Excel 导出 */
+const enableExcelExport = computed(() => isEnterpriseEnabled() && enterpriseConfig.value.enableExcelExport !== false);
+
+/** 是否启用行分组 */
+const enableRowGrouping = computed(() => isEnterpriseEnabled() && !!enterpriseConfig.value.groupBy?.length);
+
+/** 是否启用单元格选择（v35 替代 enableRangeSelection） */
+const cellSelectionEnabled = computed(() => isEnterpriseEnabled() && enterpriseConfig.value.enableRangeSelection !== false);
+
+/** 侧边栏配置 */
+const sideBar = computed<SideBarDef | undefined>(() => {
+  if (!enableSidebar.value) return undefined;
+  
+  return {
+    toolPanels: [
+      {
+        id: 'columns',
+        labelDefault: '列',
+        labelKey: 'columns',
+        iconKey: 'columns',
+        toolPanel: 'agColumnsToolPanel',
+        toolPanelParams: {
+          suppressRowGroups: !enableRowGrouping.value,
+          suppressValues: !enableRowGrouping.value,
+          suppressPivots: true,
+          suppressPivotMode: true,
+        },
+      },
+      {
+        id: 'filters',
+        labelDefault: '筛选',
+        labelKey: 'filters',
+        iconKey: 'filter',
+        toolPanel: 'agFiltersToolPanel',
+      },
+    ],
+    position: 'right',
+    hiddenByDefault: true,
+  };
+});
+
+/** 自动分组列配置 */
+const autoGroupColumnDef = computed<ColDef | undefined>(() => {
+  if (!enableRowGrouping.value) return undefined;
+  
+  return {
+    headerName: enterpriseConfig.value.groupColumnName || '分组',
+    minWidth: 200,
+    cellRendererParams: {
+      suppressCount: false,
+    },
+  };
+});
 
 // ==================== Context Menu ====================
 
@@ -264,6 +350,14 @@ const contextMenuOptions = computed<DropdownOption[]>(() => {
     );
   }
   
+  // 企业版：添加导出选项
+  if (enableExcelExport.value) {
+    options.push(
+      { type: 'divider', key: 'd2' },
+      { label: '导出 Excel', key: 'exportExcel', icon: renderIcon('excel') }
+    );
+  }
+  
   return options;
 });
 
@@ -271,7 +365,8 @@ function renderIcon(type: string) {
   const icons: Record<string, string> = {
     plus: '➕',
     copy: '📋',
-    delete: '🗑️'
+    delete: '🗑️',
+    excel: '📊'
   };
   return () => h('span', { style: { marginRight: '8px' } }, icons[type] || '');
 }
@@ -358,6 +453,8 @@ function onContextMenuSelect(key: string) {
     }
   } else if (key === 'delete' && target.rowData) {
     store.deleteRow(target.rowData.id, target.isMaster);
+  } else if (key === 'exportExcel') {
+    handleExportExcel();
   }
 }
 
@@ -385,6 +482,14 @@ function getRowId(params: any) {
 
 function onMasterGridReady(params: GridReadyEvent) {
   masterGridApi.value = params.api;
+  // 只对没有配置固定宽度的列进行自动调整
+  const colsToAutoSize = store.masterColumns
+    .filter(col => !col.width)
+    .map(col => col.field as string);
+  
+  if (colsToAutoSize.length > 0) {
+    params.api.autoSizeColumns(colsToAutoSize);
+  }
 }
 
 async function onMasterSelectionChanged() {
@@ -575,6 +680,20 @@ function handleSearch(text: string) {
 async function handleRefresh() {
   store.reset();
   await loadMasterData();
+}
+
+/** 导出 Excel（企业版功能） */
+function handleExportExcel() {
+  if (!masterGridApi.value || !enableExcelExport.value) return;
+  
+  const fileName = `${store.config?.masterTableCode || 'export'}_${new Date().toLocaleDateString().replace(/\//g, '-')}.xlsx`;
+  
+  masterGridApi.value.exportDataAsExcel({
+    fileName,
+    sheetName: store.config?.masterTableCode || 'Sheet1',
+  });
+  
+  message.success('导出成功');
 }
 
 async function handleSave() {

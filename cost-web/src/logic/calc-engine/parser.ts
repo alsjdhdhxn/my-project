@@ -53,6 +53,19 @@ export interface PageComponent {
   children?: PageComponent[];
 }
 
+/** 企业版功能配置 */
+export interface EnterpriseConfig {
+  enableSidebar?: boolean;        // 启用侧边栏
+  enableExcelExport?: boolean;    // 启用 Excel 导出
+  enableRangeSelection?: boolean; // 启用范围选择
+  groupBy?: string[];             // 分组字段
+  aggregations?: Array<{          // 聚合配置
+    field: string;
+    aggFunc: 'sum' | 'min' | 'max' | 'avg' | 'count' | 'first' | 'last';
+  }>;
+  groupColumnName?: string;       // 分组列名称
+}
+
 /** 解析结果 */
 export interface ParsedPageConfig {
   masterTableCode: string;
@@ -65,6 +78,7 @@ export interface ParsedPageConfig {
   mode: 'group' | 'multi';
   postProcess?: string; // 聚合后处理表达式
   masterCalcRules: CalcRule[]; // 主表计算规则
+  enterpriseConfig?: EnterpriseConfig; // 企业版功能配置
 }
 
 // ==================== 解析函数 ====================
@@ -80,6 +94,10 @@ export function parsePageComponents(components: PageComponent[]): ParsedPageConf
     return null;
   }
 
+  // 解析主表组件的企业版配置
+  const masterConfig = parseComponentConfig<{ enterpriseConfig?: EnterpriseConfig }>(masterGrid.componentConfig);
+  const enterpriseConfig = masterConfig?.enterpriseConfig;
+
   // 约定：从表组件 type = TABS（可选，单表页面没有）
   const detailTabs = findComponentByType(components, 'TABS');
   if (!detailTabs) {
@@ -92,7 +110,8 @@ export function parsePageComponents(components: PageComponent[]): ParsedPageConf
       calcRules: [],
       aggregates: [],
       mode: 'group',
-      masterCalcRules: []
+      masterCalcRules: [],
+      enterpriseConfig
     };
   }
 
@@ -115,7 +134,8 @@ export function parsePageComponents(components: PageComponent[]): ParsedPageConf
     groupField: config.groupField,
     mode: config.mode || 'group',
     postProcess: config.postProcess,
-    masterCalcRules: config.masterCalcRules || []
+    masterCalcRules: config.masterCalcRules || [],
+    enterpriseConfig
   };
 }
 

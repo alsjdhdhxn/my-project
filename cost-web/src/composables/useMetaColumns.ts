@@ -44,8 +44,8 @@ export function metaToColDef(col: ColumnMetadata): ColDef {
     resizable: true
   };
 
-  // 宽度
-  if (col.width) {
+  // 宽度：只有明确设置了宽度才使用，否则让 flex 生效
+  if (col.width && col.width > 0) {
     colDef.width = col.width;
   }
 

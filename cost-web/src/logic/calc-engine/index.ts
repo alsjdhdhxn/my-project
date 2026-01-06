@@ -22,6 +22,7 @@ export {
   type TabsComponentConfig,
   type PageComponent,
   type ParsedPageConfig,
+  type EnterpriseConfig,
   parsePageComponents,
   parseTabConfig,
   parseCalcRules,

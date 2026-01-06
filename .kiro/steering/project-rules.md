@@ -327,3 +327,57 @@ VALUES ('cost-master', 'agg_total', 'LOGIC_AGG', '{"sourceComponent":"detailGrid
 3. **最后才进行推测**：只有在前两步都无法获取信息时，才基于经验进行合理推测，并明确告知用户这是推测
 
 禁止在未查证的情况下直接编造 API 用法或配置方式。
+
+---
+
+## 九、AG Grid 开发规范
+
+AG Grid 更新频繁，API 变化较大，开发时必须遵循以下规则：
+
+### 9.1 版本与文档
+
+- **当前项目版本**：v35.0.0
+- **官方文档地址**：https://www.ag-grid.com/vue-data-grid/
+- **每次写 AG Grid 代码前，必须先查询官方文档**，确认 v35 版本的正确用法
+- 禁止参考旧版本文档（如 v27、v28、v31、v32 等）
+
+### 9.2 v35 重要 API 变更
+
+| 废弃 API | 新 API | 说明 |
+|----------|--------|------|
+| `enableRangeSelection` | `cellSelection: true` | v32.2 起废弃 |
+| `rowSelection: 'single'/'multiple'` | `rowSelection: { mode: 'singleRow'/'multiRow' }` | v35 新写法 |
+| `suppressRowClickSelection` | `rowSelection: { enableClickSelection: false }` | v35 新写法 |
+
+### 9.3 企业版功能配置（v35）
+
+```typescript
+// Master-Detail 配置
+{
+  masterDetail: true,
+  detailCellRendererParams: {
+    detailGridOptions: { columnDefs: [...] },
+    getDetailRowData: (params) => { params.successCallback(data); }
+  }
+}
+
+// 单元格选择（替代 enableRangeSelection）
+{ cellSelection: true }
+
+// 行选择新写法
+{ rowSelection: { mode: 'singleRow', enableClickSelection: true } }
+```
+
+### 9.4 查询文档的关键页面
+
+- Master-Detail：https://www.ag-grid.com/vue-data-grid/master-detail/
+- Row Selection：https://www.ag-grid.com/vue-data-grid/row-selection/
+- Cell Selection：https://www.ag-grid.com/vue-data-grid/cell-selection/
+- Excel Export：https://www.ag-grid.com/vue-data-grid/excel-export/
+- Row Grouping：https://www.ag-grid.com/vue-data-grid/grouping/
+
+### 9.5 禁止事项
+
+- ❌ 禁止使用 `enableRangeSelection`，改用 `cellSelection: true`
+- ❌ 禁止使用字符串形式的 `rowSelection: 'single'`，改用对象形式
+- ❌ 禁止参考 v32 及以下版本的文档或示例代码
