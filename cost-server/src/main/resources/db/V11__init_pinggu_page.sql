@@ -260,16 +260,7 @@ INSERT INTO T_COST_PAGE_COMPONENT (ID, PAGE_CODE, COMPONENT_KEY, COMPONENT_TYPE,
 VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'cost-pinggu', 'root', 'LAYOUT', NULL, 0, '{"direction":"vertical","gap":8}', 'system');
 
 INSERT INTO T_COST_PAGE_COMPONENT (ID, PAGE_CODE, COMPONENT_KEY, COMPONENT_TYPE, PARENT_KEY, SORT_ORDER, REF_TABLE_CODE, COMPONENT_CONFIG, CREATE_BY)
-VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'cost-pinggu', 'masterGrid', 'GRID', 'root', 1, 'CostPinggu', 
-'{
-  "height": "50%",
-  "selectionMode": "single",
-  "enterpriseConfig": {
-    "enableSidebar": true,
-    "enableExcelExport": true,
-    "enableRangeSelection": true
-  }
-}', 'system');
+VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'cost-pinggu', 'masterGrid', 'GRID', 'root', 1, 'CostPinggu', '{"height":"50%","selectionMode":"single"}', 'system');
 
 INSERT INTO T_COST_PAGE_COMPONENT (ID, PAGE_CODE, COMPONENT_KEY, COMPONENT_TYPE, PARENT_KEY, SORT_ORDER, REF_TABLE_CODE, COMPONENT_CONFIG, CREATE_BY)
 VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'cost-pinggu', 'detailTabs', 'TABS', 'root', 2, 'CostPingguDtl', 
