@@ -18,6 +18,8 @@ spring.flyway:
 jwt:
   secret: ${JWT_SECRET}
 
-# CORS 生产环境限定域名
+# CORS 生产环境限定域名（多个用逗号分隔）
 cors:
   allowed-origins: ${CORS_ORIGINS:https://cost.example.com}
+  # 前后端分离用 Token，不需要 Cookie，关闭 credentials
+  allow-credentials: false

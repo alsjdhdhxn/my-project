@@ -15,4 +15,9 @@ public class CorsProperties {
      * 允许的跨域来源列表
      */
     private List<String> allowedOrigins = List.of("http://localhost:9527");
+    
+    /**
+     * 是否允许携带凭证（Cookie），默认 true（开发环境），生产环境建议 false
+     */
+    private boolean allowCredentials = true;
 }
