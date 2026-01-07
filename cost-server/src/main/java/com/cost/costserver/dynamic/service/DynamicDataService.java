@@ -1,6 +1,9 @@
 package com.cost.costserver.dynamic.service;
 
 import cn.hutool.core.util.StrUtil;
+import com.cost.costserver.auth.dto.DataRule;
+import com.cost.costserver.auth.dto.PagePermission;
+import com.cost.costserver.auth.service.PermissionService;
 import com.cost.costserver.common.BusinessException;
 import com.cost.costserver.common.PageResult;
 import com.cost.costserver.common.SecurityUtils;
@@ -32,23 +35,56 @@ public class DynamicDataService {
     private final ValidationService validationService;
     private final OperationLogService operationLogService;
     private final AuditLogService auditLogService;
+    private final PermissionService permissionService;
     private static final DateTimeFormatter DT_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     public PageResult<Map<String, Object>> query(String tableCode, QueryParam param) {
+        // Lookup 查询放行：不校验 pageCode，不注入数据权限
+        boolean isLookup = param != null && Boolean.TRUE.equals(param.getLookup());
+        
+        if (!isLookup) {
+            if (param == null || StrUtil.isBlank(param.getPageCode())) {
+                throw new BusinessException(400, "pageCode不能为空");
+            }
+            Long userId = SecurityUtils.getCurrentUserId();
+            if (userId == null) {
+                throw new BusinessException(403, "无权限访问");
+            }
+            PagePermission permission = permissionService.getPagePermission(userId, param.getPageCode());
+            if (permission == null) {
+                throw new BusinessException(403, "无权限访问");
+            }
+        }
+
         TableMetadataDTO metadata = metadataService.getTableMetadata(tableCode);
         Map<String, ColumnMetadataDTO> columnMap = buildColumnMap(metadata);
 
         String queryView = metadata.queryView();
-        String whereClause = buildWhereClause(param.getConditions(), columnMap);
-        String orderClause = buildOrderClause(param.getSortField(), param.getSortOrder(), columnMap);
+        String whereClause = buildWhereClause(param != null ? param.getConditions() : null, columnMap);
+        
+        // 注入数据权限条件（Lookup 查询不注入）
+        if (!isLookup && param != null && StrUtil.isNotBlank(param.getPageCode())) {
+            Long userId = SecurityUtils.getCurrentUserId();
+            PagePermission permission = permissionService.getPagePermission(userId, param.getPageCode());
+            String dataRuleClause = buildDataRuleClause(permission, columnMap);
+            whereClause = whereClause + dataRuleClause;
+        }
+        
+        String orderClause = buildOrderClause(
+            param != null ? param.getSortField() : null, 
+            param != null ? param.getSortOrder() : null, 
+            columnMap
+        );
 
         String countSql = String.format("SELECT COUNT(*) FROM %s WHERE DELETED = 0 %s", queryView, whereClause);
         Long total = dynamicMapper.selectCount(countSql);
 
-        int offset = (param.getPage() - 1) * param.getPageSize();
+        int page = param != null ? param.getPage() : 1;
+        int pageSize = param != null ? param.getPageSize() : 20;
+        int offset = (page - 1) * pageSize;
         String dataSql = String.format(
             "SELECT * FROM (SELECT t.*, ROWNUM rn FROM (SELECT * FROM %s WHERE DELETED = 0 %s %s) t WHERE ROWNUM <= %d) WHERE rn > %d",
-            queryView, whereClause, orderClause, offset + param.getPageSize(), offset
+            queryView, whereClause, orderClause, offset + pageSize, offset
         );
 
         List<Map<String, Object>> list = dynamicMapper.selectList(dataSql);
@@ -58,6 +94,82 @@ public class DynamicDataService {
         mergeHistoryData(list, metadata, columnMap);
 
         return new PageResult<>(list, total, param.getPage(), param.getPageSize());
+    }
+
+    /**
+     * 构建数据权限 WHERE 子句
+     */
+    private String buildDataRuleClause(PagePermission permission, Map<String, ColumnMetadataDTO> columnMap) {
+        if (permission == null || permission.dataRules() == null || permission.dataRules().isEmpty()) {
+            return "";
+        }
+        
+        StringBuilder sb = new StringBuilder();
+        for (DataRule rule : permission.dataRules()) {
+            if (StrUtil.isBlank(rule.fieldName()) || StrUtil.isBlank(rule.operator())) {
+                continue;
+            }
+            
+            ColumnMetadataDTO col = columnMap.get(rule.fieldName());
+            String columnName = col != null ? col.columnName() : camelToUnderscore(rule.fieldName());
+            
+            // 解析值（支持占位符）
+            String value = resolveValue(rule.value(), rule.valueType());
+            if (value == null) {
+                continue;
+            }
+            
+            sb.append(" AND ");
+            switch (rule.operator()) {
+                case "eq" -> sb.append(columnName).append(" = ").append(formatRuleValue(value, col));
+                case "ne" -> sb.append(columnName).append(" <> ").append(formatRuleValue(value, col));
+                case "in" -> sb.append(columnName).append(" IN (").append(value).append(")");
+                case "like" -> sb.append(columnName).append(" LIKE '%").append(escapeSql(value)).append("%'");
+                case "gt" -> sb.append(columnName).append(" > ").append(formatRuleValue(value, col));
+                case "ge" -> sb.append(columnName).append(" >= ").append(formatRuleValue(value, col));
+                case "lt" -> sb.append(columnName).append(" < ").append(formatRuleValue(value, col));
+                case "le" -> sb.append(columnName).append(" <= ").append(formatRuleValue(value, col));
+                default -> log.warn("不支持的数据权限操作符: {}", rule.operator());
+            }
+        }
+        return sb.toString();
+    }
+
+    /**
+     * 解析数据权限值（支持占位符）
+     */
+    private String resolveValue(String value, String valueType) {
+        if (value == null) {
+            return null;
+        }
+        
+        if ("placeholder".equals(valueType)) {
+            // 解析占位符
+            Long userId = SecurityUtils.getCurrentUserId();
+            String username = SecurityUtils.getCurrentUsername();
+            
+            return switch (value) {
+                case "${userId}" -> userId != null ? userId.toString() : null;
+                case "${username}" -> username;
+                case "${deptId}" -> null; // TODO: 后续实现部门ID获取
+                default -> {
+                    log.warn("未知的占位符: {}", value);
+                    yield null;
+                }
+            };
+        }
+        
+        return value;
+    }
+
+    /**
+     * 格式化数据权限值
+     */
+    private String formatRuleValue(String value, ColumnMetadataDTO col) {
+        if (col != null && "number".equals(col.dataType())) {
+            return validateAndFormatNumber(value);
+        }
+        return "'" + escapeSql(value) + "'";
     }
 
     /**

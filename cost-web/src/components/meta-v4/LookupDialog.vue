@@ -123,7 +123,7 @@ async function loadData() {
   
   const { data } = await request<{ list: Record<string, any>[] }>({
     url: `/api/data/${tableCode}`,
-    params: { page: 1, pageSize: 500 }
+    params: { page: 1, pageSize: 500, lookup: true }
   });
   
   rowData.value = data?.list || [];

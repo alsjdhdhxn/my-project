@@ -8,6 +8,22 @@ export function fetchDynamicData(tableCode: string, params?: Record<string, any>
   });
 }
 
+/** 高级查询（支持 pageCode 数据权限） */
+export function searchDynamicData(tableCode: string, params: {
+  page?: number;
+  pageSize?: number;
+  sortField?: string;
+  sortOrder?: string;
+  pageCode?: string;
+  conditions?: Array<{ field: string; operator: string; value: any; value2?: any }>;
+}) {
+  return request<Api.Common.PageResult<any>>({
+    url: `/api/data/${tableCode}/search`,
+    method: 'POST',
+    data: params
+  });
+}
+
 /** 查询单条数据 */
 export function fetchDynamicDataById(tableCode: string, id: number | string) {
   return request<any>({

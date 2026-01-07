@@ -53,4 +53,17 @@ public record ColumnMetadataDTO(
     private static Boolean intToBoolean(Integer value) {
         return value != null && value == 1;
     }
+
+    /**
+     * 合并权限后返回新实例
+     */
+    public ColumnMetadataDTO withPermission(boolean visible, boolean editable) {
+        return new ColumnMetadataDTO(
+            this.id, this.fieldName, this.columnName, this.queryColumn, this.targetColumn,
+            this.headerText, this.dataType, this.displayOrder, this.width,
+            visible, editable,
+            this.required, this.searchable, this.sortable, this.dictType, this.lookupConfigId,
+            this.defaultValue, this.rulesConfig, this.isVirtual
+        );
+    }
 }

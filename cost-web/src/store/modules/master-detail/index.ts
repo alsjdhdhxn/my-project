@@ -253,6 +253,51 @@ export function useMasterDetailStore(pageCode: string) {
       }
     }
 
+    /** 静默更新字段值（不触发计算，用于批量更新场景） */
+    function updateFieldSilent(rowId: number, field: string, value: any, isMaster = false) {
+      const row = isMaster
+        ? masterRows.value.find(r => r.id === rowId)
+        : detailRows.value.find(r => r.id === rowId);
+
+      if (!row) return;
+
+      row[field] = value;
+      markChange(row, field, 'user');
+    }
+
+    /** 批量更新后触发完整计算链 */
+    function triggerRowCalc(rowId: number, changedFields: string[], isMaster = false) {
+      if (isMaster) {
+        // 主表：检查是否有广播字段变化 → 触发从表全量重算
+        const broadcastFields = config.value?.broadcast || [];
+        const hasBroadcast = changedFields.some(f => broadcastFields.includes(f));
+        
+        if (hasBroadcast) {
+          runDetailCalc();
+        }
+        
+        // 主表自身计算规则
+        if (compiledMasterCalcRules.value.length > 0) {
+          const master = masterRows.value.find(r => r.id === rowId);
+          if (master) {
+            const results = calcRowFields(master, {}, compiledMasterCalcRules.value);
+            for (const [field, value] of Object.entries(results)) {
+              if (!isValueEqual(master[field], value)) {
+                master[field] = value;
+                markChange(master, field, 'cascade');
+              }
+            }
+          }
+        }
+      } else {
+        // 从表：行级计算 → 聚合 → 主表计算
+        runDetailCalcForFields(rowId, changedFields);
+        runAggCalc();
+      }
+      
+      triggerReactiveUpdate();
+    }
+
     /** 新增主表行 */
     function addMasterRow(defaults: Record<string, any> = {}): MasterRowData {
       const tempId = generateTempId();
@@ -531,6 +576,51 @@ export function useMasterDetailStore(pageCode: string) {
       }
     }
 
+    /** 执行从表计算（单行，多字段触发，用于批量更新场景） */
+    function runDetailCalcForFields(rowId: number, changedFields: string[]) {
+      const master = currentMaster.value;
+      if (!master?._details?.rows) return;
+
+      const row = master._details.rows.find(r => r.id === rowId);
+      if (!row || row._isDeleted) return;
+
+      const context: Record<string, any> = {};
+      for (const field of config.value?.broadcast || []) {
+        context[field] = master[field] ?? 0;
+      }
+
+      // 获取所有受影响的规则（任一字段触发即可）
+      const affectedRules = compiledCalcRules.value.filter(rule => {
+        for (const changedField of changedFields) {
+          if (rule.triggerFields?.includes(changedField)) return true;
+          if (rule.formulas) {
+            for (const formula of Object.values(rule.formulas)) {
+              if (formula.triggerFields?.includes(changedField)) return true;
+            }
+          }
+        }
+        return false;
+      });
+
+      if (affectedRules.length === 0) return;
+
+      // 多轮计算支持级联
+      for (let round = 0; round < MAX_CALC_ROUNDS; round++) {
+        let roundChange = false;
+        const results = calcRowFields(row, context, affectedRules);
+
+        for (const [field, value] of Object.entries(results)) {
+          if (!isValueEqual(row[field], value)) {
+            row[field] = value;
+            markChange(row, field, 'cascade');
+            roundChange = true;
+          }
+        }
+
+        if (!roundChange) break;
+      }
+    }
+
     /** 触发聚合计算 */
     function triggerAggCalc() {
       console.debug('[Store] triggerAggCalc called, aggRules:', compiledAggRules.value.length, 'masterCalcRules:', compiledMasterCalcRules.value.length);
@@ -610,6 +700,8 @@ export function useMasterDetailStore(pageCode: string) {
       loadDetail,
       selectMaster,
       updateField,
+      updateFieldSilent,
+      triggerRowCalc,
       addMasterRow,
       addDetailRow,
       deleteRow,

@@ -60,6 +60,7 @@
               @grid-ready="onMasterGridReady"
               @selection-changed="onMasterSelectionChanged"
               @cell-value-changed="onMasterCellValueChanged"
+              @cell-clicked="onMasterCellClicked"
               @cell-context-menu="onMasterContextMenu"
               @cell-editing-started="masterAdapter.onCellEditingStarted"
               @cell-editing-stopped="masterAdapter.onCellEditingStopped"
@@ -104,6 +105,7 @@
           :groupDefaultExpanded="enableRowGrouping ? 1 : undefined"
           @grid-ready="onMasterGridReady"
           @cell-value-changed="onMasterCellValueChanged"
+          @cell-clicked="onMasterCellClicked"
           @cell-context-menu="onMasterContextMenu"
           @cell-editing-started="masterAdapter.onCellEditingStarted"
           @cell-editing-stopped="masterAdapter.onCellEditingStopped"
@@ -158,7 +160,7 @@ import {
   type ParsedPageConfig,
   type ValidationRule
 } from '@/logic/calc-engine';
-import { fetchDynamicData, fetchPageComponents, saveDynamicData } from '@/service/api';
+import { fetchPageComponents, saveDynamicData, searchDynamicData } from '@/service/api';
 import { loadTableMeta, type RowStyleRule, type LookupRule, extractLookupRules } from '@/composables/useMetaColumns';
 import MetaFloatToolbar from './MetaFloatToolbar.vue';
 import MetaTabs from './MetaTabs.vue';
@@ -200,12 +202,14 @@ const masterGetRowClass = shallowRef<((params: any) => string | undefined) | und
 const detailGetRowClass = shallowRef<((params: any) => string | undefined) | undefined>(undefined);
 
 // Lookup 规则
+const masterLookupRules = shallowRef<LookupRule[]>([]);
 const detailLookupRules = shallowRef<LookupRule[]>([]);
 
 // Lookup 弹窗状态
 const lookupDialogRef = ref<InstanceType<typeof LookupDialog> | null>(null);
 const currentLookupRule = ref<LookupRule | null>(null);
 const currentLookupRowId = ref<number | null>(null);
+const currentLookupIsMaster = ref<boolean>(false);
 
 // 右键菜单状态
 const contextMenuVisible = ref(false);
@@ -416,6 +420,22 @@ function onMasterCellValueChanged(event: CellValueChangedEvent) {
   masterAdapter.onCellValueChanged(event);
 }
 
+function onMasterCellClicked(event: any) {
+  const field = event.colDef?.field;
+  const rowData = event.data;
+  if (!field || !rowData) return;
+  
+  // 检查是否有 lookup 配置
+  const rule = masterLookupRules.value.find(r => r.fieldName === field);
+  if (!rule) return;
+  
+  // 保存当前上下文，打开弹窗
+  currentLookupRule.value = rule;
+  currentLookupRowId.value = rowData.id;
+  currentLookupIsMaster.value = true;
+  lookupDialogRef.value?.open();
+}
+
 function onDetailCellValueChanged(event: { tabKey: string; rowId: number; field: string; value: any }) {
   store.updateField(event.rowId, event.field, event.value, 'user', false);
 }
@@ -428,25 +448,35 @@ function onDetailCellClicked(event: { tabKey: string; rowId: number; field: stri
   // 保存当前上下文，打开弹窗
   currentLookupRule.value = rule;
   currentLookupRowId.value = event.rowId;
+  currentLookupIsMaster.value = false;
   lookupDialogRef.value?.open();
 }
 
 function onLookupSelect(fillData: Record<string, any>) {
   if (!currentLookupRowId.value) return;
   
-  // 回填数据到当前行
+  const rowId = currentLookupRowId.value;
+  const isMaster = currentLookupIsMaster.value;
+  const fields = Object.keys(fillData);
+  
+  // 批量回填数据（不触发单字段计算）
   for (const [field, value] of Object.entries(fillData)) {
-    store.updateField(currentLookupRowId.value, field, value, 'user', false);
+    store.updateFieldSilent(rowId, field, value, isMaster);
   }
+  
+  // 批量更新完成后，触发完整计算链
+  store.triggerRowCalc(rowId, fields, isMaster);
   
   // 清理状态
   currentLookupRule.value = null;
   currentLookupRowId.value = null;
+  currentLookupIsMaster.value = false;
 }
 
 function onLookupCancel() {
   currentLookupRule.value = null;
   currentLookupRowId.value = null;
+  currentLookupIsMaster.value = false;
 }
 
 function onDetailContextMenu(payload: { tabKey: string; rowData: any; x: number; y: number }) {
@@ -473,8 +503,8 @@ async function loadMetadata() {
     return;
   }
 
-  // 2. 加载主表元数据
-  const masterMeta = await loadTableMeta(pageConfig.masterTableCode);
+  // 2. 加载主表元数据（传入 pageCode 合并权限）
+  const masterMeta = await loadTableMeta(pageConfig.masterTableCode, props.pageCode);
   if (!masterMeta) {
     message.error('加载主表元数据失败');
     return;
@@ -486,11 +516,14 @@ async function loadMetadata() {
   
   // 保存行样式类函数
   masterGetRowClass.value = masterMeta.getRowClass;
+  
+  // 提取主表 lookup 规则
+  masterLookupRules.value = masterMeta.lookupRules || [];
 
-  // 3. 加载从表元数据（如果有）
+  // 3. 加载从表元数据（如果有，传入 pageCode 合并权限）
   let detailCols: ColDef[] = [];
   if (pageConfig.detailTableCode) {
-    const detailMeta = await loadTableMeta(pageConfig.detailTableCode);
+    const detailMeta = await loadTableMeta(pageConfig.detailTableCode, props.pageCode);
     if (!detailMeta) {
       message.error('加载从表元数据失败');
       return;
@@ -535,7 +568,10 @@ async function loadMasterData() {
   const tableCode = store.config?.masterTableCode;
   if (!tableCode) return;
 
-  const { data, error } = await fetchDynamicData(tableCode, {});
+  // 使用 searchDynamicData 传入 pageCode 以应用数据权限
+  const { data, error } = await searchDynamicData(tableCode, {
+    pageCode: props.pageCode
+  });
   if (error) {
     message.error('加载主表数据失败');
     return;
@@ -559,7 +595,11 @@ async function loadDetailData(masterId: number) {
 
   if (!tableCode || !fkColumn) return;
 
-  const { data, error } = await fetchDynamicData(tableCode, { [fkColumn]: masterId });
+  // 使用 searchDynamicData 传入 pageCode 以应用数据权限
+  const { data, error } = await searchDynamicData(tableCode, {
+    pageCode: props.pageCode,
+    conditions: [{ field: fkColumn, operator: 'eq', value: masterId }]
+  });
   if (error) {
     message.error('加载从表数据失败');
     return;

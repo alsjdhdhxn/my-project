@@ -1,9 +1,16 @@
 import { request } from '../request';
 
-/** 获取表元数据 */
+/** 获取表元数据（原始，不含权限） */
 export function fetchTableMetadata(tableCode: string) {
   return request<Api.Metadata.TableMetadata>({
     url: `/api/metadata/table/${tableCode}`
+  });
+}
+
+/** 获取表元数据（合并权限） */
+export function fetchTableMetadataWithPermission(tableCode: string, pageCode: string) {
+  return request<Api.Metadata.TableMetadata>({
+    url: `/api/metadata/table/${tableCode}/page/${pageCode}`
   });
 }
 

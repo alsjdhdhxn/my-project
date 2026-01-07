@@ -3,7 +3,7 @@
  * 将后端元数据转换为 AG Grid ColDef
  */
 import type { ColDef } from 'ag-grid-community';
-import { fetchTableMetadata } from '@/service/api';
+import { fetchTableMetadata, fetchTableMetadataWithPermission } from '@/service/api';
 import type { CalcRule } from '@/logic/calc-engine';
 
 type ColumnMetadata = Api.Metadata.ColumnMetadata;
@@ -352,9 +352,14 @@ export function extractLookupRules(columns: ColumnMetadata[]): LookupRule[] {
 
 /**
  * 加载表元数据并转换
+ * @param tableCode 表编码
+ * @param pageCode 页面编码（可选，传入则合并权限）
  */
-export async function loadTableMeta(tableCode: string) {
-  const { data, error } = await fetchTableMetadata(tableCode);
+export async function loadTableMeta(tableCode: string, pageCode?: string) {
+  // 根据是否传入 pageCode 决定调用哪个接口
+  const { data, error } = pageCode
+    ? await fetchTableMetadataWithPermission(tableCode, pageCode)
+    : await fetchTableMetadata(tableCode);
   
   if (error || !data) {
     console.error(`[useMetaColumns] 加载元数据失败: ${tableCode}`, error);

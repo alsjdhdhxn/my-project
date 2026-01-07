@@ -2,6 +2,8 @@ package com.cost.costserver.metadata.service;
 
 import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.cost.costserver.auth.dto.ColumnPermission;
+import com.cost.costserver.auth.dto.PagePermission;
 import com.cost.costserver.common.BusinessException;
 import com.cost.costserver.metadata.dto.*;
 import com.cost.costserver.metadata.entity.*;
@@ -49,6 +51,32 @@ public class MetadataService {
         TableMetadataDTO dto = TableMetadataDTO.from(table, columns);
         cache.put(tableCode, dto);
         return dto;
+    }
+
+    /**
+     * 获取表元数据（合并权限）
+     * 将角色的列权限合并到列元数据中返回
+     */
+    public TableMetadataDTO getTableMetadataWithPermission(String tableCode, PagePermission permission) {
+        TableMetadataDTO base = getTableMetadata(tableCode);
+        
+        if (permission == null || permission.columns() == null || permission.columns().isEmpty()) {
+            return base;
+        }
+        
+        // 合并列权限到列元数据
+        List<ColumnMetadataDTO> mergedColumns = base.columns().stream()
+            .map(col -> {
+                ColumnPermission colPerm = permission.getColumnPermission(col.fieldName());
+                // 权限只能收紧，不能放宽
+                boolean visible = col.visible() && colPerm.visible();
+                boolean editable = col.editable() && colPerm.editable();
+                return col.withPermission(visible, editable);
+            })
+            .filter(col -> col.visible()) // 过滤掉不可见的列
+            .toList();
+        
+        return base.withColumns(mergedColumns);
     }
 
     public void clearCache(String tableCode) {

@@ -9,6 +9,8 @@ public class QueryParam {
     private int pageSize = 20;
     private String sortField;
     private String sortOrder;
+    private String pageCode;  // 页面编码，用于数据权限过滤
+    private Boolean lookup;   // 是否为 Lookup 弹窗查询（放行，不校验权限）
     private List<QueryCondition> conditions;
 
     @Data

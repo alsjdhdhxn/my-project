@@ -39,4 +39,15 @@ public record TableMetadataDTO(
             columnDTOs
         );
     }
+
+    /**
+     * 替换列列表后返回新实例
+     */
+    public TableMetadataDTO withColumns(List<ColumnMetadataDTO> newColumns) {
+        return new TableMetadataDTO(
+            this.id, this.tableCode, this.tableName, this.queryView, this.targetTable,
+            this.sequenceName, this.pkColumn, this.parentTableCode, this.parentFkColumn,
+            this.validationRules, newColumns
+        );
+    }
 }

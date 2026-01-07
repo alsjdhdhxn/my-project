@@ -33,6 +33,8 @@ public class DynamicDataController {
             @RequestParam(defaultValue = "20") int pageSize,
             @RequestParam(required = false) String sortField,
             @RequestParam(required = false) String sortOrder,
+            @RequestParam(required = false) String pageCode,
+            @RequestParam(required = false) Boolean lookup,
             @RequestParam Map<String, String> allParams) {
 
         QueryParam param = new QueryParam();
@@ -40,12 +42,14 @@ public class DynamicDataController {
         param.setPageSize(pageSize);
         param.setSortField(sortField);
         param.setSortOrder(sortOrder);
+        param.setPageCode(pageCode);
+        param.setLookup(lookup);
 
-        // 将其他参数转为查询条件（排除分页和排序参数）
+        // 将其他参数转为查询条件（排除分页、排序、权限参数）
         List<QueryParam.QueryCondition> conditions = new ArrayList<>();
         for (Map.Entry<String, String> entry : allParams.entrySet()) {
             String key = entry.getKey();
-            if (Set.of("page", "pageSize", "sortField", "sortOrder").contains(key)) {
+            if (Set.of("page", "pageSize", "sortField", "sortOrder", "pageCode", "lookup").contains(key)) {
                 continue;
             }
             if (entry.getValue() != null && !entry.getValue().isEmpty()) {
