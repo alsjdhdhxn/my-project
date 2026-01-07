@@ -457,15 +457,7 @@ function onLookupSelect(fillData: Record<string, any>) {
   
   const rowId = currentLookupRowId.value;
   const isMaster = currentLookupIsMaster.value;
-  const fields = Object.keys(fillData);
-  
-  // 批量回填数据（不触发单字段计算）
-  for (const [field, value] of Object.entries(fillData)) {
-    store.updateFieldSilent(rowId, field, value, isMaster);
-  }
-  
-  // 批量更新完成后，触发完整计算链
-  store.triggerRowCalc(rowId, fields, isMaster);
+  store.updateFields(rowId, fillData, isMaster);
   
   // 清理状态
   currentLookupRule.value = null;
