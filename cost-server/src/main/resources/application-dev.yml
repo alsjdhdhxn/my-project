@@ -1,0 +1,25 @@
+# 开发环境配置
+spring:
+  datasource:
+    url: jdbc:oracle:thin:@//192.168.11.5:1521/orcl
+    username: cmx
+    password: cmx
+
+# 开发环境开启 SQL 日志
+mybatis-plus:
+  configuration:
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+
+# 开发环境 Flyway 配置
+spring.flyway:
+  enabled: false  # 开发环境手动管理数据库
+
+# JWT 开发密钥（仅开发使用）
+jwt:
+  secret: dev-secret-key-for-local-development-only-2025
+
+# CORS 开发环境允许所有来源
+cors:
+  allowed-origins:
+    - http://localhost:9527
+    - http://127.0.0.1:9527

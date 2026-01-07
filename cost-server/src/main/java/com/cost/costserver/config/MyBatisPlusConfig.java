@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.extension.plugins.MybatisPlusInterceptor;
 import com.baomidou.mybatisplus.extension.plugins.inner.PaginationInnerInterceptor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
 
 @Configuration
 public class MyBatisPlusConfig {
@@ -17,9 +18,10 @@ public class MyBatisPlusConfig {
     }
 
     /**
-     * SQL 日志拦截器 - 按顺序显示 SQL 及执行时间
+     * SQL 日志拦截器 - 仅开发环境启用
      */
     @Bean
+    @Profile("dev")
     public SqlLogInterceptor sqlLogInterceptor() {
         return new SqlLogInterceptor();
     }

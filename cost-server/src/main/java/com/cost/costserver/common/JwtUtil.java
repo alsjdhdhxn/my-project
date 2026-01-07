@@ -1,9 +1,10 @@
 package com.cost.costserver.common;
 
+import com.cost.costserver.config.JwtProperties;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
-import org.springframework.beans.factory.annotation.Value;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
@@ -13,19 +14,13 @@ import java.util.HashMap;
 import java.util.Map;
 
 @Component
+@RequiredArgsConstructor
 public class JwtUtil {
 
-    @Value("${jwt.secret:cost-management-system-secret-key-2025}")
-    private String secret;
-
-    @Value("${jwt.access-token-expire:7200000}")
-    private long accessTokenExpire; // 默认2小时
-
-    @Value("${jwt.refresh-token-expire:604800000}")
-    private long refreshTokenExpire; // 默认7天
+    private final JwtProperties jwtProperties;
 
     private SecretKey getSigningKey() {
-        byte[] keyBytes = secret.getBytes(StandardCharsets.UTF_8);
+        byte[] keyBytes = jwtProperties.getSecret().getBytes(StandardCharsets.UTF_8);
         // 确保密钥长度至少256位
         if (keyBytes.length < 32) {
             byte[] paddedKey = new byte[32];
@@ -48,7 +43,7 @@ public class JwtUtil {
                 .claims(claims)
                 .subject(username)
                 .issuedAt(new Date())
-                .expiration(new Date(System.currentTimeMillis() + accessTokenExpire))
+                .expiration(new Date(System.currentTimeMillis() + jwtProperties.getAccessTokenExpire()))
                 .signWith(getSigningKey())
                 .compact();
     }
@@ -66,7 +61,7 @@ public class JwtUtil {
                 .claims(claims)
                 .subject(username)
                 .issuedAt(new Date())
-                .expiration(new Date(System.currentTimeMillis() + refreshTokenExpire))
+                .expiration(new Date(System.currentTimeMillis() + jwtProperties.getRefreshTokenExpire()))
                 .signWith(getSigningKey())
                 .compact();
     }

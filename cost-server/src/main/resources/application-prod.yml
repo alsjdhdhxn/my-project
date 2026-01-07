@@ -1,0 +1,23 @@
+# 生产环境配置
+spring:
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+
+# 生产环境关闭 SQL 控制台日志
+mybatis-plus:
+  configuration:
+    log-impl: org.apache.ibatis.logging.nologging.NoLoggingImpl
+
+# 生产环境启用 Flyway
+spring.flyway:
+  enabled: true
+
+# JWT 生产密钥（从环境变量读取）
+jwt:
+  secret: ${JWT_SECRET}
+
+# CORS 生产环境限定域名
+cors:
+  allowed-origins: ${CORS_ORIGINS:https://cost.example.com}
