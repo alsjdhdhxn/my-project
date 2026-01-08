@@ -2,10 +2,16 @@ package com.cost.costserver.dynamic.controller;
 
 import com.cost.costserver.common.PageResult;
 import com.cost.costserver.common.Result;
+import com.cost.costserver.dynamic.action.ActionExecutionReport;
+import com.cost.costserver.dynamic.dto.ActionExecuteRequest;
 import com.cost.costserver.dynamic.dto.MasterDetailSaveParam;
 import com.cost.costserver.dynamic.dto.QueryParam;
 import com.cost.costserver.dynamic.dto.SaveParam;
+import com.cost.costserver.dynamic.dto.ValidationRequest;
+import com.cost.costserver.dynamic.service.ActionFlowService;
 import com.cost.costserver.dynamic.service.DynamicDataService;
+import com.cost.costserver.dynamic.service.ValidationService;
+import com.cost.costserver.dynamic.validation.ValidationReport;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -14,7 +20,6 @@ import org.springframework.web.bind.annotation.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
-
 import java.util.Map;
 
 @Tag(name = "动态数据接口")
@@ -24,6 +29,8 @@ import java.util.Map;
 public class DynamicDataController {
 
     private final DynamicDataService dynamicDataService;
+    private final ActionFlowService actionFlowService;
+    private final ValidationService validationService;
 
     @Operation(summary = "分页查询")
     @GetMapping("/{tableCode}")
@@ -125,6 +132,24 @@ public class DynamicDataController {
             @PathVariable Long id) {
         dynamicDataService.delete(tableCode, id);
         return Result.ok();
+    }
+
+    @Operation(summary = "执行验证")
+    @PostMapping("/{tableCode}/validate")
+    public Result<ValidationReport> validate(
+            @PathVariable String tableCode,
+            @RequestBody(required = false) ValidationRequest request) {
+        String group = request == null ? null : request.getGroup();
+        Map<String, Object> data = request == null ? null : request.getData();
+        return Result.ok(validationService.validate(tableCode, group, data));
+    }
+
+    @Operation(summary = "执行执行器（可选先验证）")
+    @PostMapping("/{tableCode}/execute")
+    public Result<ActionExecutionReport> executeAction(
+            @PathVariable String tableCode,
+            @RequestBody ActionExecuteRequest request) {
+        return Result.ok(actionFlowService.execute(tableCode, request));
     }
 
     private String underscoreToCamel(String name) {

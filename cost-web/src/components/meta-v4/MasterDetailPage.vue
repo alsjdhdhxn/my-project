@@ -160,7 +160,7 @@ import {
   type ParsedPageConfig,
   type ValidationRule
 } from '@/logic/calc-engine';
-import { fetchPageComponents, saveDynamicData, searchDynamicData } from '@/service/api';
+import { fetchPageComponents, saveDynamicData, searchDynamicData, executeAction } from '@/service/api';
 import { loadTableMeta, type RowStyleRule, type LookupRule, extractLookupRules } from '@/composables/useMetaColumns';
 import MetaFloatToolbar from './MetaFloatToolbar.vue';
 import MetaTabs from './MetaTabs.vue';
@@ -216,6 +216,7 @@ const contextMenuVisible = ref(false);
 const contextMenuX = ref(0);
 const contextMenuY = ref(0);
 const contextMenuTarget = ref<{ isMaster: boolean; rowData: any; tabKey?: string } | null>(null);
+const contextMenuConfig = ref<any>(null);
 
 // ==================== Computed ====================
 
@@ -257,29 +258,59 @@ const masterRowSelection = { mode: 'singleRow', checkboxes: false, enableClickSe
 // ==================== Context Menu ====================
 
 const contextMenuOptions = computed<DropdownOption[]>(() => {
+  // 如果有元数据配置，使用元数据
+  if (contextMenuConfig.value?.items) {
+    const hasSelection = !!contextMenuTarget.value?.rowData;
+    return contextMenuConfig.value.items
+      .filter((item: any) => {
+        // 过滤掉需要选中行但当前未选中的菜单项
+        if (item.disabled === '!selectedRow' && !hasSelection) {
+          return false;
+        }
+        return true;
+      })
+      .map((item: any) => {
+        if (item.type === 'divider') {
+          return { type: 'divider', key: item.key || `divider-${Math.random()}` };
+        }
+        return {
+          label: item.label,
+          key: item.key,
+          icon: item.icon ? renderIcon(item.icon) : undefined,
+          disabled: item.disabled === '!selectedRow' ? !hasSelection : false,
+          props: item.key === 'delete' ? { style: { color: '#d03050' } } : undefined
+        };
+      });
+  }
+  
+  // 降级：使用硬编码菜单
   const hasSelection = !!contextMenuTarget.value?.rowData;
   const options: DropdownOption[] = [
-    { label: '新增行', key: 'add', icon: renderIcon('plus') }
+    { label: '新增行', key: 'add', icon: renderIcon('mdi:plus') }
   ];
   
   if (hasSelection) {
     options.push(
-      { label: '复制行', key: 'copy', icon: renderIcon('copy') },
+      { label: '复制行', key: 'copy', icon: renderIcon('mdi:content-copy') },
       { type: 'divider', key: 'd1' },
-      { label: '删除行', key: 'delete', icon: renderIcon('delete'), props: { style: { color: '#d03050' } } }
+      { label: '删除行', key: 'delete', icon: renderIcon('mdi:delete'), props: { style: { color: '#d03050' } } }
     );
   }
   
   return options;
 });
 
-function renderIcon(type: string) {
-  const icons: Record<string, string> = {
-    plus: '➕',
-    copy: '📋',
-    delete: '🗑️'
+function renderIcon(iconName: string) {
+  // 简单的图标映射，实际应该使用 iconify
+  const iconMap: Record<string, string> = {
+    'mdi:plus': '➕',
+    'mdi:pencil': '✏️',
+    'mdi:content-copy': '📋',
+    'mdi:delete': '🗑️',
+    'mdi:lock-reset': '🔒',
+    'mdi:refresh': '🔄'
   };
-  return () => h('span', { style: { marginRight: '8px' } }, icons[type] || '');
+  return () => h('span', { style: { marginRight: '8px' } }, iconMap[iconName] || '');
 }
 
 function onMasterContextMenu(event: CellContextMenuEvent) {
@@ -297,6 +328,91 @@ function onContextMenuSelect(key: string) {
   const target = contextMenuTarget.value;
   if (!target) return;
 
+  // 查找菜单项配置
+  const menuItem = contextMenuConfig.value?.items?.find((item: any) => item.key === key);
+  
+  if (menuItem) {
+    handleMenuAction(menuItem, target);
+  } else {
+    // 降级：硬编码处理
+    handleLegacyMenuAction(key, target);
+  }
+}
+
+async function handleMenuAction(menuItem: any, target: any) {
+  const { action, actionParams, confirm, confirmMessage } = menuItem;
+  
+  // 需要确认的操作
+  if (confirm) {
+    return new Promise((resolve) => {
+      window.$dialog?.warning({
+        title: '确认',
+        content: confirmMessage || '确认执行此操作吗？',
+        positiveText: '确认',
+        negativeText: '取消',
+        onPositiveClick: () => {
+          executeMenuAction(action, actionParams, target);
+          resolve(true);
+        },
+        onNegativeClick: () => {
+          resolve(false);
+        }
+      });
+    });
+  }
+  
+  // 不需要确认，直接执行
+  executeMenuAction(action, actionParams, target);
+}
+
+function executeMenuAction(action: string, actionParams: any, target: any) {
+  switch (action) {
+    case 'addRow':
+      handleAddRow(target);
+      break;
+    case 'editRow':
+      handleEditRow(target);
+      break;
+    case 'copyRow':
+      handleCopyRow(target);
+      break;
+    case 'deleteRow':
+      handleDeleteRow(target);
+      break;
+    case 'executeAction':
+      handleExecuteAction(actionParams, target);
+      break;
+    case 'refresh':
+      loadMasterData();
+      break;
+    default:
+      console.warn('未知的菜单动作:', action);
+  }
+}
+
+async function handleExecuteAction(actionParams: any, target: any) {
+  const { tableCode, group, dataFields, extraData } = actionParams;
+  
+  // 构建请求数据
+  const data: any = { ...extraData };
+  dataFields?.forEach((field: string) => {
+    data[field] = target.rowData[field];
+  });
+  
+  try {
+    const { error } = await executeAction(tableCode, { group, data });
+    if (error) {
+      message.error(error.msg || '操作失败');
+      return;
+    }
+    message.success('操作成功');
+    await loadMasterData();
+  } catch (error: any) {
+    message.error(error.message || '操作失败');
+  }
+}
+
+function handleLegacyMenuAction(key: string, target: any) {
   if (key === 'add') {
     if (target.isMaster) {
       const newRow = store.addMasterRow();
@@ -493,6 +609,18 @@ async function loadMetadata() {
   if (!pageConfig) {
     message.error('解析页面配置失败');
     return;
+  }
+
+  // 加载右键菜单配置
+  const contextMenuComponent = pageRes.data.find((comp: any) => comp.componentType === 'CONTEXT_MENU');
+  if (contextMenuComponent?.componentConfig) {
+    try {
+      contextMenuConfig.value = typeof contextMenuComponent.componentConfig === 'string'
+        ? JSON.parse(contextMenuComponent.componentConfig)
+        : contextMenuComponent.componentConfig;
+    } catch (e) {
+      console.warn('解析右键菜单配置失败:', e);
+    }
   }
 
   // 2. 加载主表元数据（传入 pageCode 合并权限）

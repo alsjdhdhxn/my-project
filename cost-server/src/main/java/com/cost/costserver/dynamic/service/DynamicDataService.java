@@ -16,6 +16,7 @@ import com.cost.costserver.log.OperationLogService;
 import com.cost.costserver.metadata.dto.ColumnMetadataDTO;
 import com.cost.costserver.metadata.dto.TableMetadataDTO;
 import com.cost.costserver.metadata.service.MetadataService;
+import com.cost.costserver.dynamic.validation.ValidationReport;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -33,6 +34,7 @@ public class DynamicDataService {
     private final DynamicMapper dynamicMapper;
     private final MetadataService metadataService;
     private final ValidationService validationService;
+    private final ActionService actionService;
     private final OperationLogService operationLogService;
     private final AuditLogService auditLogService;
     private final PermissionService permissionService;
@@ -607,14 +609,15 @@ public class DynamicDataService {
         final String userName = currentUser; // for lambda
         try {
             // 2. 后端验证 - 主表
+            ValidationReport masterValidationReport = null;
             if (!"deleted".equals(master.getStatus())) {
                 Map<String, Object> validateData = new HashMap<>(master.getData());
                 if (master.getId() != null) {
                     validateData.put("id", master.getId());
                 }
-                ValidationService.ValidationResult validationResult = validationService.validate(masterTableCode, validateData);
-                if (!validationResult.isValid()) {
-                    throw new BusinessException(400, validationResult.getMessage());
+                masterValidationReport = validationService.validate(masterTableCode, "save", validateData);
+                if (!masterValidationReport.isPassed()) {
+                    throw new BusinessException(400, masterValidationReport.getMessage());
                 }
             }
 
@@ -649,6 +652,14 @@ public class DynamicDataService {
             // 设置记录信息
             OperationLogContext.setRecordInfo(masterId, masterTableCode + "#" + masterId);
 
+            if ("added".equals(master.getStatus()) || "modified".equals(master.getStatus())) {
+                Map<String, Object> actionData = new HashMap<>(master.getData());
+                if (masterId != null) {
+                    actionData.put("id", masterId);
+                }
+                actionService.execute(masterTableCode, "after_save", null, actionData, masterValidationReport);
+            }
+
             // 3. 处理从表
             if (param.getDetails() != null && !param.getDetails().isEmpty()) {
                 for (var entry : param.getDetails().entrySet()) {
@@ -665,14 +676,15 @@ public class DynamicDataService {
                         if (item == null || "unchanged".equals(item.getStatus())) continue;
 
                         // 后端验证 - 从表（非删除操作）
+                        ValidationReport detailValidationReport = null;
                         if (!"deleted".equals(item.getStatus())) {
                             Map<String, Object> validateData = new HashMap<>(item.getData());
                             if (item.getId() != null) {
                                 validateData.put("id", item.getId());
                             }
-                            ValidationService.ValidationResult validationResult = validationService.validate(detailTableCode, validateData);
-                            if (!validationResult.isValid()) {
-                                throw new BusinessException(400, validationResult.getMessage());
+                            detailValidationReport = validationService.validate(detailTableCode, "save", validateData);
+                            if (!detailValidationReport.isPassed()) {
+                                throw new BusinessException(400, detailValidationReport.getMessage());
                             }
                         }
 
@@ -682,12 +694,18 @@ public class DynamicDataService {
                                     item.getData().put(fkFieldName, masterId);
                                 }
                                 Long detailId = insert(detailTableCode, item.getData());
+                                Map<String, Object> actionData = new HashMap<>(item.getData());
+                                actionData.put("id", detailId);
+                                actionService.execute(detailTableCode, "after_save", null, actionData, detailValidationReport);
                                 // 审计日志 - 从表新增
                                 auditLogService.logInsert(userName, param.getPageCode(), detailTableCode,
                                     detailMeta.tableName(), detailId, item.getData());
                             }
                             case "modified" -> {
                                 update(detailTableCode, item.getId(), item.getData());
+                                Map<String, Object> actionData = new HashMap<>(item.getData());
+                                actionData.put("id", item.getId());
+                                actionService.execute(detailTableCode, "after_save", null, actionData, detailValidationReport);
                                 // 审计日志 - 从表修改
                                 auditLogService.logAsync(userName, param.getPageCode(), detailTableCode,
                                     detailMeta.tableName(), item.getId(), "UPDATE", item.getChanges());

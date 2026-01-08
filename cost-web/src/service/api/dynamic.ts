@@ -68,3 +68,17 @@ export function saveDynamicData(param: {
     data: param
   });
 }
+
+/** 执行执行器 */
+export function executeAction(tableCode: string, params: {
+  group?: string;
+  actionCodes?: string[];
+  data?: Record<string, any>;
+  validateGroup?: string;
+}) {
+  return request<any>({
+    url: `/api/data/${tableCode}/execute`,
+    method: 'POST',
+    data: params
+  });
+}

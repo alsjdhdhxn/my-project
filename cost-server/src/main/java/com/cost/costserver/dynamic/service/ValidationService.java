@@ -3,8 +3,12 @@ package com.cost.costserver.dynamic.service;
 import cn.hutool.core.util.StrUtil;
 import com.cost.costserver.common.BusinessException;
 import com.cost.costserver.dynamic.mapper.DynamicMapper;
+import com.cost.costserver.dynamic.util.SqlTemplateUtils;
+import com.cost.costserver.dynamic.validation.RuleResult;
+import com.cost.costserver.dynamic.validation.ValidationReport;
 import com.cost.costserver.metadata.dto.TableMetadataDTO;
 import com.cost.costserver.metadata.service.MetadataService;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.Data;
@@ -13,12 +17,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * 后端验证服务
- * 流程：按 order 顺序执行验证器，每个验证器通过后执行其关联的执行器（如果有）
+ * 流程：按 order 顺序执行验证器
  */
 @Slf4j
 @Service
@@ -29,45 +31,16 @@ public class ValidationService {
     private final MetadataService metadataService;
     private final ObjectMapper objectMapper;
 
-    private static final Pattern PARAM_PATTERN = Pattern.compile(":([a-zA-Z][a-zA-Z0-9]*)");
-
     @Data
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public static class ValidationRule {
         private Integer order;
+        private String code;
         private String name;
+        private String group;
         private String sql;
         private String condition;
         private String message;
-        private ActionConfig action;
-    }
-
-    @Data
-    public static class ActionConfig {
-        private Boolean enabled;
-        private String sql;
-        private String description;
-    }
-
-    @Data
-    public static class ValidationResult {
-        private boolean valid;
-        private String ruleName;
-        private String message;
-        private List<String> executedActions = new ArrayList<>();
-
-        public static ValidationResult success() {
-            ValidationResult r = new ValidationResult();
-            r.setValid(true);
-            return r;
-        }
-
-        public static ValidationResult fail(String ruleName, String message) {
-            ValidationResult r = new ValidationResult();
-            r.setValid(false);
-            r.setRuleName(ruleName);
-            r.setMessage(message);
-            return r;
-        }
     }
 
     /**
@@ -76,12 +49,23 @@ public class ValidationService {
      * @param data 待验证数据
      * @return 验证结果
      */
-    public ValidationResult validate(String tableCode, Map<String, Object> data) {
+    public ValidationReport validate(String tableCode, Map<String, Object> data) {
+        return validate(tableCode, null, data);
+    }
+
+    /**
+     * 执行后端验证
+     * @param tableCode 表编码
+     * @param group 验证分组（为空则执行全部）
+     * @param data 待验证数据
+     * @return 验证结果
+     */
+    public ValidationReport validate(String tableCode, String group, Map<String, Object> data) {
         TableMetadataDTO metadata = metadataService.getTableMetadata(tableCode);
         String rulesJson = metadata.validationRules();
 
         if (StrUtil.isBlank(rulesJson)) {
-            return ValidationResult.success();
+            return ValidationReport.success();
         }
 
         List<ValidationRule> rules;
@@ -89,104 +73,80 @@ public class ValidationService {
             rules = objectMapper.readValue(rulesJson, new TypeReference<>() {});
         } catch (Exception e) {
             log.error("解析验证规则失败: {}", e.getMessage());
-            return ValidationResult.success();
+            return ValidationReport.success();
         }
+
+        if (rules == null || rules.isEmpty()) {
+            return ValidationReport.success();
+        }
+
+        rules = rules.stream()
+            .filter(rule -> matchesGroup(rule.getGroup(), group))
+            .toList();
 
         // 按 order 排序
         rules.sort(Comparator.comparingInt(r -> r.getOrder() == null ? 0 : r.getOrder()));
 
-        ValidationResult result = ValidationResult.success();
+        ValidationReport report = ValidationReport.success();
+        if (data == null) {
+            data = new HashMap<>();
+        }
 
         for (ValidationRule rule : rules) {
             // 1. 执行验证 SQL
-            boolean passed = executeValidation(rule, data);
-
-            if (!passed) {
-                return ValidationResult.fail(rule.getName(), rule.getMessage());
-            }
-
-            // 2. 验证通过，执行关联的执行器（如果有且启用）
-            if (rule.getAction() != null && Boolean.TRUE.equals(rule.getAction().getEnabled())) {
-                executeAction(rule.getAction(), data);
-                result.getExecutedActions().add(rule.getName() + ":" + rule.getAction().getDescription());
+            RuleResult ruleResult = executeValidation(rule, data);
+            report.getResults().add(ruleResult);
+            if (!ruleResult.isPassed()) {
+                report.setPassed(false);
+                report.setMessage(ruleResult.getMessage());
+                return report;
             }
         }
 
-        return result;
+        return report;
     }
 
     /**
      * 执行验证 SQL
      */
-    private boolean executeValidation(ValidationRule rule, Map<String, Object> data) {
+    private RuleResult executeValidation(ValidationRule rule, Map<String, Object> data) {
+        RuleResult ruleResult = new RuleResult();
+        ruleResult.setCode(rule.getCode());
+        ruleResult.setName(rule.getName());
+
         if (StrUtil.isBlank(rule.getSql()) || StrUtil.isBlank(rule.getCondition())) {
-            return true;
+            ruleResult.setPassed(true);
+            return ruleResult;
         }
 
         try {
-            String sql = buildSql(rule.getSql(), data);
+            String sql = SqlTemplateUtils.buildSql(rule.getSql(), data);
             log.debug("执行验证SQL: {}", sql);
 
             Long result = dynamicMapper.selectCount(sql);
             log.debug("验证结果: {}, 条件: {}", result, rule.getCondition());
 
-            return evaluateCondition(result, rule.getCondition());
+            boolean passed = evaluateCondition(result, rule.getCondition());
+            ruleResult.setResult(result);
+            ruleResult.setPassed(passed);
+            if (!passed) {
+                ruleResult.setMessage(rule.getMessage());
+            }
+            return ruleResult;
         } catch (Exception e) {
             log.error("执行验证SQL失败: {}", e.getMessage());
             throw new BusinessException(500, "验证执行失败: " + e.getMessage());
         }
     }
 
-    /**
-     * 执行执行器 SQL
-     */
-    private void executeAction(ActionConfig action, Map<String, Object> data) {
-        if (StrUtil.isBlank(action.getSql())) {
-            return;
+    private boolean matchesGroup(String ruleGroup, String targetGroup) {
+        if (StrUtil.isBlank(targetGroup)) {
+            return true;
         }
-
-        try {
-            String sql = buildSql(action.getSql(), data);
-            log.info("执行执行器SQL: {}", sql);
-            dynamicMapper.insert(sql);
-        } catch (Exception e) {
-            log.error("执行执行器SQL失败: {}", e.getMessage());
-            throw new BusinessException(500, "执行器执行失败: " + e.getMessage());
+        if (StrUtil.isBlank(ruleGroup)) {
+            return true;
         }
-    }
-
-    /**
-     * 构建 SQL，替换参数占位符
-     * :paramName -> 实际值
-     */
-    private String buildSql(String sqlTemplate, Map<String, Object> data) {
-        Matcher matcher = PARAM_PATTERN.matcher(sqlTemplate);
-        StringBuffer sb = new StringBuffer();
-
-        while (matcher.find()) {
-            String paramName = matcher.group(1);
-            Object value = data.get(paramName);
-            String replacement = formatValue(value);
-            matcher.appendReplacement(sb, Matcher.quoteReplacement(replacement));
-        }
-        matcher.appendTail(sb);
-
-        return sb.toString();
-    }
-
-    /**
-     * 格式化值为 SQL 字面量
-     */
-    private String formatValue(Object value) {
-        if (value == null) {
-            return "NULL";
-        }
-        if (value instanceof Number) {
-            return value.toString();
-        }
-        // 字符串需要转义单引号
-        String strValue = value.toString().replace("'", "''");
-        return "'" + strValue + "'";
+        return targetGroup.trim().equals(ruleGroup.trim());
     }
 
     /**
