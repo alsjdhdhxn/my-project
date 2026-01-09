@@ -18,6 +18,8 @@
           :rowSelection="detailRowSelection"
           :suppressContextMenu="true"
           :preventDefaultOnContextMenu="true"
+          :headerHeight="24"
+          :sideBar="sideBar"
           @grid-ready="(e) => onGridReady(tab.key, e)"
           @cell-value-changed="(e) => onCellValueChanged(tab.key, e)"
           @cell-clicked="(e) => onCellClicked(tab.key, e)"
@@ -66,6 +68,41 @@ const emit = defineEmits<{
 
 const detailRowSelection = { mode: 'multiRow', checkboxes: true, enableClickSelection: true } as const;
 
+// Side Bar 配置
+const sideBar = {
+  toolPanels: [
+    {
+      id: 'columns',
+      labelDefault: 'Columns',
+      labelKey: 'columns',
+      iconKey: 'columns',
+      toolPanel: 'agColumnsToolPanel',
+      minWidth: 200,
+      width: 250,
+      toolPanelParams: {
+        suppressRowGroups: true,
+        suppressValues: true,
+        suppressPivots: true,
+        suppressPivotMode: true,
+        suppressColumnFilter: false,
+        suppressColumnSelectAll: false,
+        suppressColumnExpandAll: false
+      }
+    },
+    {
+      id: 'filters',
+      labelDefault: 'Filters',
+      labelKey: 'filters',
+      iconKey: 'filter',
+      toolPanel: 'agFiltersToolPanel',
+      minWidth: 180,
+      width: 250
+    }
+  ],
+  position: 'right' as const,
+  defaultToolPanel: 'columns'
+};
+
 // ==================== State ====================
 
 const gridApis = shallowReactive(new Map<string, GridApi>());
@@ -104,6 +141,15 @@ function getTabColumns(tab: TabConfig): ColDef[] {
 
 function onGridReady(tabKey: string, params: GridReadyEvent) {
   gridApis.set(tabKey, params.api);
+  
+  // 应用初始排序
+  const tab = props.tabs.find(t => t.key === tabKey);
+  if (tab?.initialSort && tab.initialSort.length > 0) {
+    params.api.applyColumnState({
+      state: tab.initialSort,
+      defaultState: { sort: null }
+    });
+  }
 }
 
 function onCellValueChanged(tabKey: string, event: CellValueChangedEvent) {
@@ -236,21 +282,23 @@ defineExpose({
 .tab-grid-wrapper :deep(.ag-header-cell-label) {
   white-space: normal !important;
   word-wrap: break-word;
-  line-height: 1.4;
+  line-height: 1.2;
   display: flex;
   align-items: center;
   justify-content: center;
   text-align: center;
+  font-size: 11px;
 }
 
 .tab-grid-wrapper :deep(.ag-header-cell) {
-  padding-top: 4px;
-  padding-bottom: 4px;
+  padding-top: 2px;
+  padding-bottom: 2px;
 }
 
 .tab-grid-wrapper :deep(.ag-header-cell-text) {
   white-space: normal !important;
   word-wrap: break-word;
   overflow: visible !important;
+  font-size: 11px;
 }
 </style>

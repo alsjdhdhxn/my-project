@@ -19,6 +19,7 @@ export interface TabConfig {
   tableCode?: string;
   // 通用
   columns: string[];
+  initialSort?: Array<{ colId: string; sort: 'asc' | 'desc' }>; // AG Grid 初始排序
 }
 
 /** TABS 组件配置（从数据库读取） */
@@ -32,6 +33,7 @@ export interface TabsComponentConfig {
     values?: string[]; // group 模式的多个分组值
     tableCode?: string; // multi 模式的表代码
     columns: string[];
+    initialSort?: Array<{ colId: string; sort: 'asc' | 'desc' }>; // AG Grid 初始排序
   }>;
   broadcast?: string[];
   calcRules?: CalcRule[];
@@ -151,7 +153,8 @@ export function parseTabConfig(config: TabsComponentConfig): TabConfig[] {
     groupValue: tab.value,
     groupValues: tab.values, // 多个分组值
     tableCode: tab.tableCode,
-    columns: tab.columns || []
+    columns: tab.columns || [],
+    initialSort: tab.initialSort // AG Grid 初始排序
   }));
 }
 

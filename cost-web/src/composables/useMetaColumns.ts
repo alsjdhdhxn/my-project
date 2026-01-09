@@ -79,6 +79,11 @@ export function metaToColDef(col: ColumnMetadata): ColDef {
     try {
       const config = JSON.parse(col.rulesConfig);
       
+      // 0. 自定义排序
+      if (config.comparator) {
+        colDef.comparator = getComparator(config.comparator);
+      }
+      
       // 1. 样式规则
       if (config.style && Array.isArray(config.style)) {
         const cellClassRules: Record<string, (params: any) => boolean> = {};
@@ -117,6 +122,30 @@ export function metaToColDef(col: ColumnMetadata): ColDef {
   }
 
   return colDef;
+}
+
+/**
+ * 获取自定义排序函数
+ */
+function getComparator(comparatorName: string) {
+  const comparators: Record<string, (valueA: any, valueB: any) => number> = {
+    // 自定义分类排序：原料 → 辅料 → 印字包材 → 非印字包材
+    customCategorySort: (valueA: any, valueB: any) => {
+      const order: Record<string, number> = {
+        '原料': 1,
+        '辅料': 2,
+        '印字包材': 3,
+        '非印字包材': 4
+      };
+      
+      const orderA = order[valueA] || 999;
+      const orderB = order[valueB] || 999;
+      
+      return orderA - orderB;
+    }
+  };
+  
+  return comparators[comparatorName] || undefined;
 }
 
 /**

@@ -1,33 +1,5 @@
 <template>
   <div class="master-detail-page">
-    <!-- 悬浮工具栏 -->
-    <MetaFloatToolbar>
-      <div class="toolbar-row">
-        <NInput
-          v-model:value="searchText"
-          placeholder="搜索..."
-          clearable
-          size="small"
-          style="width: 150px"
-          @update:value="handleSearch"
-        />
-        <NButton size="small" quaternary @click="handleRefresh">
-          <template #icon><icon-ant-design-reload-outlined /></template>
-        </NButton>
-      </div>
-      <div v-if="tabs.length > 1" class="toolbar-row">
-        <NButton
-          v-for="tab in tabs"
-          :key="tab.key"
-          :type="visibleTabKeys.has(tab.key) ? 'primary' : 'default'"
-          size="small"
-          @click="toggleTab(tab.key)"
-        >
-          {{ tab.title }}
-        </NButton>
-      </div>
-    </MetaFloatToolbar>
-
     <!-- 主从表分隔区域 -->
     <template v-if="store.isReady">
       <!-- 有从表：上下分隔 -->
@@ -57,6 +29,7 @@
               :cellSelection="cellSelectionEnabled"
               :autoGroupColumnDef="autoGroupColumnDef"
               :groupDefaultExpanded="enableRowGrouping ? 1 : undefined"
+              :headerHeight="24"
               @grid-ready="onMasterGridReady"
               @selection-changed="onMasterSelectionChanged"
               @cell-value-changed="onMasterCellValueChanged"
@@ -103,6 +76,7 @@
           :cellSelection="cellSelectionEnabled"
           :autoGroupColumnDef="autoGroupColumnDef"
           :groupDefaultExpanded="enableRowGrouping ? 1 : undefined"
+          :headerHeight="24"
           @grid-ready="onMasterGridReady"
           @cell-value-changed="onMasterCellValueChanged"
           @cell-clicked="onMasterCellClicked"
@@ -144,7 +118,7 @@
 
 <script setup lang="ts">
 import { ref, shallowRef, computed, onMounted, onUnmounted, watch, h } from 'vue';
-import { NButton, NInput, NSplit, NSpin, NDropdown, useMessage } from 'naive-ui';
+import { NButton, NDropdown, useMessage, NSplit, NSpin } from 'naive-ui';
 import type { DropdownOption } from 'naive-ui';
 import { AgGridVue } from 'ag-grid-vue3';
 import type { GridApi, ColDef, GridReadyEvent, CellValueChangedEvent, CellContextMenuEvent } from 'ag-grid-community';
@@ -162,7 +136,6 @@ import {
 } from '@/logic/calc-engine';
 import { fetchPageComponents, saveDynamicData, searchDynamicData, executeAction } from '@/service/api';
 import { loadTableMeta, type RowStyleRule, type LookupRule, extractLookupRules } from '@/composables/useMetaColumns';
-import MetaFloatToolbar from './MetaFloatToolbar.vue';
 import MetaTabs from './MetaTabs.vue';
 import LookupDialog from './LookupDialog.vue';
 
@@ -183,7 +156,6 @@ const store = useMasterDetailStore(props.pageCode);
 // ==================== State ====================
 
 const masterGridApi = shallowRef<GridApi | null>(null);
-const searchText = ref('');
 const visibleTabKeys = ref(new Set<string>());
 
 // 验证规则
@@ -254,6 +226,41 @@ const defaultColDef: ColDef = {
 };
 
 const masterRowSelection = { mode: 'singleRow', checkboxes: false, enableClickSelection: true } as const;
+
+// Side Bar 配置
+const sideBar = {
+  toolPanels: [
+    {
+      id: 'columns',
+      labelDefault: 'Columns',
+      labelKey: 'columns',
+      iconKey: 'columns',
+      toolPanel: 'agColumnsToolPanel',
+      minWidth: 200,
+      width: 250,
+      toolPanelParams: {
+        suppressRowGroups: true,      // 隐藏 Row Groups 区域
+        suppressValues: true,          // 隐藏 Values 区域
+        suppressPivots: true,          // 隐藏 Pivots 区域
+        suppressPivotMode: true,       // 隐藏 Pivot Mode 开关
+        suppressColumnFilter: false,   // 保留列过滤搜索框
+        suppressColumnSelectAll: false, // 保留全选/取消全选
+        suppressColumnExpandAll: false  // 保留展开/折叠全部
+      }
+    },
+    {
+      id: 'filters',
+      labelDefault: 'Filters',
+      labelKey: 'filters',
+      iconKey: 'filter',
+      toolPanel: 'agFiltersToolPanel',
+      minWidth: 180,
+      width: 250
+    }
+  ],
+  position: 'right' as const,
+  defaultToolPanel: 'columns'
+};
 
 // ==================== Context Menu ====================
 
@@ -730,18 +737,6 @@ async function loadDetailData(masterId: number) {
 
 // ==================== Toolbar Actions ====================
 
-function toggleTab(key: string) {
-  if (visibleTabKeys.value.has(key)) {
-    visibleTabKeys.value.delete(key);
-  } else {
-    visibleTabKeys.value.add(key);
-  }
-}
-
-function handleSearch(text: string) {
-  masterGridApi.value?.setGridOption('quickFilterText', text);
-}
-
 async function handleRefresh() {
   store.reset();
   await loadMasterData();
@@ -865,8 +860,6 @@ function onBeforeUnload(e: BeforeUnloadEvent) {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  padding: 8px;
-  gap: 8px;
 }
 
 .split-container {
@@ -892,17 +885,18 @@ function onBeforeUnload(e: BeforeUnloadEvent) {
 .detail-section :deep(.ag-header-cell-label) {
   white-space: normal !important;
   word-wrap: break-word;
-  line-height: 1.4;
+  line-height: 1.2;
   display: flex;
   align-items: center;
   justify-content: center;
   text-align: center;
+  font-size: 11px;
 }
 
 .master-section :deep(.ag-header-cell),
 .detail-section :deep(.ag-header-cell) {
-  padding-top: 4px;
-  padding-bottom: 4px;
+  padding-top: 2px;
+  padding-bottom: 2px;
 }
 
 .master-section :deep(.ag-header-cell-text),
@@ -910,6 +904,7 @@ function onBeforeUnload(e: BeforeUnloadEvent) {
   white-space: normal !important;
   word-wrap: break-word;
   overflow: visible !important;
+  font-size: 11px;
 }
 
 .loading-container {
@@ -917,11 +912,5 @@ function onBeforeUnload(e: BeforeUnloadEvent) {
   display: flex;
   align-items: center;
   justify-content: center;
-}
-
-.toolbar-row {
-  display: flex;
-  gap: 8px;
-  align-items: center;
 }
 </style>
