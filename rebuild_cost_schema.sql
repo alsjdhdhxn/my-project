@@ -361,6 +361,11 @@ CREATE TABLE T_COST_PINGGU (
     FMRATE        NUMBER DEFAULT 1,
     GOODSNAME_EN  VARCHAR2(2000),
     LIVERY        VARCHAR2(100),
+    DELETED       NUMBER(1)       DEFAULT 0,
+    CREATE_TIME   TIMESTAMP       DEFAULT SYSTIMESTAMP,
+    UPDATE_TIME   TIMESTAMP       DEFAULT SYSTIMESTAMP,
+    CREATE_BY     VARCHAR2(64),
+    UPDATE_BY     VARCHAR2(64),
     CONSTRAINT PK_COST_PINGGU PRIMARY KEY (DOCID)
 );
 
@@ -385,6 +390,11 @@ CREATE TABLE T_COST_PINGGU_DTL (
     SUQTY            NUMBER,
     GOODSTYPE        VARCHAR2(4000),
     GOODSNAME_EN     VARCHAR2(2000),
+    DELETED          NUMBER(1)       DEFAULT 0,
+    CREATE_TIME      TIMESTAMP       DEFAULT SYSTIMESTAMP,
+    UPDATE_TIME      TIMESTAMP       DEFAULT SYSTIMESTAMP,
+    CREATE_BY        VARCHAR2(64),
+    UPDATE_BY        VARCHAR2(64),
     CONSTRAINT PK_COST_PINGGU_DTL PRIMARY KEY (DTLID)
 );
 
@@ -1057,6 +1067,11 @@ SELECT
     d.SUQTY,
     d.GOODSTYPE,
     d.GOODSNAME_EN,
+    d.DELETED,
+    d.CREATE_TIME,
+    d.UPDATE_TIME,
+    d.CREATE_BY,
+    d.UPDATE_BY,
     CASE
         WHEN d.DTL_USEFLAG IN ('印字包材', '非印字包材') AND REGEXP_LIKE(d.APEX_GOODSNAME, '桶|说明书|小盒|标签|瓶|纸箱') THEN 'A'
         WHEN d.DTL_USEFLAG = '辅料' AND REGEXP_LIKE(d.APEX_GOODSNAME, '胶囊') THEN 'B'
@@ -1295,9 +1310,236 @@ SET ACTION_RULES = '[
     "code": "resetPassword",
     "group": "manual",
     "type": "java",
-    "method": "userService.resetPassword"
+    "method": "userService.resetPassword",
+    "description": "重置用户密码为默认值"
   }
 ]'
 WHERE TABLE_CODE = 'CostUser';
 
 COMMIT;
+
+DELETE FROM T_COST_PAGE_COMPONENT
+WHERE PAGE_CODE = 'cost-user' AND COMPONENT_TYPE = 'CONTEXT_MENU';
+
+DELETE FROM T_COST_PAGE_COMPONENT
+WHERE PAGE_CODE = 'user-manage' AND COMPONENT_TYPE = 'CONTEXT_MENU';
+
+INSERT INTO T_COST_PAGE_COMPONENT (
+    ID,
+    PAGE_CODE,
+    COMPONENT_KEY,
+    COMPONENT_TYPE,
+    PARENT_KEY,
+    SORT_ORDER,
+    COMPONENT_CONFIG
+)
+VALUES (
+    SEQ_COST_PAGE_COMPONENT.NEXTVAL,
+    'user-manage',
+    'contextMenu',
+    'CONTEXT_MENU',
+    NULL,
+    99,
+    '{
+        "items": [
+            {
+                "label": "新增行",
+                "key": "add",
+                "icon": "mdi:plus",
+                "action": "addRow"
+            },
+            {
+                "label": "复制行",
+                "key": "copy",
+                "icon": "mdi:content-copy",
+                "action": "copyRow",
+                "disabled": "!selectedRow"
+            },
+            {
+                "label": "删除",
+                "key": "delete",
+                "icon": "mdi:delete",
+                "action": "deleteRow",
+                "confirm": true,
+                "confirmMessage": "确认删除选中的用户吗？",
+                "disabled": "!selectedRow"
+            }
+        ]
+    }'
+);
+
+COMMIT;
+
+INSERT INTO T_COST_PINGGU (
+    GOODSID,
+    GOODSNAME,
+    STRENGTH,
+    MA_NO,
+    APEX_PL,
+    MAH,
+    P_PERPACK,
+    FORM,
+    S_PERBACK,
+    PACKTYPE,
+    X_PERBACK,
+    TOTAL_FL,
+    TOTAL_BC,
+    TOTAL_YL,
+    MEMO,
+    USESTATUS,
+    DOCID,
+    DOSAGE,
+    ANNUAL_QTY,
+    YIELD,
+    TOTAL_COST,
+    OUT_PRICE_F,
+    OUT_PRICE_RMB,
+    SALEMONEY,
+    JGF_BATCH,
+    JGF_PERQP,
+    COST_PERQP,
+    ML_PERQP,
+    Y_JG_RE,
+    Y_ML,
+    Y_SALE,
+    CUSTOMID,
+    CUSTOMNAME,
+    COUNTRY,
+    PROJECTNO,
+    USEFLAG,
+    YIELD_TIME,
+    APEX_PL_TIME,
+    ZX_SOURCE,
+    FMNAME,
+    FMRATE,
+    GOODSNAME_EN,
+    LIVERY,
+    DELETED,
+    CREATE_TIME,
+    UPDATE_TIME,
+    CREATE_BY,
+    UPDATE_BY
+)
+SELECT
+    a.GOODSID,
+    a.GOODSNAME,
+    a.STRENGTH,
+    a.MA_NO,
+    a.APEX_PL,
+    a.MAH,
+    a.P_PERPACK,
+    a.FORM,
+    a.S_PERBACK,
+    a.PACKTYPE,
+    a.X_PERBACK,
+    a.TOTAL_FL,
+    a.TOTAL_BC,
+    a.TOTAL_YL,
+    a.MEMO,
+    a.USESTATUS,
+    a.DOCID,
+    a.DOSAGE,
+    a.ANNUAL_QTY,
+    a.YIELD,
+    a.TOTAL_COST,
+    a.OUT_PRICE_F,
+    a.OUT_PRICE_RMB,
+    a.SALEMONEY,
+    a.JGF_BATCH,
+    a.JGF_PERQP,
+    a.COST_PERQP,
+    a.ML_PERQP,
+    a.Y_JG_RE,
+    a.Y_ML,
+    a.Y_SALE,
+    a.CUSTOMID,
+    a.CUSTOMNAME,
+    a.COUNTRY,
+    a.PROJECTNO,
+    a.USEFLAG,
+    a.YIELD_TIME,
+    a.APEX_PL_TIME,
+    a.ZX_SOURCE,
+    a.FMNAME,
+    a.FMRATE,
+    a.GOODSNAME_EN,
+    a.LIVERY,
+    0,
+    SYSTIMESTAMP,
+    SYSTIMESTAMP,
+    'system',
+    'system'
+FROM hy.apex_sa_pinggu a
+WHERE a.DOCID IN (3452, 2943);
+
+INSERT INTO T_COST_PINGGU_DTL (
+    DOCID,
+    APEX_GOODSID,
+    APEX_GOODSNAME,
+    DTL_USEFLAG,
+    SPEC,
+    PER_HL,
+    EXADD_MATER,
+    BATCH_QTY,
+    PRICE,
+    COST_BATCH,
+    MEMO,
+    DTLID,
+    APEX_FACTORYNAME,
+    APEX_FACTORYID,
+    MODIFYDATE,
+    ZX_SOURCE,
+    BASE_PRICE,
+    SUQTY,
+    GOODSTYPE,
+    GOODSNAME_EN,
+    DELETED,
+    CREATE_TIME,
+    UPDATE_TIME,
+    CREATE_BY,
+    UPDATE_BY
+)
+SELECT
+    a.DOCID,
+    a.APEX_GOODSID,
+    a.APEX_GOODSNAME,
+    a.DTL_USEFLAG,
+    a.SPEC,
+    a.PER_HL,
+    a.EXADD_MATER,
+    a.BATCH_QTY,
+    a.PRICE,
+    a.COST_BATCH,
+    a.MEMO,
+    a.DTLID,
+    a.APEX_FACTORYNAME,
+    a.APEX_FACTORYID,
+    a.MODIFYDATE,
+    a.ZX_SOURCE,
+    a.BASE_PRICE,
+    a.SUQTY,
+    a.GOODSTYPE,
+    a.GOODSNAME_EN,
+    0,
+    SYSTIMESTAMP,
+    SYSTIMESTAMP,
+    'system',
+    'system'
+FROM hy.apex_sa_pinggu_dtl a
+WHERE a.DOCID IN (3452, 2943);
+
+COMMIT;
+
+SELECT 
+    TABLE_CODE,
+    DBMS_LOB.SUBSTR(ACTION_RULES, 4000, 1) AS ACTION_RULES_TEXT
+FROM T_COST_TABLE_METADATA
+WHERE TABLE_CODE = 'CostUser';
+
+SELECT 
+    PAGE_CODE,
+    COMPONENT_KEY,
+    COMPONENT_TYPE,
+    DBMS_LOB.SUBSTR(COMPONENT_CONFIG, 4000, 1) AS CONFIG_PREVIEW
+FROM T_COST_PAGE_COMPONENT
+WHERE PAGE_CODE = 'user-manage' AND COMPONENT_TYPE = 'CONTEXT_MENU';
