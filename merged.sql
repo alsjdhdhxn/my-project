@@ -1,3 +1,4 @@
+﻿-- BEGIN rebuild_cost_schema.sql
 -- Rebuild cost schema (drops T_COST_*, SEQ_COST_*, V_COST_* then replays baseline data).
 -- Run with SQL*Plus/SQLcl/SQL Developer from repo root.
 
@@ -23,16 +24,16 @@ END;
 /
 
 -- =====================================================
--- 成本管理系统数据库脚本（整合版）
--- 分类：基础结构 / 初始化数据/ 元数据与页面配置 / 修复补丁
--- 用途：一次执行完成所有建表、初始化与配置，便于维护
+-- 鎴愭湰绠＄悊绯荤粺鏁版嵁搴撹剼鏈紙鏁村悎鐗堬級
+-- 鍒嗙被锛氬熀纭€缁撴瀯 / 鍒濆鍖栨暟鎹? 鍏冩暟鎹笌椤甸潰閰嶇疆 / 淇琛ヤ竵
+-- 鐢ㄩ€旓細涓€娆℃墽琛屽畬鎴愭墍鏈夊缓琛ㄣ€佸垵濮嬪寲涓庨厤缃紝渚夸簬缁存姢
 -- =====================================================
 
 -- =====================================================
--- A. 基础表结构
+-- A. 鍩虹琛ㄧ粨鏋?
 -- =====================================================
 
--- A1. 元数据模块表结构
+-- A1. 鍏冩暟鎹ā鍧楄〃缁撴瀯
 
 CREATE TABLE T_COST_TABLE_METADATA (
     ID                  NUMBER(19)      PRIMARY KEY,
@@ -46,6 +47,7 @@ CREATE TABLE T_COST_TABLE_METADATA (
     PARENT_FK_COLUMN    VARCHAR2(64),
     AUDIT_ENABLED       NUMBER(1)       DEFAULT 0,
     VALIDATION_RULES    CLOB,
+    ACTION_RULES        CLOB,
     DESCRIPTION         VARCHAR2(500),
     DELETED             NUMBER(1)       DEFAULT 0,
     CREATE_TIME         TIMESTAMP       DEFAULT SYSTIMESTAMP,
@@ -158,7 +160,7 @@ CREATE INDEX IDX_DICT_ITEM_TYPE ON T_COST_DICTIONARY_ITEM(TYPE_ID);
 
 COMMIT;
 
--- A2. 权限模块表结构
+-- A2. 鏉冮檺妯″潡琛ㄧ粨鏋?
 
 CREATE TABLE T_COST_DEPARTMENT (
     ID              NUMBER(19) PRIMARY KEY,
@@ -274,7 +276,7 @@ CREATE SEQUENCE SEQ_COST_RESOURCE START WITH 1 INCREMENT BY 1;
 
 COMMIT;
 
--- A3. 业务模块表结构
+-- A3. 涓氬姟妯″潡琛ㄧ粨鏋?
 
 CREATE TABLE T_COST_EVAL (
     ID              NUMBER(19)      PRIMARY KEY,
@@ -357,7 +359,7 @@ CREATE TABLE T_COST_PINGGU (
     YIELD_TIME    DATE DEFAULT SYSDATE,
     APEX_PL_TIME  DATE DEFAULT SYSDATE,
     ZX_SOURCE     VARCHAR2(100),
-    FMNAME        VARCHAR2(100) DEFAULT '人民币',
+    FMNAME        VARCHAR2(100) DEFAULT '浜烘皯甯?,
     FMRATE        NUMBER DEFAULT 1,
     GOODSNAME_EN  VARCHAR2(2000),
     LIVERY        VARCHAR2(100),
@@ -516,7 +518,7 @@ CREATE SEQUENCE SEQ_COST_DEMO START WITH 1 INCREMENT BY 1;
 
 COMMIT;
 
--- A4. 日志模块表结构
+-- A4. 鏃ュ織妯″潡琛ㄧ粨鏋?
 
 CREATE TABLE T_COST_OPERATION_LOG (
     ID              NUMBER(19)      PRIMARY KEY,
@@ -570,62 +572,62 @@ CREATE INDEX IDX_AUDIT_LOG_TIME ON T_COST_AUDIT_LOG(OPERATION_TIME);
 CREATE INDEX IDX_AUDIT_LOG_USER ON T_COST_AUDIT_LOG(USER_NAME);
 CREATE INDEX IDX_AUDIT_LOG_TABLE ON T_COST_AUDIT_LOG(TABLE_CODE);
 
-COMMENT ON TABLE T_COST_AUDIT_LOG IS '业务审计日志（用户可见）';
-COMMENT ON COLUMN T_COST_AUDIT_LOG.FIELD_CHANGES IS '字段变更JSON，只记录用户手动修改';
+COMMENT ON TABLE T_COST_AUDIT_LOG IS '涓氬姟瀹¤鏃ュ織锛堢敤鎴峰彲瑙侊級';
+COMMENT ON COLUMN T_COST_AUDIT_LOG.FIELD_CHANGES IS '瀛楁鍙樻洿JSON锛屽彧璁板綍鐢ㄦ埛鎵嬪姩淇敼';
 
 COMMIT;
 
 -- =====================================================
--- B. 初始化基础数据
+-- B. 鍒濆鍖栧熀纭€鏁版嵁
 -- =====================================================
 
--- B1. 字典初始化数据
+-- B1. 瀛楀吀鍒濆鍖栨暟鎹?
 INSERT INTO T_COST_DICTIONARY_TYPE (ID, TYPE_CODE, TYPE_NAME, DESCRIPTION, CREATE_BY)
-VALUES (SEQ_COST_DICT_TYPE.NEXTVAL, 'COST_STATUS', '成本状态', '成本单据状态', 'system');
+VALUES (SEQ_COST_DICT_TYPE.NEXTVAL, 'COST_STATUS', '鎴愭湰鐘舵€?, '鎴愭湰鍗曟嵁鐘舵€?, 'system');
 INSERT INTO T_COST_DICTIONARY_ITEM (ID, TYPE_ID, ITEM_CODE, ITEM_NAME, ITEM_VALUE, SORT_ORDER, EXTRA_CONFIG, CREATE_BY)
-VALUES (SEQ_COST_DICT_ITEM.NEXTVAL, (SELECT ID FROM T_COST_DICTIONARY_TYPE WHERE TYPE_CODE = 'COST_STATUS'), 'DRAFT', '草稿', 'DRAFT', 1, '{"color":"#909399"}', 'system');
+VALUES (SEQ_COST_DICT_ITEM.NEXTVAL, (SELECT ID FROM T_COST_DICTIONARY_TYPE WHERE TYPE_CODE = 'COST_STATUS'), 'DRAFT', '鑽夌', 'DRAFT', 1, '{"color":"#909399"}', 'system');
 INSERT INTO T_COST_DICTIONARY_ITEM (ID, TYPE_ID, ITEM_CODE, ITEM_NAME, ITEM_VALUE, SORT_ORDER, EXTRA_CONFIG, CREATE_BY)
-VALUES (SEQ_COST_DICT_ITEM.NEXTVAL, (SELECT ID FROM T_COST_DICTIONARY_TYPE WHERE TYPE_CODE = 'COST_STATUS'), 'SUBMITTED', '已提交', 'SUBMITTED', 2, '{"color":"#E6A23C"}', 'system');
+VALUES (SEQ_COST_DICT_ITEM.NEXTVAL, (SELECT ID FROM T_COST_DICTIONARY_TYPE WHERE TYPE_CODE = 'COST_STATUS'), 'SUBMITTED', '宸叉彁浜?, 'SUBMITTED', 2, '{"color":"#E6A23C"}', 'system');
 INSERT INTO T_COST_DICTIONARY_ITEM (ID, TYPE_ID, ITEM_CODE, ITEM_NAME, ITEM_VALUE, SORT_ORDER, EXTRA_CONFIG, CREATE_BY)
-VALUES (SEQ_COST_DICT_ITEM.NEXTVAL, (SELECT ID FROM T_COST_DICTIONARY_TYPE WHERE TYPE_CODE = 'COST_STATUS'), 'APPROVED', '已审核', 'APPROVED', 3, '{"color":"#67C23A"}', 'system');
+VALUES (SEQ_COST_DICT_ITEM.NEXTVAL, (SELECT ID FROM T_COST_DICTIONARY_TYPE WHERE TYPE_CODE = 'COST_STATUS'), 'APPROVED', '宸插鏍?, 'APPROVED', 3, '{"color":"#67C23A"}', 'system');
 INSERT INTO T_COST_DICTIONARY_ITEM (ID, TYPE_ID, ITEM_CODE, ITEM_NAME, ITEM_VALUE, SORT_ORDER, EXTRA_CONFIG, CREATE_BY)
-VALUES (SEQ_COST_DICT_ITEM.NEXTVAL, (SELECT ID FROM T_COST_DICTIONARY_TYPE WHERE TYPE_CODE = 'COST_STATUS'), 'REJECTED', '已驳回', 'REJECTED', 4, '{"color":"#F56C6C"}', 'system');
+VALUES (SEQ_COST_DICT_ITEM.NEXTVAL, (SELECT ID FROM T_COST_DICTIONARY_TYPE WHERE TYPE_CODE = 'COST_STATUS'), 'REJECTED', '宸查┏鍥?, 'REJECTED', 4, '{"color":"#F56C6C"}', 'system');
 
 INSERT INTO T_COST_DICTIONARY_TYPE (ID, TYPE_CODE, TYPE_NAME, DESCRIPTION, CREATE_BY)
-VALUES (SEQ_COST_DICT_TYPE.NEXTVAL, 'FEE_TYPE', '费用类型', '成本单费用类型', 'system');
+VALUES (SEQ_COST_DICT_TYPE.NEXTVAL, 'FEE_TYPE', '璐圭敤绫诲瀷', '鎴愭湰鍗曡垂鐢ㄧ被鍨?, 'system');
 INSERT INTO T_COST_DICTIONARY_ITEM (ID, TYPE_ID, ITEM_CODE, ITEM_NAME, ITEM_VALUE, SORT_ORDER, CREATE_BY)
-VALUES (SEQ_COST_DICT_ITEM.NEXTVAL, (SELECT ID FROM T_COST_DICTIONARY_TYPE WHERE TYPE_CODE = 'FEE_TYPE'), 'TRANSPORT', '运输费', 'TRANSPORT', 1, 'system');
+VALUES (SEQ_COST_DICT_ITEM.NEXTVAL, (SELECT ID FROM T_COST_DICTIONARY_TYPE WHERE TYPE_CODE = 'FEE_TYPE'), 'TRANSPORT', '杩愯緭璐?, 'TRANSPORT', 1, 'system');
 INSERT INTO T_COST_DICTIONARY_ITEM (ID, TYPE_ID, ITEM_CODE, ITEM_NAME, ITEM_VALUE, SORT_ORDER, CREATE_BY)
-VALUES (SEQ_COST_DICT_ITEM.NEXTVAL, (SELECT ID FROM T_COST_DICTIONARY_TYPE WHERE TYPE_CODE = 'FEE_TYPE'), 'PACKAGE', '包装费', 'PACKAGE', 2, 'system');
+VALUES (SEQ_COST_DICT_ITEM.NEXTVAL, (SELECT ID FROM T_COST_DICTIONARY_TYPE WHERE TYPE_CODE = 'FEE_TYPE'), 'PACKAGE', '鍖呰璐?, 'PACKAGE', 2, 'system');
 INSERT INTO T_COST_DICTIONARY_ITEM (ID, TYPE_ID, ITEM_CODE, ITEM_NAME, ITEM_VALUE, SORT_ORDER, CREATE_BY)
-VALUES (SEQ_COST_DICT_ITEM.NEXTVAL, (SELECT ID FROM T_COST_DICTIONARY_TYPE WHERE TYPE_CODE = 'FEE_TYPE'), 'TAX', '税费', 'TAX', 3, 'system');
+VALUES (SEQ_COST_DICT_ITEM.NEXTVAL, (SELECT ID FROM T_COST_DICTIONARY_TYPE WHERE TYPE_CODE = 'FEE_TYPE'), 'TAX', '绋庤垂', 'TAX', 3, 'system');
 INSERT INTO T_COST_DICTIONARY_ITEM (ID, TYPE_ID, ITEM_CODE, ITEM_NAME, ITEM_VALUE, SORT_ORDER, CREATE_BY)
-VALUES (SEQ_COST_DICT_ITEM.NEXTVAL, (SELECT ID FROM T_COST_DICTIONARY_TYPE WHERE TYPE_CODE = 'FEE_TYPE'), 'OTHER', '其他', 'OTHER', 4, 'system');
+VALUES (SEQ_COST_DICT_ITEM.NEXTVAL, (SELECT ID FROM T_COST_DICTIONARY_TYPE WHERE TYPE_CODE = 'FEE_TYPE'), 'OTHER', '鍏朵粬', 'OTHER', 4, 'system');
 
 COMMIT;
 
--- B2. 用户/角色/菜单初始化
+-- B2. 鐢ㄦ埛/瑙掕壊/鑿滃崟鍒濆鍖?
 INSERT INTO T_COST_DEPARTMENT (ID, DEPT_CODE, DEPT_NAME, PARENT_ID, SORT_ORDER, CREATE_BY)
-VALUES (SEQ_COST_DEPARTMENT.NEXTVAL, 'ROOT', '总公司', NULL, 0, 'system');
+VALUES (SEQ_COST_DEPARTMENT.NEXTVAL, 'ROOT', '鎬诲叕鍙?, NULL, 0, 'system');
 INSERT INTO T_COST_DEPARTMENT (ID, DEPT_CODE, DEPT_NAME, PARENT_ID, SORT_ORDER, CREATE_BY)
-VALUES (SEQ_COST_DEPARTMENT.NEXTVAL, 'FINANCE', '财务部', 1, 1, 'system');
+VALUES (SEQ_COST_DEPARTMENT.NEXTVAL, 'FINANCE', '璐㈠姟閮?, 1, 1, 'system');
 INSERT INTO T_COST_DEPARTMENT (ID, DEPT_CODE, DEPT_NAME, PARENT_ID, SORT_ORDER, CREATE_BY)
-VALUES (SEQ_COST_DEPARTMENT.NEXTVAL, 'PURCHASE', '采购部', 1, 2, 'system');
+VALUES (SEQ_COST_DEPARTMENT.NEXTVAL, 'PURCHASE', '閲囪喘閮?, 1, 2, 'system');
 
 INSERT INTO T_COST_ROLE (ID, ROLE_CODE, ROLE_NAME, DESCRIPTION, CREATE_BY)
-VALUES (SEQ_COST_ROLE.NEXTVAL, 'ADMIN', '系统管理员', '拥有所有权限', 'system');
+VALUES (SEQ_COST_ROLE.NEXTVAL, 'ADMIN', '绯荤粺绠＄悊鍛?, '鎷ユ湁鎵€鏈夋潈闄?, 'system');
 INSERT INTO T_COST_ROLE (ID, ROLE_CODE, ROLE_NAME, DESCRIPTION, CREATE_BY)
-VALUES (SEQ_COST_ROLE.NEXTVAL, 'FINANCE_MANAGER', '财务经理', '财务部门管理权限', 'system');
+VALUES (SEQ_COST_ROLE.NEXTVAL, 'FINANCE_MANAGER', '璐㈠姟缁忕悊', '璐㈠姟閮ㄩ棬绠＄悊鏉冮檺', 'system');
 INSERT INTO T_COST_ROLE (ID, ROLE_CODE, ROLE_NAME, DESCRIPTION, CREATE_BY)
-VALUES (SEQ_COST_ROLE.NEXTVAL, 'FINANCE_STAFF', '财务专员', '财务部门普通权限', 'system');
+VALUES (SEQ_COST_ROLE.NEXTVAL, 'FINANCE_STAFF', '璐㈠姟涓撳憳', '璐㈠姟閮ㄩ棬鏅€氭潈闄?, 'system');
 
--- 默认用户，密码 123456（BCrypt 已加密）
+-- 榛樿鐢ㄦ埛锛屽瘑鐮?123456锛圔Crypt 宸插姞瀵嗭級
 INSERT INTO T_COST_USER (ID, USERNAME, PASSWORD, REAL_NAME, DEPARTMENT_ID, CREATE_BY)
-VALUES (SEQ_COST_USER.NEXTVAL, 'admin', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iKt6Z5EH', '系统管理员', 1, 'system');
+VALUES (SEQ_COST_USER.NEXTVAL, 'admin', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iKt6Z5EH', '绯荤粺绠＄悊鍛?, 1, 'system');
 INSERT INTO T_COST_USER (ID, USERNAME, PASSWORD, REAL_NAME, DEPARTMENT_ID, CREATE_BY)
-VALUES (SEQ_COST_USER.NEXTVAL, 'zhangsan', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iKt6Z5EH', '张三', 2, 'system');
+VALUES (SEQ_COST_USER.NEXTVAL, 'zhangsan', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iKt6Z5EH', '寮犱笁', 2, 'system');
 INSERT INTO T_COST_USER (ID, USERNAME, PASSWORD, REAL_NAME, DEPARTMENT_ID, CREATE_BY)
-VALUES (SEQ_COST_USER.NEXTVAL, 'lisi', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iKt6Z5EH', '李四', 2, 'system');
+VALUES (SEQ_COST_USER.NEXTVAL, 'lisi', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iKt6Z5EH', '鏉庡洓', 2, 'system');
 
 INSERT INTO T_COST_USER_ROLE (ID, USER_ID, ROLE_ID, CREATE_BY) VALUES (SEQ_COST_USER_ROLE.NEXTVAL, 1, 1, 'system');
 INSERT INTO T_COST_USER_ROLE (ID, USER_ID, ROLE_ID, CREATE_BY) VALUES (SEQ_COST_USER_ROLE.NEXTVAL, 2, 2, 'system');
@@ -639,69 +641,69 @@ INSERT INTO T_COST_ROLE_PAGE (ID, ROLE_ID, PAGE_CODE, BUTTON_POLICY, COLUMN_POLI
 VALUES (SEQ_COST_ROLE_PAGE.NEXTVAL, 3, 'cost-eval', '["EXPORT"]', NULL, 'system');
 
 INSERT INTO T_COST_RESOURCE (ID, RESOURCE_CODE, RESOURCE_NAME, RESOURCE_TYPE, PAGE_CODE, ICON, ROUTE, PARENT_ID, SORT_ORDER, CREATE_BY)
-VALUES (SEQ_COST_RESOURCE.NEXTVAL, 'home', '首页', 'PAGE', 'home', 'mdi:monitor-dashboard', '/home', NULL, 0, 'system');
+VALUES (SEQ_COST_RESOURCE.NEXTVAL, 'home', '棣栭〉', 'PAGE', 'home', 'mdi:monitor-dashboard', '/home', NULL, 0, 'system');
 INSERT INTO T_COST_RESOURCE (ID, RESOURCE_CODE, RESOURCE_NAME, RESOURCE_TYPE, PAGE_CODE, ICON, ROUTE, PARENT_ID, SORT_ORDER, CREATE_BY)
-VALUES (SEQ_COST_RESOURCE.NEXTVAL, 'cost', '成本管理', 'DIRECTORY', NULL, 'mdi:currency-usd', '/cost', NULL, 1, 'system');
+VALUES (SEQ_COST_RESOURCE.NEXTVAL, 'cost', '鎴愭湰绠＄悊', 'DIRECTORY', NULL, 'mdi:currency-usd', '/cost', NULL, 1, 'system');
 DECLARE
     v_parent_id NUMBER;
 BEGIN
     SELECT ID INTO v_parent_id FROM T_COST_RESOURCE WHERE RESOURCE_CODE = 'cost';
     INSERT INTO T_COST_RESOURCE (ID, RESOURCE_CODE, RESOURCE_NAME, RESOURCE_TYPE, PAGE_CODE, ICON, ROUTE, PARENT_ID, SORT_ORDER, CREATE_BY)
-    VALUES (SEQ_COST_RESOURCE.NEXTVAL, 'eval-v4', '评估单', 'PAGE', 'cost-eval', 'mdi:calculator', '/cost/eval-v4', v_parent_id, 1, 'system');
+    VALUES (SEQ_COST_RESOURCE.NEXTVAL, 'eval-v4', '璇勪及鍗?, 'PAGE', 'cost-eval', 'mdi:calculator', '/cost/eval-v4', v_parent_id, 1, 'system');
 END;
 /
 
 COMMIT;
 
--- B3. 业务测试数据
+-- B3. 涓氬姟娴嬭瘯鏁版嵁
 INSERT INTO T_COST_MATERIAL (ID, MATERIAL_CODE, MATERIAL_NAME, USE_FLAG, PER_HL, PRICE, UNIT, SPEC, CREATE_BY)
-VALUES (SEQ_COST_MATERIAL.NEXTVAL, 'YL001', '阿莫西林原料', '原料', 125.5, 280, 'kg', '医药级', 'system');
+VALUES (SEQ_COST_MATERIAL.NEXTVAL, 'YL001', '闃胯帿瑗挎灄鍘熸枡', '鍘熸枡', 125.5, 280, 'kg', '鍖昏嵂绾?, 'system');
 INSERT INTO T_COST_MATERIAL (ID, MATERIAL_CODE, MATERIAL_NAME, USE_FLAG, PER_HL, PRICE, UNIT, SPEC, CREATE_BY)
-VALUES (SEQ_COST_MATERIAL.NEXTVAL, 'YL002', '淀粉', '原料', 45.2, 15, 'kg', '食品级', 'system');
+VALUES (SEQ_COST_MATERIAL.NEXTVAL, 'YL002', '娣€绮?, '鍘熸枡', 45.2, 15, 'kg', '椋熷搧绾?, 'system');
 INSERT INTO T_COST_MATERIAL (ID, MATERIAL_CODE, MATERIAL_NAME, USE_FLAG, PER_HL, PRICE, UNIT, SPEC, CREATE_BY)
-VALUES (SEQ_COST_MATERIAL.NEXTVAL, 'YL003', '头孢克肟原料', '原料', 200, 450, 'kg', '医药级', 'system');
+VALUES (SEQ_COST_MATERIAL.NEXTVAL, 'YL003', '澶村鍏嬭偀鍘熸枡', '鍘熸枡', 200, 450, 'kg', '鍖昏嵂绾?, 'system');
 INSERT INTO T_COST_MATERIAL (ID, MATERIAL_CODE, MATERIAL_NAME, USE_FLAG, PER_HL, PRICE, UNIT, SPEC, CREATE_BY)
-VALUES (SEQ_COST_MATERIAL.NEXTVAL, 'FL001', '空心胶囊', '辅料', 1050, 0.035, '粒', '0号', 'system');
+VALUES (SEQ_COST_MATERIAL.NEXTVAL, 'FL001', '绌哄績鑳跺泭', '杈呮枡', 1050, 0.035, '绮?, '0鍙?, 'system');
 INSERT INTO T_COST_MATERIAL (ID, MATERIAL_CODE, MATERIAL_NAME, USE_FLAG, PER_HL, PRICE, UNIT, SPEC, CREATE_BY)
-VALUES (SEQ_COST_MATERIAL.NEXTVAL, 'FL002', '硬脂酸镁', '辅料', 2.5, 45, 'kg', '医药级', 'system');
+VALUES (SEQ_COST_MATERIAL.NEXTVAL, 'FL002', '纭剛閰搁晛', '杈呮枡', 2.5, 45, 'kg', '鍖昏嵂绾?, 'system');
 INSERT INTO T_COST_MATERIAL (ID, MATERIAL_CODE, MATERIAL_NAME, USE_FLAG, PER_HL, PRICE, UNIT, SPEC, CREATE_BY)
-VALUES (SEQ_COST_MATERIAL.NEXTVAL, 'FL003', '微晶纤维素', '辅料', 80, 25, 'kg', '医药级', 'system');
+VALUES (SEQ_COST_MATERIAL.NEXTVAL, 'FL003', '寰櫠绾ょ淮绱?, '杈呮枡', 80, 25, 'kg', '鍖昏嵂绾?, 'system');
 INSERT INTO T_COST_MATERIAL (ID, MATERIAL_CODE, MATERIAL_NAME, USE_FLAG, PER_HL, PRICE, UNIT, SPEC, CREATE_BY)
-VALUES (SEQ_COST_MATERIAL.NEXTVAL, 'BC001', '铝塑泡罩', '包材', 0, 0.12, '板', '10板', 'system');
+VALUES (SEQ_COST_MATERIAL.NEXTVAL, 'BC001', '閾濆娉＄僵', '鍖呮潗', 0, 0.12, '鏉?, '10鏉?, 'system');
 INSERT INTO T_COST_MATERIAL (ID, MATERIAL_CODE, MATERIAL_NAME, USE_FLAG, PER_HL, PRICE, UNIT, SPEC, CREATE_BY)
-VALUES (SEQ_COST_MATERIAL.NEXTVAL, 'BC002', '纸盒', '包材', 0, 0.35, '盒', '2盒', 'system');
+VALUES (SEQ_COST_MATERIAL.NEXTVAL, 'BC002', '绾哥洅', '鍖呮潗', 0, 0.35, '鐩?, '2鐩?, 'system');
 INSERT INTO T_COST_MATERIAL (ID, MATERIAL_CODE, MATERIAL_NAME, USE_FLAG, PER_HL, PRICE, UNIT, SPEC, CREATE_BY)
-VALUES (SEQ_COST_MATERIAL.NEXTVAL, 'BC003', '说明书', '包材', 0, 0.05, '张', 'A4', 'system');
+VALUES (SEQ_COST_MATERIAL.NEXTVAL, 'BC003', '璇存槑涔?, '鍖呮潗', 0, 0.05, '寮?, 'A4', 'system');
 
 INSERT INTO T_COST_CUSTOMER (ID, CUSTOMER_CODE, CUSTOMER_NAME, CONTACT_PERSON, PHONE, ADDRESS, CREATE_BY)
-VALUES (SEQ_COST_CUSTOMER.NEXTVAL, 'C001', '华为技术有限公司', '张三', '13800138001', '深圳市龙岗区', 'system');
+VALUES (SEQ_COST_CUSTOMER.NEXTVAL, 'C001', '鍗庝负鎶€鏈湁闄愬叕鍙?, '寮犱笁', '13800138001', '娣卞湷甯傞緳宀楀尯', 'system');
 INSERT INTO T_COST_CUSTOMER (ID, CUSTOMER_CODE, CUSTOMER_NAME, CONTACT_PERSON, PHONE, ADDRESS, CREATE_BY)
-VALUES (SEQ_COST_CUSTOMER.NEXTVAL, 'C002', '阿里巴巴集团', '李四', '13800138002', '杭州市余杭区', 'system');
+VALUES (SEQ_COST_CUSTOMER.NEXTVAL, 'C002', '闃块噷宸村反闆嗗洟', '鏉庡洓', '13800138002', '鏉窞甯備綑鏉尯', 'system');
 INSERT INTO T_COST_CUSTOMER (ID, CUSTOMER_CODE, CUSTOMER_NAME, CONTACT_PERSON, PHONE, ADDRESS, CREATE_BY)
-VALUES (SEQ_COST_CUSTOMER.NEXTVAL, 'C003', '腾讯科技', '王五', '13800138003', '深圳市南山区', 'system');
+VALUES (SEQ_COST_CUSTOMER.NEXTVAL, 'C003', '鑵捐绉戞妧', '鐜嬩簲', '13800138003', '娣卞湷甯傚崡灞卞尯', 'system');
 INSERT INTO T_COST_CUSTOMER (ID, CUSTOMER_CODE, CUSTOMER_NAME, CONTACT_PERSON, PHONE, ADDRESS, CREATE_BY)
-VALUES (SEQ_COST_CUSTOMER.NEXTVAL, 'C004', '字节跳动', '赵六', '13800138004', '北京市海淀区', 'system');
+VALUES (SEQ_COST_CUSTOMER.NEXTVAL, 'C004', '瀛楄妭璺冲姩', '璧靛叚', '13800138004', '鍖椾含甯傛捣娣€鍖?, 'system');
 INSERT INTO T_COST_CUSTOMER (ID, CUSTOMER_CODE, CUSTOMER_NAME, CONTACT_PERSON, PHONE, ADDRESS, CREATE_BY)
-VALUES (SEQ_COST_CUSTOMER.NEXTVAL, 'C005', '美团点评', '钱七', '13800138005', '北京市朝阳区', 'system');
+VALUES (SEQ_COST_CUSTOMER.NEXTVAL, 'C005', '缇庡洟鐐硅瘎', '閽变竷', '13800138005', '鍖椾含甯傛湞闃冲尯', 'system');
 
 DECLARE
     v_eval_id NUMBER;
 BEGIN
     SELECT SEQ_COST_EVAL.NEXTVAL INTO v_eval_id FROM DUAL;
     INSERT INTO T_COST_EVAL (ID, EVAL_NO, PRODUCT_NAME, APEX_PL, YIELD, OUT_PRICE_RMB, CREATE_BY)
-    VALUES (v_eval_id, 'EVAL-2025-001', '阿莫西林胶囊', 100, 98, 35.5, 'system');
+    VALUES (v_eval_id, 'EVAL-2025-001', '闃胯帿瑗挎灄鑳跺泭', 100, 98, 35.5, 'system');
     INSERT INTO T_COST_EVAL_DETAIL (ID, EVAL_ID, MATERIAL_NAME, USE_FLAG, PER_HL, PRICE, CREATE_BY)
-    VALUES (SEQ_COST_EVAL_DETAIL.NEXTVAL, v_eval_id, '阿莫西林原料', '原料', 125.5, 280, 'system');
+    VALUES (SEQ_COST_EVAL_DETAIL.NEXTVAL, v_eval_id, '闃胯帿瑗挎灄鍘熸枡', '鍘熸枡', 125.5, 280, 'system');
     INSERT INTO T_COST_EVAL_DETAIL (ID, EVAL_ID, MATERIAL_NAME, USE_FLAG, PER_HL, PRICE, CREATE_BY)
-    VALUES (SEQ_COST_EVAL_DETAIL.NEXTVAL, v_eval_id, '淀粉', '原料', 45.2, 15, 'system');
+    VALUES (SEQ_COST_EVAL_DETAIL.NEXTVAL, v_eval_id, '娣€绮?, '鍘熸枡', 45.2, 15, 'system');
     INSERT INTO T_COST_EVAL_DETAIL (ID, EVAL_ID, MATERIAL_NAME, USE_FLAG, PER_HL, PRICE, CREATE_BY)
-    VALUES (SEQ_COST_EVAL_DETAIL.NEXTVAL, v_eval_id, '空心胶囊', '辅料', 1050, 0.035, 'system');
+    VALUES (SEQ_COST_EVAL_DETAIL.NEXTVAL, v_eval_id, '绌哄績鑳跺泭', '杈呮枡', 1050, 0.035, 'system');
     INSERT INTO T_COST_EVAL_DETAIL (ID, EVAL_ID, MATERIAL_NAME, USE_FLAG, PER_HL, PRICE, CREATE_BY)
-    VALUES (SEQ_COST_EVAL_DETAIL.NEXTVAL, v_eval_id, '硬脂酸镁', '辅料', 2.5, 45, 'system');
+    VALUES (SEQ_COST_EVAL_DETAIL.NEXTVAL, v_eval_id, '纭剛閰搁晛', '杈呮枡', 2.5, 45, 'system');
     INSERT INTO T_COST_EVAL_DETAIL (ID, EVAL_ID, MATERIAL_NAME, USE_FLAG, PACK_SPEC, PRICE, CREATE_BY)
-    VALUES (SEQ_COST_EVAL_DETAIL.NEXTVAL, v_eval_id, '铝塑泡罩', '包材', '10板', 0.12, 'system');
+    VALUES (SEQ_COST_EVAL_DETAIL.NEXTVAL, v_eval_id, '閾濆娉＄僵', '鍖呮潗', '10鏉?, 0.12, 'system');
     INSERT INTO T_COST_EVAL_DETAIL (ID, EVAL_ID, MATERIAL_NAME, USE_FLAG, PACK_SPEC, PRICE, CREATE_BY)
-    VALUES (SEQ_COST_EVAL_DETAIL.NEXTVAL, v_eval_id, '纸盒', '包材', '2盒', 0.35, 'system');
+    VALUES (SEQ_COST_EVAL_DETAIL.NEXTVAL, v_eval_id, '绾哥洅', '鍖呮潗', '2鐩?, 0.35, 'system');
     COMMIT;
 END;
 /
@@ -711,13 +713,13 @@ DECLARE
 BEGIN
     SELECT SEQ_COST_EVAL.NEXTVAL INTO v_eval_id FROM DUAL;
     INSERT INTO T_COST_EVAL (ID, EVAL_NO, PRODUCT_NAME, APEX_PL, YIELD, OUT_PRICE_RMB, CREATE_BY)
-    VALUES (v_eval_id, 'EVAL-2025-002', '头孢克肟片', 80, 95, 42.0, 'system');
+    VALUES (v_eval_id, 'EVAL-2025-002', '澶村鍏嬭偀鐗?, 80, 95, 42.0, 'system');
     INSERT INTO T_COST_EVAL_DETAIL (ID, EVAL_ID, MATERIAL_NAME, USE_FLAG, PER_HL, PRICE, CREATE_BY)
-    VALUES (SEQ_COST_EVAL_DETAIL.NEXTVAL, v_eval_id, '头孢克肟原料', '原料', 200, 450, 'system');
+    VALUES (SEQ_COST_EVAL_DETAIL.NEXTVAL, v_eval_id, '澶村鍏嬭偀鍘熸枡', '鍘熸枡', 200, 450, 'system');
     INSERT INTO T_COST_EVAL_DETAIL (ID, EVAL_ID, MATERIAL_NAME, USE_FLAG, PER_HL, PRICE, CREATE_BY)
-    VALUES (SEQ_COST_EVAL_DETAIL.NEXTVAL, v_eval_id, '微晶纤维素', '辅料', 80, 25, 'system');
+    VALUES (SEQ_COST_EVAL_DETAIL.NEXTVAL, v_eval_id, '寰櫠绾ょ淮绱?, '杈呮枡', 80, 25, 'system');
     INSERT INTO T_COST_EVAL_DETAIL (ID, EVAL_ID, MATERIAL_NAME, USE_FLAG, PACK_SPEC, PRICE, CREATE_BY)
-    VALUES (SEQ_COST_EVAL_DETAIL.NEXTVAL, v_eval_id, '铝塑泡罩', '包材', '12板', 0.15, 'system');
+    VALUES (SEQ_COST_EVAL_DETAIL.NEXTVAL, v_eval_id, '閾濆娉＄僵', '鍖呮潗', '12鏉?, 0.15, 'system');
     COMMIT;
 END;
 /
@@ -727,7 +729,7 @@ DECLARE
 BEGIN
     SELECT SEQ_COST_EVAL.NEXTVAL INTO v_eval_id FROM DUAL;
     INSERT INTO T_COST_EVAL (ID, EVAL_NO, PRODUCT_NAME, APEX_PL, YIELD, OUT_PRICE_RMB, CREATE_BY)
-    VALUES (v_eval_id, 'EVAL-2025-003', '阿莫西林口服液瓶装', 50, 96, 28.0, 'system');
+    VALUES (v_eval_id, 'EVAL-2025-003', '闃胯帿瑗挎灄鍙ｆ湇娑茬摱瑁?, 50, 96, 28.0, 'system');
     COMMIT;
 END;
 /
@@ -737,7 +739,7 @@ DECLARE
 BEGIN
     SELECT SEQ_COST_EVAL.NEXTVAL INTO v_eval_id FROM DUAL;
     INSERT INTO T_COST_EVAL (ID, EVAL_NO, PRODUCT_NAME, APEX_PL, YIELD, OUT_PRICE_RMB, CREATE_BY)
-    VALUES (v_eval_id, 'EVAL-2025-004', '清热解毒颗粒', 60, 94, 32.0, 'system');
+    VALUES (v_eval_id, 'EVAL-2025-004', '娓呯儹瑙ｆ瘨棰楃矑', 60, 94, 32.0, 'system');
     COMMIT;
 END;
 /
@@ -745,68 +747,65 @@ END;
 COMMIT;
 
 -- =====================================================
--- C. 元数据与页面配置
+-- C. 鍏冩暟鎹笌椤甸潰閰嶇疆
 -- =====================================================
 
--- C1. 基础列元数据初始化（CostEval、CostMaterial、Customer 等）
+-- C1. 鍩虹鍒楀厓鏁版嵁鍒濆鍖栵紙CostEval銆丆ostMaterial銆丆ustomer 绛夛級
 DECLARE
     v_eval_id NUMBER;
     v_detail_id NUMBER;
 BEGIN
     SELECT SEQ_COST_TABLE_METADATA.NEXTVAL INTO v_eval_id FROM DUAL;
     INSERT INTO T_COST_TABLE_METADATA (ID, TABLE_CODE, TABLE_NAME, QUERY_VIEW, TARGET_TABLE, SEQUENCE_NAME, PK_COLUMN, VALIDATION_RULES, CREATE_BY)
-    VALUES (v_eval_id, 'CostEval', '评估单', 'T_COST_EVAL', 'T_COST_EVAL', 'SEQ_COST_EVAL', 'ID',
-    '[{"order":1,"name":"evalNoUnique","sql":"SELECT COUNT(*) FROM T_COST_EVAL WHERE EVAL_NO = :evalNo AND ID != NVL(:id, -1) AND DELETED = 0","condition":"result == 0","message":"评估单号已存在"},{"order":2,"name":"apexPlPositive","sql":"SELECT CASE WHEN :apexPl > 0 THEN 1 ELSE 0 END FROM DUAL","condition":"result == 1","message":"批量必须大于0"}]',
+    VALUES (v_eval_id, 'CostEval', '璇勪及鍗?, 'T_COST_EVAL', 'T_COST_EVAL', 'SEQ_COST_EVAL', 'ID',
+    '[{"order":1,"name":"evalNoUnique","sql":"SELECT COUNT(*) FROM T_COST_EVAL WHERE EVAL_NO = :evalNo AND ID != NVL(:id, -1) AND DELETED = 0","condition":"result == 0","message":"璇勪及鍗曞彿宸插瓨鍦?},{"order":2,"name":"apexPlPositive","sql":"SELECT CASE WHEN :apexPl > 0 THEN 1 ELSE 0 END FROM DUAL","condition":"result == 1","message":"鎵归噺蹇呴』澶т簬0"}]',
     'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_eval_id, 'id', 'ID', 'ID', 'number', 0, 0, 80, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_eval_id, 'id', 'ID', 'ID', 'number', 0, 0, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, SEARCHABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_eval_id, 'evalNo', 'EVAL_NO', '评估单号', 'text', 1, 0, 1, 120, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_eval_id, 'evalNo', 'EVAL_NO', '璇勪及鍗曞彿', 'text', 1, 0, 1, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, RULES_CONFIG, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_eval_id, 'productName', 'PRODUCT_NAME', '产品名称', 'text', 2, 1, 150,
-    '{"style":[{"condition":{"type":"contains","pattern":"亏"},"cellStyle":{"color":"red","fontWeight":"bold"}},{"condition":{"type":"contains","pattern":"停"},"rowStyle":{"backgroundColor":"#e3f2fd"}}]}', 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_eval_id, 'productName', 'PRODUCT_NAME', '浜у搧鍚嶇О', 'text', 2, 1, NULL, '{"style":[{"condition":{"type":"contains","pattern":"浜?},"cellStyle":{"color":"red","fontWeight":"bold"}},{"condition":{"type":"contains","pattern":"鍋?},"rowStyle":{"backgroundColor":"#e3f2fd"}}]}', 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_eval_id, 'apexPl', 'APEX_PL', '批量(万片)', 'number', 3, 1, 100, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_eval_id, 'apexPl', 'APEX_PL', '鎵归噺(涓囩墖)', 'number', 3, 1, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_eval_id, 'yield', 'YIELD', '收率(%)', 'number', 4, 1, 80, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_eval_id, 'yield', 'YIELD', '鏀剁巼(%)', 'number', 4, 1, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_eval_id, 'outPriceRmb', 'OUT_PRICE_RMB', '出厂价', 'number', 5, 1, 100, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_eval_id, 'outPriceRmb', 'OUT_PRICE_RMB', '鍑哄巶浠?, 'number', 5, 1, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_eval_id, 'totalYl', 'TOTAL_YL', '原料合计', 'number', 6, 0, 100, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_eval_id, 'totalYl', 'TOTAL_YL', '鍘熸枡鍚堣', 'number', 6, 0, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_eval_id, 'totalFl', 'TOTAL_FL', '辅料合计', 'number', 7, 0, 100, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_eval_id, 'totalFl', 'TOTAL_FL', '杈呮枡鍚堣', 'number', 7, 0, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_eval_id, 'totalPack', 'TOTAL_PACK', '包材合计', 'number', 8, 0, 100, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_eval_id, 'totalPack', 'TOTAL_PACK', '鍖呮潗鍚堣', 'number', 8, 0, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_eval_id, 'totalCost', 'TOTAL_COST', '总成本', 'number', 9, 0, 100, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_eval_id, 'totalCost', 'TOTAL_COST', '鎬绘垚鏈?, 'number', 9, 0, NULL, 'system');
 
     SELECT SEQ_COST_TABLE_METADATA.NEXTVAL INTO v_detail_id FROM DUAL;
     INSERT INTO T_COST_TABLE_METADATA (ID, TABLE_CODE, TABLE_NAME, QUERY_VIEW, TARGET_TABLE, SEQUENCE_NAME, PK_COLUMN, PARENT_TABLE_CODE, PARENT_FK_COLUMN, CREATE_BY)
-    VALUES (v_detail_id, 'CostEvalDetail', '物料明细', 'T_COST_EVAL_DETAIL', 'T_COST_EVAL_DETAIL', 'SEQ_COST_EVAL_DETAIL', 'ID', 'CostEval', 'EVAL_ID', 'system');
+    VALUES (v_detail_id, 'CostEvalDetail', '鐗╂枡鏄庣粏', 'T_COST_EVAL_DETAIL', 'T_COST_EVAL_DETAIL', 'SEQ_COST_EVAL_DETAIL', 'ID', 'CostEval', 'EVAL_ID', 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'id', 'ID', 'ID', 'number', 0, 0, 80, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'id', 'ID', 'ID', 'number', 0, 0, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'evalId', 'EVAL_ID', '主表ID', 'number', 1, 0, 80, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'evalId', 'EVAL_ID', '涓昏〃ID', 'number', 1, 0, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, RULES_CONFIG, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'materialName', 'MATERIAL_NAME', '物料名称', 'text', 2, 1, 150,
-    '{"lookup":{"code":"material","mapping":{"materialName":"materialName","useFlag":"useFlag","perHl":"perHl","price":"price"}}}', 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'materialName', 'MATERIAL_NAME', '鐗╂枡鍚嶇О', 'text', 2, 1, NULL, '{"lookup":{"code":"material","mapping":{"materialName":"materialName","useFlag":"useFlag","perHl":"perHl","price":"price"}}}', 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'useFlag', 'USE_FLAG', '物料类型', 'text', 3, 0, 80, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'useFlag', 'USE_FLAG', '鐗╂枡绫诲瀷', 'text', 3, 0, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'perHl', 'PER_HL', '百万片用量', 'number', 4, 1, 100, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'perHl', 'PER_HL', '鐧句竾鐗囩敤閲?, 'number', 4, 1, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, RULES_CONFIG, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'price', 'PRICE', '单价', 'number', 5, 1, 100,
-    '{"validate":[{"order":1,"type":"notZero","message":"单价不能为0"},{"order":2,"type":"min","value":0,"message":"单价不能为负数"}],"compare":{"enabled":true,"format":"both"}}', 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'price', 'PRICE', '鍗曚环', 'number', 5, 1, NULL, '{"validate":[{"order":1,"type":"notZero","message":"鍗曚环涓嶈兘涓?"},{"order":2,"type":"min","value":0,"message":"鍗曚环涓嶈兘涓鸿礋鏁?}],"compare":{"enabled":true,"format":"both"}}', 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, IS_VIRTUAL, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'batchQty', 'BATCH_QTY', '批用量', 'number', 6, 0, 1, 100, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'batchQty', 'BATCH_QTY', '鎵圭敤閲?, 'number', 6, 0, 1, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, IS_VIRTUAL, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'costBatch', 'COST_BATCH', '批成本', 'number', 7, 0, 1, 100, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'costBatch', 'COST_BATCH', '鎵规垚鏈?, 'number', 7, 0, 1, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'packSpec', 'PACK_SPEC', '规格', 'text', 8, 1, 100, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'packSpec', 'PACK_SPEC', '瑙勬牸', 'text', 8, 1, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, IS_VIRTUAL, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'packQty', 'PACK_QTY', '包装数量', 'number', 9, 0, 1, 100, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'packQty', 'PACK_QTY', '鍖呰鏁伴噺', 'number', 9, 0, 1, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, IS_VIRTUAL, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'packCost', 'PACK_COST', '包装成本', 'number', 10, 0, 1, 100, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'packCost', 'PACK_COST', '鍖呰鎴愭湰', 'number', 10, 0, 1, NULL, 'system');
     COMMIT;
 END;
 /
@@ -821,21 +820,21 @@ VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'cost-eval', 'detailTabs', 'TABS', 'roo
   "mode": "group",
   "groupField": "useFlag",
   "tabs": [
-    {"key": "material", "title": "原料", "value": "原料", "columns": ["materialName", "perHl", "price", "batchQty", "costBatch"]},
-    {"key": "auxiliary", "title": "辅料", "value": "辅料", "columns": ["materialName", "perHl", "price", "batchQty", "costBatch"]},
-    {"key": "package", "title": "包材", "value": "包材", "columns": ["materialName", "packSpec", "price", "packQty", "packCost"]}
+    {"key": "material", "title": "鍘熸枡", "value": "鍘熸枡", "columns": ["materialName", "perHl", "price", "batchQty", "costBatch"]},
+    {"key": "auxiliary", "title": "杈呮枡", "value": "杈呮枡", "columns": ["materialName", "perHl", "price", "batchQty", "costBatch"]},
+    {"key": "package", "title": "鍖呮潗", "value": "鍖呮潗", "columns": ["materialName", "packSpec", "price", "packQty", "packCost"]}
   ],
   "broadcast": ["apexPl", "yield"],
   "calcRules": [
-    {"field": "batchQty", "expression": "apexPl * perHl / 100 / yield * 100", "triggerFields": ["perHl"], "condition": "useFlag !== ''包材''"},
-    {"field": "costBatch", "expression": "batchQty * price", "triggerFields": ["batchQty", "price"], "condition": "useFlag !== ''包材''"},
-    {"field": "packQty", "expression": "apexPl * 1000", "triggerFields": [], "condition": "useFlag === ''包材''"},
-    {"field": "packCost", "expression": "packQty * price", "triggerFields": ["packQty", "price"], "condition": "useFlag === ''包材''"}
+    {"field": "batchQty", "expression": "apexPl * perHl / 100 / yield * 100", "triggerFields": ["perHl"], "condition": "useFlag !== ''鍖呮潗''"},
+    {"field": "costBatch", "expression": "batchQty * price", "triggerFields": ["batchQty", "price"], "condition": "useFlag !== ''鍖呮潗''"},
+    {"field": "packQty", "expression": "apexPl * 1000", "triggerFields": [], "condition": "useFlag === ''鍖呮潗''"},
+    {"field": "packCost", "expression": "packQty * price", "triggerFields": ["packQty", "price"], "condition": "useFlag === ''鍖呮潗''"}
   ],
   "aggregates": [
-    {"sourceField": "costBatch", "targetField": "totalYl", "algorithm": "SUM", "filter": "useFlag === ''原料''"},
-    {"sourceField": "costBatch", "targetField": "totalFl", "algorithm": "SUM", "filter": "useFlag === ''辅料''"},
-    {"sourceField": "packCost", "targetField": "totalPack", "algorithm": "SUM", "filter": "useFlag === ''包材''"},
+    {"sourceField": "costBatch", "targetField": "totalYl", "algorithm": "SUM", "filter": "useFlag === ''鍘熸枡''"},
+    {"sourceField": "costBatch", "targetField": "totalFl", "algorithm": "SUM", "filter": "useFlag === ''杈呮枡''"},
+    {"sourceField": "packCost", "targetField": "totalPack", "algorithm": "SUM", "filter": "useFlag === ''鍖呮潗''"},
     {"targetField": "totalCost", "expression": "totalYl + totalFl + totalPack"}
   ]
 }', 'system');
@@ -847,23 +846,23 @@ DECLARE
 BEGIN
     SELECT SEQ_COST_TABLE_METADATA.NEXTVAL INTO v_material_id FROM DUAL;
     INSERT INTO T_COST_TABLE_METADATA (ID, TABLE_CODE, TABLE_NAME, QUERY_VIEW, TARGET_TABLE, SEQUENCE_NAME, PK_COLUMN, CREATE_BY)
-    VALUES (v_material_id, 'CostMaterial', '物料基础数据', 'T_COST_MATERIAL', 'T_COST_MATERIAL', 'SEQ_COST_MATERIAL', 'ID', 'system');
+    VALUES (v_material_id, 'CostMaterial', '鐗╂枡鍩虹鏁版嵁', 'T_COST_MATERIAL', 'T_COST_MATERIAL', 'SEQ_COST_MATERIAL', 'ID', 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_material_id, 'id', 'ID', 'ID', 'number', 0, 0, 80, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_material_id, 'id', 'ID', 'ID', 'number', 0, 0, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, SEARCHABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_material_id, 'materialCode', 'MATERIAL_CODE', '物料编码', 'text', 1, 1, 1, 100, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_material_id, 'materialCode', 'MATERIAL_CODE', '鐗╂枡缂栫爜', 'text', 1, 1, 1, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, SEARCHABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_material_id, 'materialName', 'MATERIAL_NAME', '物料名称', 'text', 2, 1, 1, 150, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_material_id, 'materialName', 'MATERIAL_NAME', '鐗╂枡鍚嶇О', 'text', 2, 1, 1, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_material_id, 'useFlag', 'USE_FLAG', '物料类型', 'text', 3, 1, 80, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_material_id, 'useFlag', 'USE_FLAG', '鐗╂枡绫诲瀷', 'text', 3, 1, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_material_id, 'perHl', 'PER_HL', '百万片用量', 'number', 4, 1, 100, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_material_id, 'perHl', 'PER_HL', '鐧句竾鐗囩敤閲?, 'number', 4, 1, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_material_id, 'price', 'PRICE', '单价', 'number', 5, 1, 100, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_material_id, 'price', 'PRICE', '鍗曚环', 'number', 5, 1, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_material_id, 'unit', 'UNIT', '单位', 'text', 6, 1, 80, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_material_id, 'unit', 'UNIT', '鍗曚綅', 'text', 6, 1, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_material_id, 'spec', 'SPEC', '规格', 'text', 7, 1, 100, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_material_id, 'spec', 'SPEC', '瑙勬牸', 'text', 7, 1, NULL, 'system');
     COMMIT;
 END;
 /
@@ -873,43 +872,43 @@ DECLARE
 BEGIN
     SELECT SEQ_COST_TABLE_METADATA.NEXTVAL INTO v_customer_id FROM DUAL;
     INSERT INTO T_COST_TABLE_METADATA (ID, TABLE_CODE, TABLE_NAME, QUERY_VIEW, TARGET_TABLE, SEQUENCE_NAME, PK_COLUMN, CREATE_BY)
-    VALUES (v_customer_id, 'Customer', '客户', 'T_COST_CUSTOMER', 'T_COST_CUSTOMER', 'SEQ_COST_CUSTOMER', 'ID', 'system');
+    VALUES (v_customer_id, 'Customer', '瀹㈡埛', 'T_COST_CUSTOMER', 'T_COST_CUSTOMER', 'SEQ_COST_CUSTOMER', 'ID', 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_customer_id, 'id', 'ID', 'ID', 'number', 0, 0, 80, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_customer_id, 'id', 'ID', 'ID', 'number', 0, 0, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, SEARCHABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_customer_id, 'customerCode', 'CUSTOMER_CODE', '客户编码', 'text', 1, 1, 1, 120, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_customer_id, 'customerCode', 'CUSTOMER_CODE', '瀹㈡埛缂栫爜', 'text', 1, 1, 1, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, SEARCHABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_customer_id, 'customerName', 'CUSTOMER_NAME', '客户名称', 'text', 2, 1, 1, 180, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_customer_id, 'customerName', 'CUSTOMER_NAME', '瀹㈡埛鍚嶇О', 'text', 2, 1, 1, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, SEARCHABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_customer_id, 'contactPerson', 'CONTACT_PERSON', '联系人', 'text', 3, 1, 1, 100, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_customer_id, 'contactPerson', 'CONTACT_PERSON', '鑱旂郴浜?, 'text', 3, 1, 1, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_customer_id, 'phone', 'PHONE', '电话', 'text', 4, 1, 120, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_customer_id, 'phone', 'PHONE', '鐢佃瘽', 'text', 4, 1, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_customer_id, 'address', 'ADDRESS', '地址', 'text', 5, 1, 200, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_customer_id, 'address', 'ADDRESS', '鍦板潃', 'text', 5, 1, NULL, 'system');
     COMMIT;
 END;
 /
 
 INSERT INTO T_COST_LOOKUP_CONFIG (ID, LOOKUP_CODE, LOOKUP_NAME, DATA_SOURCE, DISPLAY_COLUMNS, SEARCH_COLUMNS, VALUE_FIELD, LABEL_FIELD, CREATE_BY)
-VALUES (SEQ_COST_LOOKUP_CONFIG.NEXTVAL, 'material', '物料选择', 'CostMaterial',
-  '[{"field":"materialCode","header":"物料编码","width":100},{"field":"materialName","header":"物料名称","width":150},{"field":"useFlag","header":"类型","width":80},{"field":"price","header":"单价","width":80}]',
+VALUES (SEQ_COST_LOOKUP_CONFIG.NEXTVAL, 'material', '鐗╂枡閫夋嫨', 'CostMaterial',
+  '[{"field":"materialCode","header":"鐗╂枡缂栫爜","width":100},{"field":"materialName","header":"鐗╂枡鍚嶇О","width":150},{"field":"useFlag","header":"绫诲瀷","width":80},{"field":"price","header":"鍗曚环","width":80}]',
   '["materialCode","materialName"]', 'id', 'materialName', 'system');
 INSERT INTO T_COST_LOOKUP_CONFIG (ID, LOOKUP_CODE, LOOKUP_NAME, DATA_SOURCE, DISPLAY_COLUMNS, SEARCH_COLUMNS, VALUE_FIELD, LABEL_FIELD, CREATE_BY)
-VALUES (SEQ_COST_LOOKUP_CONFIG.NEXTVAL, 'customer', '客户选择', 'Customer',
-  '[{"field":"customerCode","header":"客户编码","width":100},{"field":"customerName","header":"客户名称","width":180},{"field":"contactPerson","header":"联系人","width":100}]',
+VALUES (SEQ_COST_LOOKUP_CONFIG.NEXTVAL, 'customer', '瀹㈡埛閫夋嫨', 'Customer',
+  '[{"field":"customerCode","header":"瀹㈡埛缂栫爜","width":100},{"field":"customerName","header":"瀹㈡埛鍚嶇О","width":180},{"field":"contactPerson","header":"鑱旂郴浜?,"width":100}]',
   '["customerCode","customerName"]', 'id', 'customerName', 'system');
 
 COMMIT;
 
--- C2. 人员管理页面配置（视图+ 元数据+ 页面布局）
+-- C2. 浜哄憳绠＄悊椤甸潰閰嶇疆锛堣鍥? 鍏冩暟鎹? 椤甸潰甯冨眬锛?
 INSERT INTO T_COST_RESOURCE (ID, RESOURCE_CODE, RESOURCE_NAME, RESOURCE_TYPE, PAGE_CODE, ICON, ROUTE, PARENT_ID, SORT_ORDER, CREATE_BY)
-VALUES (SEQ_COST_RESOURCE.NEXTVAL, 'system', '系统管理', 'DIRECTORY', NULL, 'mdi:cog', '/system', NULL, 99, 'system');
+VALUES (SEQ_COST_RESOURCE.NEXTVAL, 'system', '绯荤粺绠＄悊', 'DIRECTORY', NULL, 'mdi:cog', '/system', NULL, 99, 'system');
 DECLARE
     v_parent_id NUMBER;
 BEGIN
     SELECT ID INTO v_parent_id FROM T_COST_RESOURCE WHERE RESOURCE_CODE = 'system';
     INSERT INTO T_COST_RESOURCE (ID, RESOURCE_CODE, RESOURCE_NAME, RESOURCE_TYPE, PAGE_CODE, ICON, ROUTE, PARENT_ID, SORT_ORDER, CREATE_BY)
-    VALUES (SEQ_COST_RESOURCE.NEXTVAL, 'user', '人员管理', 'PAGE', 'user-manage', 'mdi:account-group', '/system/user', v_parent_id, 1, 'system');
+    VALUES (SEQ_COST_RESOURCE.NEXTVAL, 'user', '浜哄憳绠＄悊', 'PAGE', 'user-manage', 'mdi:account-group', '/system/user', v_parent_id, 1, 'system');
 END;
 /
 
@@ -917,24 +916,32 @@ DECLARE
     v_user_id NUMBER;
 BEGIN
     SELECT SEQ_COST_TABLE_METADATA.NEXTVAL INTO v_user_id FROM DUAL;
-    INSERT INTO T_COST_TABLE_METADATA (ID, TABLE_CODE, TABLE_NAME, QUERY_VIEW, TARGET_TABLE, SEQUENCE_NAME, PK_COLUMN, CREATE_BY)
-    VALUES (v_user_id, 'CostUser', '用户', 'V_COST_USER', 'T_COST_USER', 'SEQ_COST_USER', 'ID', 'system');
+    INSERT INTO T_COST_TABLE_METADATA (ID, TABLE_CODE, TABLE_NAME, QUERY_VIEW, TARGET_TABLE, SEQUENCE_NAME, PK_COLUMN, ACTION_RULES, CREATE_BY)
+    VALUES (v_user_id, 'CostUser', '鐢ㄦ埛', 'V_COST_USER', 'T_COST_USER', 'SEQ_COST_USER', 'ID', '[
+  {
+    "code": "resetPassword",
+    "group": "manual",
+    "type": "java",
+    "method": "userService.resetPassword",
+    "description": "閲嶇疆鐢ㄦ埛瀵嗙爜涓洪粯璁ゅ€?
+  }
+]', 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, VISIBLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_user_id, 'id', 'ID', 'ID', 'number', 0, 0, 0, 80, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_user_id, 'id', 'ID', 'ID', 'number', 0, 0, 0, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, SEARCHABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_user_id, 'username', 'USERNAME', '用户名', 'text', 1, 1, 1, 120, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_user_id, 'username', 'USERNAME', '鐢ㄦ埛鍚?, 'text', 1, 1, 1, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, SEARCHABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_user_id, 'realName', 'REAL_NAME', '姓名', 'text', 2, 1, 1, 100, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_user_id, 'realName', 'REAL_NAME', '濮撳悕', 'text', 2, 1, 1, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_user_id, 'email', 'EMAIL', '邮箱', 'text', 3, 1, 150, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_user_id, 'email', 'EMAIL', '閭', 'text', 3, 1, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_user_id, 'phone', 'PHONE', '手机号', 'text', 4, 1, 120, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_user_id, 'phone', 'PHONE', '鎵嬫満鍙?, 'text', 4, 1, NULL, 'system');
+    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, IS_VIRTUAL, CREATE_BY)
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_user_id, 'deptName', 'DEPT_NAME', '閮ㄩ棬', 'text', 5, 0, NULL, 1, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_user_id, 'deptName', 'DEPT_NAME', '部门', 'text', 5, 0, 120, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_user_id, 'status', 'STATUS', '鐘舵€?, 'select', 6, 1, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_user_id, 'status', 'STATUS', '状态', 'select', 6, 1, 80, 'system');
-    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_user_id, 'createTime', 'CREATE_TIME', '创建时间', 'datetime', 7, 0, 160, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_user_id, 'createTime', 'CREATE_TIME', '鍒涘缓鏃堕棿', 'datetime', 7, 0, NULL, 'system');
     COMMIT;
 END;
 /
@@ -962,13 +969,13 @@ SELECT
 FROM T_COST_USER u
 LEFT JOIN T_COST_DEPARTMENT d ON u.DEPARTMENT_ID = d.ID AND d.DELETED = 0;
 
--- C3. 角色管理页面配置（角色主表+ 用户关联从表）
+-- C3. 瑙掕壊绠＄悊椤甸潰閰嶇疆锛堣鑹蹭富琛? 鐢ㄦ埛鍏宠仈浠庤〃锛?
 DECLARE
     v_parent_id NUMBER;
 BEGIN
     SELECT ID INTO v_parent_id FROM T_COST_RESOURCE WHERE RESOURCE_CODE = 'system';
     INSERT INTO T_COST_RESOURCE (ID, RESOURCE_CODE, RESOURCE_NAME, RESOURCE_TYPE, PAGE_CODE, ICON, ROUTE, PARENT_ID, SORT_ORDER, CREATE_BY)
-    VALUES (SEQ_COST_RESOURCE.NEXTVAL, 'role', '角色管理', 'PAGE', 'role-manage', 'mdi:shield-account', '/system/role', v_parent_id, 2, 'system');
+    VALUES (SEQ_COST_RESOURCE.NEXTVAL, 'role', '瑙掕壊绠＄悊', 'PAGE', 'role-manage', 'mdi:shield-account', '/system/role', v_parent_id, 2, 'system');
 END;
 /
 
@@ -977,17 +984,17 @@ DECLARE
 BEGIN
     SELECT SEQ_COST_TABLE_METADATA.NEXTVAL INTO v_role_id FROM DUAL;
     INSERT INTO T_COST_TABLE_METADATA (ID, TABLE_CODE, TABLE_NAME, QUERY_VIEW, TARGET_TABLE, SEQUENCE_NAME, PK_COLUMN, CREATE_BY)
-    VALUES (v_role_id, 'CostRole', '角色', 'T_COST_ROLE', 'T_COST_ROLE', 'SEQ_COST_ROLE', 'ID', 'system');
+    VALUES (v_role_id, 'CostRole', '瑙掕壊', 'T_COST_ROLE', 'T_COST_ROLE', 'SEQ_COST_ROLE', 'ID', 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, VISIBLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_role_id, 'id', 'ID', 'ID', 'number', 0, 0, 0, 80, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_role_id, 'id', 'ID', 'ID', 'number', 0, 0, 0, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, SEARCHABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_role_id, 'roleCode', 'ROLE_CODE', '角色编码', 'text', 1, 1, 1, 120, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_role_id, 'roleCode', 'ROLE_CODE', '瑙掕壊缂栫爜', 'text', 1, 1, 1, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, SEARCHABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_role_id, 'roleName', 'ROLE_NAME', '角色名称', 'text', 2, 1, 1, 150, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_role_id, 'roleName', 'ROLE_NAME', '瑙掕壊鍚嶇О', 'text', 2, 1, 1, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_role_id, 'description', 'DESCRIPTION', '描述', 'text', 3, 1, 250, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_role_id, 'description', 'DESCRIPTION', '鎻忚堪', 'text', 3, 1, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_role_id, 'createTime', 'CREATE_TIME', '创建时间', 'datetime', 4, 0, 160, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_role_id, 'createTime', 'CREATE_TIME', '鍒涘缓鏃堕棿', 'datetime', 4, 0, NULL, 'system');
     COMMIT;
 END;
 /
@@ -997,21 +1004,21 @@ DECLARE
 BEGIN
     SELECT SEQ_COST_TABLE_METADATA.NEXTVAL INTO v_user_role_id FROM DUAL;
     INSERT INTO T_COST_TABLE_METADATA (ID, TABLE_CODE, TABLE_NAME, QUERY_VIEW, TARGET_TABLE, SEQUENCE_NAME, PK_COLUMN, PARENT_TABLE_CODE, PARENT_FK_COLUMN, CREATE_BY)
-    VALUES (v_user_role_id, 'CostUserRole', '角色用户', 'V_COST_USER_ROLE', 'T_COST_USER_ROLE', 'SEQ_COST_USER_ROLE', 'ID', 'CostRole', 'ROLE_ID', 'system');
+    VALUES (v_user_role_id, 'CostUserRole', '瑙掕壊鐢ㄦ埛', 'V_COST_USER_ROLE', 'T_COST_USER_ROLE', 'SEQ_COST_USER_ROLE', 'ID', 'CostRole', 'ROLE_ID', 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, VISIBLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_user_role_id, 'id', 'ID', 'ID', 'number', 0, 0, 0, 80, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_user_role_id, 'id', 'ID', 'ID', 'number', 0, 0, 0, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, VISIBLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_user_role_id, 'roleId', 'ROLE_ID', '角色ID', 'number', 1, 0, 0, 80, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_user_role_id, 'roleId', 'ROLE_ID', '瑙掕壊ID', 'number', 1, 0, 0, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, VISIBLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_user_role_id, 'userId', 'USER_ID', '用户ID', 'number', 2, 0, 0, 80, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_user_role_id, 'userId', 'USER_ID', '鐢ㄦ埛ID', 'number', 2, 0, 0, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, SEARCHABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_user_role_id, 'username', 'USERNAME', '用户名', 'text', 3, 0, 1, 120, 'system');
-    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, SEARCHABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_user_role_id, 'realName', 'REAL_NAME', '姓名', 'text', 4, 0, 1, 100, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_user_role_id, 'username', 'USERNAME', '鐢ㄦ埛鍚?, 'text', 3, 0, 1, NULL, 'system');
+    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, SEARCHABLE, WIDTH, IS_VIRTUAL, CREATE_BY)
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_user_role_id, 'realName', 'REAL_NAME', '濮撳悕', 'text', 4, 0, 1, NULL, 1, 'system');
+    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, IS_VIRTUAL, CREATE_BY)
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_user_role_id, 'deptName', 'DEPT_NAME', '閮ㄩ棬', 'text', 5, 0, NULL, 1, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_user_role_id, 'deptName', 'DEPT_NAME', '部门', 'text', 5, 0, 120, 'system');
-    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_user_role_id, 'createTime', 'CREATE_TIME', '分配时间', 'datetime', 6, 0, 160, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_user_role_id, 'createTime', 'CREATE_TIME', '鍒嗛厤鏃堕棿', 'datetime', 6, 0, NULL, 'system');
     COMMIT;
 END;
 /
@@ -1025,7 +1032,7 @@ VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'role-manage', 'detailTabs', 'TABS', 'r
 '{
   "mode": "group",
   "tabs": [
-    {"key": "users", "title": "角色用户", "columns": ["username", "realName", "deptName", "createTime"]}
+    {"key": "users", "title": "瑙掕壊鐢ㄦ埛", "columns": ["username", "realName", "deptName", "createTime"]}
   ]
 }', 'system');
 
@@ -1044,7 +1051,7 @@ FROM T_COST_USER_ROLE ur
 LEFT JOIN T_COST_USER u ON ur.USER_ID = u.ID AND u.DELETED = 0
 LEFT JOIN T_COST_DEPARTMENT d ON u.DEPARTMENT_ID = d.ID AND d.DELETED = 0;
 
--- C4. 成本评估页面配置（含视图与主从元数据）
+-- C4. 鎴愭湰璇勪及椤甸潰閰嶇疆锛堝惈瑙嗗浘涓庝富浠庡厓鏁版嵁锛?
 CREATE OR REPLACE VIEW V_COST_PINGGU_DTL AS
 SELECT 
     d.DTLID,
@@ -1073,12 +1080,12 @@ SELECT
     d.CREATE_BY,
     d.UPDATE_BY,
     CASE
-        WHEN d.DTL_USEFLAG IN ('印字包材', '非印字包材') AND REGEXP_LIKE(d.APEX_GOODSNAME, '桶|说明书|小盒|标签|瓶|纸箱') THEN 'A'
-        WHEN d.DTL_USEFLAG = '辅料' AND REGEXP_LIKE(d.APEX_GOODSNAME, '胶囊') THEN 'B'
-        WHEN d.DTL_USEFLAG IN ('印字包材', '非印字包材') AND REGEXP_LIKE(d.APEX_GOODSNAME, '硬片|铝箔') THEN 'D'
-        WHEN d.DTL_USEFLAG IN ('印字包材', '非印字包材') AND REGEXP_LIKE(d.APEX_GOODSNAME, '大纸箱') THEN 'E'
-        WHEN d.DTL_USEFLAG IN ('印字包材', '非印字包材') AND REGEXP_LIKE(d.APEX_GOODSNAME, '托盘') THEN 'F'
-        WHEN d.DTL_USEFLAG IN ('原料', '辅料') THEN 'C'
+        WHEN d.DTL_USEFLAG IN ('鍗板瓧鍖呮潗', '闈炲嵃瀛楀寘鏉?) AND REGEXP_LIKE(d.APEX_GOODSNAME, '妗秥璇存槑涔灏忕洅|鏍囩|鐡秥绾哥') THEN 'A'
+        WHEN d.DTL_USEFLAG = '杈呮枡' AND REGEXP_LIKE(d.APEX_GOODSNAME, '鑳跺泭') THEN 'B'
+        WHEN d.DTL_USEFLAG IN ('鍗板瓧鍖呮潗', '闈炲嵃瀛楀寘鏉?) AND REGEXP_LIKE(d.APEX_GOODSNAME, '纭墖|閾濈當') THEN 'D'
+        WHEN d.DTL_USEFLAG IN ('鍗板瓧鍖呮潗', '闈炲嵃瀛楀寘鏉?) AND REGEXP_LIKE(d.APEX_GOODSNAME, '澶х焊绠?) THEN 'E'
+        WHEN d.DTL_USEFLAG IN ('鍗板瓧鍖呮潗', '闈炲嵃瀛楀寘鏉?) AND REGEXP_LIKE(d.APEX_GOODSNAME, '鎵樼洏') THEN 'F'
+        WHEN d.DTL_USEFLAG IN ('鍘熸枡', '杈呮枡') THEN 'C'
         ELSE NULL
     END AS FORMULA_TYPE
 FROM T_COST_PINGGU_DTL d;
@@ -1088,11 +1095,11 @@ DECLARE
 BEGIN
     SELECT ID INTO v_parent_id FROM T_COST_RESOURCE WHERE RESOURCE_CODE = 'cost';
     INSERT INTO T_COST_RESOURCE (ID, RESOURCE_CODE, RESOURCE_NAME, RESOURCE_TYPE, PAGE_CODE, ICON, ROUTE, PARENT_ID, SORT_ORDER, CREATE_BY)
-    VALUES (SEQ_COST_RESOURCE.NEXTVAL, 'pinggu', '成本评估', 'PAGE', 'cost-pinggu', 'mdi:calculator-variant', '/cost/pinggu', v_parent_id, 2, 'system');
+    VALUES (SEQ_COST_RESOURCE.NEXTVAL, 'pinggu', '鎴愭湰璇勪及', 'PAGE', 'cost-pinggu', 'mdi:calculator-variant', '/cost/pinggu', v_parent_id, 2, 'system');
 EXCEPTION
     WHEN NO_DATA_FOUND THEN
         INSERT INTO T_COST_RESOURCE (ID, RESOURCE_CODE, RESOURCE_NAME, RESOURCE_TYPE, PAGE_CODE, ICON, ROUTE, PARENT_ID, SORT_ORDER, CREATE_BY)
-        VALUES (SEQ_COST_RESOURCE.NEXTVAL, 'pinggu', '成本评估', 'PAGE', 'cost-pinggu', 'mdi:calculator-variant', '/pinggu', NULL, 10, 'system');
+        VALUES (SEQ_COST_RESOURCE.NEXTVAL, 'pinggu', '鎴愭湰璇勪及', 'PAGE', 'cost-pinggu', 'mdi:calculator-variant', '/pinggu', NULL, 10, 'system');
 END;
 /
 
@@ -1101,73 +1108,73 @@ DECLARE
 BEGIN
     SELECT SEQ_COST_TABLE_METADATA.NEXTVAL INTO v_master_id FROM DUAL;
     INSERT INTO T_COST_TABLE_METADATA (ID, TABLE_CODE, TABLE_NAME, QUERY_VIEW, TARGET_TABLE, PK_COLUMN, CREATE_BY)
-    VALUES (v_master_id, 'CostPinggu', '成本评估', 'T_COST_PINGGU', 'T_COST_PINGGU', 'DOCID', 'system');
+    VALUES (v_master_id, 'CostPinggu', '鎴愭湰璇勪及', 'T_COST_PINGGU', 'T_COST_PINGGU', 'DOCID', 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, VISIBLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'docid', 'DOCID', 'ID', 'number', 0, 0, 0, 80, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'id', 'DOCID', 'ID', 'number', 0, 0, 0, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, SEARCHABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'goodsname', 'GOODSNAME', '产品名称', 'text', 1, 1, 1, 150, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'goodsname', 'GOODSNAME', '浜у搧鍚嶇О', 'text', 1, 1, 1, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'goodsnameEn', 'GOODSNAME_EN', '产品英文名', 'text', 2, 1, 200, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'goodsnameEn', 'GOODSNAME_EN', '浜у搧鑻辨枃鍚?, 'text', 2, 1, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'strength', 'STRENGTH', '剂量', 'text', 3, 1, 80, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'strength', 'STRENGTH', '鍓傞噺', 'text', 3, 1, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'dosage', 'DOSAGE', '剂型', 'text', 4, 1, 80, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'dosage', 'DOSAGE', '鍓傚瀷', 'text', 4, 1, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'form', 'FORM', '片型', 'text', 5, 1, 80, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'form', 'FORM', '鐗囧瀷', 'text', 5, 1, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'maNo', 'MA_NO', '注册号', 'text', 6, 1, 120, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'maNo', 'MA_NO', '娉ㄥ唽鍙?, 'text', 6, 1, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'mah', 'MAH', '注册持有人', 'text', 7, 1, 120, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'mah', 'MAH', '娉ㄥ唽鎸佹湁浜?, 'text', 7, 1, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, SEARCHABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'customname', 'CUSTOMNAME', '客户名称', 'text', 8, 1, 1, 120, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'customname', 'CUSTOMNAME', '瀹㈡埛鍚嶇О', 'text', 8, 1, 1, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'country', 'COUNTRY', '国家', 'text', 9, 1, 80, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'country', 'COUNTRY', '鍥藉', 'text', 9, 1, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'projectno', 'PROJECTNO', '项目号', 'text', 10, 1, 100, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'projectno', 'PROJECTNO', '椤圭洰鍙?, 'text', 10, 1, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'apexPl', 'APEX_PL', '批量', 'number', 11, 1, 100, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'apexPl', 'APEX_PL', '鎵归噺', 'number', 11, 1, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'annualQty', 'ANNUAL_QTY', '年需求量', 'number', 12, 1, 100, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'annualQty', 'ANNUAL_QTY', '骞撮渶姹傞噺', 'number', 12, 1, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'yield', 'YIELD', '收率(%)', 'number', 13, 1, 80, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'yield', 'YIELD', '鏀剁巼(%)', 'number', 13, 1, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'pPerpack', 'P_PERPACK', '每盒片数', 'number', 14, 1, 80, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'pPerpack', 'P_PERPACK', '姣忕洅鐗囨暟', 'number', 14, 1, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'sPerback', 'S_PERBACK', '每箱装盒数', 'number', 15, 1, 80, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'sPerback', 'S_PERBACK', '姣忕瑁呯洅鏁?, 'number', 15, 1, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'xPerback', 'X_PERBACK', '每托盘箱数', 'number', 16, 1, 80, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'xPerback', 'X_PERBACK', '姣忔墭鐩樼鏁?, 'number', 16, 1, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'packtype', 'PACKTYPE', '包装形式', 'text', 17, 1, 100, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'packtype', 'PACKTYPE', '鍖呰褰㈠紡', 'text', 17, 1, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'totalYl', 'TOTAL_YL', '原料合计', 'number', 20, 0, 100, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'totalYl', 'TOTAL_YL', '鍘熸枡鍚堣', 'number', 20, 0, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'totalFl', 'TOTAL_FL', '辅料合计', 'number', 21, 0, 100, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'totalFl', 'TOTAL_FL', '杈呮枡鍚堣', 'number', 21, 0, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'totalBc', 'TOTAL_BC', '包材合计', 'number', 22, 0, 100, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'totalBc', 'TOTAL_BC', '鍖呮潗鍚堣', 'number', 22, 0, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'totalCost', 'TOTAL_COST', '总物料成本', 'number', 23, 0, 100, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'totalCost', 'TOTAL_COST', '鎬荤墿鏂欐垚鏈?, 'number', 23, 0, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'outPriceRmb', 'OUT_PRICE_RMB', '出厂价(RMB)', 'number', 24, 1, 100, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'outPriceRmb', 'OUT_PRICE_RMB', '鍑哄巶浠?RMB)', 'number', 24, 1, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'salemoney', 'SALEMONEY', '每批销售额', 'number', 25, 0, 100, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'salemoney', 'SALEMONEY', '姣忔壒閿€鍞', 'number', 25, 0, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'jgfBatch', 'JGF_BATCH', '每批加工费', 'number', 26, 0, 100, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'jgfBatch', 'JGF_BATCH', '姣忔壒鍔犲伐璐?, 'number', 26, 0, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'costPerqp', 'COST_PERQP', '千片成本', 'number', 27, 1, 100, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'costPerqp', 'COST_PERQP', '鍗冪墖鎴愭湰', 'number', 27, 1, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'jgfPerqp', 'JGF_PERQP', '千片加工费', 'number', 28, 0, 100, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'jgfPerqp', 'JGF_PERQP', '鍗冪墖鍔犲伐璐?, 'number', 28, 0, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'mlPerqp', 'ML_PERQP', '千片毛利', 'number', 29, 0, 100, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'mlPerqp', 'ML_PERQP', '鍗冪墖姣涘埄', 'number', 29, 0, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'yJgRe', 'Y_JG_RE', '年加工收入', 'number', 30, 0, 100, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'yJgRe', 'Y_JG_RE', '骞村姞宸ユ敹鍏?, 'number', 30, 0, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'yMl', 'Y_ML', '年毛利', 'number', 31, 0, 100, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'yMl', 'Y_ML', '骞存瘺鍒?, 'number', 31, 0, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'ySale', 'Y_SALE', '年销售额', 'number', 32, 0, 100, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'ySale', 'Y_SALE', '骞撮攢鍞', 'number', 32, 0, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'usestatus', 'USESTATUS', '状态', 'text', 33, 1, 80, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'usestatus', 'USESTATUS', '鐘舵€?, 'text', 33, 1, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'memo', 'MEMO', '备注', 'text', 34, 1, 150, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'memo', 'MEMO', '澶囨敞', 'text', 34, 1, NULL, 'system');
     COMMIT;
 END;
 /
@@ -1177,35 +1184,33 @@ DECLARE
 BEGIN
     SELECT SEQ_COST_TABLE_METADATA.NEXTVAL INTO v_detail_id FROM DUAL;
     INSERT INTO T_COST_TABLE_METADATA (ID, TABLE_CODE, TABLE_NAME, QUERY_VIEW, TARGET_TABLE, PK_COLUMN, PARENT_TABLE_CODE, PARENT_FK_COLUMN, CREATE_BY)
-    VALUES (v_detail_id, 'CostPingguDtl', '成本评估明细', 'V_COST_PINGGU_DTL', 'T_COST_PINGGU_DTL', 'DTLID', 'CostPinggu', 'DOCID', 'system');
+    VALUES (v_detail_id, 'CostPingguDtl', '鎴愭湰璇勪及鏄庣粏', 'V_COST_PINGGU_DTL', 'T_COST_PINGGU_DTL', 'DTLID', 'CostPinggu', 'DOCID', 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, VISIBLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'dtlid', 'DTLID', 'ID', 'number', 0, 0, 0, 80, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'id', 'DTLID', 'ID', 'number', 0, 0, 0, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, VISIBLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'docid', 'DOCID', '主表ID', 'number', 1, 0, 0, 80, 'system');
-    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, SEARCHABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'dtlUseflag', 'DTL_USEFLAG', '分类', 'text', 2, 1, 1, 100, 'system');
-    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, SEARCHABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'apexGoodsname', 'APEX_GOODSNAME', '货品名称', 'text', 3, 1, 1, 150, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'masterId', 'DOCID', '涓昏〃ID', 'number', 1, 0, 0, NULL, 'system');
+    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, SEARCHABLE, WIDTH, RULES_CONFIG, CREATE_BY)
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'dtlUseflag', 'DTL_USEFLAG', '鍒嗙被', 'text', 2, 1, 1, NULL, '{"comparator":"customCategorySort"}', 'system');
+    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, SEARCHABLE, WIDTH, RULES_CONFIG, CREATE_BY)
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'apexGoodsname', 'APEX_GOODSNAME', '璐у搧鍚嶇О', 'text', 3, 1, 1, NULL, '{"lookup":{"code":"material","mapping":{"apexGoodsname":"materialName","price":"price"}}}', 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'spec', 'SPEC', '规格', 'text', 4, 1, 100, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'spec', 'SPEC', '瑙勬牸', 'text', 4, 1, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'perHl', 'PER_HL', '每片含量', 'number', 5, 1, 100, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'perHl', 'PER_HL', '姣忕墖鍚噺', 'number', 5, 1, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'exaddMater', 'EXADD_MATER', '额外投料量', 'number', 6, 1, 100, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'exaddMater', 'EXADD_MATER', '棰濆鎶曟枡閲?, 'number', 6, 1, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, RULES_CONFIG, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'batchQty', 'BATCH_QTY', '每批数量', 'number', 7, 0, 100,
-    '{"calculate":{"formulaField":"formulaType","formulas":{"A":{"expression":"apexPl / pPerpack","triggerFields":["apexPl","pPerpack"]},"B":{"expression":"apexPl / 10000","triggerFields":["apexPl"]},"C":{"expression":"perHl * apexPl * (1 + exaddMater / 100) / 1000000","triggerFields":["perHl","apexPl","exaddMater"]},"D":{"expression":"perHl * apexPl * (1 + exaddMater / 100) / 1000000","triggerFields":["perHl","apexPl","exaddMater"]},"E":{"expression":"ceil(apexPl / (pPerpack * sPerback))","triggerFields":["apexPl","pPerpack","sPerback"]},"F":{"expression":"ceil(apexPl / (pPerpack * sPerback * xPerback))","triggerFields":["apexPl","pPerpack","sPerback","xPerback"]}}}}', 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'batchQty', 'BATCH_QTY', '姣忔壒鏁伴噺', 'number', 7, 0, NULL, '{"calculate":{"formulaField":"formulaType","formulas":{"A":{"expression":"apexPl / pPerpack","triggerFields":["apexPl","pPerpack"]},"B":{"expression":"apexPl / 10000","triggerFields":["apexPl"]},"C":{"expression":"perHl * apexPl * (1 + exaddMater / 100) / 1000000","triggerFields":["perHl","apexPl","exaddMater"]},"D":{"expression":"perHl * apexPl * (1 + exaddMater / 100) / 1000000","triggerFields":["perHl","apexPl","exaddMater"]},"E":{"expression":"ceil(apexPl / (pPerpack * sPerback))","triggerFields":["apexPl","pPerpack","sPerback"]},"F":{"expression":"ceil(apexPl / (pPerpack * sPerback * xPerback))","triggerFields":["apexPl","pPerpack","sPerback","xPerback"]}}}}', 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'price', 'PRICE', '价格', 'number', 8, 1, 100, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'price', 'PRICE', '浠锋牸', 'number', 8, 1, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, RULES_CONFIG, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'costBatch', 'COST_BATCH', '每批成本', 'number', 9, 0, 100,
-    '{"calculate":{"expression":"batchQty * price","triggerFields":["batchQty","price"]}}', 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'costBatch', 'COST_BATCH', '姣忔壒鎴愭湰', 'number', 9, 0, NULL, '{"calculate":{"expression":"batchQty * price","triggerFields":["batchQty","price"]}}', 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'apexFactoryname', 'APEX_FACTORYNAME', '厂家名称', 'text', 10, 1, 120, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'apexFactoryname', 'APEX_FACTORYNAME', '鍘傚鍚嶇О', 'text', 10, 1, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'memo', 'MEMO', '备注', 'text', 11, 1, 150, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'memo', 'MEMO', '澶囨敞', 'text', 11, 1, NULL, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, EDITABLE, VISIBLE, IS_VIRTUAL, WIDTH, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'formulaType', 'FORMULA_TYPE', '公式类型', 'text', 12, 0, 0, 1, 60, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_detail_id, 'formulaType', 'FORMULA_TYPE', '鍏紡绫诲瀷', 'text', 12, 0, 0, 1, NULL, 'system');
     COMMIT;
 END;
 /
@@ -1220,14 +1225,14 @@ VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'cost-pinggu', 'detailTabs', 'TABS', 'r
   "mode": "group",
   "groupField": "dtlUseflag",
   "tabs": [
-    {"key": "ylfl", "title": "原料/辅料", "values": ["原料", "辅料"]},
-    {"key": "bc", "title": "包材", "values": ["印字包材", "非印字包材"]}
+    {"key": "ylfl", "title": "鍘熸枡/杈呮枡", "values": ["鍘熸枡", "杈呮枡"]},
+    {"key": "bc", "title": "鍖呮潗", "values": ["鍗板瓧鍖呮潗", "闈炲嵃瀛楀寘鏉?]}
   ],
   "broadcast": ["apexPl", "pPerpack", "sPerback", "xPerback"],
   "aggregates": [
-    {"sourceField": "costBatch", "targetField": "totalYl", "algorithm": "SUM", "filter": "dtlUseflag === ''原料''"},
-    {"sourceField": "costBatch", "targetField": "totalFl", "algorithm": "SUM", "filter": "dtlUseflag === ''辅料''"},
-    {"sourceField": "costBatch", "targetField": "totalBc", "algorithm": "SUM", "filter": "dtlUseflag === ''印字包材'' || dtlUseflag === ''非印字包材''"},
+    {"sourceField": "costBatch", "targetField": "totalYl", "algorithm": "SUM", "filter": "dtlUseflag === ''鍘熸枡''"},
+    {"sourceField": "costBatch", "targetField": "totalFl", "algorithm": "SUM", "filter": "dtlUseflag === ''杈呮枡''"},
+    {"sourceField": "costBatch", "targetField": "totalBc", "algorithm": "SUM", "filter": "dtlUseflag === ''鍗板瓧鍖呮潗'' || dtlUseflag === ''闈炲嵃瀛楀寘鏉?'"},
     {"targetField": "totalCost", "expression": "totalYl + totalFl + totalBc"}
   ],
   "postProcess": "if (totalYl > 0) { totalYl /= 1.13; totalFl /= 1.13; totalBc /= 1.13; totalCost = totalYl + totalFl + totalBc; }",
@@ -1245,52 +1250,25 @@ VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'cost-pinggu', 'detailTabs', 'TABS', 'r
 COMMIT;
 
 -- =====================================================
--- D. 修复补丁（兼容前端字段命名）
+-- D. 淇琛ヤ竵锛堝吋瀹瑰墠绔瓧娈靛懡鍚嶏級
 -- =====================================================
 
--- D1. 人员相关视图字段标记为虚拟列
-UPDATE T_COST_COLUMN_METADATA 
-SET IS_VIRTUAL = 1
-WHERE TABLE_METADATA_ID = (SELECT ID FROM T_COST_TABLE_METADATA WHERE TABLE_CODE = 'CostUser')
-  AND FIELD_NAME = 'deptName';
-UPDATE T_COST_COLUMN_METADATA 
-SET IS_VIRTUAL = 1
-WHERE TABLE_METADATA_ID = (SELECT ID FROM T_COST_TABLE_METADATA WHERE TABLE_CODE = 'CostUserRole')
-  AND FIELD_NAME IN ('deptName', 'username', 'realName');
-
--- D2. 成本评估主键、外键字段命名统一
-UPDATE T_COST_COLUMN_METADATA 
-SET FIELD_NAME = 'id'
-WHERE TABLE_METADATA_ID = (SELECT ID FROM T_COST_TABLE_METADATA WHERE TABLE_CODE = 'CostPinggu')
-  AND COLUMN_NAME = 'DOCID';
-UPDATE T_COST_COLUMN_METADATA 
-SET FIELD_NAME = 'id'
-WHERE TABLE_METADATA_ID = (SELECT ID FROM T_COST_TABLE_METADATA WHERE TABLE_CODE = 'CostPingguDtl')
-  AND COLUMN_NAME = 'DTLID';
-UPDATE T_COST_COLUMN_METADATA 
-SET FIELD_NAME = 'masterId'
-WHERE TABLE_METADATA_ID = (SELECT ID FROM T_COST_TABLE_METADATA WHERE TABLE_CODE = 'CostPingguDtl')
-  AND COLUMN_NAME = 'DOCID';
-
+-- D1. 浜哄憳鐩稿叧瑙嗗浘瀛楁鏍囪涓鸿櫄鎷熷垪
+-- D2. 鎴愭湰璇勪及涓婚敭銆佸閿瓧娈靛懡鍚嶇粺涓€
 COMMIT;
 
 
--- V2: 添加 Lookup 配置和测试用户权限
--- 1. 给 CostPingguDtl.apexGoodsname 字段配置 Lookup（关联物料表）
--- mapping: 货品名 <- materialName, 价格 <- price
-UPDATE T_COST_COLUMN_METADATA 
-SET RULES_CONFIG = '{"lookup":{"code":"material","mapping":{"apexGoodsname":"materialName","price":"price"}}}'
-WHERE TABLE_METADATA_ID = (SELECT ID FROM T_COST_TABLE_METADATA WHERE TABLE_CODE = 'CostPingguDtl')
-  AND FIELD_NAME = 'apexGoodsname';
-
--- 2. 给测试用户（user 角色）添加 cost-pinggu 页面权限
+-- V2: 娣诲姞 Lookup 閰嶇疆鍜屾祴璇曠敤鎴锋潈闄?
+-- 1. 缁?CostPingguDtl.apexGoodsname 瀛楁閰嶇疆 Lookup锛堝叧鑱旂墿鏂欒〃锛?
+-- mapping: 璐у搧鍚?<- materialName, 浠锋牸 <- price
+-- 2. 缁欐祴璇曠敤鎴凤紙user 瑙掕壊锛夋坊鍔?cost-pinggu 椤甸潰鏉冮檺
 INSERT INTO T_COST_ROLE_PAGE (ID, ROLE_ID, PAGE_CODE, BUTTON_POLICY, COLUMN_POLICY, CREATE_BY)
 SELECT SEQ_COST_ROLE_PAGE.NEXTVAL, r.ID, 'cost-pinggu', '["CREATE","EDIT","DELETE"]', NULL, 'system'
 FROM T_COST_ROLE r
 WHERE r.ROLE_CODE = 'USER'
   AND NOT EXISTS (SELECT 1 FROM T_COST_ROLE_PAGE rp WHERE rp.ROLE_ID = r.ID AND rp.PAGE_CODE = 'cost-pinggu');
 
--- 3. 给管理员角色添加 cost-pinggu 页面权限（全部按钮）
+-- 3. 缁欑鐞嗗憳瑙掕壊娣诲姞 cost-pinggu 椤甸潰鏉冮檺锛堝叏閮ㄦ寜閽級
 INSERT INTO T_COST_ROLE_PAGE (ID, ROLE_ID, PAGE_CODE, BUTTON_POLICY, COLUMN_POLICY, CREATE_BY)
 SELECT SEQ_COST_ROLE_PAGE.NEXTVAL, r.ID, 'cost-pinggu', '["*"]', NULL, 'system'
 FROM T_COST_ROLE r
@@ -1298,24 +1276,6 @@ WHERE r.ROLE_CODE = 'ADMIN'
   AND NOT EXISTS (SELECT 1 FROM T_COST_ROLE_PAGE rp WHERE rp.ROLE_ID = r.ID AND rp.PAGE_CODE = 'cost-pinggu');
 
 COMMIT;
-
-
-ALTER TABLE T_COST_TABLE_METADATA ADD ACTION_RULES CLOB;
-
-
-
-UPDATE T_COST_TABLE_METADATA
-SET ACTION_RULES = '[
-  {
-    "code": "resetPassword",
-    "group": "manual",
-    "type": "java",
-    "method": "userService.resetPassword",
-    "description": "重置用户密码为默认值"
-  }
-]'
-WHERE TABLE_CODE = 'CostUser';
-
 COMMIT;
 
 DELETE FROM T_COST_PAGE_COMPONENT
@@ -1343,25 +1303,25 @@ VALUES (
     '{
         "items": [
             {
-                "label": "新增行",
+                "label": "鏂板琛?,
                 "key": "add",
                 "icon": "mdi:plus",
                 "action": "addRow"
             },
             {
-                "label": "复制行",
+                "label": "澶嶅埗琛?,
                 "key": "copy",
                 "icon": "mdi:content-copy",
                 "action": "copyRow",
                 "disabled": "!selectedRow"
             },
             {
-                "label": "删除",
+                "label": "鍒犻櫎",
                 "key": "delete",
                 "icon": "mdi:delete",
                 "action": "deleteRow",
                 "confirm": true,
-                "confirmMessage": "确认删除选中的用户吗？",
+                "confirmMessage": "纭鍒犻櫎閫変腑鐨勭敤鎴峰悧锛?,
                 "disabled": "!selectedRow"
             }
         ]
@@ -1543,3 +1503,118 @@ SELECT
     DBMS_LOB.SUBSTR(COMPONENT_CONFIG, 4000, 1) AS CONFIG_PREVIEW
 FROM T_COST_PAGE_COMPONENT
 WHERE PAGE_CODE = 'user-manage' AND COMPONENT_TYPE = 'CONTEXT_MENU';
+
+-- END rebuild_cost_schema.sql
+-- BEGIN merge_detail_tabs.sql
+-- =====================================================
+-- 鎴愭湰璇勪及椤甸潰鏀归€狅細鍚堝苟鍘熸枡/杈呮枡/鍖呮潗鍒颁竴涓〃鏍?
+-- 鍘绘帀渚ц竟鏍?Tab锛屾墍鏈夋槑缁嗗湪涓€涓?Grid 涓睍绀?
+-- =====================================================
+
+-- 1. 鍒犻櫎鏃х殑 TABS 缁勪欢閰嶇疆
+DELETE FROM T_COST_PAGE_COMPONENT
+WHERE PAGE_CODE = 'cost-pinggu' AND COMPONENT_KEY = 'detailTabs';
+
+-- 2. 鏂板鍗曚竴 TABS 缁勪欢锛堝彧鏈変竴涓?Tab锛屾樉绀烘墍鏈夋槑缁嗭紝鍖呭惈鑱氬悎鍜岀骇鑱旇绠楋級
+INSERT INTO T_COST_PAGE_COMPONENT (
+    ID,
+    PAGE_CODE,
+    COMPONENT_KEY,
+    COMPONENT_TYPE,
+    PARENT_KEY,
+    SORT_ORDER,
+    REF_TABLE_CODE,
+    COMPONENT_CONFIG,
+    CREATE_BY
+)
+VALUES (
+    SEQ_COST_PAGE_COMPONENT.NEXTVAL,
+    'cost-pinggu',
+    'detailTabs',
+    'TABS',
+    'root',
+    2,
+    'CostPingguDtl',
+    '{
+      "mode": "group",
+      "tabs": [
+        {
+          "key": "all",
+          "title": "鏄庣粏",
+          "columns": ["dtlUseflag", "apexGoodsname", "spec", "perHl", "exaddMater", "batchQty", "price", "costBatch", "apexFactoryname", "memo"],
+          "initialSort": [
+            {"colId": "dtlUseflag", "sort": "asc"}
+          ]
+        }
+      ],
+      "broadcast": ["apexPl", "pPerpack", "sPerback", "xPerback"],
+      "aggregates": [
+        {"sourceField": "costBatch", "targetField": "totalYl", "algorithm": "SUM", "filter": "dtlUseflag === ''鍘熸枡''"},
+        {"sourceField": "costBatch", "targetField": "totalFl", "algorithm": "SUM", "filter": "dtlUseflag === ''杈呮枡''"},
+        {"sourceField": "costBatch", "targetField": "totalBc", "algorithm": "SUM", "filter": "dtlUseflag === ''鍗板瓧鍖呮潗'' || dtlUseflag === ''闈炲嵃瀛楀寘鏉?'"},
+        {"targetField": "totalCost", "expression": "totalYl + totalFl + totalBc"}
+      ],
+      "postProcess": "if (totalYl > 0) { totalYl /= 1.13; totalFl /= 1.13; totalBc /= 1.13; totalCost = totalYl + totalFl + totalBc; }",
+      "masterCalcRules": [
+        {"field": "salemoney", "expression": "outPriceRmb / pPerpack * apexPl * (yield / 100)", "triggerFields": ["outPriceRmb", "pPerpack", "apexPl", "yield", "totalCost"]},
+        {"field": "jgfBatch", "expression": "salemoney - totalCost", "triggerFields": ["salemoney", "totalCost"]},
+        {"field": "jgfPerqp", "expression": "jgfBatch / apexPl * 1000", "triggerFields": ["jgfBatch", "apexPl"]},
+        {"field": "mlPerqp", "expression": "jgfPerqp - costPerqp", "triggerFields": ["jgfPerqp", "costPerqp"]},
+        {"field": "yJgRe", "expression": "jgfPerqp / 1000 * annualQty", "triggerFields": ["jgfPerqp", "annualQty"]},
+        {"field": "yMl", "expression": "mlPerqp / 1000 * annualQty", "triggerFields": ["mlPerqp", "annualQty"]},
+        {"field": "ySale", "expression": "salemoney / apexPl * annualQty", "triggerFields": ["salemoney", "apexPl", "annualQty"]}
+      ]
+    }',
+    'system'
+);
+
+COMMIT;
+
+-- 楠岃瘉閰嶇疆
+SELECT 
+    COMPONENT_KEY,
+    COMPONENT_TYPE,
+    SORT_ORDER,
+    COMPONENT_CONFIG
+FROM T_COST_PAGE_COMPONENT
+WHERE PAGE_CODE = 'cost-pinggu'
+ORDER BY SORT_ORDER;
+
+-- END merge_detail_tabs.sql
+-- BEGIN add_sort_config.sql
+-- =====================================================
+-- 涓烘垚鏈瘎浼版槑缁嗚〃娣诲姞鑷畾涔夋帓搴忛厤缃?
+-- 鏂规锛氫娇鐢?comparator 鑷畾涔夋帓搴忥紙鍘熸枡 鈫?杈呮枡 鈫?鍗板瓧鍖呮潗 鈫?闈炲嵃瀛楀寘鏉愶級
+-- =====================================================
+
+-- 1. 鏇存柊 dtlUseflag 鍒楀厓鏁版嵁锛屾坊鍔?comparator 閰嶇疆
+-- 2. 鏇存柊 TABS 閰嶇疆锛屾坊鍔?initialSort
+totalFl /= 1.13; totalBc /= 1.13; totalCost = totalYl + totalFl + totalBc; }",
+  "masterCalcRules": [
+    {"field": "salemoney", "expression": "outPriceRmb / pPerpack * apexPl * (yield / 100)", "triggerFields": ["outPriceRmb", "pPerpack", "apexPl", "yield", "totalCost"]},
+    {"field": "jgfBatch", "expression": "salemoney - totalCost", "triggerFields": ["salemoney", "totalCost"]},
+    {"field": "jgfPerqp", "expression": "jgfBatch / apexPl * 1000", "triggerFields": ["jgfBatch", "apexPl"]},
+    {"field": "mlPerqp", "expression": "jgfPerqp - costPerqp", "triggerFields": ["jgfPerqp", "costPerqp"]},
+    {"field": "yJgRe", "expression": "jgfPerqp / 1000 * annualQty", "triggerFields": ["jgfPerqp", "annualQty"]},
+    {"field": "yMl", "expression": "mlPerqp / 1000 * annualQty", "triggerFields": ["mlPerqp", "annualQty"]},
+    {"field": "ySale", "expression": "salemoney / apexPl * annualQty", "triggerFields": ["salemoney", "apexPl", "annualQty"]}
+  ]
+}'
+WHERE PAGE_CODE = 'cost-pinggu' AND COMPONENT_KEY = 'detailTabs';
+
+COMMIT;
+
+-- END add_sort_config.sql
+-- BEGIN reset_column_width.sql
+-- =====================================================
+-- 灏嗘墍鏈夊垪鐨勫搴﹁缃负 NULL锛岃 AG Grid 鑷姩璋冩暣鍒楀
+-- =====================================================
+
+COMMIT;
+
+-- 鏌ョ湅鏇存柊缁撴灉
+SELECT COUNT(*) AS updated_count
+FROM T_COST_COLUMN_METADATA
+WHERE WIDTH IS NULL;
+
+-- END reset_column_width.sql
