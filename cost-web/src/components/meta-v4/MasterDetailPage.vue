@@ -1094,11 +1094,45 @@ function refreshAllDetailGrids() {
   // 遍历所有主表行，刷新已展开的 detail
   api.forEachNode(node => {
     if (node.expanded && node.data) {
-      const detailGridInfo = api.getDetailGridInfo(`detail_${node.data.id}`);
+      const masterId = node.data.id;
+      // 从 store 获取最新的主表行数据（而不是用 node.data）
+      const masterRow = store.masterRows.find(r => r.id === masterId);
+      if (!masterRow) return;
+      
+      const detailGridInfo = api.getDetailGridInfo(`detail_${masterId}`);
       if (detailGridInfo?.api) {
-        // 重新计算汇总数据并更新
-        const summaryData = calcSummaryRowsForMaster(node.data);
-        detailGridInfo.api.setGridOption('rowData', summaryData);
+        const summaryApi = detailGridInfo.api;
+        // 重新计算汇总数据
+        const newSummaryData = calcSummaryRowsForMaster(masterRow);
+        
+        // 用 setDataValue 逐字段更新，保持展开状态
+        newSummaryData.forEach((newRow: any) => {
+          const rowId = `${newRow._masterId}_${newRow._groupKey}`;
+          const rowNode = summaryApi.getRowNode(rowId);
+          if (rowNode) {
+            // 更新汇总字段（跳过内部字段）
+            Object.keys(newRow).forEach(field => {
+              if (!field.startsWith('_') && rowNode.data[field] !== newRow[field]) {
+                rowNode.setDataValue(field, newRow[field]);
+              }
+            });
+            // 同步 _detailRows 供第三层使用（直接赋值，不触发渲染）
+            rowNode.data._detailRows = newRow._detailRows;
+            
+            // 如果第三层也展开了，刷新第三层数据
+            if (rowNode.expanded) {
+              const thirdLevelId = `detail_${rowId}`;
+              const thirdGridInfo = summaryApi.getDetailGridInfo(thirdLevelId);
+              console.log('[三层刷新] 查找第三层 grid:', thirdLevelId, '结果:', !!thirdGridInfo);
+              if (thirdGridInfo?.api) {
+                // 第三层数据和 store 是同一个引用，数据已经更新
+                // 只需要强制刷新单元格显示
+                const thirdApi = thirdGridInfo.api;
+                thirdApi.refreshCells({ force: true });
+              }
+            }
+          }
+        });
       }
     }
   });

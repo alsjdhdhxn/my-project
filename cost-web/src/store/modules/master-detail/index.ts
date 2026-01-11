@@ -361,15 +361,15 @@ export function useMasterDetailStore(pageCode: string) {
         const broadcastFields = config.value?.broadcast || [];
         const hasBroadcast = broadcastFields.length > 0
           && changedFields.some(field => broadcastFields.includes(field));
-        const isCurrentMaster = currentMasterId.value === rowId;
-        const hasDetailRows = !!master._details?.rows;
+        const hasDetailRows = !!master._details?.rows?.length;
 
-        if (hasBroadcast && isCurrentMaster && hasDetailRows) {
-          runDetailCalcInternal();
-          runAggCalcInternal();
-        } else {
-          runMasterCalc(master);
+        // 只要有广播字段变化且有从表数据，就对该主表的从表执行计算
+        if (hasBroadcast && hasDetailRows) {
+          runDetailCalcForMaster(master);
+          runAggCalcForMaster(master);
         }
+        
+        runMasterCalc(master);
       } else {
         if (compiledCalcRules.value.length > 0) {
           runDetailCalcForFields(rowId, changedFields);
@@ -599,6 +599,60 @@ export function useMasterDetailStore(pageCode: string) {
       }
 
       return hasAnyChange;
+    }
+
+    /** 执行指定主表的从表计算（用于广播字段变化，支持非 currentMaster） */
+    function runDetailCalcForMaster(master: MasterRowData): boolean {
+      if (!master?._details?.rows || compiledCalcRules.value.length === 0) return false;
+
+      const context: Record<string, any> = {};
+      for (const field of config.value?.broadcast || []) {
+        context[field] = master[field] ?? 0;
+      }
+
+      let hasAnyChange = false;
+
+      for (let round = 0; round < MAX_CALC_ROUNDS; round++) {
+        let hasChange = false;
+
+        for (const row of master._details.rows) {
+          if (row._isDeleted) continue;
+
+          const results = calcRowFields(row, context, compiledCalcRules.value);
+
+          for (const [field, value] of Object.entries(results)) {
+            if (!isValueEqual(row[field], value)) {
+              row[field] = value;
+              markChange(row, field, 'cascade');
+              hasChange = true;
+              hasAnyChange = true;
+            }
+          }
+        }
+
+        if (!hasChange) break;
+      }
+
+      return hasAnyChange;
+    }
+
+    /** 执行指定主表的聚合计算 */
+    function runAggCalcForMaster(master: MasterRowData): boolean {
+      if (!master?._details?.rows || compiledAggRules.value.length === 0) return false;
+
+      const rows = master._details.rows.filter(r => !r._isDeleted);
+      const results = calcAggregates(rows, compiledAggRules.value);
+
+      let hasChange = false;
+      for (const [field, value] of Object.entries(results)) {
+        if (!isValueEqual(master[field], value)) {
+          master[field] = value;
+          markChange(master, field, 'cascade');
+          hasChange = true;
+        }
+      }
+
+      return hasChange;
     }
 
     function runDetailCalc() {
