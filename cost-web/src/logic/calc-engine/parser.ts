@@ -20,6 +20,7 @@ export interface TabConfig {
   // 通用
   columns: string[];
   initialSort?: Array<{ colId: string; sort: 'asc' | 'desc' }>; // AG Grid 初始排序
+  variantKey?: string; // 变体列分组键
 }
 
 /** TABS 组件配置（从数据库读取） */
@@ -34,12 +35,14 @@ export interface TabsComponentConfig {
     tableCode?: string; // multi 模式的表代码
     columns: string[];
     initialSort?: Array<{ colId: string; sort: 'asc' | 'desc' }>; // AG Grid 初始排序
+    variantKey?: string; // 变体列分组键
   }>;
   broadcast?: string[];
   calcRules?: CalcRule[];
   aggregates?: AggRule[];
   postProcess?: string; // 聚合后处理表达式
   masterCalcRules?: CalcRule[]; // 主表计算规则
+  nestedConfig?: NestedConfig; // 三层嵌套配置
 }
 
 /** 页面组件（从 API 返回） */
@@ -68,6 +71,28 @@ export interface EnterpriseConfig {
   groupColumnName?: string;       // 分组列名称
 }
 
+/** 汇总行聚合配置 */
+export interface SummaryAggConfig {
+  sourceField: string;            // 从表源字段
+  targetField: string;            // 汇总行目标字段
+  algorithm: 'SUM' | 'AVG' | 'COUNT' | 'MAX' | 'MIN';
+}
+
+/** 汇总行列配置 */
+export interface SummaryColumnConfig {
+  field: string;                  // 字段名
+  headerName: string;             // 列标题
+  width?: number;                 // 列宽
+}
+
+/** 三层嵌套配置 */
+export interface NestedConfig {
+  enabled: boolean;               // 是否启用三层嵌套
+  summaryColumns: SummaryColumnConfig[];  // 汇总行显示的列
+  summaryAggregates: SummaryAggConfig[];  // 汇总行聚合规则
+  groupLabelField?: string;       // 分组标签字段名，默认 'groupLabel'
+}
+
 /** 解析结果 */
 export interface ParsedPageConfig {
   masterTableCode: string;
@@ -81,6 +106,7 @@ export interface ParsedPageConfig {
   postProcess?: string; // 聚合后处理表达式
   masterCalcRules: CalcRule[]; // 主表计算规则
   enterpriseConfig?: EnterpriseConfig; // 企业版功能配置
+  nestedConfig?: NestedConfig; // 三层嵌套配置
 }
 
 // ==================== 解析函数 ====================
@@ -137,7 +163,8 @@ export function parsePageComponents(components: PageComponent[]): ParsedPageConf
     mode: config.mode || 'group',
     postProcess: config.postProcess,
     masterCalcRules: config.masterCalcRules || [],
-    enterpriseConfig
+    enterpriseConfig,
+    nestedConfig: config.nestedConfig
   };
 }
 
@@ -154,7 +181,8 @@ export function parseTabConfig(config: TabsComponentConfig): TabConfig[] {
     groupValues: tab.values, // 多个分组值
     tableCode: tab.tableCode,
     columns: tab.columns || [],
-    initialSort: tab.initialSort // AG Grid 初始排序
+    initialSort: tab.initialSort, // AG Grid 初始排序
+    variantKey: tab.variantKey // 变体列分组键
   }));
 }
 

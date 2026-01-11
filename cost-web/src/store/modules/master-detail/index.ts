@@ -119,6 +119,56 @@ export function useMasterDetailStore(pageCode: string) {
       return result;
     });
 
+    /** 汇总行数据（三层嵌套模式用） */
+    const summaryRows = computed(() => {
+      const nestedConfig = config.value?.nestedConfig;
+      if (!nestedConfig?.enabled) return [];
+
+      const tabs = config.value?.tabs || [];
+      const groupField = config.value?.groupField;
+      const summaryAggregates = nestedConfig.summaryAggregates || [];
+      const groupLabelField = nestedConfig.groupLabelField || 'groupLabel';
+
+      return tabs.map(tab => {
+        // 获取该分组的明细行
+        const rows = detailRowsByTab.value[tab.key] || [];
+
+        // 计算聚合值
+        const aggValues: Record<string, number> = {};
+        for (const agg of summaryAggregates) {
+          const values = rows.map(r => Number(r[agg.sourceField]) || 0);
+          switch (agg.algorithm) {
+            case 'SUM':
+              aggValues[agg.targetField] = values.reduce((a, b) => a + b, 0);
+              break;
+            case 'AVG':
+              aggValues[agg.targetField] = values.length > 0
+                ? values.reduce((a, b) => a + b, 0) / values.length
+                : 0;
+              break;
+            case 'COUNT':
+              aggValues[agg.targetField] = rows.length;
+              break;
+            case 'MAX':
+              aggValues[agg.targetField] = values.length > 0 ? Math.max(...values) : 0;
+              break;
+            case 'MIN':
+              aggValues[agg.targetField] = values.length > 0 ? Math.min(...values) : 0;
+              break;
+          }
+        }
+
+        return {
+          _groupKey: tab.key,
+          _groupValue: tab.groupValue || tab.groupValues?.[0] || tab.key,
+          [groupLabelField]: tab.title,
+          _detailRows: rows,
+          _variantKey: tab.variantKey,
+          ...aggValues
+        };
+      });
+    });
+
     /** 是否有未保存的修改 */
     const isDirty = computed(() => {
       for (const master of masterRows.value) {
@@ -189,6 +239,21 @@ export function useMasterDetailStore(pageCode: string) {
       }
 
       // 通知 UI 刷新（不触发计算，加载的数据是干净的）
+      triggerReactiveUpdate();
+    }
+
+    /** 为指定主表行加载从表数据（用于展开时数据为空的情况） */
+    function loadDetailForMaster(masterId: number, data: Record<string, any>[]) {
+      const master = masterRows.value.find(r => r.id === masterId);
+      if (!master) return;
+
+      master._details = {
+        loaded: true,
+        rows: data.map(row => initRowData(row, false))
+      };
+
+      // 更新 LRU
+      updateLru(masterId);
       triggerReactiveUpdate();
     }
 
@@ -718,6 +783,7 @@ export function useMasterDetailStore(pageCode: string) {
       detailRows,
       visibleDetailRows,
       detailRowsByTab,
+      summaryRows,
       isDirty,
       loadedDetailCount,
 
@@ -725,6 +791,7 @@ export function useMasterDetailStore(pageCode: string) {
       init,
       loadMaster,
       loadDetail,
+      loadDetailForMaster,
       selectMaster,
       updateField,
       updateFields,

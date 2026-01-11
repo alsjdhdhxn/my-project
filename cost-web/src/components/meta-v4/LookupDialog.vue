@@ -23,7 +23,7 @@
     <!-- 数据表格 -->
     <div class="lookup-grid">
       <AgGridVue
-        class="ag-theme-alpine"
+        class="ag-theme-quartz"
         style="width: 100%; height: 300px"
         :rowData="rowData"
         :columnDefs="columnDefs"

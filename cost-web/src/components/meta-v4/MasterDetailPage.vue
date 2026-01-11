@@ -2,9 +2,41 @@
   <div class="master-detail-page">
     <!-- 主从表分隔区域 -->
     <template v-if="store.isReady">
-      <!-- 有从表：上下分隔 -->
+      <!-- 三层嵌套模式：主表 → 汇总行 → 明细 Grid -->
+      <div v-if="isNestedMode" class="master-section full">
+        <AgGridVue
+          class="ag-theme-quartz"
+          style="width: 100%; height: 100%"
+          :rowData="store.visibleMasterRows"
+          :columnDefs="masterColumnDefs"
+          :defaultColDef="defaultColDef"
+          :getRowId="getRowId"
+          :getRowClass="masterGetRowClass"
+          :rowSelection="masterRowSelection"
+          :suppressContextMenu="true"
+          :preventDefaultOnContextMenu="true"
+          :sideBar="sideBar"
+          :cellSelection="cellSelectionEnabled"
+          :rowHeight="28"
+          :headerHeight="28"
+          :masterDetail="true"
+          :keepDetailRows="true"
+          :detailRowAutoHeight="true"
+          :detailCellRendererParams="masterDetailParams"
+          @grid-ready="onMasterGridReady"
+          @selection-changed="onMasterSelectionChanged"
+          @row-group-opened="onMasterRowExpanded"
+          @cell-value-changed="onMasterCellValueChanged"
+          @cell-clicked="onMasterCellClicked"
+          @cell-context-menu="onMasterContextMenu"
+          @cell-editing-started="masterAdapter.onCellEditingStarted"
+          @cell-editing-stopped="masterAdapter.onCellEditingStopped"
+        />
+      </div>
+
+      <!-- 分屏模式：有从表上下分隔 -->
       <NSplit
-        v-if="hasDetail"
+        v-else-if="hasDetail"
         direction="vertical"
         :default-size="0.5"
         :min="0.2"
@@ -15,7 +47,7 @@
         <template #1>
           <div class="master-section">
             <AgGridVue
-              class="ag-theme-alpine"
+              class="ag-theme-quartz"
               style="width: 100%; height: 100%"
               :rowData="store.visibleMasterRows"
               :columnDefs="masterColumnDefs"
@@ -62,7 +94,7 @@
       <!-- 无从表：主表铺满 -->
       <div v-else class="master-section full">
         <AgGridVue
-          class="ag-theme-alpine"
+          class="ag-theme-quartz"
           style="width: 100%; height: 100%"
           :rowData="store.visibleMasterRows"
           :columnDefs="masterColumnDefs"
@@ -135,7 +167,7 @@ import {
   type ValidationRule
 } from '@/logic/calc-engine';
 import { fetchPageComponents, saveDynamicData, searchDynamicData, executeAction } from '@/service/api';
-import { loadTableMeta, type RowStyleRule, type LookupRule, extractLookupRules } from '@/composables/useMetaColumns';
+import { loadTableMeta, filterColumnsByVariant, type RowStyleRule, type LookupRule, extractLookupRules } from '@/composables/useMetaColumns';
 import MetaTabs from './MetaTabs.vue';
 import LookupDialog from './LookupDialog.vue';
 
@@ -197,14 +229,212 @@ const tabs = computed(() => store.config?.tabs || []);
 /** 是否有从表 */
 const hasDetail = computed(() => !!store.config?.detailTableCode);
 
-const masterColumnDefs = computed<ColDef[]>(() => {
-  return store.masterColumns.map(col => ({
-    ...col,
-    cellClassRules: {
-      ...col.cellClassRules,  // 保留元数据中的样式规则
-      ...getCellClassRules()  // 添加变更状态样式
+/** 是否启用三层嵌套模式 */
+const isNestedMode = computed(() => !!store.config?.nestedConfig?.enabled);
+
+/** 是否启用单元格选择 */
+const cellSelectionEnabled = computed(() => store.config?.enterpriseConfig?.enableRangeSelection ?? false);
+
+/** 是否启用行分组 */
+const enableRowGrouping = computed(() => {
+  const groupBy = store.config?.enterpriseConfig?.groupBy;
+  return groupBy && groupBy.length > 0;
+});
+
+/** 自动分组列配置 */
+const autoGroupColumnDef = computed(() => {
+  if (!enableRowGrouping.value) return undefined;
+  return {
+    headerName: store.config?.enterpriseConfig?.groupColumnName || '分组',
+    minWidth: 200
+  };
+});
+
+/** 三层嵌套：主表展开后显示汇总行的配置 */
+const masterDetailParams = computed(() => {
+  if (!isNestedMode.value) return undefined;
+  
+  const nestedConfig = store.config?.nestedConfig;
+  const summaryColumns = nestedConfig?.summaryColumns || [];
+  
+  return {
+    refreshStrategy: 'nothing',
+    detailGridOptions: {
+      columnDefs: [
+        // 第一列启用展开功能
+        { 
+          field: nestedConfig?.groupLabelField || 'groupLabel', 
+          headerName: '分组',
+          cellRenderer: 'agGroupCellRenderer',
+          minWidth: 150
+        },
+        // 汇总列
+        ...summaryColumns.map(col => ({
+          field: col.field,
+          headerName: col.headerName,
+          width: col.width || 120,
+          type: 'numericColumn'
+        }))
+      ],
+      defaultColDef: {
+        sortable: false,
+        filter: false,
+        resizable: true
+      },
+      rowHeight: 28,
+      headerHeight: 28,
+      masterDetail: true,
+      keepDetailRows: true,
+      detailRowAutoHeight: true,
+      // 为汇总行设置唯一 ID，保持展开状态
+      getRowId: (rowParams: any) => `${rowParams.data?._masterId}_${rowParams.data?._groupKey}`,
+      detailCellRendererParams: getSummaryDetailParams()
+    },
+    getDetailRowData: async (params: any) => {
+      const masterId = params.data?.id;
+      const masterRow = store.masterRows.find(r => r.id === masterId);
+      
+      // 如果没有数据，尝试加载
+      if (!masterRow?._details?.rows?.length) {
+        await loadDetailForRow(masterId);
+        // 重新获取更新后的数据
+        const updatedRow = store.masterRows.find(r => r.id === masterId);
+        if (!updatedRow?._details?.rows?.length) {
+          params.successCallback([]);
+          return;
+        }
+        const summaryData = calcSummaryRowsForMaster(updatedRow);
+        params.successCallback(summaryData);
+        return;
+      }
+      
+      const summaryData = calcSummaryRowsForMaster(masterRow);
+      params.successCallback(summaryData);
     }
-  }));
+  };
+});
+
+/** 为指定主表行计算汇总数据（避免依赖全局 store.summaryRows） */
+function calcSummaryRowsForMaster(masterRow: any) {
+  const nestedConfig = store.config?.nestedConfig;
+  if (!nestedConfig?.enabled) return [];
+
+  const tabs = store.config?.tabs || [];
+  const groupField = store.config?.groupField;
+  const summaryAggregates = nestedConfig.summaryAggregates || [];
+  const groupLabelField = nestedConfig.groupLabelField || 'groupLabel';
+  
+  const allRows = (masterRow._details?.rows || []).filter((r: any) => !r._isDeleted);
+
+  return tabs.map(tab => {
+    // 按分组过滤行
+    let rows: any[];
+    if (tab.mode === 'group') {
+      if (tab.groupValues && tab.groupValues.length > 0 && groupField) {
+        rows = allRows.filter((r: any) => tab.groupValues!.includes(r[groupField]));
+      } else if (!tab.groupValue || tab.groupValue === '*' || !groupField) {
+        rows = allRows;
+      } else {
+        rows = allRows.filter((r: any) => r[groupField] === tab.groupValue);
+      }
+    } else {
+      rows = [];
+    }
+
+    // 计算聚合值
+    const aggValues: Record<string, number> = {};
+    for (const agg of summaryAggregates) {
+      const values = rows.map((r: any) => Number(r[agg.sourceField]) || 0);
+      switch (agg.algorithm) {
+        case 'SUM':
+          aggValues[agg.targetField] = values.reduce((a, b) => a + b, 0);
+          break;
+        case 'AVG':
+          aggValues[agg.targetField] = values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : 0;
+          break;
+        case 'COUNT':
+          aggValues[agg.targetField] = rows.length;
+          break;
+        case 'MAX':
+          aggValues[agg.targetField] = values.length > 0 ? Math.max(...values) : 0;
+          break;
+        case 'MIN':
+          aggValues[agg.targetField] = values.length > 0 ? Math.min(...values) : 0;
+          break;
+      }
+    }
+
+    return {
+      _groupKey: tab.key,
+      _groupValue: tab.groupValue || tab.groupValues?.[0] || tab.key,
+      [groupLabelField]: tab.title,
+      _detailRows: rows,
+      _variantKey: tab.variantKey,
+      _masterId: masterRow.id,  // 绑定主表ID，用于刷新
+      ...aggValues
+    };
+  });
+}
+
+/** 三层嵌套：汇总行展开后显示明细 Grid 的配置 */
+function getSummaryDetailParams() {
+  return (params: any) => {
+    // 根据汇总行的 _variantKey 动态返回列定义
+    const variantKey = params.data?._variantKey;
+    const columns = variantKey
+      ? filterColumnsByVariant(detailColumnDefs.value, variantKey, detailColumnMeta.value)
+      : detailColumnDefs.value;
+    
+    return {
+      refreshStrategy: 'nothing',
+      detailGridOptions: {
+        columnDefs: columns,
+        defaultColDef: {
+          sortable: true,
+          filter: true,
+          resizable: true,
+          editable: true
+        },
+        rowHeight: 28,
+        headerHeight: 28,
+        getRowId: (rowParams: any) => String(rowParams.data?.id),
+        // 编辑事件：触发 store 更新和计算链
+        onCellValueChanged: (event: any) => {
+          const field = event.colDef?.field;
+          const rowId = event.data?.id;
+          if (field && rowId != null) {
+            store.updateField(rowId, field, event.newValue, 'user', false);
+          }
+        }
+      },
+      getDetailRowData: (detailParams: any) => {
+        // 汇总行的 _detailRows 包含该分组的明细数据
+        const detailRows = detailParams.data?._detailRows || [];
+        detailParams.successCallback(detailRows);
+      }
+    };
+  };
+}
+
+const masterColumnDefs = computed<ColDef[]>(() => {
+  const cols = store.masterColumns.map((col, index) => {
+    const colDef: ColDef = {
+      ...col,
+      cellClassRules: {
+        ...col.cellClassRules,
+        ...getCellClassRules()
+      }
+    };
+    
+    // 嵌套模式：第一列添加展开按钮
+    if (isNestedMode.value && index === 0) {
+      colDef.cellRenderer = 'agGroupCellRenderer';
+    }
+    
+    return colDef;
+  });
+  
+  return cols;
 });
 
 const detailColumnDefs = computed<ColDef[]>(() => {
@@ -539,6 +769,12 @@ async function onMasterSelectionChanged() {
   }
 }
 
+/** 三层嵌套模式：主表行展开时的事件处理（数据加载已在 getDetailRowData 中处理） */
+async function onMasterRowExpanded(event: any) {
+  // 数据加载逻辑已移至 masterDetailParams.getDetailRowData
+  // 此处仅用于其他扩展逻辑（如日志、统计等）
+}
+
 function onMasterCellValueChanged(event: CellValueChangedEvent) {
   masterAdapter.onCellValueChanged(event);
 }
@@ -666,12 +902,14 @@ async function loadMetadata() {
     // 提取 lookup 规则
     detailLookupRules.value = detailMeta.lookupRules || [];
 
-    // 保存从表外键字段名（数据库列名转驼峰）
+    // 保存从表外键字段名（从列元数据中查找 fieldName）
     const fkCol = detailMeta.metadata?.parentFkColumn;
     if (fkCol) {
-      detailFkColumn.value = fkCol
-        .toLowerCase()
-        .replace(/_([a-z])/g, (_: string, c: string) => c.toUpperCase());
+      // 在列元数据中找到 columnName 匹配的列，取其 fieldName
+      const fkColumnMeta = detailMeta.rawColumns?.find(
+        (col: any) => col.columnName?.toUpperCase() === fkCol.toUpperCase()
+      );
+      detailFkColumn.value = fkColumnMeta?.fieldName || fkCol.toLowerCase();
     }
 
     // 初始化可见 Tab
@@ -733,6 +971,26 @@ async function loadDetailData(masterId: number) {
   }
 
   store.loadDetail(data?.list || []);
+}
+
+/** 为指定主表行加载从表数据（用于展开时数据为空的情况） */
+async function loadDetailForRow(masterId: number) {
+  const tableCode = store.config?.detailTableCode;
+  const fkColumn = detailFkColumn.value;
+
+  if (!tableCode || !fkColumn) return;
+
+  const { data, error } = await searchDynamicData(tableCode, {
+    pageCode: props.pageCode,
+    conditions: [{ field: fkColumn, operator: 'eq', value: masterId }]
+  });
+  if (error) {
+    message.error('加载从表数据失败');
+    return;
+  }
+
+  // 直接挂载到指定主表行
+  store.loadDetailForMaster(masterId, data?.list || []);
 }
 
 // ==================== Toolbar Actions ====================
@@ -820,8 +1078,31 @@ watch(
   () => store.updateVersion,
   () => {
     masterGridApi.value?.refreshCells({ force: true });
+    
+    // 三层嵌套模式：刷新所有展开的 detail grid
+    if (isNestedMode.value) {
+      refreshAllDetailGrids();
+    }
   }
 );
+
+/** 刷新所有展开的 detail grid（三层嵌套模式） */
+function refreshAllDetailGrids() {
+  const api = masterGridApi.value;
+  if (!api) return;
+  
+  // 遍历所有主表行，刷新已展开的 detail
+  api.forEachNode(node => {
+    if (node.expanded && node.data) {
+      const detailGridInfo = api.getDetailGridInfo(`detail_${node.data.id}`);
+      if (detailGridInfo?.api) {
+        // 重新计算汇总数据并更新
+        const summaryData = calcSummaryRowsForMaster(node.data);
+        detailGridInfo.api.setGridOption('rowData', summaryData);
+      }
+    }
+  });
+}
 
 // ==================== Lifecycle ====================
 
@@ -912,5 +1193,78 @@ function onBeforeUnload(e: BeforeUnloadEvent) {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+/* ========== AG Grid Quartz 主题美化 ========== */
+
+/* 去掉外边框 */
+.master-section :deep(.ag-root-wrapper) {
+  border: none;
+}
+
+/* 表头样式 */
+.master-section :deep(.ag-header) {
+  background-color: #f9fafb;
+  border-radius: 8px;
+  border: 1px solid #eff0f1;
+}
+
+/* 行样式：去掉底边框，添加圆角 */
+.master-section :deep(.ag-row) {
+  border-bottom: none;
+}
+
+.master-section :deep(.ag-row:not(.ag-row-level-1)) {
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+/* 单元格垂直居中 */
+.master-section :deep(.ag-cell) {
+  display: flex;
+  align-items: center;
+}
+
+/* 首尾单元格圆角 */
+.master-section :deep(.ag-cell:first-child) {
+  border-top-left-radius: 8px;
+  border-bottom-left-radius: 8px;
+}
+
+.master-section :deep(.ag-cell:last-child) {
+  border-top-right-radius: 8px;
+  border-bottom-right-radius: 8px;
+}
+
+/* 数字列右对齐 */
+.master-section :deep(.ag-right-aligned-cell) {
+  justify-content: flex-end;
+}
+
+/* Master-Detail 紧凑布局 */
+.master-section :deep(.ag-center-cols-viewport) {
+  min-height: unset !important;
+}
+
+.master-section :deep(.ag-details-row) {
+  padding: 8px 16px;
+}
+
+.master-section :deep(.ag-full-width-container .ag-row),
+.master-section :deep(.ag-full-width-container .ag-details-row) {
+  background-color: transparent;
+}
+
+/* 行 hover 过渡效果 */
+.master-section :deep(.ag-row:not(.ag-row-level-1))::before {
+  content: "";
+  display: block;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  transition: background-color 0.2s ease-in-out;
 }
 </style>

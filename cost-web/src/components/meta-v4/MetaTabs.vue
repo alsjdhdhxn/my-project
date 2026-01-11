@@ -8,7 +8,7 @@
       >
         <div class="tab-header">{{ tab.title }}</div>
         <AgGridVue
-          class="ag-theme-alpine"
+          class="ag-theme-quartz"
           style="width: 100%; height: calc(100% - 28px)"
           :rowData="getTabRows(tab.key)"
           :columnDefs="getTabColumns(tab)"

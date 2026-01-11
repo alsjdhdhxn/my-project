@@ -380,6 +380,42 @@ export function extractLookupRules(columns: ColumnMetadata[]): LookupRule[] {
 }
 
 /**
+ * 根据变体键过滤列定义
+ * @param columns 所有列定义
+ * @param variantKey 变体键（如 '原辅料'、'包材'）
+ * @param rawColumns 原始列元数据（包含 variantKey 配置）
+ */
+export function filterColumnsByVariant(
+  columns: ColDef[],
+  variantKey: string | undefined,
+  rawColumns: ColumnMetadata[]
+): ColDef[] {
+  if (!variantKey) return columns;
+  
+  // 构建字段 → variantKey 映射
+  const variantMap = new Map<string, string | undefined>();
+  rawColumns.forEach(col => {
+    if (col.rulesConfig) {
+      try {
+        const config = JSON.parse(col.rulesConfig);
+        if (config.variantKey) {
+          variantMap.set(col.fieldName, config.variantKey);
+        }
+      } catch (e) {
+        // 忽略解析错误
+      }
+    }
+  });
+  
+  // 过滤：只保留没有 variantKey 或 variantKey 匹配的列
+  return columns.filter(col => {
+    const field = col.field as string;
+    const colVariantKey = variantMap.get(field);
+    return !colVariantKey || colVariantKey === variantKey;
+  });
+}
+
+/**
  * 加载表元数据并转换
  * @param tableCode 表编码
  * @param pageCode 页面编码（可选，传入则合并权限）
