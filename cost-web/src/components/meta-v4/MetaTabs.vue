@@ -5,6 +5,7 @@
         v-for="tab in visibleTabs"
         :key="tab.key"
         class="tab-grid-wrapper"
+        @contextmenu.prevent="onContainerContextMenu($event, tab.key)"
       >
         <div class="tab-header">{{ tab.title }}</div>
         <AgGridVue
@@ -206,6 +207,25 @@ function onCellContextMenu(tabKey: string, event: CellContextMenuEvent) {
     rowData: event.data,
     x: e.clientX,
     y: e.clientY
+  });
+}
+
+function onContainerContextMenu(event: MouseEvent, tabKey: string) {
+  // 如果点击的是单元格，会先触发 onCellContextMenu
+  const target = event.target as HTMLElement;
+  const isCell = target.closest('.ag-cell');
+  
+  if (isCell) {
+    // 单元格右键由 onCellContextMenu 处理
+    return;
+  }
+  
+  // 空白区域右键
+  emit('context-menu', {
+    tabKey,
+    rowData: null,
+    x: event.clientX,
+    y: event.clientY
   });
 }
 
