@@ -5,7 +5,6 @@
         v-for="tab in visibleTabs"
         :key="tab.key"
         class="tab-grid-wrapper"
-        @contextmenu.prevent="onContainerContextMenu($event, tab.key)"
       >
         <div class="tab-header">{{ tab.title }}</div>
         <AgGridVue
@@ -17,14 +16,12 @@
           :getRowId="getRowId"
           :getRowClass="getRowClass"
           :rowSelection="detailRowSelection"
-          :suppressContextMenu="true"
-          :preventDefaultOnContextMenu="true"
+          :getContextMenuItems="(params) => props.getContextMenuItems(params, tab.key)"
           :headerHeight="24"
           :sideBar="sideBar"
           @grid-ready="(e) => onGridReady(tab.key, e)"
           @cell-value-changed="(e) => onCellValueChanged(tab.key, e)"
           @cell-clicked="(e) => onCellClicked(tab.key, e)"
-          @cell-context-menu="(e) => onCellContextMenu(tab.key, e)"
           @cell-editing-started="(e) => onCellEditingStarted(tab.key, e)"
           @cell-editing-stopped="(e) => onCellEditingStopped(tab.key, e)"
         />
@@ -37,7 +34,7 @@
 import { computed, shallowReactive, watch } from 'vue';
 import { AgGridVue } from 'ag-grid-vue3';
 import { ModuleRegistry, AllCommunityModule } from 'ag-grid-community';
-import type { GridApi, ColDef, GridReadyEvent, CellValueChangedEvent, CellEditingStartedEvent, CellEditingStoppedEvent, CellClickedEvent, CellContextMenuEvent } from 'ag-grid-community';
+import type { GridApi, ColDef, GridReadyEvent, CellValueChangedEvent, CellEditingStartedEvent, CellEditingStoppedEvent, CellClickedEvent, GetContextMenuItemsParams, MenuItemDef } from 'ag-grid-community';
 import type { TabConfig } from '@/logic/calc-engine';
 import type { MasterDetailStore } from '@/store/modules/master-detail';
 import { getCellClassRules } from '@/composables/useGridAdapter';
@@ -57,12 +54,12 @@ const props = defineProps<{
   detailColumnDefs: ColDef[];
   defaultColDef: ColDef;
   getRowClass?: (params: any) => string | undefined;
+  getContextMenuItems: (params: GetContextMenuItemsParams, tabKey: string) => (MenuItemDef | string)[];
 }>();
 
 const emit = defineEmits<{
   (e: 'cell-value-changed', payload: { tabKey: string; rowId: number; field: string; value: any }): void;
   (e: 'cell-clicked', payload: { tabKey: string; rowId: number; field: string; data: any }): void;
-  (e: 'context-menu', payload: { tabKey: string; rowData: any; x: number; y: number }): void;
 }>();
 
 // ==================== Constants ====================
@@ -196,36 +193,6 @@ function onCellClicked(tabKey: string, event: CellClickedEvent) {
     rowId,
     field,
     data: event.data
-  });
-}
-
-function onCellContextMenu(tabKey: string, event: CellContextMenuEvent) {
-  event.event?.preventDefault();
-  const e = event.event as MouseEvent;
-  emit('context-menu', {
-    tabKey,
-    rowData: event.data,
-    x: e.clientX,
-    y: e.clientY
-  });
-}
-
-function onContainerContextMenu(event: MouseEvent, tabKey: string) {
-  // 如果点击的是单元格，会先触发 onCellContextMenu
-  const target = event.target as HTMLElement;
-  const isCell = target.closest('.ag-cell');
-  
-  if (isCell) {
-    // 单元格右键由 onCellContextMenu 处理
-    return;
-  }
-  
-  // 空白区域右键
-  emit('context-menu', {
-    tabKey,
-    rowData: null,
-    x: event.clientX,
-    y: event.clientY
   });
 }
 

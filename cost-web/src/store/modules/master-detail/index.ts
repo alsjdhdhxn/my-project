@@ -400,8 +400,14 @@ export function useMasterDetailStore(pageCode: string) {
       const tab = config.value?.tabs.find(t => t.key === tabKey);
       const rowData: Record<string, any> = { id: tempId, ...defaults };
 
-      if (tab?.mode === 'group' && config.value?.groupField) {
-        rowData[config.value.groupField] = tab.groupValue;
+      // 只有当 defaults 中没有 groupField 时才自动填充
+      const groupField = config.value?.groupField;
+      if (tab?.mode === 'group' && groupField && !(groupField in defaults)) {
+        // 优先使用 groupValue，其次使用 groupValues 的第一个值
+        const groupValue = tab.groupValue ?? tab.groupValues?.[0];
+        if (groupValue) {
+          rowData[groupField] = groupValue;
+        }
       }
 
       const newRow = initRowData(rowData, true);
@@ -463,6 +469,27 @@ export function useMasterDetailStore(pageCode: string) {
 
       // 移除已删除的主表行
       masterRows.value = masterRows.value.filter(r => !r._isDeleted);
+    }
+
+    /** 应用ID映射（保存后将临时ID替换为真实ID） */
+    function applyIdMapping(mapping: Record<number, number>) {
+      if (!mapping || Object.keys(mapping).length === 0) return;
+      
+      for (const master of masterRows.value) {
+        // 替换主表ID
+        if (mapping[master.id]) {
+          master.id = mapping[master.id];
+        }
+        
+        // 替换从表ID和外键
+        if (master._details?.rows) {
+          for (const detail of master._details.rows) {
+            if (mapping[detail.id]) {
+              detail.id = mapping[detail.id];
+            }
+          }
+        }
+      }
     }
 
     /** 重置 Store */
@@ -855,6 +882,7 @@ export function useMasterDetailStore(pageCode: string) {
       addDetailRow,
       deleteRow,
       clearChanges,
+      applyIdMapping,
       reset,
 
       // 计算触发

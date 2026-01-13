@@ -3,7 +3,7 @@
     <!-- 主从表分隔区域 -->
     <template v-if="store.isReady">
       <!-- 三层嵌套模式：主表 → 汇总行 → 明细 Grid -->
-      <div v-if="isNestedMode" class="master-section full" @contextmenu.prevent="onGridContainerContextMenu($event, true)">
+      <div v-if="isNestedMode" class="master-section full">
         <AgGridVue
           class="ag-theme-quartz"
           style="width: 100%; height: 100%"
@@ -13,8 +13,7 @@
           :getRowId="getRowId"
           :getRowClass="masterGetRowClass"
           :rowSelection="masterRowSelection"
-          :suppressContextMenu="true"
-          :preventDefaultOnContextMenu="true"
+          :getContextMenuItems="getMasterContextMenuItems"
           :sideBar="sideBar"
           :cellSelection="cellSelectionEnabled"
           :rowHeight="28"
@@ -28,7 +27,6 @@
           @row-group-opened="onMasterRowExpanded"
           @cell-value-changed="onMasterCellValueChanged"
           @cell-clicked="onMasterCellClicked"
-          @cell-context-menu="onMasterContextMenu"
           @cell-editing-started="masterAdapter.onCellEditingStarted"
           @cell-editing-stopped="masterAdapter.onCellEditingStopped"
         />
@@ -45,7 +43,7 @@
       >
         <!-- 主表 -->
         <template #1>
-          <div class="master-section" @contextmenu.prevent="onGridContainerContextMenu($event, true)">
+          <div class="master-section">
             <AgGridVue
               class="ag-theme-quartz"
               style="width: 100%; height: 100%"
@@ -55,8 +53,7 @@
               :getRowId="getRowId"
               :getRowClass="masterGetRowClass"
               :rowSelection="masterRowSelection"
-              :suppressContextMenu="true"
-              :preventDefaultOnContextMenu="true"
+              :getContextMenuItems="getMasterContextMenuItems"
               :sideBar="sideBar"
               :cellSelection="cellSelectionEnabled"
               :autoGroupColumnDef="autoGroupColumnDef"
@@ -66,7 +63,6 @@
               @selection-changed="onMasterSelectionChanged"
               @cell-value-changed="onMasterCellValueChanged"
               @cell-clicked="onMasterCellClicked"
-              @cell-context-menu="onMasterContextMenu"
               @cell-editing-started="masterAdapter.onCellEditingStarted"
               @cell-editing-stopped="masterAdapter.onCellEditingStopped"
             />
@@ -75,7 +71,7 @@
 
         <!-- 从表 Tabs -->
         <template #2>
-          <div class="detail-section" @contextmenu.prevent="onGridContainerContextMenu($event, false)">
+          <div class="detail-section">
             <MetaTabs
               :tabs="tabs"
               :visibleKeys="visibleTabKeys"
@@ -83,16 +79,16 @@
               :detailColumnDefs="detailColumnDefs"
               :defaultColDef="defaultColDef"
               :getRowClass="detailGetRowClass"
+              :getContextMenuItems="getDetailContextMenuItems"
               @cell-value-changed="onDetailCellValueChanged"
               @cell-clicked="onDetailCellClicked"
-              @context-menu="onDetailContextMenu"
             />
           </div>
         </template>
       </NSplit>
 
       <!-- 无从表：主表铺满 -->
-      <div v-else class="master-section full" @contextmenu.prevent="onGridContainerContextMenu($event, true)">
+      <div v-else class="master-section full">
         <AgGridVue
           class="ag-theme-quartz"
           style="width: 100%; height: 100%"
@@ -102,8 +98,7 @@
           :getRowId="getRowId"
           :getRowClass="masterGetRowClass"
           :rowSelection="masterRowSelection"
-          :suppressContextMenu="true"
-          :preventDefaultOnContextMenu="true"
+          :getContextMenuItems="getMasterContextMenuItems"
           :sideBar="sideBar"
           :cellSelection="cellSelectionEnabled"
           :autoGroupColumnDef="autoGroupColumnDef"
@@ -112,7 +107,6 @@
           @grid-ready="onMasterGridReady"
           @cell-value-changed="onMasterCellValueChanged"
           @cell-clicked="onMasterCellClicked"
-          @cell-context-menu="onMasterContextMenu"
           @cell-editing-started="masterAdapter.onCellEditingStarted"
           @cell-editing-stopped="masterAdapter.onCellEditingStopped"
         />
@@ -133,27 +127,14 @@
       @select="onLookupSelect"
       @cancel="onLookupCancel"
     />
-
-    <!-- 右键菜单 -->
-    <NDropdown
-      placement="bottom-start"
-      trigger="manual"
-      :x="contextMenuX"
-      :y="contextMenuY"
-      :options="contextMenuOptions"
-      :show="contextMenuVisible"
-      @select="onContextMenuSelect"
-      @clickoutside="onContextMenuClickOutside"
-    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, shallowRef, computed, onMounted, onUnmounted, watch, h } from 'vue';
-import { NButton, NDropdown, useMessage, NSplit, NSpin } from 'naive-ui';
-import type { DropdownOption } from 'naive-ui';
+import { ref, shallowRef, computed, onMounted, onUnmounted, watch } from 'vue';
+import { useMessage, NSplit, NSpin } from 'naive-ui';
 import { AgGridVue } from 'ag-grid-vue3';
-import type { GridApi, ColDef, GridReadyEvent, CellValueChangedEvent, CellContextMenuEvent } from 'ag-grid-community';
+import type { GridApi, ColDef, GridReadyEvent, CellValueChangedEvent, GetContextMenuItemsParams, MenuItemDef } from 'ag-grid-community';
 import { useMasterDetailStore } from '@/store/modules/master-detail';
 import { useGridAdapter, getCellClassRules, cellStyleCSS } from '@/composables/useGridAdapter';
 import {
@@ -214,13 +195,6 @@ const lookupDialogRef = ref<InstanceType<typeof LookupDialog> | null>(null);
 const currentLookupRule = ref<LookupRule | null>(null);
 const currentLookupRowId = ref<number | null>(null);
 const currentLookupIsMaster = ref<boolean>(false);
-
-// 右键菜单状态
-const contextMenuVisible = ref(false);
-const contextMenuX = ref(0);
-const contextMenuY = ref(0);
-const contextMenuTarget = ref<{ isMaster: boolean; rowData: any; tabKey?: string } | null>(null);
-const contextMenuConfig = ref<any>(null);
 
 // ==================== Computed ====================
 
@@ -283,13 +257,13 @@ const masterDetailParams = computed(() => {
       },
       rowHeight: 28,
       headerHeight: 28,
-      suppressContextMenu: true,
-      preventDefaultOnContextMenu: true,
       masterDetail: true,
       keepDetailRows: true,
       detailRowAutoHeight: true,
       // 为汇总行设置唯一 ID，保持展开状态
       getRowId: (rowParams: any) => `${rowParams.data?._masterId}_${rowParams.data?._groupKey}`,
+      // 汇总行不需要右键菜单，禁用
+      suppressContextMenu: true,
       detailCellRendererParams: getSummaryDetailParams()
     },
     getDetailRowData: async (params: any) => {
@@ -383,6 +357,7 @@ function getSummaryDetailParams() {
   return (params: any) => {
     // 根据汇总行的 _variantKey 动态返回列定义
     const variantKey = params.data?._variantKey;
+    const groupKey = params.data?._groupKey;
     const columns = variantKey
       ? filterColumnsByVariant(detailColumnDefs.value, variantKey, detailColumnMeta.value)
       : detailColumnDefs.value;
@@ -399,9 +374,9 @@ function getSummaryDetailParams() {
         },
         rowHeight: 28,
         headerHeight: 28,
-        suppressContextMenu: true,
-        preventDefaultOnContextMenu: true,
         getRowId: (rowParams: any) => String(rowParams.data?.id),
+        // 使用 AG Grid 原生右键菜单
+        getContextMenuItems: (menuParams: any) => getNestedDetailContextMenuItems(menuParams, groupKey),
         // 编辑事件：触发 store 更新和计算链
         onCellValueChanged: (event: any) => {
           const field = event.colDef?.field;
@@ -409,21 +384,6 @@ function getSummaryDetailParams() {
           if (field && rowId != null) {
             store.updateField(rowId, field, event.newValue, 'user', false);
           }
-        },
-        // 右键菜单事件
-        onCellContextMenu: (event: any) => {
-          event.event?.preventDefault();
-          const e = event.event as MouseEvent;
-          if (!e) return;
-          
-          contextMenuX.value = e.clientX;
-          contextMenuY.value = e.clientY;
-          contextMenuTarget.value = { 
-            isMaster: false, 
-            rowData: event.data,
-            tabKey: groupKey // 使用当前分组的 key
-          };
-          contextMenuVisible.value = true;
         }
       },
       getDetailRowData: (detailParams: any) => {
@@ -511,39 +471,22 @@ const sideBar = {
   defaultToolPanel: 'columns'
 };
 
-const masterGridOptions = computed(() => ({
-  getContextMenuItems: (params: any) => getContextMenuItems(params, true)
-}));
-
-const detailGridOptions = computed(() => ({
-  getContextMenuItems: (params: any) => getContextMenuItems(params, false)
-}));
-
-function getContextMenuItems(params: any, isMaster: boolean) {
+/** 主表右键菜单 */
+function getMasterContextMenuItems(params: GetContextMenuItemsParams): (MenuItemDef | string)[] {
   const hasSelection = !!params.node;
-  
-  const items: any[] = [];
+  const items: (MenuItemDef | string)[] = [];
   
   // 新增行（始终显示）
   items.push({
     name: '新增行',
     action: () => {
-      if (isMaster) {
-        const newRow = store.addMasterRow();
-        setTimeout(() => {
-          masterGridApi.value?.forEachNode(node => {
-            if (node.data?.id === newRow.id) node.setSelected(true);
-          });
-        }, 50);
-      } else {
-        // 从表需要知道是哪个 tab
-        const tabKey = getCurrentTabKey();
-        if (tabKey) {
-          store.addDetailRow(tabKey, {});
-        }
-      }
-    },
-    icon: '<span class="ag-icon ag-icon-plus"></span>'
+      const newRow = store.addMasterRow();
+      setTimeout(() => {
+        masterGridApi.value?.forEachNode(node => {
+          if (node.data?.id === newRow.id) node.setSelected(true);
+        });
+      }, 50);
+    }
   });
   
   // 复制行和删除行（只在有选中行时显示）
@@ -551,62 +494,53 @@ function getContextMenuItems(params: any, isMaster: boolean) {
     items.push({
       name: '复制行',
       action: () => {
-        const sourceData = { ...params.node.data };
+        const sourceData = { ...params.node!.data };
         delete sourceData.id;
         delete sourceData._isNew;
         delete sourceData._isDeleted;
         delete sourceData._changeType;
         delete sourceData._originalValues;
         
-        if (isMaster) {
-          // 复制主表时，连带复制从表数据
-          const sourceDetails = sourceData._details;
-          delete sourceData._details;
-          
-          const newRow = store.addMasterRow(sourceData);
-          
-          // 复制从表数据
-          if (sourceDetails?.rows?.length > 0) {
-            const fkField = detailFkColumn.value;
-            for (const detailRow of sourceDetails.rows) {
-              if (detailRow._isDeleted) continue;
-              
-              const detailCopy = { ...detailRow };
-              delete detailCopy.id;
-              delete detailCopy._isNew;
-              delete detailCopy._isDeleted;
-              delete detailCopy._changeType;
-              delete detailCopy._originalValues;
-              
-              if (fkField) {
-                detailCopy[fkField] = newRow.id;
-              }
-              
-              const newDetailId = generateTempId();
-              newRow._details!.rows.push({
-                ...detailCopy,
-                id: newDetailId,
-                _isNew: true,
-                _changeType: {},
-                _originalValues: {}
-              });
+        // 复制主表时，连带复制从表数据
+        const sourceDetails = sourceData._details;
+        delete sourceData._details;
+        
+        const newRow = store.addMasterRow(sourceData);
+        
+        // 复制从表数据
+        if (sourceDetails?.rows?.length > 0) {
+          const fkField = detailFkColumn.value;
+          for (const detailRow of sourceDetails.rows) {
+            if (detailRow._isDeleted) continue;
+            
+            const detailCopy = { ...detailRow };
+            delete detailCopy.id;
+            delete detailCopy._isNew;
+            delete detailCopy._isDeleted;
+            delete detailCopy._changeType;
+            delete detailCopy._originalValues;
+            
+            if (fkField) {
+              detailCopy[fkField] = newRow.id;
             }
-          }
-          
-          setTimeout(() => {
-            masterGridApi.value?.forEachNode(node => {
-              if (node.data?.id === newRow.id) node.setSelected(true);
+            
+            const newDetailId = generateTempId();
+            newRow._details!.rows.push({
+              ...detailCopy,
+              id: newDetailId,
+              _isNew: true,
+              _changeType: {},
+              _originalValues: {}
             });
-          }, 50);
-        } else {
-          const tabKey = getCurrentTabKey();
-          if (tabKey) {
-            delete sourceData._details;
-            store.addDetailRow(tabKey, sourceData);
           }
         }
-      },
-      icon: '<span class="ag-icon ag-icon-copy"></span>'
+        
+        setTimeout(() => {
+          masterGridApi.value?.forEachNode(node => {
+            if (node.data?.id === newRow.id) node.setSelected(true);
+          });
+        }, 50);
+      }
     });
     
     items.push('separator');
@@ -614,9 +548,8 @@ function getContextMenuItems(params: any, isMaster: boolean) {
     items.push({
       name: '删除行',
       action: () => {
-        store.deleteRow(params.node.data.id, isMaster);
+        store.deleteRow(params.node!.data.id, true);
       },
-      icon: '<span class="ag-icon ag-icon-delete"></span>',
       cssClasses: ['ag-menu-option-danger']
     });
   }
@@ -624,274 +557,132 @@ function getContextMenuItems(params: any, isMaster: boolean) {
   return items;
 }
 
-function getCurrentTabKey(): string | undefined {
-  // 从当前选中的 tab 获取 key
-  // 这里简化处理，实际应该从 MetaTabs 传递过来
-  return tabs.value[0]?.key;
-}
-  // 如果有元数据配置，使用元数据
-  if (contextMenuConfig.value?.items) {
-    const hasSelection = !!contextMenuTarget.value?.rowData;
-    return contextMenuConfig.value.items
-      .filter((item: any) => {
-        // 过滤掉需要选中行但当前未选中的菜单项
-        if (item.disabled === '!selectedRow' && !hasSelection) {
-          return false;
-        }
-        return true;
-      })
-      .map((item: any) => {
-        if (item.type === 'divider') {
-          return { type: 'divider', key: item.key || `divider-${Math.random()}` };
-        }
-        return {
-          label: item.label,
-          key: item.key,
-          icon: item.icon ? renderIcon(item.icon) : undefined,
-          disabled: item.disabled === '!selectedRow' ? !hasSelection : false,
-          props: item.key === 'delete' ? { style: { color: '#d03050' } } : undefined
-        };
-      });
-  }
+/** 从表右键菜单（分屏模式 MetaTabs 使用） */
+function getDetailContextMenuItems(params: GetContextMenuItemsParams, tabKey: string): (MenuItemDef | string)[] {
+  const hasSelection = !!params.node;
+  const items: (MenuItemDef | string)[] = [];
   
-  // 降级：使用硬编码菜单
-  const hasSelection = !!contextMenuTarget.value?.rowData;
-  const options: DropdownOption[] = [
-    { label: '新增行', key: 'add', icon: renderIcon('mdi:plus') }
-  ];
+  // 获取当前主表ID和外键字段
+  const masterId = store.currentMasterId;
+  const fkField = detailFkColumn.value;
+  
+  // 新增行
+  items.push({
+    name: '新增行',
+    action: () => {
+      const defaults: Record<string, any> = {};
+      if (fkField && masterId) {
+        defaults[fkField] = masterId;
+      }
+      store.addDetailRow(tabKey, defaults);
+    }
+  });
   
   if (hasSelection) {
-    options.push(
-      { label: '复制行', key: 'copy', icon: renderIcon('mdi:content-copy') },
-      { type: 'divider', key: 'd1' },
-      { label: '删除行', key: 'delete', icon: renderIcon('mdi:delete'), props: { style: { color: '#d03050' } } }
-    );
-  }
-  
-  return options;
-});
-
-function renderIcon(iconName: string) {
-  // 简单的图标映射，实际应该使用 iconify
-  const iconMap: Record<string, string> = {
-    'mdi:plus': '➕',
-    'mdi:pencil': '✏️',
-    'mdi:content-copy': '📋',
-    'mdi:delete': '🗑️',
-    'mdi:lock-reset': '🔒',
-    'mdi:refresh': '🔄'
-  };
-  return () => h('span', { style: { marginRight: '8px' } }, iconMap[iconName] || '');
-}
-
-function onMasterContextMenu(event: CellContextMenuEvent) {
-  const e = event.event as MouseEvent;
-  if (!e) return;
-  
-  contextMenuX.value = e.clientX;
-  contextMenuY.value = e.clientY;
-  contextMenuTarget.value = { isMaster: true, rowData: event.data };
-  contextMenuVisible.value = true;
-}
-
-function onGridContainerContextMenu(event: MouseEvent, isMaster: boolean) {
-  // 如果点击的是单元格，会先触发对应的 ContextMenu 事件，这里不处理
-  const target = event.target as HTMLElement;
-  const isCell = target.closest('.ag-cell');
-  
-  if (isCell) {
-    // 单元格右键由 onMasterContextMenu 或 onDetailContextMenu 处理
-    return;
-  }
-  
-  // 空白区域右键，显示菜单（无选中行）
-  contextMenuX.value = event.clientX;
-  contextMenuY.value = event.clientY;
-  
-  if (isMaster) {
-    contextMenuTarget.value = { isMaster: true, rowData: null };
-  } else {
-    // 从表空白区域，需要确定是哪个 tab
-    // 通过 DOM 查找最近的 tab-grid-wrapper
-    const tabWrapper = target.closest('.tab-grid-wrapper');
-    if (tabWrapper) {
-      // 从 tab header 获取 tabKey（需要从 visibleTabs 匹配）
-      const tabHeader = tabWrapper.querySelector('.tab-header');
-      const tabTitle = tabHeader?.textContent?.trim();
-      const tab = tabs.value.find(t => t.title === tabTitle);
-      contextMenuTarget.value = { isMaster: false, rowData: null, tabKey: tab?.key };
-    } else {
-      contextMenuTarget.value = { isMaster: false, rowData: null };
-    }
-  }
-  
-  contextMenuVisible.value = true;
-}
-
-function onContextMenuSelect(key: string) {
-  contextMenuVisible.value = false;
-  const target = contextMenuTarget.value;
-  if (!target) return;
-
-  // 查找菜单项配置
-  const menuItem = contextMenuConfig.value?.items?.find((item: any) => item.key === key);
-  
-  if (menuItem) {
-    handleMenuAction(menuItem, target);
-  } else {
-    // 降级：硬编码处理
-    handleLegacyMenuAction(key, target);
-  }
-}
-
-async function handleMenuAction(menuItem: any, target: any) {
-  const { action, actionParams, confirm, confirmMessage } = menuItem;
-  
-  // 需要确认的操作
-  if (confirm) {
-    return new Promise((resolve) => {
-      window.$dialog?.warning({
-        title: '确认',
-        content: confirmMessage || '确认执行此操作吗？',
-        positiveText: '确认',
-        negativeText: '取消',
-        onPositiveClick: () => {
-          executeMenuAction(action, actionParams, target);
-          resolve(true);
-        },
-        onNegativeClick: () => {
-          resolve(false);
-        }
-      });
+    items.push({
+      name: '复制行',
+      action: () => {
+        const sourceData = { ...params.node!.data };
+        delete sourceData.id;
+        delete sourceData._isNew;
+        delete sourceData._isDeleted;
+        delete sourceData._changeType;
+        delete sourceData._originalValues;
+        delete sourceData._details;
+        store.addDetailRow(tabKey, sourceData);
+      }
+    });
+    
+    items.push('separator');
+    
+    items.push({
+      name: '删除行',
+      action: () => {
+        store.deleteRow(params.node!.data.id, false);
+      },
+      cssClasses: ['ag-menu-option-danger']
     });
   }
   
-  // 不需要确认，直接执行
-  executeMenuAction(action, actionParams, target);
+  return items;
 }
 
-function executeMenuAction(action: string, actionParams: any, target: any) {
-  switch (action) {
-    case 'addRow':
-      handleAddRow(target);
-      break;
-    case 'editRow':
-      handleEditRow(target);
-      break;
-    case 'copyRow':
-      handleCopyRow(target);
-      break;
-    case 'deleteRow':
-      handleDeleteRow(target);
-      break;
-    case 'executeAction':
-      handleExecuteAction(actionParams, target);
-      break;
-    case 'refresh':
-      loadMasterData();
-      break;
-    default:
-      console.warn('未知的菜单动作:', action);
-  }
-}
-
-async function handleExecuteAction(actionParams: any, target: any) {
-  const { tableCode, group, dataFields, extraData } = actionParams;
+/** 三层嵌套模式：第三层明细 Grid 右键菜单 */
+function getNestedDetailContextMenuItems(params: GetContextMenuItemsParams, groupKey: string): (MenuItemDef | string)[] {
+  const hasSelection = !!params.node;
+  const items: (MenuItemDef | string)[] = [];
   
-  // 构建请求数据
-  const data: any = { ...extraData };
-  dataFields?.forEach((field: string) => {
-    data[field] = target.rowData[field];
+  // 获取当前主表ID和外键字段
+  const masterId = store.currentMasterId;
+  const fkField = detailFkColumn.value;
+  
+  // 新增行
+  items.push({
+    name: '新增行',
+    action: () => {
+      const defaults: Record<string, any> = {};
+      if (fkField && masterId) {
+        defaults[fkField] = masterId;
+      }
+      const result = store.addDetailRow(groupKey, defaults);
+      if (result) {
+        refreshThirdLevelGrid(groupKey);
+      }
+    }
   });
   
-  try {
-    const { error } = await executeAction(tableCode, { group, data });
-    if (error) {
-      message.error(error.msg || '操作失败');
-      return;
-    }
-    message.success('操作成功');
-    await loadMasterData();
-  } catch (error: any) {
-    message.error(error.message || '操作失败');
-  }
-}
-
-function handleLegacyMenuAction(key: string, target: any) {
-  if (key === 'add') {
-    if (target.isMaster) {
-      const newRow = store.addMasterRow();
-      setTimeout(() => {
-        masterGridApi.value?.forEachNode(node => {
-          if (node.data?.id === newRow.id) node.setSelected(true);
-        });
-      }, 50);
-    } else if (target.tabKey) {
-      store.addDetailRow(target.tabKey, {});
-    }
-  } else if (key === 'copy' && target.rowData) {
-    const sourceData = { ...target.rowData };
-    delete sourceData.id;
-    delete sourceData._isNew;
-    delete sourceData._isDeleted;
-    delete sourceData._changeType;
-    delete sourceData._originalValues;
-    
-    if (target.isMaster) {
-      // 复制主表时，连带复制从表数据
-      const sourceDetails = sourceData._details;
-      delete sourceData._details;
-      
-      const newRow = store.addMasterRow(sourceData);
-      
-      // 复制从表数据
-      if (sourceDetails?.rows?.length > 0) {
-        const fkField = detailFkColumn.value;
-        for (const detailRow of sourceDetails.rows) {
-          if (detailRow._isDeleted) continue;
-          
-          const detailCopy = { ...detailRow };
-          delete detailCopy.id;
-          delete detailCopy._isNew;
-          delete detailCopy._isDeleted;
-          delete detailCopy._changeType;
-          delete detailCopy._originalValues;
-          
-          // 设置新的外键关联（临时 ID）
-          if (fkField) {
-            detailCopy[fkField] = newRow.id;
-          }
-          
-          // 直接添加到新主表的从表中
-          const newDetailId = generateTempId();
-          newRow._details!.rows.push({
-            ...detailCopy,
-            id: newDetailId,
-            _isNew: true,
-            _changeType: {},
-            _originalValues: {}
-          });
+  if (hasSelection) {
+    items.push({
+      name: '复制行',
+      action: () => {
+        const sourceData = { ...params.node!.data };
+        delete sourceData.id;
+        delete sourceData._isNew;
+        delete sourceData._isDeleted;
+        delete sourceData._changeType;
+        delete sourceData._originalValues;
+        const result = store.addDetailRow(groupKey, sourceData);
+        if (result) {
+          refreshThirdLevelGrid(groupKey);
         }
       }
-      
-      setTimeout(() => {
-        masterGridApi.value?.forEachNode(node => {
-          if (node.data?.id === newRow.id) node.setSelected(true);
-        });
-      }, 50);
-    } else if (target.tabKey) {
-      delete sourceData._details;
-      store.addDetailRow(target.tabKey, sourceData);
-    }
-  } else if (key === 'delete' && target.rowData) {
-    store.deleteRow(target.rowData.id, target.isMaster);
+    });
+    
+    items.push('separator');
+    
+    items.push({
+      name: '删除行',
+      action: () => {
+        const rowData = params.node!.data;
+        store.deleteRow(rowData.id, false);
+        refreshThirdLevelGrid(groupKey);
+      },
+      cssClasses: ['ag-menu-option-danger']
+    });
   }
+  
+  return items;
 }
 
-function onContextMenuClickOutside() {
-  contextMenuVisible.value = false;
+/** 刷新第三层 Grid（新增/删除行后） */
+function refreshThirdLevelGrid(groupKey: string) {
+  const api = masterGridApi.value;
+  if (!api) return;
+  
+  const masterId = store.currentMasterId;
+  if (!masterId) return;
+  
+  const secondLevelInfo = api.getDetailGridInfo(`detail_${masterId}`);
+  if (!secondLevelInfo?.api) return;
+  
+  const summaryRowId = `${masterId}_${groupKey}`;
+  const thirdLevelInfo = secondLevelInfo.api.getDetailGridInfo(`detail_${summaryRowId}`);
+  if (!thirdLevelInfo?.api) return;
+  
+  // 从 store 获取最新的分组数据
+  const latestRows = store.detailRowsByTab[groupKey] || [];
+  thirdLevelInfo.api.setGridOption('rowData', latestRows);
 }
-
 // ==================== Adapter ====================
 
 const masterAdapter = useGridAdapter({
@@ -998,13 +789,6 @@ function onLookupCancel() {
   currentLookupIsMaster.value = false;
 }
 
-function onDetailContextMenu(payload: { tabKey: string; rowData: any; x: number; y: number }) {
-  contextMenuX.value = payload.x;
-  contextMenuY.value = payload.y;
-  contextMenuTarget.value = { isMaster: false, rowData: payload.rowData, tabKey: payload.tabKey };
-  contextMenuVisible.value = true;
-}
-
 // ==================== Data Loading ====================
 
 async function loadMetadata() {
@@ -1020,18 +804,6 @@ async function loadMetadata() {
   if (!pageConfig) {
     message.error('解析页面配置失败');
     return;
-  }
-
-  // 加载右键菜单配置
-  const contextMenuComponent = pageRes.data.find((comp: any) => comp.componentType === 'CONTEXT_MENU');
-  if (contextMenuComponent?.componentConfig) {
-    try {
-      contextMenuConfig.value = typeof contextMenuComponent.componentConfig === 'string'
-        ? JSON.parse(contextMenuComponent.componentConfig)
-        : contextMenuComponent.componentConfig;
-    } catch (e) {
-      console.warn('解析右键菜单配置失败:', e);
-    }
   }
 
   // 2. 加载主表元数据（传入 pageCode 合并权限）
@@ -1215,16 +987,21 @@ async function handleSave() {
 
   try {
     for (const param of params) {
-      const { error } = await saveDynamicData(param);
+      const { error, data } = await saveDynamicData(param);
       if (error) {
         message.error('保存失败: ' + (error.msg || '未知错误'));
         return;
+      }
+      // 更新临时ID为真实ID（如果后端返回了）
+      if (data?.idMapping) {
+        store.applyIdMapping(data.idMapping);
       }
     }
 
     message.success('保存成功');
     store.clearChanges();
-    await handleRefresh();
+    // 不刷新数据，保持展开状态
+    masterGridApi.value?.refreshCells({ force: true });
   } catch (e: any) {
     message.error('保存失败: ' + (e.message || '网络错误'));
   }
@@ -1291,12 +1068,8 @@ function refreshAllDetailGrids() {
             if (rowNode.expanded) {
               const thirdLevelId = `detail_${rowId}`;
               const thirdGridInfo = summaryApi.getDetailGridInfo(thirdLevelId);
-              console.log('[三层刷新] 查找第三层 grid:', thirdLevelId, '结果:', !!thirdGridInfo);
               if (thirdGridInfo?.api) {
-                // 第三层数据和 store 是同一个引用，数据已经更新
-                // 只需要强制刷新单元格显示
-                const thirdApi = thirdGridInfo.api;
-                thirdApi.refreshCells({ force: true });
+                thirdGridInfo.api.refreshCells({ force: true });
               }
             }
           }
