@@ -97,8 +97,10 @@ export interface NestedConfig {
 export interface ParsedPageConfig {
   masterTableCode: string;
   detailTableCode: string;
+  detailFkColumn?: string; // 从表外键列（从 TABLE_METADATA.PARENT_FK_COLUMN 获取）
   tabs: TabConfig[];
   broadcast: string[];
+  broadcastFields: string[]; // 广播字段（别名，兼容旧代码）
   calcRules: CalcRule[];
   aggregates: AggRule[];
   groupField?: string;
@@ -135,6 +137,7 @@ export function parsePageComponents(components: PageComponent[]): ParsedPageConf
       detailTableCode: '',
       tabs: [],
       broadcast: [],
+      broadcastFields: [],
       calcRules: [],
       aggregates: [],
       mode: 'group',
@@ -151,12 +154,14 @@ export function parsePageComponents(components: PageComponent[]): ParsedPageConf
 
   // 解析 Tab 配置
   const tabs = parseTabConfig(config);
+  const broadcastList = config.broadcast || [];
 
   return {
     masterTableCode: masterGrid.refTableCode || '',
     detailTableCode: detailTabs.refTableCode || '',
     tabs,
-    broadcast: config.broadcast || [],
+    broadcast: broadcastList,
+    broadcastFields: broadcastList,
     calcRules: config.calcRules || [],
     aggregates: config.aggregates || [],
     groupField: config.groupField,

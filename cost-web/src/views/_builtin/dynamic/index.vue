@@ -1,5 +1,7 @@
 <template>
-  <MasterDetailPage v-if="pageCode" :pageCode="pageCode" />
+  <AgGridNativeTest v-if="pageCode === 'aggrid-native-test'" :pageCode="pageCode" />
+  <MasterDetailPageV2 v-else-if="pageCode === 'cost-pinggu-v2'" :pageCode="pageCode" />
+  <MasterDetailPage v-else-if="pageCode" :pageCode="pageCode" />
   <div v-else class="flex items-center justify-center h-full">
     <NEmpty description="页面配置不存在" />
   </div>
@@ -10,6 +12,8 @@ import { computed } from 'vue';
 import { useRoute } from 'vue-router';
 import { NEmpty } from 'naive-ui';
 import MasterDetailPage from '@/components/meta-v4/MasterDetailPage.vue';
+import MasterDetailPageV2 from '@/components/meta-v2/MasterDetailPageV2.vue';
+import AgGridNativeTest from '@/components/meta-v4/AgGridNativeTest.vue';
 
 const route = useRoute();
 

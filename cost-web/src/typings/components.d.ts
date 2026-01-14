@@ -12,6 +12,7 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
+    AgGridNativeTest: typeof import('./../components/meta-v4/AgGridNativeTest.vue')['default']
     AppProvider: typeof import('./../components/common/app-provider.vue')['default']
     BetterScroll: typeof import('./../components/custom/better-scroll.vue')['default']
     ButtonIcon: typeof import('./../components/custom/button-icon.vue')['default']
@@ -41,6 +42,7 @@ declare module 'vue' {
     LookForward: typeof import('./../components/custom/look-forward.vue')['default']
     LookupDialog: typeof import('./../components/meta-v4/LookupDialog.vue')['default']
     MasterDetailPage: typeof import('./../components/meta-v4/MasterDetailPage.vue')['default']
+    MasterDetailPageV2: typeof import('./../components/meta-v2/MasterDetailPageV2.vue')['default']
     MenuToggler: typeof import('./../components/common/menu-toggler.vue')['default']
     MetaFloatToolbar: typeof import('./../components/meta-v4/MetaFloatToolbar.vue')['default']
     MetaTabs: typeof import('./../components/meta-v4/MetaTabs.vue')['default']
@@ -100,6 +102,7 @@ declare module 'vue' {
 
 // For TSX support
 declare global {
+  const AgGridNativeTest: typeof import('./../components/meta-v4/AgGridNativeTest.vue')['default']
   const AppProvider: typeof import('./../components/common/app-provider.vue')['default']
   const BetterScroll: typeof import('./../components/custom/better-scroll.vue')['default']
   const ButtonIcon: typeof import('./../components/custom/button-icon.vue')['default']
@@ -129,6 +132,7 @@ declare global {
   const LookForward: typeof import('./../components/custom/look-forward.vue')['default']
   const LookupDialog: typeof import('./../components/meta-v4/LookupDialog.vue')['default']
   const MasterDetailPage: typeof import('./../components/meta-v4/MasterDetailPage.vue')['default']
+  const MasterDetailPageV2: typeof import('./../components/meta-v2/MasterDetailPageV2.vue')['default']
   const MenuToggler: typeof import('./../components/common/menu-toggler.vue')['default']
   const MetaFloatToolbar: typeof import('./../components/meta-v4/MetaFloatToolbar.vue')['default']
   const MetaTabs: typeof import('./../components/meta-v4/MetaTabs.vue')['default']
