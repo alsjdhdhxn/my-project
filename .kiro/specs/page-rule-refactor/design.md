@@ -28,6 +28,8 @@
 | LOOKUP | 弹窗回填 | `[{field, lookupCode, mapping}]` |
 | AGGREGATE | 聚合规则 | `[{sourceField, targetField, algorithm, filter?, expression?}]` |
 
+约束：每个组件 + RULE_TYPE 只保留一条记录；需要多条规则时合并到同一条 RULES JSON 数组。
+
 ## 组件设计
 
 ### 后端组件
@@ -76,14 +78,18 @@ public List<PageRuleDTO> getPageRules(String pageCode) {
 #### PageComponentDTO 扩展
 
 ```java
-// 在返回页面组件时附带规则
+// 在返回页面组件时附带该组件的规则
 public record PageComponentDTO(
     // ... 现有字段
-    List<PageRuleDTO> rules  // 新增：该页面的所有规则
+    List<PageRuleDTO> rules  // 新增：该组件的规则
 ) {}
 ```
 
+说明：页面规则按 componentKey 绑定到组件返回，每个组件仅包含自己的规则。
+
 ### 前端组件
+
+说明：仅修改规则取值来源，保持现有解析与执行逻辑不变；字段映射与现有列定义保持一致。
 
 #### 规则类型定义
 
@@ -143,14 +149,13 @@ export interface AggregateRule {
 #### useMetaColumns.ts 改造
 
 ```typescript
-// 新增：从页面规则提取列覆盖配置
+// 新增：从页面规则提取列覆盖配置（rules 为该组件的规则）
 export function applyColumnOverrides(
   columns: ColDef[],
-  rules: PageRule[],
-  componentKey: string
+  rules: PageRule[]
 ): ColDef[] {
   const overrideRule = rules.find(
-    r => r.componentKey === componentKey && r.ruleType === 'COLUMN_OVERRIDE'
+    r => r.ruleType === 'COLUMN_OVERRIDE'
   );
   if (!overrideRule) return columns;
   
@@ -173,12 +178,12 @@ export function applyColumnOverrides(
 #### MasterDetailPageV2.vue 改造
 
 ```typescript
-// 从页面规则读取各类规则
-function extractRulesFromPageRules(rules: PageRule[], componentKey: string) {
-  const calcRule = rules.find(r => r.componentKey === componentKey && r.ruleType === 'CALC');
-  const validationRule = rules.find(r => r.componentKey === componentKey && r.ruleType === 'VALIDATION');
-  const lookupRule = rules.find(r => r.componentKey === componentKey && r.ruleType === 'LOOKUP');
-  const aggregateRule = rules.find(r => r.componentKey === componentKey && r.ruleType === 'AGGREGATE');
+// 从页面规则读取各类规则（rules 为该组件的规则）
+function extractRulesFromPageRules(rules: PageRule[]) {
+  const calcRule = rules.find(r => r.ruleType === 'CALC');
+  const validationRule = rules.find(r => r.ruleType === 'VALIDATION');
+  const lookupRule = rules.find(r => r.ruleType === 'LOOKUP');
+  const aggregateRule = rules.find(r => r.ruleType === 'AGGREGATE');
   
   return {
     calcRules: calcRule ? JSON.parse(calcRule.rules) : [],

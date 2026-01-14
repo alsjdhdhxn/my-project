@@ -43,7 +43,19 @@ declare namespace Api {
       refTableCode?: string;
       componentConfig?: string;
       sortOrder: number;
+      rules?: PageRule[];
       children?: PageComponent[];
+    }
+
+    /** 页面规则 */
+    interface PageRule {
+      id: number;
+      pageCode: string;
+      componentKey: string;
+      ruleType: string;
+      rules: string;
+      sortOrder: number;
+      description?: string;
     }
 
     /** 字典项 */

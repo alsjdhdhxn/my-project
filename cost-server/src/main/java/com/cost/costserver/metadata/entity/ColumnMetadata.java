@@ -19,16 +19,9 @@ public class ColumnMetadata {
     private String headerText;
     private String dataType;
     private Integer displayOrder;
-    private Integer width;
-    private Integer visible;
-    private Integer editable;
-    private Integer required;
-    private Integer searchable;
     private Integer sortable;
+    private Integer filterable;
     private String dictType;
-    private Long lookupConfigId;
-    private String defaultValue;
-    private String rulesConfig;
     
     /** 是否虚拟列：0-物理列 1-虚拟列（不存不取，只有公式） */
     private Integer isVirtual;

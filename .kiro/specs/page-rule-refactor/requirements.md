@@ -38,6 +38,7 @@
    - package 组件: COLUMN_OVERRIDE、CALC、VALIDATION、LOOKUP
    - master 组件: AGGREGATE（聚合规则）
 2. 规则数据格式符合前端解析要求
+3. 每个组件 + RULE_TYPE 仅保留一条记录；需要多条规则时合并到同一条 RULES JSON 数组中
 
 ### 需求 3: 简化页面组件配置
 
@@ -58,6 +59,7 @@
 2. 新增 PageRuleMapper
 3. MetadataService 新增 getPageRules(pageCode) 方法
 4. /api/metadata/page/{pageCode} 接口返回时附带规则数据
+5. 规则数据按 componentKey 挂在对应组件上（每个组件只返回自己的规则）
 
 ### 需求 5: 前端适配新数据结构
 
@@ -68,3 +70,6 @@
 1. useMetaColumns.ts 从页面规则读取列覆盖配置
 2. MasterDetailPageV2.vue 从页面规则读取 CALC/VALIDATION/LOOKUP/AGGREGATE
 3. calc-engine.ts 适配新的规则数据结构
+4. 仅调整规则取值来源，保持现有解析和执行逻辑不变
+5. 列覆盖等字段映射与现有列定义保持一致（如 visible/editable/width 等）
+6. 规则解析失败或字段不存在时记录警告并忽略该条

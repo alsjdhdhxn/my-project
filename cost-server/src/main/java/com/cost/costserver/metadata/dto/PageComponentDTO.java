@@ -15,6 +15,7 @@ public record PageComponentDTO(
     String slotName,
     Integer sortOrder,
     String description,
+    List<PageRuleDTO> rules,
     List<PageComponentDTO> children
 ) {
     public static PageComponentDTO from(PageComponent entity) {
@@ -29,6 +30,7 @@ public record PageComponentDTO(
             entity.getSlotName(),
             entity.getSortOrder(),
             entity.getDescription(),
+            null,
             null
         );
     }
@@ -36,7 +38,14 @@ public record PageComponentDTO(
     public PageComponentDTO withChildren(List<PageComponentDTO> children) {
         return new PageComponentDTO(
             id, pageCode, componentKey, componentType, parentKey,
-            componentConfig, refTableCode, slotName, sortOrder, description, children
+            componentConfig, refTableCode, slotName, sortOrder, description, rules, children
+        );
+    }
+
+    public PageComponentDTO withRules(List<PageRuleDTO> rules) {
+        return new PageComponentDTO(
+            id, pageCode, componentKey, componentType, parentKey,
+            componentConfig, refTableCode, slotName, sortOrder, description, rules, children
         );
     }
 }

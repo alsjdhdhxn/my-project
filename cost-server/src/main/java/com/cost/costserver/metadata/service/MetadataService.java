@@ -8,7 +8,10 @@ import com.cost.costserver.common.BusinessException;
 import com.cost.costserver.metadata.dto.*;
 import com.cost.costserver.metadata.entity.*;
 import com.cost.costserver.metadata.mapper.*;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
@@ -17,14 +20,17 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class MetadataService {
 
     private final TableMetadataMapper tableMetadataMapper;
     private final ColumnMetadataMapper columnMetadataMapper;
     private final PageComponentMapper pageComponentMapper;
+    private final PageRuleMapper pageRuleMapper;
     private final DictionaryTypeMapper dictionaryTypeMapper;
     private final DictionaryItemMapper dictionaryItemMapper;
     private final LookupConfigMapper lookupConfigMapper;
+    private final ObjectMapper objectMapper;
 
     private final Map<String, TableMetadataDTO> cache = new ConcurrentHashMap<>();
 
@@ -117,15 +123,19 @@ public class MetadataService {
                 .orderByAsc(PageComponent::getSortOrder)
         );
 
+        Map<String, List<PageRuleDTO>> rulesByComponent = getPageRules(pageCode).stream()
+            .filter(rule -> StrUtil.isNotBlank(rule.componentKey()))
+            .collect(Collectors.groupingBy(PageRuleDTO::componentKey));
+
         // 构建树形结构
         Map<String, List<PageComponentDTO>> childrenMap = components.stream()
             .filter(c -> StrUtil.isNotBlank(c.getParentKey()))
-            .map(PageComponentDTO::from)
+            .map(component -> toDTOWithRules(component, rulesByComponent))
             .collect(Collectors.groupingBy(PageComponentDTO::parentKey));
 
         return components.stream()
             .filter(c -> StrUtil.isBlank(c.getParentKey()))
-            .map(PageComponentDTO::from)
+            .map(component -> toDTOWithRules(component, rulesByComponent))
             .map(dto -> buildTree(dto, childrenMap))
             .toList();
     }
@@ -139,6 +149,72 @@ public class MetadataService {
             .map(child -> buildTree(child, childrenMap))
             .toList();
         return node.withChildren(builtChildren);
+    }
+
+    public List<PageRuleDTO> getPageRules(String pageCode) {
+        List<PageRule> rules = pageRuleMapper.selectList(
+            new LambdaQueryWrapper<PageRule>()
+                .eq(PageRule::getPageCode, pageCode)
+                .eq(PageRule::getDeleted, 0)
+                .orderByAsc(PageRule::getSortOrder)
+        );
+        return rules.stream().map(PageRuleDTO::from).toList();
+    }
+
+    private PageComponentDTO toDTOWithRules(PageComponent component, Map<String, List<PageRuleDTO>> rulesByComponent) {
+        PageComponentDTO dto = PageComponentDTO.from(component);
+        List<PageRuleDTO> rules = resolveComponentRules(component, rulesByComponent);
+        if (rules.isEmpty()) {
+            return dto;
+        }
+        return dto.withRules(rules);
+    }
+
+    private List<PageRuleDTO> resolveComponentRules(PageComponent component, Map<String, List<PageRuleDTO>> rulesByComponent) {
+        List<PageRuleDTO> rules = new ArrayList<>();
+        addRules(rules, rulesByComponent.get(component.getComponentKey()));
+        if ("masterGrid".equals(component.getComponentKey())) {
+            addRules(rules, rulesByComponent.get("master"));
+        }
+        if ("TABS".equalsIgnoreCase(component.getComponentType())) {
+            for (String tabKey : extractTabKeys(component)) {
+                addRules(rules, rulesByComponent.get(tabKey));
+            }
+        }
+        rules.sort(Comparator.comparingInt(rule -> rule.sortOrder() == null ? 0 : rule.sortOrder()));
+        return rules;
+    }
+
+    private void addRules(List<PageRuleDTO> target, List<PageRuleDTO> source) {
+        if (source == null || source.isEmpty()) {
+            return;
+        }
+        target.addAll(source);
+    }
+
+    private List<String> extractTabKeys(PageComponent component) {
+        String config = component.getComponentConfig();
+        if (StrUtil.isBlank(config)) {
+            return Collections.emptyList();
+        }
+        try {
+            JsonNode root = objectMapper.readTree(config);
+            JsonNode tabs = root.get("tabs");
+            if (tabs == null || !tabs.isArray()) {
+                return Collections.emptyList();
+            }
+            List<String> keys = new ArrayList<>();
+            for (JsonNode tab : tabs) {
+                JsonNode key = tab.get("key");
+                if (key != null && key.isTextual()) {
+                    keys.add(key.asText());
+                }
+            }
+            return keys;
+        } catch (Exception e) {
+            log.warn("Failed to parse tabs config for component {}: {}", component.getComponentKey(), e.getMessage());
+            return Collections.emptyList();
+        }
     }
 
     /**

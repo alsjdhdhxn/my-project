@@ -50,7 +50,7 @@ import { AgGridVue } from 'ag-grid-vue3';
 import type { GridApi, ColDef, GridReadyEvent, CellValueChangedEvent } from 'ag-grid-community';
 import { fetchPageComponents, searchDynamicData, saveDynamicData } from '@/service/api';
 import { loadTableMeta, extractCalcRules, extractLookupRules, type LookupRule } from '@/composables/useMetaColumns';
-import { type ParsedPageConfig, type RowData, parsePageComponents, compileCalcRules, compileAggRules, calcRowFields, calcAggregates, generateTempId, initRowData, parseValidationRules, validateRows, formatValidationErrors, type ValidationRule } from '@/logic/calc-engine';
+import { type ParsedPageConfig, type RowData, type CalcRule, type AggRule, parsePageComponents, compileCalcRules, compileAggRules, calcRowFields, calcAggregates, generateTempId, initRowData, parseValidationRules, validateRows, formatValidationErrors, type ValidationRule } from '@/logic/calc-engine';
 import LookupDialog from '@/components/meta-v4/LookupDialog.vue';
 
 const props = defineProps<{ pageCode: string }>();
@@ -87,6 +87,173 @@ const currentLookupRule = ref<LookupRule | null>(null);
 const currentLookupRowId = ref<number | null>(null);
 const currentLookupIsMaster = ref<boolean>(true);
 const currentLookupTabKey = ref<string>('');
+
+type PageRule = {
+  id?: number;
+  pageCode?: string;
+  componentKey?: string;
+  ruleType?: string;
+  rules?: string;
+  sortOrder?: number;
+};
+
+type PageComponentWithRules = Api.Metadata.PageComponent & {
+  rules?: PageRule[];
+  children?: PageComponentWithRules[];
+};
+
+type ColumnOverrideRule = {
+  field?: string;
+  fieldName?: string;
+  width?: number;
+  visible?: boolean;
+  editable?: boolean;
+  searchable?: boolean;
+  required?: boolean;
+};
+
+type LookupRuleConfig = {
+  field?: string;
+  fieldName?: string;
+  lookupCode: string;
+  mapping: Record<string, string>;
+};
+
+function collectPageRules(components: PageComponentWithRules[]): PageRule[] {
+  const rules: PageRule[] = [];
+  const visit = (component: PageComponentWithRules) => {
+    if (Array.isArray(component.rules)) {
+      for (const rule of component.rules) {
+        const componentKey = rule.componentKey || component.componentKey;
+        rules.push({ ...rule, componentKey });
+      }
+    }
+    if (Array.isArray(component.children)) {
+      component.children.forEach(visit);
+    }
+  };
+  components.forEach(visit);
+  return rules;
+}
+
+function groupRulesByComponent(rules: PageRule[]): Map<string, PageRule[]> {
+  const map = new Map<string, PageRule[]>();
+  for (const rule of rules) {
+    if (!rule.componentKey) continue;
+    const list = map.get(rule.componentKey) || [];
+    list.push(rule);
+    map.set(rule.componentKey, list);
+  }
+  for (const list of map.values()) {
+    list.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+  }
+  return map;
+}
+
+function getComponentRules(
+  rulesByComponent: Map<string, PageRule[]>,
+  componentKeys: string[]
+): PageRule[] {
+  for (const key of componentKeys) {
+    const rules = rulesByComponent.get(key);
+    if (rules && rules.length > 0) return rules;
+  }
+  return [];
+}
+
+function getRuleByType(rules: PageRule[], ruleType: string): PageRule | undefined {
+  return rules.find(rule => rule.ruleType === ruleType);
+}
+
+function parseRuleArray<T>(rule: PageRule | undefined, label: string): T[] {
+  if (!rule?.rules) return [];
+  try {
+    const raw = typeof rule.rules === 'string' ? JSON.parse(rule.rules) : rule.rules;
+    if (!Array.isArray(raw)) {
+      console.warn(`[PageRule] ${label} is not an array`);
+      return [];
+    }
+    return raw as T[];
+  } catch (error) {
+    console.warn(`[PageRule] Failed to parse ${label}`, error);
+    return [];
+  }
+}
+
+function parseValidationRuleConfig(componentKey: string, rules: PageRule[]): ValidationRule[] {
+  const rule = getRuleByType(rules, 'VALIDATION');
+  const items = parseRuleArray<Record<string, any>>(rule, `${componentKey}.VALIDATION`);
+  return items
+    .map(item => ({
+      field: item.field ?? item.fieldName,
+      required: item.required,
+      notZero: item.notZero,
+      min: item.min,
+      max: item.max,
+      pattern: item.pattern,
+      message: item.message
+    }))
+    .filter(item => Boolean(item.field));
+}
+
+function parseLookupRuleConfig(componentKey: string, rules: PageRule[]): LookupRule[] {
+  const rule = getRuleByType(rules, 'LOOKUP');
+  const items = parseRuleArray<LookupRuleConfig>(rule, `${componentKey}.LOOKUP`);
+  return items
+    .filter(item => Boolean(item.field || item.fieldName))
+    .map(item => ({
+      fieldName: item.field ?? item.fieldName ?? '',
+      lookupCode: item.lookupCode,
+      mapping: item.mapping
+    }));
+}
+
+function parseCalcRuleConfig(componentKey: string, rules: PageRule[]): CalcRule[] {
+  const rule = getRuleByType(rules, 'CALC');
+  return parseRuleArray<CalcRule>(rule, `${componentKey}.CALC`);
+}
+
+function parseAggregateRuleConfig(componentKey: string, rules: PageRule[]): AggRule[] {
+  const rule = getRuleByType(rules, 'AGGREGATE');
+  return parseRuleArray<AggRule>(rule, `${componentKey}.AGGREGATE`);
+}
+
+function parseColumnOverrideConfig(componentKey: string, rules: PageRule[]): ColumnOverrideRule[] {
+  const rule = getRuleByType(rules, 'COLUMN_OVERRIDE');
+  return parseRuleArray<ColumnOverrideRule>(rule, `${componentKey}.COLUMN_OVERRIDE`);
+}
+
+function applyColumnOverrides(columns: ColDef[], overrides: ColumnOverrideRule[]): ColDef[] {
+  if (!overrides || overrides.length === 0) return columns;
+  const overrideMap = new Map<string, ColumnOverrideRule>();
+  for (const override of overrides) {
+    const key = override.field || override.fieldName;
+    if (!key) continue;
+    overrideMap.set(key, override);
+  }
+  return columns.map(col => {
+    const field = col.field as string | undefined;
+    if (!field) return col;
+    const override = overrideMap.get(field);
+    if (!override) return col;
+    const updated: ColDef = { ...col };
+    if (override.width != null) updated.width = override.width;
+    if (override.visible != null) updated.hide = override.visible === false;
+    if (override.editable != null) updated.editable = override.editable;
+    if (override.searchable === false) updated.filter = false;
+    if (override.searchable === true && updated.filter === false) updated.filter = true;
+    return updated;
+  });
+}
+
+function attachGroupCellRenderer(columns: ColDef[]): ColDef[] {
+  const index = columns.findIndex(col => !col.hide);
+  if (index < 0) return columns;
+  return columns.map((col, idx) => {
+    if (idx !== index) return col;
+    return { ...col, cellRenderer: 'agGroupCellRenderer' };
+  });
+}
 
 // Grid Config
 const cellClassRules = {
@@ -718,37 +885,58 @@ function buildRecordItem(row: RowData, tableCode: string) {
 async function loadMetadata() {
   const pageRes = await fetchPageComponents(props.pageCode);
   if (pageRes.error || !pageRes.data) { message.error('加载页面配置失败'); return; }
-  const config = parsePageComponents(pageRes.data);
+  const pageComponents = pageRes.data as PageComponentWithRules[];
+  const config = parsePageComponents(pageComponents);
   if (!config) { message.error('解析页面配置失败'); return; }
   pageConfig.value = config;
   broadcastFields.value = config.broadcast || [];
+  const rulesByComponent = groupRulesByComponent(collectPageRules(pageComponents));
+  const masterRules = getComponentRules(rulesByComponent, ['master', 'masterGrid']);
   const masterMeta = await loadTableMeta(config.masterTableCode, props.pageCode);
   if (!masterMeta) { message.error('加载主表元数据失败'); return; }
-  const cols = masterMeta.columns.map((col, index) => index === 0 ? { ...col, cellRenderer: 'agGroupCellRenderer' } : col);
-  masterColumnDefs.value = cols;
+  const masterOverrides = parseColumnOverrideConfig('master', masterRules);
+  const masterColumns = attachGroupCellRenderer(applyColumnOverrides(masterMeta.columns, masterOverrides));
+  masterColumnDefs.value = masterColumns;
   // 提取主表验证规则和 Lookup 规则
   masterColumnMeta.value = masterMeta.rawColumns || [];
-  masterValidationRules.value = parseValidationRules(masterColumnMeta.value);
-  masterLookupRules.value = extractLookupRules(masterColumnMeta.value);
+  const masterValidation = parseValidationRuleConfig('master', masterRules);
+  masterValidationRules.value = masterValidation.length > 0 ? masterValidation : parseValidationRules(masterColumnMeta.value);
+  const masterLookup = parseLookupRuleConfig('master', masterRules);
+  masterLookupRules.value = masterLookup.length > 0 ? masterLookup : extractLookupRules(masterColumnMeta.value);
   
-  if (config.masterCalcRules?.length) compiledMasterCalcRules.value = compileCalcRules(config.masterCalcRules, `${props.pageCode}_master`);
+  const masterCalcRules = parseCalcRuleConfig('master', masterRules);
+  if (masterCalcRules.length > 0) {
+    compiledMasterCalcRules.value = compileCalcRules(masterCalcRules, `${props.pageCode}_master`);
+  } else if (config.masterCalcRules?.length) {
+    compiledMasterCalcRules.value = compileCalcRules(config.masterCalcRules, `${props.pageCode}_master`);
+  }
+  const masterAggRules = parseAggregateRuleConfig('master', masterRules);
+  if (masterAggRules.length > 0) {
+    compiledAggRules.value = compileAggRules(masterAggRules, `${props.pageCode}_agg`);
+  } else if (config.aggregates?.length) {
+    compiledAggRules.value = compileAggRules(config.aggregates, `${props.pageCode}_agg`);
+  }
   for (const tab of config.tabs || []) {
     const tableCode = tab.tableCode || config.detailTableCode;
     if (!tableCode) continue;
     const detailMeta = await loadTableMeta(tableCode, props.pageCode);
     if (!detailMeta) { console.warn(`[加载从表元数据失败] ${tableCode}`); continue; }
-    detailColumnsByTab.value[tab.key] = detailMeta.columns;
+    const tabRules = getComponentRules(rulesByComponent, [tab.key]);
+    const tabOverrides = parseColumnOverrideConfig(tab.key, tabRules);
+    detailColumnsByTab.value[tab.key] = applyColumnOverrides(detailMeta.columns, tabOverrides);
     const fkColumnName = detailMeta.metadata.parentFkColumn;
     detailFkColumnByTab.value[tab.key] = fkColumnName ? (detailMeta.rawColumns.find(col => col.columnName.toUpperCase() === fkColumnName.toUpperCase())?.fieldName || 'masterId') : 'masterId';
     // 提取从表验证规则和 Lookup 规则
     detailColumnMetaByTab.value[tab.key] = detailMeta.rawColumns || [];
-    detailValidationRulesByTab.value[tab.key] = parseValidationRules(detailMeta.rawColumns || []);
-    detailLookupRulesByTab.value[tab.key] = extractLookupRules(detailMeta.rawColumns || []);
+    const detailValidation = parseValidationRuleConfig(tab.key, tabRules);
+    detailValidationRulesByTab.value[tab.key] = detailValidation.length > 0 ? detailValidation : parseValidationRules(detailMeta.rawColumns || []);
+    const detailLookup = parseLookupRuleConfig(tab.key, tabRules);
+    detailLookupRulesByTab.value[tab.key] = detailLookup.length > 0 ? detailLookup : extractLookupRules(detailMeta.rawColumns || []);
     
-    const calcRules = extractCalcRules(detailMeta.rawColumns);
+    const detailCalcRules = parseCalcRuleConfig(tab.key, tabRules);
+    const calcRules = detailCalcRules.length > 0 ? detailCalcRules : extractCalcRules(detailMeta.rawColumns);
     if (calcRules.length > 0) { detailCalcRulesByTab.value[tab.key] = compileCalcRules(calcRules, `${props.pageCode}_${tab.key}`); console.log(`[从表计算规则] ${tab.key}:`, calcRules.length, '条'); }
   }
-  if (config.aggregates?.length) compiledAggRules.value = compileAggRules(config.aggregates, `${props.pageCode}_agg`);
   updateSecondLevelDetailParams();
   isReady.value = true;
 }
