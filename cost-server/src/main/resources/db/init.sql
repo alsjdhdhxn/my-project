@@ -728,7 +728,7 @@ END;
 
 -- D4. 页面规则配置 (cost-pinggu-v2)
 INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
-VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'master', 'COLUMN_OVERRIDE',
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'masterGrid', 'COLUMN_OVERRIDE',
 '[
   {"field":"id","visible":false,"editable":false},
   {"field":"goodsname","width":150,"editable":true,"searchable":true},
@@ -760,7 +760,7 @@ VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'master', 'COLUMN_OVERRIDE
 ]', 'system');
 
 INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
-VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'master', 'CALC',
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'masterGrid', 'CALC',
 '[
   {"field":"salemoney","expression":"outPriceRmb / pPerpack * apexPl * (yield / 100)","triggerFields":["outPriceRmb","pPerpack","apexPl","yield","totalCost"]},
   {"field":"jgfBatch","expression":"salemoney - totalCost","triggerFields":["salemoney","totalCost"]},
@@ -772,11 +772,11 @@ VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'master', 'CALC',
 ]', 'system');
 
 INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
-VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'master', 'VALIDATION',
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'masterGrid', 'VALIDATION',
 '[]', 'system');
 
 INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
-VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'master', 'AGGREGATE',
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'masterGrid', 'AGGREGATE',
 '[
   {"sourceField":"costBatch","targetField":"totalYl","algorithm":"SUM","sourceTab":"material","filter":"dtlUseflag === ''原料''"},
   {"sourceField":"costBatch","targetField":"totalFl","algorithm":"SUM","sourceTab":"material","filter":"dtlUseflag === ''辅料''"},
@@ -855,6 +855,26 @@ VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'package', 'LOOKUP',
 '[
   {"field":"apexGoodsname","lookupCode":"package","mapping":{"apexGoodsname":"materialName","spec":"spec","price":"price"}}
 ]', 'system');
+
+INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'masterGrid', 'ROLE_BINDING',
+'{"role":"MASTER_GRID"}', 'system');
+
+INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'detailTabs', 'ROLE_BINDING',
+'{"role":"DETAIL_TABS"}', 'system');
+
+INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'detailTabs', 'RELATION',
+'{"masterKey":"masterGrid","detailKey":"detailTabs"}', 'system');
+
+INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'detailTabs', 'BROADCAST',
+'["apexPl","pPerpack","sPerback","xPerback"]', 'system');
+
+INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'detailTabs', 'SUMMARY_CONFIG',
+'{"enabled":true,"groupLabelField":"groupLabel","groupLabelHeader":"分类","summaryColumns":[{"field":"totalAmount","headerName":"汇总金额","width":120},{"field":"rowCount","headerName":"行数","width":80}],"summaryAggregates":[{"sourceField":"costBatch","targetField":"totalAmount","algorithm":"SUM"},{"sourceField":"costBatch","targetField":"rowCount","algorithm":"COUNT"}]}', 'system');
 
 COMMIT;
 
@@ -969,8 +989,7 @@ VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'cost-pinggu-v2', 'detailTabs', 'TABS',
   "tabs": [
     {"key": "material", "title": "原料/辅料", "tableCode": "CostMaterial"},
     {"key": "package", "title": "包材", "tableCode": "CostPackage"}
-  ],
-  "broadcast": ["apexPl", "pPerpack", "sPerback", "xPerback"]
+  ]
 }', 'system');
 
 -- E2. 用户管理页面

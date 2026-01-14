@@ -87,10 +87,11 @@ export interface SummaryColumnConfig {
 
 /** 三层嵌套配置 */
 export interface NestedConfig {
-  enabled: boolean;               // 是否启用三层嵌套
-  summaryColumns: SummaryColumnConfig[];  // 汇总行显示的列
-  summaryAggregates: SummaryAggConfig[];  // 汇总行聚合规则
+  enabled?: boolean;              // 是否启用三层嵌套
+  summaryColumns?: SummaryColumnConfig[]; // 汇总行显示的列
+  summaryAggregates?: SummaryAggConfig[]; // 汇总行聚合规则
   groupLabelField?: string;       // 分组标签字段名，默认 'groupLabel'
+  groupLabelHeader?: string;      // 分组标签表头，默认 '分类'
 }
 
 /** 解析结果 */
@@ -116,9 +117,19 @@ export interface ParsedPageConfig {
 /**
  * 解析页面组件树，提取主从表配置
  */
-export function parsePageComponents(components: PageComponent[]): ParsedPageConfig | null {
-  // 约定：主表组件 key = masterGrid
-  const masterGrid = findComponent(components, 'masterGrid', 'GRID');
+export function parsePageComponents(
+  components: PageComponent[],
+  options?: { masterGridKey?: string; detailTabsKey?: string }
+): ParsedPageConfig | null {
+  const masterKey = options?.masterGridKey;
+  let masterGrid = masterKey ? findComponent(components, masterKey, 'GRID') : null;
+  if (!masterGrid) {
+    masterGrid = findComponent(components, 'masterGrid', 'GRID');
+  }
+  if (!masterGrid) {
+    const grids = findComponentsByType(components, 'GRID');
+    if (grids.length === 1) masterGrid = grids[0];
+  }
   if (!masterGrid) {
     console.warn('[Parser] 未找到 masterGrid 组件');
     return null;
@@ -128,8 +139,15 @@ export function parsePageComponents(components: PageComponent[]): ParsedPageConf
   const masterConfig = parseComponentConfig<{ enterpriseConfig?: EnterpriseConfig }>(masterGrid.componentConfig);
   const enterpriseConfig = masterConfig?.enterpriseConfig;
 
-  // 约定：从表组件 type = TABS（可选，单表页面没有）
-  const detailTabs = findComponentByType(components, 'TABS');
+  const detailKey = options?.detailTabsKey;
+  let detailTabs = detailKey ? findComponent(components, detailKey, 'TABS') : null;
+  if (!detailTabs) {
+    const tabs = findComponentsByType(components, 'TABS');
+    if (tabs.length === 1) detailTabs = tabs[0];
+  }
+  if (!detailTabs) {
+    detailTabs = findComponentByType(components, 'TABS');
+  }
   if (!detailTabs) {
     // 单表模式
     return {
@@ -255,6 +273,19 @@ function findComponentByType(components: PageComponent[], type: string): PageCom
     }
   }
   return null;
+}
+
+function findComponentsByType(components: PageComponent[], type: string): PageComponent[] {
+  const result: PageComponent[] = [];
+  for (const comp of components) {
+    if (comp.componentType === type) {
+      result.push(comp);
+    }
+    if (comp.children) {
+      result.push(...findComponentsByType(comp.children, type));
+    }
+  }
+  return result;
 }
 
 /**

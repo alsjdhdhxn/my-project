@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <NModal
     v-model:show="visible"
     preset="card"
@@ -6,7 +6,7 @@
     :style="{ width: '700px' }"
     :mask-closable="false"
   >
-    <!-- 搜索区 -->
+    <!-- 搜索框 -->
     <div class="lookup-search" v-if="config?.searchColumns?.length">
       <NInput
         v-model:value="searchText"
@@ -28,7 +28,7 @@
         :rowData="rowData"
         :columnDefs="columnDefs"
         :defaultColDef="defaultColDef"
-        rowSelection="single"
+        :rowSelection="rowSelection"
         @grid-ready="onGridReady"
         @row-double-clicked="onRowDoubleClicked"
         @selection-changed="onSelectionChanged"
@@ -93,13 +93,15 @@ const defaultColDef: ColDef = {
   resizable: true
 };
 
+const rowSelection = { mode: 'singleRow' as const, enableClickSelection: true };
+
 // ==================== Methods ====================
 
 async function open() {
   visible.value = true;
   selectedRow.value = null;
   searchText.value = '';
-  
+
   // 加载配置
   if (!config.value) {
     const { data } = await fetchLookupConfig(props.lookupCode);
@@ -107,25 +109,25 @@ async function open() {
       config.value = data;
     }
   }
-  
+
   // 加载数据
   await loadData();
 }
 
 async function loadData() {
   if (!config.value?.dataSource) return;
-  
+
   // 使用动态数据接口查询
   // dataSource 可以是表名（如 T_COST_MATERIAL）或 tableCode（如 CostMaterial）
-  const tableCode = config.value.dataSource.startsWith('T_COST_') 
+  const tableCode = config.value.dataSource.startsWith('T_COST_')
     ? toTableCode(config.value.dataSource)
     : config.value.dataSource;
-  
+
   const { data } = await request<{ list: Record<string, any>[] }>({
     url: `/api/data/${tableCode}`,
     params: { page: 1, pageSize: 500, lookup: true }
   });
-  
+
   rowData.value = data?.list || [];
 }
 
@@ -153,13 +155,13 @@ function handleCancel() {
 
 function handleConfirm() {
   if (!selectedRow.value) return;
-  
+
   // 根据 mapping 构建回填数据
   const fillData: Record<string, any> = {};
   for (const [targetField, sourceField] of Object.entries(props.mapping)) {
     fillData[targetField] = selectedRow.value[sourceField];
   }
-  
+
   visible.value = false;
   emit('select', fillData);
 }

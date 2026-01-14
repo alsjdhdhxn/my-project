@@ -1,0 +1,119 @@
+import { ref, shallowRef } from 'vue';
+import type { GridApi } from 'ag-grid-community';
+import { useMetaConfig } from '@/composables/meta-v2/useMetaConfig';
+import { useMasterDetailData } from '@/composables/meta-v2/useMasterDetailData';
+import { useCalcBroadcast } from '@/composables/meta-v2/useCalcBroadcast';
+import { useLookupDialog } from '@/composables/meta-v2/useLookupDialog';
+import { useSave } from '@/composables/meta-v2/useSave';
+import { applyComponentExtensions } from '@/composables/meta-v2/registry';
+import { initComponentExtensions } from '@/composables/meta-v2/extensions';
+import { collectPageRules, groupRulesByComponent } from '@/composables/meta-v2/usePageRules';
+
+type NotifyFn = (message: string) => void;
+
+export function useMetaRuntime(params: {
+  pageCode: string;
+  notifyInfo: NotifyFn;
+  notifyError: NotifyFn;
+  notifySuccess: NotifyFn;
+}) {
+  const { pageCode, notifyInfo, notifyError, notifySuccess } = params;
+
+  const isReady = ref(false);
+  const masterGridApi = shallowRef<GridApi | null>(null);
+
+  const meta = useMetaConfig(pageCode, notifyError);
+  const recalcAggregatesRef = { current: (_masterId: number) => {} };
+  const recalcAggregatesProxy = (masterId: number) => recalcAggregatesRef.current(masterId);
+
+  const data = useMasterDetailData({
+    pageCode,
+    pageConfig: meta.pageConfig,
+    detailFkColumnByTab: meta.detailFkColumnByTab,
+    masterGridApi,
+    notifyError,
+    recalcAggregates: recalcAggregatesProxy
+  });
+
+  const calc = useCalcBroadcast({
+    masterGridApi,
+    masterRows: data.masterRows,
+    detailCache: data.detailCache,
+    broadcastFields: meta.broadcastFields,
+    detailCalcRulesByTab: meta.detailCalcRulesByTab,
+    compiledAggRules: meta.compiledAggRules,
+    compiledMasterCalcRules: meta.compiledMasterCalcRules,
+    pageConfig: meta.pageConfig,
+    loadDetailData: data.loadDetailData
+  });
+
+  recalcAggregatesRef.current = calc.recalcAggregates;
+
+  const lookup = useLookupDialog({
+    masterRows: data.masterRows,
+    detailCache: data.detailCache,
+    masterGridApi,
+    masterLookupRules: meta.masterLookupRules,
+    detailLookupRulesByTab: meta.detailLookupRulesByTab,
+    markFieldChange: calc.markFieldChange,
+    runMasterCalc: calc.runMasterCalc,
+    runDetailCalc: calc.runDetailCalc,
+    recalcAggregates: recalcAggregatesProxy
+  });
+
+  const { save } = useSave({
+    pageCode,
+    pageConfig: meta.pageConfig,
+    masterRows: data.masterRows,
+    detailCache: data.detailCache,
+    masterValidationRules: meta.masterValidationRules,
+    detailValidationRulesByTab: meta.detailValidationRulesByTab,
+    masterColumnMeta: meta.masterColumnMeta,
+    detailColumnMetaByTab: meta.detailColumnMetaByTab,
+    masterGridApi,
+    notifyInfo,
+    notifyError,
+    notifySuccess
+  });
+
+  const runtimeApi = {
+    pageCode,
+    masterGridApi,
+    ...meta,
+    ...data,
+    ...calc,
+    ...lookup,
+    save
+  };
+
+  function applyRuntimeExtensions() {
+    if (!meta.pageConfig.value) return;
+    const components = meta.pageComponents.value || [];
+    const rulesByComponent = groupRulesByComponent(collectPageRules(components));
+    initComponentExtensions();
+    meta.componentStateByKey.value = {};
+    applyComponentExtensions({
+      pageCode,
+      pageConfig: meta.pageConfig.value,
+      pageComponents: components,
+      rulesByComponent,
+      componentStateByKey: meta.componentStateByKey.value,
+      runtime: runtimeApi
+    });
+  }
+
+  async function init() {
+    const ok = await meta.loadMetadata();
+    if (ok) {
+      applyRuntimeExtensions();
+      isReady.value = true;
+      await data.loadMasterData();
+    }
+  }
+
+  return {
+    isReady,
+    init,
+    ...runtimeApi
+  };
+}
