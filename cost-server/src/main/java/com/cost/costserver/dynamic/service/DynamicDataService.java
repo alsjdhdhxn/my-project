@@ -103,6 +103,46 @@ public class DynamicDataService {
     /**
      * 构建数据权限 WHERE 子句
      */
+    public List<Map<String, Object>> queryAllWithConditions(String tableCode, QueryParam param) {
+        boolean isLookup = param != null && Boolean.TRUE.equals(param.getLookup());
+
+        if (!isLookup) {
+            if (param == null || StrUtil.isBlank(param.getPageCode())) {
+                throw new BusinessException(400, "pageCode????????????");
+            }
+            Long userId = SecurityUtils.getCurrentUserId();
+            if (userId == null) {
+                throw new BusinessException(403, "???????????????");
+            }
+            PagePermission permission = permissionService.getPagePermission(userId, param.getPageCode());
+            if (permission == null) {
+                throw new BusinessException(403, "???????????????");
+            }
+        }
+
+        TableMetadataDTO metadata = metadataService.getTableMetadata(tableCode);
+        Map<String, ColumnMetadataDTO> columnMap = buildColumnMap(metadata);
+
+        String whereClause = buildWhereClause(param != null ? param.getConditions() : null, columnMap);
+
+        if (!isLookup && param != null && StrUtil.isNotBlank(param.getPageCode())) {
+            Long userId = SecurityUtils.getCurrentUserId();
+            PagePermission permission = permissionService.getPagePermission(userId, param.getPageCode());
+            String dataRuleClause = buildDataRuleClause(permission, columnMap);
+            whereClause = whereClause + dataRuleClause;
+        }
+
+        String orderClause = buildOrderClause(
+            param != null ? param.getSortField() : null,
+            param != null ? param.getSortOrder() : null,
+            columnMap
+        );
+
+        String sql = String.format("SELECT * FROM %s WHERE DELETED = 0 %s %s", metadata.queryView(), whereClause, orderClause);
+        List<Map<String, Object>> list = dynamicMapper.selectList(sql);
+        return list.stream().map(row -> convertToCamelCase(row, columnMap)).collect(Collectors.toList());
+    }
+
     private String buildDataRuleClause(PagePermission permission, Map<String, ColumnMetadataDTO> columnMap) {
         if (permission == null || permission.dataRules() == null || permission.dataRules().isEmpty()) {
             return "";
@@ -391,6 +431,7 @@ public class DynamicDataService {
             .collect(Collectors.toMap(ColumnMetadataDTO::fieldName, c -> c));
     }
 
+    
     private String buildWhereClause(List<QueryParam.QueryCondition> conditions, Map<String, ColumnMetadataDTO> columnMap) {
         if (conditions == null || conditions.isEmpty()) {
             return "";
@@ -405,14 +446,14 @@ public class DynamicDataService {
             String fieldName = cond.getField();
             ColumnMetadataDTO col = columnMap.get(fieldName);
 
-            // 支持元数据中的列 + 审计字段
+            // Metadata columns + audit fields
             String columnName;
             if (col != null) {
                 columnName = col.columnName();
             } else if (isAuditField(fieldName)) {
                 columnName = camelToUnderscore(fieldName);
             } else {
-                log.warn("非法查询字段: {}", fieldName);
+                log.warn("invalid query field: {}", fieldName);
                 continue;
             }
 
@@ -420,28 +461,64 @@ public class DynamicDataService {
             Object value = cond.getValue();
 
             if (value == null && !"eq".equals(op) && !"ne".equals(op)) {
-                continue; // 非等于/不等于操作，值不能为空
+                continue; // non-eq/ne requires a value
             }
 
-            sb.append(" AND ");
+            String clause = null;
             switch (op) {
-                case "eq" -> sb.append(columnName).append(value == null ? " IS NULL" : " = " + formatValue(value, col, fieldName));
-                case "ne" -> sb.append(columnName).append(value == null ? " IS NOT NULL" : " <> " + formatValue(value, col, fieldName));
-                case "gt" -> sb.append(columnName).append(" > ").append(formatValue(value, col, fieldName));
-                case "ge" -> sb.append(columnName).append(" >= ").append(formatValue(value, col, fieldName));
-                case "lt" -> sb.append(columnName).append(" < ").append(formatValue(value, col, fieldName));
-                case "le" -> sb.append(columnName).append(" <= ").append(formatValue(value, col, fieldName));
-                case "like" -> sb.append(columnName).append(" LIKE '%").append(escapeSql(value.toString())).append("%'");
+                case "eq" -> clause = columnName + (value == null ? " IS NULL" : " = " + formatValue(value, col, fieldName));
+                case "ne" -> clause = columnName + (value == null ? " IS NOT NULL" : " <> " + formatValue(value, col, fieldName));
+                case "gt" -> clause = columnName + " > " + formatValue(value, col, fieldName);
+                case "ge" -> clause = columnName + " >= " + formatValue(value, col, fieldName);
+                case "lt" -> clause = columnName + " < " + formatValue(value, col, fieldName);
+                case "le" -> clause = columnName + " <= " + formatValue(value, col, fieldName);
+                case "like" -> clause = columnName + " LIKE '%" + escapeSql(value.toString()) + "%'";
                 case "between" -> {
                     if (cond.getValue2() != null) {
-                        sb.append(columnName).append(" BETWEEN ")
-                            .append(formatValue(value, col, fieldName)).append(" AND ").append(formatValue(cond.getValue2(), col, fieldName));
+                        clause = columnName + " BETWEEN " + formatValue(value, col, fieldName) + " AND "
+                            + formatValue(cond.getValue2(), col, fieldName);
                     }
                 }
-                default -> log.warn("不支持的操作符: {}", op);
+                case "in" -> {
+                    String inClause = buildInClause(value, col, fieldName);
+                    if (inClause != null) {
+                        clause = columnName + " IN (" + inClause + ")";
+                    }
+                }
+                default -> log.warn("unsupported operator: {}", op);
+            }
+
+            if (clause != null && !clause.isEmpty()) {
+                sb.append(" AND ").append(clause);
             }
         }
         return sb.toString();
+    }
+
+
+private String buildInClause(Object value, ColumnMetadataDTO col, String fieldName) {
+        if (value == null) {
+            return null;
+        }
+        java.util.Collection<?> values = null;
+        if (value instanceof java.util.Collection<?> collection) {
+            values = collection;
+        } else if (value.getClass().isArray()) {
+            int length = java.lang.reflect.Array.getLength(value);
+            java.util.List<Object> items = new java.util.ArrayList<>(length);
+            for (int i = 0; i < length; i++) {
+                items.add(java.lang.reflect.Array.get(value, i));
+            }
+            values = items;
+        }
+        if (values == null || values.isEmpty()) {
+            return null;
+        }
+        java.util.List<String> parts = new java.util.ArrayList<>(values.size());
+        for (Object item : values) {
+            parts.add(formatValue(item, col, fieldName));
+        }
+        return String.join(", ", parts);
     }
 
     private String buildOrderClause(String sortField, String sortOrder, Map<String, ColumnMetadataDTO> columnMap) {

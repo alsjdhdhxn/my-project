@@ -6,6 +6,7 @@ import { useCalcBroadcast } from '@/composables/meta-v2/useCalcBroadcast';
 import { useLookupDialog } from '@/composables/meta-v2/useLookupDialog';
 import { useSave } from '@/composables/meta-v2/useSave';
 import { useUserGridConfig } from '@/composables/meta-v2/useUserGridConfig';
+import { useExportExcel } from '@/composables/meta-v2/useExportExcel';
 import { applyComponentExtensions } from '@/composables/meta-v2/registry';
 import { initComponentExtensions } from '@/composables/meta-v2/extensions';
 import { collectPageRules, groupRulesByComponent } from '@/composables/meta-v2/usePageRules';
@@ -98,6 +99,15 @@ export function useMetaRuntime(params: {
     notifySuccess
   });
 
+  const exportExcel = useExportExcel({
+    pageCode,
+    masterGridApi,
+    masterGridKey: meta.masterGridKey,
+    notifyInfo,
+    notifyError,
+    notifySuccess
+  });
+
   const runtimeApi = {
     pageCode,
     masterGridApi,
@@ -108,6 +118,7 @@ export function useMetaRuntime(params: {
     ...data,
     ...calc,
     ...lookup,
+    ...exportExcel,
     save,
     applyGridConfig: gridConfig.applyGridConfig,
     saveGridConfig: gridConfig.saveGridConfig

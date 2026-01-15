@@ -21,6 +21,9 @@ type RuntimeApi = {
   save?: () => void;
   saveGridConfig?: (gridKey: string, api: any, columnApi: any) => void;
   applyGridConfig?: (gridKey: string, api: any, columnApi: any) => void;
+  exportSelected?: () => void;
+  exportCurrent?: () => void;
+  exportAll?: () => void;
   markFieldChange?: (row: any, field: string, oldValue: any, newValue: any, type: 'user' | 'calc') => void;
   runMasterCalc?: (node: any, row: any) => void;
   broadcastToDetail?: (masterId: number, row: any) => Promise<void> | void;
@@ -86,6 +89,9 @@ export function useMasterGridBindings(params: {
     copyDetailRow: runtime.copyDetailRow || (() => {}),
     save: runtime.save || (() => {}),
     saveGridConfig: (runtime as any).saveGridConfig,
+    exportSelected: runtime.exportSelected,
+    exportCurrent: runtime.exportCurrent,
+    exportAll: runtime.exportAll,
     masterGridKey
   });
 

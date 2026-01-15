@@ -73,10 +73,23 @@ public class MetadataService {
             PagePermission permission,
             Long userId
     ) {
+        return getTableMetadataWithPermission(tableCode, pageCode, gridKey, permission, userId, true);
+    }
+
+    public TableMetadataDTO getTableMetadataWithPermission(
+            String tableCode,
+            String pageCode,
+            String gridKey,
+            PagePermission permission,
+            Long userId,
+            boolean applyUserPreferences
+    ) {
         TableMetadataDTO base = getTableMetadata(tableCode);
         List<ColumnMetadataDTO> columns = applyColumnOverrides(base.columns(), pageCode, gridKey);
         columns = applyPermission(columns, permission);
-        columns = applyUserPreferences(columns, userId, pageCode, gridKey);
+        if (applyUserPreferences) {
+            columns = applyUserPreferences(columns, userId, pageCode, gridKey);
+        }
         return base.withColumns(columns);
     }
 
