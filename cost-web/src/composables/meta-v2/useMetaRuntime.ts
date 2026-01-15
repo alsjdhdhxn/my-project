@@ -1,4 +1,4 @@
-import { ref, shallowRef } from 'vue';
+import { computed, ref, shallowRef } from 'vue';
 import type { GridApi } from 'ag-grid-community';
 import { useMetaConfig } from '@/composables/meta-v2/useMetaConfig';
 import { useMasterDetailData } from '@/composables/meta-v2/useMasterDetailData';
@@ -10,6 +10,7 @@ import { useExportExcel } from '@/composables/meta-v2/useExportExcel';
 import { applyComponentExtensions } from '@/composables/meta-v2/registry';
 import { initComponentExtensions } from '@/composables/meta-v2/extensions';
 import { collectPageRules, groupRulesByComponent } from '@/composables/meta-v2/usePageRules';
+import { useAuthStore } from '@/store/modules/auth';
 
 type NotifyFn = (message: string) => void;
 
@@ -24,6 +25,8 @@ export function useMetaRuntime(params: {
   const isReady = ref(false);
   const masterGridApi = shallowRef<GridApi | null>(null);
   const detailGridApisByTab = ref<Record<string, any>>({});
+  const authStore = useAuthStore();
+  const isAdmin = computed(() => authStore.userInfo.roles?.includes('ADMIN'));
 
   const meta = useMetaConfig(pageCode, notifyError);
   const gridConfig = useUserGridConfig({ pageCode, notifyError, notifySuccess });
@@ -103,6 +106,8 @@ export function useMetaRuntime(params: {
     pageCode,
     masterGridApi,
     masterGridKey: meta.masterGridKey,
+    pageConfig: meta.pageConfig,
+    isAdmin,
     notifyInfo,
     notifyError,
     notifySuccess

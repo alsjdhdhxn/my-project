@@ -4,3 +4,4 @@ export * from './metadata';
 export * from './dynamic';
 export * from './grid-config';
 export * from './export';
+export * from './export-config';

@@ -24,7 +24,10 @@ import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.apache.poi.common.usermodel.HyperlinkType;
 import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.CellStyle;
 import org.apache.poi.ss.usermodel.CreationHelper;
+import org.apache.poi.ss.usermodel.Font;
+import org.apache.poi.ss.usermodel.IndexedColors;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
@@ -54,6 +57,7 @@ public class ExcelExportService {
     private final MetadataService metadataService;
     private final PermissionService permissionService;
     private final DynamicDataService dynamicDataService;
+    private final ExportConfigService exportConfigService;
     private final ObjectMapper objectMapper;
 
     public void exportPage(String pageCode, ExportExcelRequest request, HttpServletResponse response) {
@@ -92,7 +96,11 @@ public class ExcelExportService {
         List<Map<String, Object>> masterRows = loadMasterRows(mode, masterMeta, pageCode, masterIds);
 
         String pkField = resolvePkField(masterMeta);
-        List<ColumnMetadataDTO> masterColumns = resolveVisibleColumns(masterMeta);
+        List<ColumnMetadataDTO> masterColumns = resolveMasterColumns(masterMeta, pkField);
+        Map<String, ExportConfigService.HeaderOverride> masterHeaderOverrides =
+            exportConfigService.getHeaderOverrides(pageCode, masterGridKey);
+        masterColumns = applyHeaderOverrides(masterColumns, masterHeaderOverrides);
+        List<Integer> masterHiddenColumns = resolveHiddenColumns(masterColumns);
 
         List<Long> resolvedMasterIds = extractIds(masterRows, pkField);
         List<String> detailSheetNames = buildDetailSheetNames(resolvedMasterIds);
@@ -116,11 +124,17 @@ public class ExcelExportService {
         String fileName = pageCode + "_" + mode.name().toLowerCase(Locale.ROOT) + ".xlsx";
         writeResponseHeaders(response, fileName);
 
+        Map<String, List<Integer>> sheetHiddenColumns = new HashMap<>();
+        if (!masterHiddenColumns.isEmpty()) {
+            sheetHiddenColumns.put(DEFAULT_MASTER_SHEET, masterHiddenColumns);
+        }
+
         ExportWorkbookHandler workbookHandler = new ExportWorkbookHandler(
             DEFAULT_MASTER_SHEET,
             masterLinkColumnIndex,
             detailSheetNames,
-            sheetWidths
+            sheetWidths,
+            sheetHiddenColumns
         );
 
         try (ServletOutputStream outputStream = response.getOutputStream();
@@ -185,6 +199,14 @@ public class ExcelExportService {
             writer.write(Collections.singletonList(paddedRow(title, maxCols)),
                 sheet, EasyExcel.writerTable(tableNo++).needHead(false).build());
 
+            if (tabExport.columns.isEmpty()) {
+                writer.write(Collections.singletonList(emptyRow(maxCols)),
+                    sheet, EasyExcel.writerTable(tableNo++).needHead(false).build());
+                writer.write(Collections.singletonList(emptyRow(maxCols)),
+                    sheet, EasyExcel.writerTable(tableNo++).needHead(false).build());
+                continue;
+            }
+
             List<List<String>> head = buildHead(tabExport.columns);
             List<Map<String, Object>> detailRows = tabExport.rowsByMaster.getOrDefault(masterId, Collections.emptyList());
             List<List<Object>> data = buildDataRows(detailRows, tabExport.columns);
@@ -239,6 +261,10 @@ public class ExcelExportService {
             );
 
             List<ColumnMetadataDTO> columns = resolveVisibleColumns(detailMeta);
+            Map<String, ExportConfigService.HeaderOverride> headerOverrides =
+                exportConfigService.getHeaderOverrides(pageCode, config.key());
+            columns = applyHeaderOverrides(columns, headerOverrides);
+            columns = filterExportVisible(columns);
             String fkField = resolveMasterLinkField(detailMeta);
             Map<Long, List<Map<String, Object>>> rowsByMaster = queryDetailRows(detailMeta, pageCode, fkField, masterIds);
 
@@ -356,16 +382,28 @@ public class ExcelExportService {
     }
 
     private List<ColumnMetadataDTO> resolveVisibleColumns(TableMetadataDTO meta) {
-        List<ColumnMetadataDTO> columns = meta.columns().stream()
-            .filter(col -> col.visible() == null || Boolean.TRUE.equals(col.visible()))
-            .sorted(Comparator.comparingInt(col -> col.displayOrder() == null ? Integer.MAX_VALUE : col.displayOrder()))
-            .toList();
-        if (!columns.isEmpty()) {
-            return columns;
+        return sortColumns(meta.columns());
+    }
+
+    private List<ColumnMetadataDTO> resolveMasterColumns(TableMetadataDTO meta, String pkField) {
+        return sortColumns(meta.columns());
+    }
+
+    private List<ColumnMetadataDTO> applyHeaderOverrides(
+        List<ColumnMetadataDTO> columns,
+        Map<String, ExportConfigService.HeaderOverride> overrides
+    ) {
+        List<ColumnMetadataDTO> result = new ArrayList<>();
+        for (ColumnMetadataDTO column : columns) {
+            ExportConfigService.HeaderOverride override = overrides != null ? overrides.get(column.fieldName()) : null;
+            String header = column.headerText();
+            if (override != null && StrUtil.isNotBlank(override.header())) {
+                header = override.header();
+            }
+            Boolean visible = override != null ? normalizeVisible(override.visible()) : Boolean.TRUE;
+            result.add(copyColumn(column, header, visible));
         }
-        return meta.columns().stream()
-            .sorted(Comparator.comparingInt(col -> col.displayOrder() == null ? Integer.MAX_VALUE : col.displayOrder()))
-            .toList();
+        return result;
     }
 
     private List<List<String>> buildHead(List<ColumnMetadataDTO> columns) {
@@ -513,12 +551,24 @@ public class ExcelExportService {
     }
 
     private int resolveLinkColumnIndex(List<ColumnMetadataDTO> columns, String pkField) {
+        int pkIndex = -1;
+        int firstVisible = -1;
         for (int i = 0; i < columns.size(); i++) {
-            if (pkField.equals(columns.get(i).fieldName())) {
-                return i;
+            ColumnMetadataDTO column = columns.get(i);
+            if (pkField.equals(column.fieldName())) {
+                pkIndex = i;
+            }
+            if (firstVisible < 0 && (column.visible() == null || Boolean.TRUE.equals(column.visible()))) {
+                firstVisible = i;
             }
         }
-        return 0;
+        if (pkIndex >= 0 && (columns.get(pkIndex).visible() == null || Boolean.TRUE.equals(columns.get(pkIndex).visible()))) {
+            return pkIndex;
+        }
+        if (firstVisible >= 0) {
+            return firstVisible;
+        }
+        return pkIndex >= 0 ? pkIndex : 0;
     }
 
     private List<String> buildDetailSheetNames(List<Long> masterIds) {
@@ -555,6 +605,64 @@ public class ExcelExportService {
 
     private List<Object> emptyRow(int size) {
         return new ArrayList<>(Collections.nCopies(size, null));
+    }
+
+    private List<ColumnMetadataDTO> sortColumns(List<ColumnMetadataDTO> columns) {
+        if (columns == null || columns.isEmpty()) {
+            return Collections.emptyList();
+        }
+        return columns.stream()
+            .sorted(Comparator.comparingInt(col -> col.displayOrder() == null ? Integer.MAX_VALUE : col.displayOrder()))
+            .toList();
+    }
+
+    private List<Integer> resolveHiddenColumns(List<ColumnMetadataDTO> columns) {
+        List<Integer> hidden = new ArrayList<>();
+        for (int i = 0; i < columns.size(); i++) {
+            Boolean visible = columns.get(i).visible();
+            if (visible != null && !visible) {
+                hidden.add(i);
+            }
+        }
+        return hidden;
+    }
+
+    private List<ColumnMetadataDTO> filterExportVisible(List<ColumnMetadataDTO> columns) {
+        if (columns == null || columns.isEmpty()) {
+            return Collections.emptyList();
+        }
+        return columns.stream()
+            .filter(col -> col.visible() == null || Boolean.TRUE.equals(col.visible()))
+            .toList();
+    }
+
+    private Boolean normalizeVisible(Boolean value) {
+        return value == null ? Boolean.TRUE : value;
+    }
+
+    private ColumnMetadataDTO copyColumn(ColumnMetadataDTO column, String headerText, Boolean visible) {
+        return new ColumnMetadataDTO(
+            column.id(),
+            column.fieldName(),
+            column.columnName(),
+            column.queryColumn(),
+            column.targetColumn(),
+            headerText,
+            column.dataType(),
+            column.displayOrder(),
+            column.width(),
+            visible,
+            column.editable(),
+            column.required(),
+            column.searchable(),
+            column.sortable(),
+            column.pinned(),
+            column.dictType(),
+            column.lookupConfigId(),
+            column.defaultValue(),
+            column.rulesConfig(),
+            column.isVirtual()
+        );
     }
 
     private void writeResponseHeaders(HttpServletResponse response, String fileName) {
@@ -596,17 +704,20 @@ public class ExcelExportService {
         private final int masterLinkColumnIndex;
         private final List<String> detailSheetNames;
         private final Map<String, List<Integer>> sheetWidths;
+        private final Map<String, List<Integer>> sheetHiddenColumns;
 
         private ExportWorkbookHandler(
             String masterSheetName,
             int masterLinkColumnIndex,
             List<String> detailSheetNames,
-            Map<String, List<Integer>> sheetWidths
+            Map<String, List<Integer>> sheetWidths,
+            Map<String, List<Integer>> sheetHiddenColumns
         ) {
             this.masterSheetName = masterSheetName;
             this.masterLinkColumnIndex = masterLinkColumnIndex;
             this.detailSheetNames = detailSheetNames;
             this.sheetWidths = sheetWidths;
+            this.sheetHiddenColumns = sheetHiddenColumns;
         }
 
         @Override
@@ -615,6 +726,7 @@ public class ExcelExportService {
             if (workbook == null) return;
 
             applyColumnWidths(workbook);
+            applyHiddenColumns(workbook);
             applyMasterLinks(workbook);
             applyDetailLinks(workbook);
         }
@@ -628,6 +740,17 @@ public class ExcelExportService {
                     Integer width = widths.get(i);
                     if (width == null || width <= 0) continue;
                     sheet.setColumnWidth(i, pixelToWidth(width));
+                }
+            }
+        }
+
+        private void applyHiddenColumns(Workbook workbook) {
+            for (Map.Entry<String, List<Integer>> entry : sheetHiddenColumns.entrySet()) {
+                Sheet sheet = workbook.getSheet(entry.getKey());
+                if (sheet == null) continue;
+                for (Integer index : entry.getValue()) {
+                    if (index == null || index < 0) continue;
+                    sheet.setColumnHidden(index, true);
                 }
             }
         }
@@ -652,16 +775,23 @@ public class ExcelExportService {
 
         private void applyDetailLinks(Workbook workbook) {
             CreationHelper helper = workbook.getCreationHelper();
-            for (String detailSheetName : detailSheetNames) {
+            CellStyle linkStyle = createLinkStyle(workbook);
+            for (int i = 0; i < detailSheetNames.size(); i++) {
+                String detailSheetName = detailSheetNames.get(i);
                 Sheet sheet = workbook.getSheet(detailSheetName);
                 if (sheet == null) continue;
                 Row row = sheet.getRow(0);
                 if (row == null) row = sheet.createRow(0);
                 Cell cell = row.getCell(0);
                 if (cell == null) cell = row.createCell(0);
+                cell.setCellValue("Back to master");
                 org.apache.poi.ss.usermodel.Hyperlink link = helper.createHyperlink(HyperlinkType.DOCUMENT);
-                link.setAddress("'" + masterSheetName + "'!A1");
+                int excelRow = i + 2;
+                link.setAddress("'" + masterSheetName + "'!" + columnIndexToName(masterLinkColumnIndex) + excelRow);
                 cell.setHyperlink(link);
+                if (linkStyle != null) {
+                    cell.setCellStyle(linkStyle);
+                }
             }
         }
 
@@ -671,6 +801,29 @@ public class ExcelExportService {
             if (width > max) return max;
             if (width < 0) return 0;
             return width;
+        }
+
+        private CellStyle createLinkStyle(Workbook workbook) {
+            if (workbook == null) {
+                return null;
+            }
+            CellStyle style = workbook.createCellStyle();
+            Font font = workbook.createFont();
+            font.setUnderline(Font.U_SINGLE);
+            font.setColor(IndexedColors.BLUE.getIndex());
+            style.setFont(font);
+            return style;
+        }
+
+        private String columnIndexToName(int index) {
+            int value = index + 1;
+            StringBuilder sb = new StringBuilder();
+            while (value > 0) {
+                int mod = (value - 1) % 26;
+                sb.insert(0, (char) ('A' + mod));
+                value = (value - 1) / 26;
+            }
+            return sb.toString();
         }
     }
 }
