@@ -24,7 +24,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, unref } from 'vue';
 import { AgGridVue } from 'ag-grid-vue3';
 import type { ColDef, GridReadyEvent } from 'ag-grid-community';
 import type { PageComponentWithRules } from '@/composables/meta-v2/types';
@@ -65,6 +65,10 @@ function toCssSize(value: string | number | undefined) {
   return typeof value === 'number' ? `${value}px` : value;
 }
 
+function unwrap<T>(value: T) {
+  return unref(value as any);
+}
+
 const containerStyle = computed(() => ({
   width: toCssSize(gridConfig.value.width) || '100%',
   height: toCssSize(gridConfig.value.height) || '100%'
@@ -72,23 +76,23 @@ const containerStyle = computed(() => ({
 
 const gridClass = computed(() => gridConfig.value.className || '');
 
-const rowData = computed(() => state.value.rowData ?? []);
-const columnDefs = computed<ColDef[]>(() => state.value.columnDefs ?? []);
+const rowData = computed(() => unwrap(state.value.rowData) ?? []);
+const columnDefs = computed<ColDef[]>(() => unwrap(state.value.columnDefs) ?? []);
 const defaultColDef = computed<ColDef>(() => ({
   sortable: true,
   filter: true,
   resizable: true,
-  ...(state.value.defaultColDef || {})
+  ...(unwrap(state.value.defaultColDef) || {})
 }));
 
-const gridOptions = computed(() => state.value.gridOptions ?? {});
-const rowSelection = computed(() => state.value.rowSelection);
-const autoSizeStrategy = computed(() => state.value.autoSizeStrategy);
-const getRowId = computed(() => state.value.getRowId);
-const getRowClass = computed(() => state.value.getRowClass);
-const getContextMenuItems = computed(() => state.value.getContextMenuItems);
-const rowHeight = computed(() => state.value.rowHeight);
-const headerHeight = computed(() => state.value.headerHeight);
+const gridOptions = computed(() => unwrap(state.value.gridOptions) ?? {});
+const rowSelection = computed(() => unwrap(state.value.rowSelection));
+const autoSizeStrategy = computed(() => unwrap(state.value.autoSizeStrategy));
+const getRowId = computed(() => unwrap(state.value.getRowId));
+const getRowClass = computed(() => unwrap(state.value.getRowClass));
+const getContextMenuItems = computed(() => unwrap(state.value.getContextMenuItems));
+const rowHeight = computed(() => unwrap(state.value.rowHeight));
+const headerHeight = computed(() => unwrap(state.value.headerHeight));
 
 function handleGridReady(params: GridReadyEvent) {
   state.value.onGridReady?.(params);

@@ -185,7 +185,7 @@ function enterpriseToGridOptions(enterprise?: ParsedPageConfig['enterpriseConfig
   if (!enterprise) return null;
   return {
     enableSidebar: enterprise.enableSidebar,
-    enableRangeSelection: enterprise.enableRangeSelection,
+    cellSelection: enterprise.cellSelection,
     groupBy: enterprise.groupBy,
     groupColumnName: enterprise.groupColumnName
   };

@@ -100,7 +100,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { AgGridVue } from 'ag-grid-vue3';
 import { NSplit } from 'naive-ui';
-import LookupDialog from '../../meta-v4/LookupDialog.vue';
+import LookupDialog from '@/components/meta-v2/LookupDialog.vue';
 import DetailTabsPanel from '@/components/meta-v2/renderers/DetailTabsPanel.vue';
 import type { PageComponentWithRules } from '@/composables/meta-v2/types';
 import { useNestedDetailParams } from '@/composables/meta-v2/useNestedDetailParams';

@@ -226,8 +226,7 @@ const local: App.I18n.Schema = {
     'iframe-page': '外链页面',
     home: '首页',
     cost: '成本管理',
-    cost_eval: '成本测算',
-    'cost_eval-v4': '成本测算'
+    cost_eval: '成本测算'
   },
   page: {
     login: {

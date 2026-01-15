@@ -52,9 +52,7 @@ function normalizeSideBar(value: GridOptionsRule['sideBar'] | GridOptionsRule['e
   return undefined;
 }
 
-function normalizeCellSelection(
-  value: GridOptionsRule['cellSelection'] | GridOptionsRule['enableRangeSelection']
-) {
+function normalizeCellSelection(value: GridOptionsRule['cellSelection']) {
   if (value === true || value === false) return value;
   if (typeof value === 'object') return value;
   return undefined;
@@ -64,7 +62,7 @@ export function normalizeGridOptions(rule?: GridOptionsRule | null): ResolvedGri
   if (!rule) return {};
   return {
     sideBar: normalizeSideBar(rule.sideBar ?? rule.enableSidebar),
-    cellSelection: normalizeCellSelection(rule.cellSelection ?? rule.enableRangeSelection),
+    cellSelection: normalizeCellSelection(rule.cellSelection),
     groupBy: Array.isArray(rule.groupBy) ? rule.groupBy : undefined,
     groupColumnName: rule.groupColumnName,
     groupDefaultExpanded: rule.groupDefaultExpanded,

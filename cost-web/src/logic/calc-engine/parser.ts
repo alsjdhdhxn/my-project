@@ -62,7 +62,7 @@ export interface PageComponent {
 export interface EnterpriseConfig {
   enableSidebar?: boolean;        // 启用侧边栏
   enableExcelExport?: boolean;    // 启用 Excel 导出
-  enableRangeSelection?: boolean; // 启用范围选择
+  cellSelection?: boolean;        // 启用单元格选择
   groupBy?: string[];             // 分组字段
   aggregations?: Array<{          // 聚合配置
     field: string;

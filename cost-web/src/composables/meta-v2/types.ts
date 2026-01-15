@@ -47,7 +47,6 @@ export type GridOptionsRule = {
   sideBar?: boolean | Record<string, any>;
   enableSidebar?: boolean;
   cellSelection?: boolean | Record<string, any>;
-  enableRangeSelection?: boolean;
   groupBy?: string[];
   groupColumnName?: string;
   groupDefaultExpanded?: number;
