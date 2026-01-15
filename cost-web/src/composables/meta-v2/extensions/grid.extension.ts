@@ -36,7 +36,12 @@ export function register(): void {
       const role = normalizeRole(roleRule?.role);
       if (!isMasterGrid(component, pageComponents, role)) return;
 
-      const bindings = useMasterGridBindings({ runtime });
+      const bindings = useMasterGridBindings({
+        runtime,
+        metaRowClassGetter: runtime.masterRowClassGetter?.value,
+        gridOptions: runtime.masterGridOptions?.value,
+        columnDefs: runtime.masterColumnDefs
+      });
       state.rowData = runtime.masterRows;
       state.columnDefs = runtime.masterColumnDefs;
       state.defaultColDef = bindings.defaultColDef;
@@ -45,6 +50,7 @@ export function register(): void {
       state.getRowId = bindings.getRowId;
       state.getRowClass = bindings.getRowClass;
       state.getContextMenuItems = bindings.getContextMenuItems;
+      state.gridOptions = bindings.gridOptions;
       state.rowHeight = bindings.rowHeight;
       state.headerHeight = bindings.headerHeight;
       state.onGridReady = bindings.onGridReady;

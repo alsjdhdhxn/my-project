@@ -1,6 +1,62 @@
 <template>
   <div class="master-detail-page-v2">
-    <div class="grid-container">
+    <NSplit
+      v-if="isSplitMode && hasDetailTabs"
+      direction="vertical"
+      :default-size="splitConfig.defaultSize"
+      :min="splitConfig.min"
+      :max="splitConfig.max"
+      class="split-container"
+    >
+      <template #1>
+        <div class="grid-container">
+          <AgGridVue
+            class="ag-theme-quartz"
+            style="width: 100%; height: 100%"
+            :rowData="masterRows"
+            :columnDefs="masterColumnDefs"
+            :defaultColDef="defaultColDef"
+            :getRowId="getMasterRowId"
+            :getRowClass="getRowClass"
+            :rowSelection="rowSelection"
+            :autoSizeStrategy="autoSizeStrategy"
+            :getContextMenuItems="getMasterContextMenuItems"
+            :rowHeight="rowHeight"
+            :headerHeight="headerHeight"
+            :undoRedoCellEditing="true"
+            :undoRedoCellEditingLimit="20"
+            v-bind="masterGridRuntimeOptions"
+            @grid-ready="onMasterGridReady"
+            @selection-changed="onMasterSelectionChanged"
+            @cell-editing-started="onCellEditingStarted"
+            @cell-editing-stopped="onCellEditingStopped"
+            @cell-value-changed="onMasterCellValueChanged"
+            @cell-clicked="onMasterCellClicked"
+          />
+        </div>
+      </template>
+      <template #2>
+        <DetailTabsPanel
+          :tabs="pageConfig?.tabs || []"
+          :activeMasterId="activeMasterId"
+          :detailCache="detailCache"
+          :detailColumnsByTab="detailColumnsByTab"
+          :detailRowClassByTab="detailRowClassGetterByTab"
+          :detailGridOptionsByTab="detailGridOptionsByTab"
+          :applyGridConfig="applyGridConfig"
+          :onDetailCellValueChanged="onDetailCellValueChanged"
+          :onDetailCellClicked="onDetailCellClicked"
+          :onCellEditingStarted="onCellEditingStarted"
+          :onCellEditingStopped="onCellEditingStopped"
+          :loadDetailData="loadDetailData"
+          :registerDetailGridApi="registerDetailGridApi"
+          :getDetailContextMenuItems="getDetailContextMenuItems"
+          :cellClassRules="cellClassRules"
+        />
+      </template>
+    </NSplit>
+
+    <div v-else class="grid-container">
       <AgGridVue
         class="ag-theme-quartz"
         style="width: 100%; height: 100%"
@@ -20,6 +76,7 @@
         :undoRedoCellEditingLimit="20"
         :rowHeight="rowHeight"
         :headerHeight="headerHeight"
+        v-bind="masterGridRuntimeOptions"
         @grid-ready="onMasterGridReady"
         @cell-editing-started="onCellEditingStarted"
         @cell-editing-stopped="onCellEditingStopped"
@@ -42,11 +99,14 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { AgGridVue } from 'ag-grid-vue3';
-import LookupDialog from '@/components/meta-v4/LookupDialog.vue';
+import { NSplit } from 'naive-ui';
+import LookupDialog from '../../meta-v4/LookupDialog.vue';
+import DetailTabsPanel from '@/components/meta-v2/renderers/DetailTabsPanel.vue';
 import type { PageComponentWithRules } from '@/composables/meta-v2/types';
 import { useNestedDetailParams } from '@/composables/meta-v2/useNestedDetailParams';
 import { useMasterGridBindings } from '@/composables/meta-v2/useMasterGridBindings';
 import { useGridContextMenu } from '@/composables/meta-v2/useGridContextMenu';
+import { isFlagTrue } from '@/composables/meta-v2/cell-style';
 
 const props = defineProps<{
   component: PageComponentWithRules;
@@ -60,6 +120,14 @@ const {
   detailColumnsByTab,
   detailCache,
   pageConfig,
+  masterRowClassGetter,
+  detailRowClassGetterByTab,
+  masterGridOptions,
+  detailGridOptionsByTab,
+  detailLayoutMode,
+  detailSplitConfig,
+  detailGridApisByTab,
+  applyGridConfig,
   loadDetailData,
   addMasterRow,
   deleteMasterRow,
@@ -75,15 +143,23 @@ const {
   onDetailCellClicked,
   onLookupSelect,
   onLookupCancel,
-  save
+  save,
+  saveGridConfig
 } = runtime;
 
 const hasDetailTabs = computed(() => (pageConfig.value?.tabs?.length || 0) > 0);
-
+const isSplitMode = computed(() => detailLayoutMode?.value === 'split');
+const splitConfig = computed(() => ({
+  defaultSize: detailSplitConfig?.value?.defaultSize ?? 0.5,
+  min: detailSplitConfig?.value?.min ?? 0.2,
+  max: detailSplitConfig?.value?.max ?? 0.8
+}));
+const activeMasterId = ref<number | null>(null);
 const editingState = ref(false);
 const {
   cellClassRules,
   defaultColDef,
+  gridOptions: masterGridRuntimeOptions,
   autoSizeStrategy,
   rowSelection,
   rowHeight,
@@ -92,11 +168,25 @@ const {
   getRowClass,
   getContextMenuItems: getMasterContextMenuItems,
   onGridReady: onMasterGridReady,
+  onSelectionChanged: onMasterSelectionChanged,
   onCellEditingStarted,
   onCellEditingStopped,
   onCellValueChanged: onMasterCellValueChanged,
   onCellClicked: onMasterCellClicked
-} = useMasterGridBindings({ runtime, isUserEditing: editingState });
+} = useMasterGridBindings({
+  runtime,
+  isUserEditing: editingState,
+  metaRowClassGetter: masterRowClassGetter?.value,
+  gridOptions: masterGridOptions?.value,
+  onSelectionChanged: async (rows) => {
+    const selected = rows?.[0];
+    activeMasterId.value = selected?.id ?? null;
+    if (activeMasterId.value == null) return;
+    if (!detailCache.get(activeMasterId.value)) {
+      await loadDetailData(activeMasterId.value);
+    }
+  }
+});
 
 const { getDetailContextMenuItems } = useGridContextMenu({
   addMasterRow,
@@ -105,7 +195,8 @@ const { getDetailContextMenuItems } = useGridContextMenu({
   addDetailRow,
   deleteDetailRow,
   copyDetailRow,
-  save
+  save,
+  saveGridConfig
 });
 
 function onDetailCellValueChanged(event: any, masterId: number, tabKey: string) {
@@ -123,19 +214,33 @@ function onDetailCellValueChanged(event: any, masterId: number, tabKey: string) 
   }
 }
 
+const detailBaseRowClass = (params: any): string | undefined => {
+  if (isFlagTrue(params.data?._isDeleted)) return 'row-deleted';
+  if (isFlagTrue(params.data?._isNew)) return 'row-new';
+  return undefined;
+};
+
 const { summaryDetailParams } = useNestedDetailParams({
   pageConfig,
   detailColumnsByTab,
   detailCache,
   loadDetailData,
   cellClassRules,
-  getRowClass,
+  getRowClass: detailBaseRowClass,
+  detailRowClassByTab: detailRowClassGetterByTab,
+  detailGridOptionsByTab,
+  applyGridConfig,
   getDetailContextMenuItems,
   onCellEditingStarted,
   onCellEditingStopped,
   onDetailCellValueChanged,
   onDetailCellClicked
 });
+
+function registerDetailGridApi(tabKey: string, api: any) {
+  if (!detailGridApisByTab?.value) return;
+  detailGridApisByTab.value[tabKey] = api;
+}
 
 function onKeyDown(event: KeyboardEvent) {
   if (event.ctrlKey && event.key === 's') {
@@ -156,12 +261,13 @@ onUnmounted(() => {
 <style scoped>
 .master-detail-page-v2 { width: 100%; height: 100%; display: flex; flex-direction: column; }
 .grid-container { flex: 1; min-height: 0; }
-:deep(.cell-user-changed) { background-color: #d4edda !important; }
-:deep(.cell-calc-changed) { background-color: #fff3cd !important; }
-:deep(.cell-new) { background-color: #cce5ff !important; }
+.split-container { height: 100%; }
+:deep(.cell-new) { background-color: #0b3d91 !important; color: #ffffff; }
+:deep(.cell-user-changed) { background-color: #b7f4b3 !important; color: #1a1a1a !important; }
+:deep(.cell-calc-changed) { background-color: #fff2a8 !important; color: #1a1a1a !important; }
 :deep(.cell-deleted) { background-color: #f8d7da !important; text-decoration: line-through; }
 :deep(.row-deleted) { opacity: 0.5; }
-:deep(.row-new) { font-style: italic; }
+:deep(.row-new) { background-color: #0b3d91; color: #ffffff; font-style: italic; }
 :deep(.ag-header-cell-label) { white-space: normal !important; line-height: 1.2; }
 :deep(.ag-header-cell) { height: auto !important; }
 </style>

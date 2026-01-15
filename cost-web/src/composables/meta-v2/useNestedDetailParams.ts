@@ -7,6 +7,7 @@ import {
   getSummaryRowId,
   resolveSummaryConfig
 } from '@/composables/meta-v2/summary-config';
+import { buildGridRuntimeOptions, autoSizeColumnsOnReady, type ResolvedGridOptions } from '@/composables/meta-v2/grid-options';
 
 export function useNestedDetailParams(params: {
   pageConfig: Ref<ParsedPageConfig | null>;
@@ -15,6 +16,9 @@ export function useNestedDetailParams(params: {
   loadDetailData: (masterId: number) => Promise<void>;
   cellClassRules: ColDef['cellClassRules'];
   getRowClass: (params: any) => string | undefined;
+  detailRowClassByTab?: Ref<Record<string, ((params: any) => string | undefined) | undefined>>;
+  detailGridOptionsByTab?: Ref<Record<string, ResolvedGridOptions>>;
+  applyGridConfig?: (gridKey: string, api: any, columnApi: any) => void;
   getDetailContextMenuItems: (masterId: number, tabKey: string) => (params: any) => any[];
   onCellEditingStarted: () => void;
   onCellEditingStopped: () => void;
@@ -24,16 +28,19 @@ export function useNestedDetailParams(params: {
   const {
     pageConfig,
     detailColumnsByTab,
-    detailCache,
-    loadDetailData,
-    cellClassRules,
-    getRowClass,
-    getDetailContextMenuItems,
-    onCellEditingStarted,
-    onCellEditingStopped,
-    onDetailCellValueChanged,
-    onDetailCellClicked
-  } = params;
+  detailCache,
+  loadDetailData,
+  cellClassRules,
+  getRowClass,
+  detailRowClassByTab,
+  detailGridOptionsByTab,
+  applyGridConfig,
+  getDetailContextMenuItems,
+  onCellEditingStarted,
+  onCellEditingStopped,
+  onDetailCellValueChanged,
+  onDetailCellClicked
+} = params;
 
   const summaryConfig = computed(() => resolveSummaryConfig(pageConfig.value));
 
@@ -89,6 +96,18 @@ export function useNestedDetailParams(params: {
       const tabKey = params.data?._tabKey;
       const masterId = params.data?._masterId;
       const columns = detailColumnsByTab.value[tabKey] || [];
+      const metaRowClass = detailRowClassByTab?.value?.[tabKey];
+      const gridOptions = detailGridOptionsByTab?.value?.[tabKey];
+      const mergedRowClass = (rowParams: any) => {
+        const classes: string[] = [];
+        const baseClass = getRowClass(rowParams);
+        if (baseClass) classes.push(baseClass);
+        const metaClass = metaRowClass?.(rowParams);
+        if (metaClass) classes.push(metaClass);
+        return classes.length > 0 ? classes.join(' ') : undefined;
+      };
+      const runtimeOptions = buildGridRuntimeOptions(gridOptions);
+
       return {
         refreshStrategy: 'nothing' as const,
         detailGridOptions: {
@@ -97,12 +116,18 @@ export function useNestedDetailParams(params: {
           rowHeight: 28,
           headerHeight: 28,
           getRowId: (rowParams: any) => String(rowParams.data?.id),
-          getRowClass,
+          getRowClass: mergedRowClass,
           getContextMenuItems: getDetailContextMenuItems(masterId, tabKey),
           onCellEditingStarted,
           onCellEditingStopped,
           onCellValueChanged: (event: any) => onDetailCellValueChanged(event, masterId, tabKey),
-          onCellClicked: (event: any) => onDetailCellClicked(event, masterId, tabKey)
+          onCellClicked: (event: any) => onDetailCellClicked(event, masterId, tabKey),
+          onGridReady: (event: any) => {
+            if (gridOptions?.autoSizeColumns) {
+              autoSizeColumnsOnReady(event.api, columns, gridOptions);
+            }
+          },
+          ...runtimeOptions
         },
         getDetailRowData: (detailParams: any) => detailParams.successCallback(detailParams.data?._detailRows || [])
       };

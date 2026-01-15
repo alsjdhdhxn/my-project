@@ -37,8 +37,27 @@ export type RoleBindingRule = {
   detailKey?: string;
 };
 
+export type SplitLayoutConfig = {
+  defaultSize?: number;
+  min?: number;
+  max?: number;
+};
+
+export type GridOptionsRule = {
+  sideBar?: boolean | Record<string, any>;
+  enableSidebar?: boolean;
+  cellSelection?: boolean | Record<string, any>;
+  enableRangeSelection?: boolean;
+  groupBy?: string[];
+  groupColumnName?: string;
+  groupDefaultExpanded?: number;
+  autoSizeColumns?: boolean;
+  autoSizeMode?: 'fitCellContents' | 'fitGridWidth';
+};
+
 export type RelationRule = {
   masterKey?: string;
   detailKey?: string;
   detailType?: string;
+  splitConfig?: SplitLayoutConfig;
 };

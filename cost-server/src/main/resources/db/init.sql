@@ -861,6 +861,10 @@ VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'masterGrid', 'ROLE_BINDIN
 '{"role":"MASTER_GRID"}', 'system');
 
 INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'masterGrid', 'GRID_OPTIONS',
+'{"cellSelection":true}', 'system');
+
+INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
 VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'detailTabs', 'ROLE_BINDING',
 '{"role":"DETAIL_TABS"}', 'system');
 

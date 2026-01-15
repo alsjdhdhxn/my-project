@@ -8,9 +8,10 @@ export function fetchTableMetadata(tableCode: string) {
 }
 
 /** 获取表元数据（合并权限） */
-export function fetchTableMetadataWithPermission(tableCode: string, pageCode: string) {
+export function fetchTableMetadataWithPermission(tableCode: string, pageCode: string, gridKey?: string) {
   return request<Api.Metadata.TableMetadata>({
-    url: `/api/metadata/table/${tableCode}/page/${pageCode}`
+    url: `/api/metadata/table/${tableCode}/page/${pageCode}`,
+    params: gridKey ? { gridKey } : undefined
   });
 }
 

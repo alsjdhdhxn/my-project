@@ -25,6 +25,8 @@ declare namespace Api {
       editable: boolean;
       required: boolean;
       searchable: boolean;
+      visible?: boolean;
+      pinned?: 'left' | 'right' | null;
       width?: number;
       dictType?: string;
       lookupCode?: string;

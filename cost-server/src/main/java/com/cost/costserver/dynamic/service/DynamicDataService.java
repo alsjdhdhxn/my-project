@@ -9,6 +9,8 @@ import com.cost.costserver.common.PageResult;
 import com.cost.costserver.common.SecurityUtils;
 import com.cost.costserver.dynamic.dto.MasterDetailSaveParam;
 import com.cost.costserver.dynamic.dto.QueryParam;
+import com.cost.costserver.dynamic.dto.SaveParam;
+import com.cost.costserver.dynamic.dto.SaveResult;
 import com.cost.costserver.dynamic.mapper.DynamicMapper;
 import com.cost.costserver.log.AuditLogService;
 import com.cost.costserver.log.OperationLogContext;
@@ -575,11 +577,28 @@ public class DynamicDataService {
         return col.columnName();
     }
 
+    private Long extractTempId(Map<String, Object> data) {
+        if (data == null) return null;
+        Object raw = data.get("id");
+        if (raw == null) return null;
+        if (raw instanceof Number) return ((Number) raw).longValue();
+        if (raw instanceof String) {
+            String value = ((String) raw).trim();
+            if (value.isEmpty()) return null;
+            try {
+                return Long.parseLong(value);
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
+        }
+        return null;
+    }
+
     /**
      * 通用保存 - 支持单表/主从表/主从多Tab
      */
     @org.springframework.transaction.annotation.Transactional(rollbackFor = Exception.class)
-    public Long save(com.cost.costserver.dynamic.dto.SaveParam param) {
+    public SaveResult save(SaveParam param) {
         if (param == null || param.getMaster() == null) {
             throw new BusinessException(400, "主表数据不能为空");
         }
@@ -592,6 +611,7 @@ public class DynamicDataService {
 
         Long masterId = null;
         String masterTableCode = null;
+        Map<Long, Long> idMapping = new HashMap<>();
 
         // 1. 处理主表
         var master = param.getMaster();
@@ -623,7 +643,11 @@ public class DynamicDataService {
 
             switch (master.getStatus()) {
                 case "added" -> {
+                    Long tempId = extractTempId(master.getData());
                     masterId = insert(masterTableCode, master.getData());
+                    if (tempId != null && !tempId.equals(masterId)) {
+                        idMapping.put(tempId, masterId);
+                    }
                     // 审计日志 - 新增
                     TableMetadataDTO masterMeta = metadataService.getTableMetadata(masterTableCode);
                     auditLogService.logInsert(userName, param.getPageCode(), masterTableCode, 
@@ -690,10 +714,14 @@ public class DynamicDataService {
 
                         switch (item.getStatus()) {
                             case "added" -> {
+                                Long tempId = extractTempId(item.getData());
                                 if (fkFieldName != null && masterId != null) {
                                     item.getData().put(fkFieldName, masterId);
                                 }
                                 Long detailId = insert(detailTableCode, item.getData());
+                                if (tempId != null && !tempId.equals(detailId)) {
+                                    idMapping.put(tempId, detailId);
+                                }
                                 Map<String, Object> actionData = new HashMap<>(item.getData());
                                 actionData.put("id", detailId);
                                 actionService.execute(detailTableCode, "after_save", null, actionData, detailValidationReport);
@@ -725,7 +753,7 @@ public class DynamicDataService {
             OperationLogContext.LogSession session = OperationLogContext.end();
             operationLogService.saveAsync(session, "SUCCESS", null);
 
-            return masterId;
+            return new SaveResult(masterId, idMapping.isEmpty() ? null : idMapping);
         } catch (Exception e) {
             // 保存操作日志 - 失败
             OperationLogContext.LogSession session = OperationLogContext.end();

@@ -48,6 +48,12 @@ export function metaToColDef(col: ColumnMetadata): ColDef {
   if (col.width && col.width > 0) {
     colDef.width = col.width;
   }
+  if (col.visible === false) {
+    colDef.hide = true;
+  }
+  if (col.pinned) {
+    colDef.pinned = col.pinned;
+  }
 
   // 数据类型处理
   switch (col.dataType) {
@@ -420,10 +426,10 @@ export function filterColumnsByVariant(
  * @param tableCode 表编码
  * @param pageCode 页面编码（可选，传入则合并权限）
  */
-export async function loadTableMeta(tableCode: string, pageCode?: string) {
+export async function loadTableMeta(tableCode: string, pageCode?: string, gridKey?: string) {
   // 根据是否传入 pageCode 决定调用哪个接口
   const { data, error } = pageCode
-    ? await fetchTableMetadataWithPermission(tableCode, pageCode)
+    ? await fetchTableMetadataWithPermission(tableCode, pageCode, gridKey)
     : await fetchTableMetadata(tableCode);
   
   if (error || !data) {

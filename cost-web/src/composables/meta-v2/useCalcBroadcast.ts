@@ -29,6 +29,7 @@ export function useCalcBroadcast(params: {
   compiledMasterCalcRules: Ref<CompiledCalcRules>;
   pageConfig: Ref<ParsedPageConfig | null>;
   loadDetailData?: (masterId: number) => Promise<void>;
+  detailGridApisByTab?: Ref<Record<string, any>>;
 }) {
   const {
     masterGridApi,
@@ -39,7 +40,8 @@ export function useCalcBroadcast(params: {
     compiledAggRules,
     compiledMasterCalcRules,
     pageConfig,
-    loadDetailData
+    loadDetailData,
+    detailGridApisByTab
   } = params;
 
   function markFieldChange(row: RowData, field: string, oldValue: any, newValue: any, type: 'user' | 'calc') {
@@ -76,7 +78,13 @@ export function useCalcBroadcast(params: {
         changedFields.push(field);
       }
     }
-    if (changedFields.length > 0) api?.refreshCells({ rowNodes: [node], columns: changedFields, force: true });
+    if (changedFields.length > 0) {
+      if (node) {
+        api?.refreshCells({ rowNodes: [node], columns: changedFields, force: true });
+      } else {
+        api?.refreshCells({ force: true });
+      }
+    }
   }
 
   function runMasterCalc(node: any, row: RowData) {
@@ -92,7 +100,11 @@ export function useCalcBroadcast(params: {
       }
     }
     if (changedFields.length > 0) {
-      masterGridApi.value?.refreshCells({ rowNodes: [node], columns: changedFields, force: true });
+      if (node) {
+        masterGridApi.value?.refreshCells({ rowNodes: [node], columns: changedFields, force: true });
+      } else {
+        masterGridApi.value?.refreshCells({ force: true });
+      }
     }
   }
 
@@ -129,6 +141,11 @@ export function useCalcBroadcast(params: {
   }
 
   function refreshAllDetailGrids(masterId: number) {
+    const detailApis = detailGridApisByTab?.value;
+    if (detailApis && Object.keys(detailApis).length > 0) {
+      Object.values(detailApis).forEach(api => api?.refreshCells?.({ force: true }));
+      return;
+    }
     const api = masterGridApi.value;
     if (!api) return;
     const secondLevelInfo = api.getDetailGridInfo(`detail_${masterId}`);

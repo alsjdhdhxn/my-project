@@ -36,7 +36,8 @@ public class MetadataController {
     @GetMapping("/table/{tableCode}/page/{pageCode}")
     public Result<TableMetadataDTO> getTableMetadataWithPermission(
             @PathVariable String tableCode,
-            @PathVariable String pageCode) {
+            @PathVariable String pageCode,
+            @RequestParam(required = false) String gridKey) {
         Long userId = SecurityUtils.getCurrentUserId();
         if (userId == null) {
             throw new BusinessException(403, "无权限访问");
@@ -45,7 +46,7 @@ public class MetadataController {
         if (permission == null) {
             throw new BusinessException(403, "无权限访问");
         }
-        return Result.ok(metadataService.getTableMetadataWithPermission(tableCode, permission));
+        return Result.ok(metadataService.getTableMetadataWithPermission(tableCode, pageCode, gridKey, permission, userId));
     }
 
     @Operation(summary = "获取页面组件树")

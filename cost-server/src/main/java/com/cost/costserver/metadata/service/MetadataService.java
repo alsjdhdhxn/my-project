@@ -5,6 +5,8 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.cost.costserver.auth.dto.ColumnPermission;
 import com.cost.costserver.auth.dto.PagePermission;
 import com.cost.costserver.common.BusinessException;
+import com.cost.costserver.grid.dto.ColumnPreference;
+import com.cost.costserver.grid.service.UserGridConfigService;
 import com.cost.costserver.metadata.dto.*;
 import com.cost.costserver.metadata.entity.*;
 import com.cost.costserver.metadata.mapper.*;
@@ -31,6 +33,7 @@ public class MetadataService {
     private final DictionaryItemMapper dictionaryItemMapper;
     private final LookupConfigMapper lookupConfigMapper;
     private final ObjectMapper objectMapper;
+    private final UserGridConfigService userGridConfigService;
 
     private final Map<String, TableMetadataDTO> cache = new ConcurrentHashMap<>();
 
@@ -63,26 +66,18 @@ public class MetadataService {
      * 获取表元数据（合并权限）
      * 将角色的列权限合并到列元数据中返回
      */
-    public TableMetadataDTO getTableMetadataWithPermission(String tableCode, PagePermission permission) {
+    public TableMetadataDTO getTableMetadataWithPermission(
+            String tableCode,
+            String pageCode,
+            String gridKey,
+            PagePermission permission,
+            Long userId
+    ) {
         TableMetadataDTO base = getTableMetadata(tableCode);
-        
-        if (permission == null || permission.columns() == null || permission.columns().isEmpty()) {
-            return base;
-        }
-        
-        // 合并列权限到列元数据
-        List<ColumnMetadataDTO> mergedColumns = base.columns().stream()
-            .map(col -> {
-                ColumnPermission colPerm = permission.getColumnPermission(col.fieldName());
-                // 权限只能收紧，不能放宽
-                boolean visible = col.visible() && colPerm.visible();
-                boolean editable = col.editable() && colPerm.editable();
-                return col.withPermission(visible, editable);
-            })
-            .filter(col -> col.visible()) // 过滤掉不可见的列
-            .toList();
-        
-        return base.withColumns(mergedColumns);
+        List<ColumnMetadataDTO> columns = applyColumnOverrides(base.columns(), pageCode, gridKey);
+        columns = applyPermission(columns, permission);
+        columns = applyUserPreferences(columns, userId, pageCode, gridKey);
+        return base.withColumns(columns);
     }
 
     public void clearCache(String tableCode) {
@@ -92,6 +87,264 @@ public class MetadataService {
             cache.remove(tableCode);
         }
     }
+
+    private List<ColumnMetadataDTO> applyPermission(List<ColumnMetadataDTO> columns, PagePermission permission) {
+        if (permission == null) {
+            return columns;
+        }
+        List<ColumnMetadataDTO> result = new ArrayList<>();
+        for (ColumnMetadataDTO col : columns) {
+            ColumnPermission colPerm = permission.getColumnPermission(col.fieldName());
+            if (colPerm != null && !colPerm.visible()) {
+                continue;
+            }
+            boolean editable = col.editable() != null ? col.editable() : true;
+            if (colPerm != null && !colPerm.editable()) {
+                editable = false;
+            }
+            result.add(copyColumn(col, col.displayOrder(), col.width(), col.visible(), editable,
+                col.required(), col.searchable(), col.sortable(), col.pinned()));
+        }
+        return result;
+    }
+
+    private List<ColumnMetadataDTO> applyColumnOverrides(List<ColumnMetadataDTO> columns, String pageCode, String gridKey) {
+        Map<String, ColumnOverride> overrides = loadColumnOverrides(pageCode, gridKey);
+        if (overrides.isEmpty()) {
+            return columns;
+        }
+        List<ColumnMetadataDTO> result = new ArrayList<>();
+        for (ColumnMetadataDTO col : columns) {
+            ColumnOverride override = overrides.get(col.fieldName());
+            if (override == null) {
+                result.add(col);
+                continue;
+            }
+            Integer displayOrder = override.order() != null ? override.order() : col.displayOrder();
+            Integer width = override.width() != null ? override.width() : col.width();
+            Boolean visible = override.visible() != null ? override.visible() : col.visible();
+            Boolean editable = override.editable() != null ? override.editable() : col.editable();
+            Boolean required = override.required() != null ? override.required() : col.required();
+            Boolean searchable = override.searchable() != null ? override.searchable() : col.searchable();
+            Boolean sortable = override.sortable() != null ? override.sortable() : col.sortable();
+            String pinned = override.pinned() != null ? override.pinned() : col.pinned();
+            result.add(copyColumn(col, displayOrder, width, visible, editable, required, searchable, sortable, pinned));
+        }
+        return result;
+    }
+
+    private List<ColumnMetadataDTO> applyUserPreferences(
+            List<ColumnMetadataDTO> columns,
+            Long userId,
+            String pageCode,
+            String gridKey
+    ) {
+        if (userId == null || StrUtil.isBlank(pageCode) || StrUtil.isBlank(gridKey)) {
+            return columns;
+        }
+        Map<String, ColumnPreference> preferences =
+            userGridConfigService.getColumnPreferences(userId, pageCode, gridKey);
+        if (preferences.isEmpty()) {
+            return columns;
+        }
+        int maxOrder = preferences.values().stream()
+            .map(ColumnPreference::order)
+            .filter(Objects::nonNull)
+            .max(Integer::compareTo)
+            .orElse(0);
+
+        List<ColumnMetadataDTO> result = new ArrayList<>();
+        int index = 0;
+        for (ColumnMetadataDTO col : columns) {
+            ColumnPreference pref = preferences.get(col.fieldName());
+            Integer displayOrder = col.displayOrder();
+            if (pref != null && pref.order() != null) {
+                displayOrder = pref.order();
+            } else if (!preferences.isEmpty()) {
+                int baseOrder = displayOrder != null ? displayOrder : index;
+                displayOrder = maxOrder + 1 + baseOrder;
+            }
+
+            Integer width = col.width();
+            String pinned = col.pinned();
+            Boolean visible = col.visible();
+
+            if (pref != null) {
+                if (pref.width() != null) {
+                    width = pref.width();
+                }
+                if (pref.hidden() != null) {
+                    visible = !pref.hidden();
+                }
+                pinned = pref.pinned();
+            }
+
+            result.add(copyColumn(col, displayOrder, width, visible, col.editable(),
+                col.required(), col.searchable(), col.sortable(), pinned));
+            index++;
+        }
+        return result;
+    }
+
+    private Map<String, ColumnOverride> loadColumnOverrides(String pageCode, String gridKey) {
+        if (StrUtil.isBlank(pageCode) || StrUtil.isBlank(gridKey)) {
+            return Collections.emptyMap();
+        }
+        List<String> componentKeys = new ArrayList<>();
+        componentKeys.add(gridKey);
+        if ("masterGrid".equals(gridKey)) {
+            componentKeys.add("master");
+        }
+        if ("master".equals(gridKey)) {
+            componentKeys.add("masterGrid");
+        }
+
+        List<PageRule> rules = pageRuleMapper.selectList(
+            new LambdaQueryWrapper<PageRule>()
+                .eq(PageRule::getPageCode, pageCode)
+                .eq(PageRule::getRuleType, "COLUMN_OVERRIDE")
+                .eq(PageRule::getDeleted, 0)
+                .in(PageRule::getComponentKey, componentKeys)
+                .orderByAsc(PageRule::getSortOrder)
+        );
+
+        if (rules.isEmpty()) {
+            return Collections.emptyMap();
+        }
+
+        PageRule selected = null;
+        for (String key : componentKeys) {
+            for (PageRule rule : rules) {
+                if (key.equals(rule.getComponentKey())) {
+                    selected = rule;
+                    break;
+                }
+            }
+            if (selected != null) break;
+        }
+
+        if (selected == null || StrUtil.isBlank(selected.getRules())) {
+            return Collections.emptyMap();
+        }
+        return parseColumnOverrides(selected.getRules());
+    }
+
+    private Map<String, ColumnOverride> parseColumnOverrides(String rules) {
+        try {
+            JsonNode root = objectMapper.readTree(rules);
+            if (!root.isArray()) {
+                log.warn("COLUMN_OVERRIDE rules is not an array");
+                return Collections.emptyMap();
+            }
+            Map<String, ColumnOverride> result = new HashMap<>();
+            for (JsonNode node : root) {
+                String field = text(node, "field");
+                if (StrUtil.isBlank(field)) {
+                    field = text(node, "fieldName");
+                }
+                if (StrUtil.isBlank(field)) continue;
+                ColumnOverride override = new ColumnOverride(
+                    number(node, "width"),
+                    bool(node, "visible"),
+                    bool(node, "editable"),
+                    bool(node, "required"),
+                    bool(node, "searchable"),
+                    bool(node, "sortable"),
+                    normalizePinned(text(node, "pinned")),
+                    number(node, "order", "displayOrder")
+                );
+                result.put(field, override);
+            }
+            return result;
+        } catch (Exception e) {
+            log.warn("Failed to parse COLUMN_OVERRIDE rules: {}", e.getMessage());
+            return Collections.emptyMap();
+        }
+    }
+
+    private String normalizePinned(String value) {
+        if (value == null) return null;
+        if ("left".equalsIgnoreCase(value)) return "left";
+        if ("right".equalsIgnoreCase(value)) return "right";
+        return null;
+    }
+
+    private Integer number(JsonNode node, String... keys) {
+        for (String key : keys) {
+            JsonNode value = node.get(key);
+            if (value == null || value.isNull()) continue;
+            if (value.isNumber()) return value.intValue();
+            if (value.isTextual()) {
+                try {
+                    return Integer.parseInt(value.asText());
+                } catch (NumberFormatException ignored) {
+                    return null;
+                }
+            }
+        }
+        return null;
+    }
+
+    private Boolean bool(JsonNode node, String key) {
+        JsonNode value = node.get(key);
+        if (value == null || value.isNull()) return null;
+        if (value.isBoolean()) return value.asBoolean();
+        if (value.isTextual()) {
+            return Boolean.parseBoolean(value.asText());
+        }
+        return null;
+    }
+
+    private String text(JsonNode node, String key) {
+        JsonNode value = node.get(key);
+        return value != null && value.isTextual() ? value.asText() : null;
+    }
+
+    private ColumnMetadataDTO copyColumn(
+            ColumnMetadataDTO col,
+            Integer displayOrder,
+            Integer width,
+            Boolean visible,
+            Boolean editable,
+            Boolean required,
+            Boolean searchable,
+            Boolean sortable,
+            String pinned
+    ) {
+        return new ColumnMetadataDTO(
+            col.id(),
+            col.fieldName(),
+            col.columnName(),
+            col.queryColumn(),
+            col.targetColumn(),
+            col.headerText(),
+            col.dataType(),
+            displayOrder,
+            width,
+            visible,
+            editable,
+            required,
+            searchable,
+            sortable,
+            pinned,
+            col.dictType(),
+            col.lookupConfigId(),
+            col.defaultValue(),
+            col.rulesConfig(),
+            col.isVirtual()
+        );
+    }
+
+    private record ColumnOverride(
+        Integer width,
+        Boolean visible,
+        Boolean editable,
+        Boolean required,
+        Boolean searchable,
+        Boolean sortable,
+        String pinned,
+        Integer order
+    ) {}
 
     public boolean isValidTable(String tableCode) {
         return cache.containsKey(tableCode) || tableMetadataMapper.selectCount(

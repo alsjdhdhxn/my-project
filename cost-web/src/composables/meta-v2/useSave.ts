@@ -27,6 +27,7 @@ export function useSave(params: {
   detailValidationRulesByTab: Ref<DetailValidationRules>;
   masterColumnMeta: Ref<any[]>;
   detailColumnMetaByTab: Ref<ColumnMetaByTab>;
+  detailFkColumnByTab: Ref<Record<string, string>>;
   masterGridApi: ShallowRef<GridApi | null>;
   notifyInfo: NotifyFn;
   notifyError: NotifyFn;
@@ -41,15 +42,75 @@ export function useSave(params: {
     detailValidationRulesByTab,
     masterColumnMeta,
     detailColumnMetaByTab,
+    detailFkColumnByTab,
     masterGridApi,
     notifyInfo,
     notifyError,
     notifySuccess
   } = params;
 
-  function buildRecordItem(row: RowData, tableCode: string) {
-    const isNew = row._isNew === true;
-    const isDeleted = row._isDeleted === true;
+  function normalizeIdMapping(raw?: Record<string, number> | null) {
+    const mapping = new Map<number, number>();
+    if (!raw) return mapping;
+    for (const [key, value] of Object.entries(raw)) {
+      const fromId = Number(key);
+      const toId = Number(value);
+      if (!Number.isNaN(fromId) && !Number.isNaN(toId)) {
+        mapping.set(fromId, toId);
+      }
+    }
+    return mapping;
+  }
+
+  function isFlagTrue(value: unknown) {
+    return value === true || value === 1 || value === '1' || value === 'true';
+  }
+
+  function applyIdMapping(idMapping: Map<number, number>) {
+    if (idMapping.size === 0) return;
+    const masterIdMap = new Map<number, number>();
+
+    for (const master of masterRows.value) {
+      const mapped = idMapping.get(Number(master.id));
+      if (mapped) {
+        masterIdMap.set(Number(master.id), mapped);
+        master.id = mapped;
+      }
+    }
+
+    if (detailCache.size === 0) return;
+
+    const updatedCache = new Map<number, Record<string, RowData[]>>();
+    for (const [masterId, tabData] of detailCache.entries()) {
+      const newMasterId = masterIdMap.get(masterId) ?? masterId;
+      const nextTabData: Record<string, RowData[]> = {};
+      for (const [tabKey, rows] of Object.entries(tabData)) {
+        const fkColumn = detailFkColumnByTab.value[tabKey] || 'masterId';
+        nextTabData[tabKey] = rows.map(row => {
+          const mappedRowId = idMapping.get(Number(row.id));
+          if (mappedRowId) row.id = mappedRowId;
+          if (masterIdMap.has(masterId)) row[fkColumn] = newMasterId;
+          return row;
+        });
+      }
+      updatedCache.set(newMasterId, nextTabData);
+    }
+
+    detailCache.clear();
+    for (const [masterId, tabData] of updatedCache.entries()) {
+      detailCache.set(masterId, tabData);
+    }
+  }
+
+  function clearRowFlags(row: RowData) {
+    delete row._dirtyFields;
+    row._isNew = false;
+    row._isDeleted = false;
+  }
+
+  function buildRecordItem(row: RowData, tableCode: string, extraExcludeFields: string[] = []) {
+    const isNew = isFlagTrue(row._isNew);
+    const isDeleted = isFlagTrue(row._isDeleted);
     const dirtyFields = row._dirtyFields || {};
 
     let status: 'added' | 'modified' | 'deleted' | 'unchanged';
@@ -58,14 +119,14 @@ export function useSave(params: {
     else if (Object.keys(dirtyFields).length > 0) status = 'modified';
     else status = 'unchanged';
 
-    const excludeFields = ['masterId'];
+    const excludeFields = new Set<string>(['masterId', ...extraExcludeFields.filter(Boolean)]);
     const data: Record<string, any> = { _tableCode: tableCode };
     for (const [key, value] of Object.entries(row)) {
-      if (!key.startsWith('_') && !excludeFields.includes(key)) data[key] = value;
+      if (!key.startsWith('_') && !excludeFields.has(key)) data[key] = value;
     }
 
     const changes = Object.entries(dirtyFields)
-      .filter(([field]) => !excludeFields.includes(field))
+      .filter(([field]) => !excludeFields.has(field))
       .map(([field, info]) => ({
         field,
         oldValue: info.originalValue,
@@ -164,6 +225,7 @@ export function useSave(params: {
     }
 
     const savedMasterIds: number[] = [];
+    let hasIdMapping = false;
     for (const masterId of masterIdsToSave) {
       const masterRow = masterRows.value.find(r => r.id === masterId);
       if (!masterRow) continue;
@@ -175,7 +237,8 @@ export function useSave(params: {
           const rows = cached[tab.key] || [];
           const dirtyRows = rows.filter(r => r._isNew || r._isDeleted || r._dirtyFields);
           if (dirtyRows.length > 0) {
-            detailsMap[tab.tableCode] = dirtyRows.map(r => buildRecordItem(r, tab.tableCode));
+            const fkField = detailFkColumnByTab.value[tab.key] || 'masterId';
+            detailsMap[tab.tableCode] = dirtyRows.map(r => buildRecordItem(r, tab.tableCode, [fkField]));
           }
         }
       }
@@ -186,15 +249,22 @@ export function useSave(params: {
         details: Object.keys(detailsMap).length > 0 ? detailsMap : undefined
       };
 
-      const { error } = await saveDynamicData(paramsToSave);
+      const { error, data } = await saveDynamicData(paramsToSave);
       if (error) {
         saveStats.errors.push(`主表 ${masterId}: ${error.msg || '保存失败'}`);
       } else {
+        const mapping = normalizeIdMapping((data as any)?.idMapping);
+        if (mapping.size > 0) {
+          applyIdMapping(mapping);
+          hasIdMapping = true;
+        }
+        const resolvedMasterId = Number((data as any)?.masterId ?? mapping.get(masterId) ?? masterId);
         saveStats.successCount++;
-        savedMasterIds.push(masterId);
+        savedMasterIds.push(resolvedMasterId);
       }
     }
 
+    // 先清除脏标记，再刷新 Grid
     for (const masterId of savedMasterIds) {
       const masterRow = masterRows.value.find(r => r.id === masterId);
       if (masterRow) {
@@ -202,8 +272,7 @@ export function useSave(params: {
           const idx = masterRows.value.findIndex(r => r.id === masterId);
           if (idx >= 0) masterRows.value.splice(idx, 1);
         } else {
-          delete masterRow._dirtyFields;
-          masterRow._isNew = false;
+          clearRowFlags(masterRow);
         }
       }
 
@@ -212,11 +281,27 @@ export function useSave(params: {
         for (const [tabKey, rows] of Object.entries(cached)) {
           cached[tabKey] = rows.filter(r => {
             if (r._isDeleted) return false;
-            delete r._dirtyFields;
-            r._isNew = false;
+            clearRowFlags(r);
             return true;
           });
         }
+      }
+    }
+
+    // ID 映射后需要重新设置数据（此时脏标记已清除）
+    if (hasIdMapping) {
+      const api = masterGridApi.value as any;
+      if (api?.setGridOption) {
+        api.setGridOption('rowData', masterRows.value);
+      } else if (api?.setRowData) {
+        api.setRowData(masterRows.value);
+      }
+    }
+
+    // 刷新从表 Grid
+    for (const masterId of savedMasterIds) {
+      const cached = detailCache.get(masterId);
+      if (cached) {
         const secondLevelInfo = masterGridApi.value?.getDetailGridInfo(`detail_${masterId}`);
         if (secondLevelInfo?.api) {
           secondLevelInfo.api.forEachDetailGridInfo((detailInfo: any) => {

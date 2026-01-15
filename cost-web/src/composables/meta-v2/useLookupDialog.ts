@@ -23,6 +23,7 @@ export function useLookupDialog(params: {
   runMasterCalc: RunMasterCalc;
   runDetailCalc: RunDetailCalc;
   recalcAggregates: RecalcAggregates;
+  detailGridApisByTab?: Ref<Record<string, any>>;
 }) {
   const {
     masterRows,
@@ -33,7 +34,8 @@ export function useLookupDialog(params: {
     markFieldChange,
     runMasterCalc,
     runDetailCalc,
-    recalcAggregates
+    recalcAggregates,
+    detailGridApisByTab
   } = params;
 
   const lookupDialogRef = ref<LookupDialogExpose | null>(null);
@@ -102,18 +104,27 @@ export function useLookupDialog(params: {
               markFieldChange(row, field, oldValue, value, 'user');
             }
           }
-          const secondLevelInfo = masterGridApi.value?.getDetailGridInfo(`detail_${masterId}`);
-          if (secondLevelInfo?.api) {
-            secondLevelInfo.api.forEachDetailGridInfo((detailInfo: any) => {
-              if (detailInfo.id?.includes(tabKey)) {
-                detailInfo.api.forEachNode((node: any) => {
-                  if (node.data?.id === rowId) {
-                    runDetailCalc(node, detailInfo.api, row, masterId, tabKey);
-                  }
-                });
-                detailInfo.api.refreshCells({ force: true });
-              }
-            });
+          const splitDetailApi = detailGridApisByTab?.value?.[tabKey];
+          if (splitDetailApi) {
+            const node = splitDetailApi.getRowNode?.(String(rowId));
+            if (node) {
+              runDetailCalc(node, splitDetailApi, row, masterId, tabKey);
+            }
+            splitDetailApi.refreshCells?.({ force: true });
+          } else {
+            const secondLevelInfo = masterGridApi.value?.getDetailGridInfo(`detail_${masterId}`);
+            if (secondLevelInfo?.api) {
+              secondLevelInfo.api.forEachDetailGridInfo((detailInfo: any) => {
+                if (detailInfo.id?.includes(tabKey)) {
+                  detailInfo.api.forEachNode((node: any) => {
+                    if (node.data?.id === rowId) {
+                      runDetailCalc(node, detailInfo.api, row, masterId, tabKey);
+                    }
+                  });
+                  detailInfo.api.refreshCells({ force: true });
+                }
+              });
+            }
           }
           recalcAggregates(masterId);
           break;

@@ -6,6 +6,7 @@ import type {
   PageRule,
   PageComponentWithRules,
   ColumnOverrideRule,
+  GridOptionsRule,
   LookupRuleConfig,
   RoleBindingRule,
   RelationRule
@@ -175,6 +176,12 @@ export function parseRelationRule(componentKey: string, rules: PageRule[]): Rela
   return parseRuleObject<RelationRule>(rule, `${componentKey}.RELATION`);
 }
 
+export function parseGridOptionsRule(componentKey: string, rules: PageRule[]): GridOptionsRule | null {
+  const rule = getRuleByType(rules, 'GRID_OPTIONS') || getRuleByType(rules, 'GRID_FEATURES');
+  if (!rule) return null;
+  return parseRuleObject<GridOptionsRule>(rule, `${componentKey}.${rule.ruleType || 'GRID_OPTIONS'}`);
+}
+
 export function applyColumnOverrides(columns: ColDef[], overrides: ColumnOverrideRule[]): ColDef[] {
   if (!overrides || overrides.length === 0) return columns;
   const overrideMap = new Map<string, ColumnOverrideRule>();
@@ -217,3 +224,5 @@ registerRuleParser('SUMMARY_CONFIG', ({ componentKey, rules }) => parseSummaryCo
 registerRuleParser('NESTED_CONFIG', ({ componentKey, rules }) => parseSummaryConfigRule(componentKey, rules));
 registerRuleParser('ROLE_BINDING', ({ componentKey, rules }) => parseRoleBindingRule(componentKey, rules));
 registerRuleParser('RELATION', ({ componentKey, rules }) => parseRelationRule(componentKey, rules));
+registerRuleParser('GRID_OPTIONS', ({ componentKey, rules }) => parseGridOptionsRule(componentKey, rules));
+registerRuleParser('GRID_FEATURES', ({ componentKey, rules }) => parseGridOptionsRule(componentKey, rules));

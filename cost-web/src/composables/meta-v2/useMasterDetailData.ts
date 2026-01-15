@@ -10,10 +10,23 @@ export function useMasterDetailData(params: {
   pageConfig: Ref<ParsedPageConfig | null>;
   detailFkColumnByTab: Ref<Record<string, string>>;
   masterGridApi: ShallowRef<GridApi | null>;
+  detailGridApisByTab?: Ref<Record<string, any>>;
   notifyError: (message: string) => void;
   recalcAggregates: RecalcAggregates;
+  afterAddMasterRow?: (row: RowData) => void;
+  afterAddDetailRow?: (masterId: number, tabKey: string, row: RowData) => void;
 }) {
-  const { pageCode, pageConfig, detailFkColumnByTab, masterGridApi, notifyError, recalcAggregates } = params;
+  const {
+    pageCode,
+    pageConfig,
+    detailFkColumnByTab,
+    masterGridApi,
+    detailGridApisByTab,
+    notifyError,
+    recalcAggregates,
+    afterAddMasterRow,
+    afterAddDetailRow
+  } = params;
 
   const masterRows = ref<RowData[]>([]);
   const detailCache = new Map<number, Record<string, RowData[]>>();
@@ -51,12 +64,18 @@ export function useMasterDetailData(params: {
     }
 
     detailCache.set(masterId, grouped);
+    if (detailGridApisByTab?.value) {
+      for (const [tabKey, rows] of Object.entries(grouped)) {
+        detailGridApisByTab.value[tabKey]?.setGridOption?.('rowData', rows);
+      }
+    }
     console.log('[detail loaded]', masterId, Object.keys(grouped).map(k => `${k}: ${grouped[k].length} rows`).join(', '));
   }
 
   function addMasterRow() {
     const newRow = initRowData({ id: generateTempId() }, true);
     masterRows.value.push(newRow);
+    afterAddMasterRow?.(newRow);
     setTimeout(() => masterGridApi.value?.ensureIndexVisible(masterRows.value.length - 1), 100);
   }
 
@@ -78,6 +97,7 @@ export function useMasterDetailData(params: {
     const fkColumn = detailFkColumnByTab.value[tabKey] || 'masterId';
     const newRow = initRowData({ id: generateTempId(), [fkColumn]: masterId }, true);
     cached[tabKey].push(newRow);
+    afterAddDetailRow?.(masterId, tabKey, newRow);
 
     const secondLevelInfo = masterGridApi.value?.getDetailGridInfo(`detail_${masterId}`);
     if (secondLevelInfo?.api) {
@@ -85,6 +105,7 @@ export function useMasterDetailData(params: {
         if (detailInfo.id?.includes(tabKey)) detailInfo.api.setGridOption('rowData', cached[tabKey]);
       });
     }
+    detailGridApisByTab?.value?.[tabKey]?.setGridOption?.('rowData', cached[tabKey]);
 
     recalcAggregates(masterId);
   }
@@ -107,6 +128,7 @@ export function useMasterDetailData(params: {
         if (detailInfo.id?.includes(tabKey)) detailInfo.api.refreshCells();
       });
     }
+    detailGridApisByTab?.value?.[tabKey]?.refreshCells?.({ force: true });
 
     recalcAggregates(masterId);
   }
@@ -164,6 +186,7 @@ export function useMasterDetailData(params: {
         if (detailInfo.id?.includes(tabKey)) detailInfo.api.setGridOption('rowData', cached[tabKey]);
       });
     }
+    detailGridApisByTab?.value?.[tabKey]?.setGridOption?.('rowData', cached[tabKey]);
 
     recalcAggregates(masterId);
   }

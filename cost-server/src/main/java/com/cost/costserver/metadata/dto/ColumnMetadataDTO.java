@@ -20,6 +20,7 @@ public record ColumnMetadataDTO(
     Boolean required,
     Boolean searchable,
     Boolean sortable,
+    String pinned,
     String dictType,
     Long lookupConfigId,
     String defaultValue,
@@ -42,6 +43,7 @@ public record ColumnMetadataDTO(
             false,
             intToBoolean(entity.getFilterable()),
             intToBoolean(entity.getSortable()),
+            null,
             entity.getDictType(),
             null,
             null,
@@ -62,7 +64,7 @@ public record ColumnMetadataDTO(
             this.id, this.fieldName, this.columnName, this.queryColumn, this.targetColumn,
             this.headerText, this.dataType, this.displayOrder, this.width,
             visible, editable,
-            this.required, this.searchable, this.sortable, this.dictType, this.lookupConfigId,
+            this.required, this.searchable, this.sortable, this.pinned, this.dictType, this.lookupConfigId,
             this.defaultValue, this.rulesConfig, this.isVirtual
         );
     }

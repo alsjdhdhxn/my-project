@@ -62,7 +62,7 @@ export function saveDynamicData(param: {
   master: any;
   details?: Record<string, any[]>;
 }) {
-  return request<number>({
+  return request<{ masterId: number; idMapping?: Record<number, number> }>({
     url: '/api/data/save',
     method: 'POST',
     data: param

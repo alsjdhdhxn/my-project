@@ -5,6 +5,7 @@ import { useMasterDetailData } from '@/composables/meta-v2/useMasterDetailData';
 import { useCalcBroadcast } from '@/composables/meta-v2/useCalcBroadcast';
 import { useLookupDialog } from '@/composables/meta-v2/useLookupDialog';
 import { useSave } from '@/composables/meta-v2/useSave';
+import { useUserGridConfig } from '@/composables/meta-v2/useUserGridConfig';
 import { applyComponentExtensions } from '@/composables/meta-v2/registry';
 import { initComponentExtensions } from '@/composables/meta-v2/extensions';
 import { collectPageRules, groupRulesByComponent } from '@/composables/meta-v2/usePageRules';
@@ -21,18 +22,28 @@ export function useMetaRuntime(params: {
 
   const isReady = ref(false);
   const masterGridApi = shallowRef<GridApi | null>(null);
+  const detailGridApisByTab = ref<Record<string, any>>({});
 
   const meta = useMetaConfig(pageCode, notifyError);
+  const gridConfig = useUserGridConfig({ pageCode, notifyError, notifySuccess });
   const recalcAggregatesRef = { current: (_masterId: number) => {} };
   const recalcAggregatesProxy = (masterId: number) => recalcAggregatesRef.current(masterId);
+
+  const addRowHooks = {
+    onMasterRowAdded: (_row: any) => {},
+    onDetailRowAdded: (_masterId: number, _tabKey: string, _row: any) => {}
+  };
 
   const data = useMasterDetailData({
     pageCode,
     pageConfig: meta.pageConfig,
     detailFkColumnByTab: meta.detailFkColumnByTab,
     masterGridApi,
+    detailGridApisByTab,
     notifyError,
-    recalcAggregates: recalcAggregatesProxy
+    recalcAggregates: recalcAggregatesProxy,
+    afterAddMasterRow: row => addRowHooks.onMasterRowAdded(row),
+    afterAddDetailRow: (masterId, tabKey, row) => addRowHooks.onDetailRowAdded(masterId, tabKey, row)
   });
 
   const calc = useCalcBroadcast({
@@ -44,8 +55,17 @@ export function useMetaRuntime(params: {
     compiledAggRules: meta.compiledAggRules,
     compiledMasterCalcRules: meta.compiledMasterCalcRules,
     pageConfig: meta.pageConfig,
-    loadDetailData: data.loadDetailData
+    loadDetailData: data.loadDetailData,
+    detailGridApisByTab
   });
+
+  addRowHooks.onMasterRowAdded = (row) => {
+    calc.runMasterCalc(null, row);
+  };
+  addRowHooks.onDetailRowAdded = (masterId, tabKey, row) => {
+    const api = detailGridApisByTab.value?.[tabKey];
+    calc.runDetailCalc(null, api, row, masterId, tabKey);
+  };
 
   recalcAggregatesRef.current = calc.recalcAggregates;
 
@@ -58,7 +78,8 @@ export function useMetaRuntime(params: {
     markFieldChange: calc.markFieldChange,
     runMasterCalc: calc.runMasterCalc,
     runDetailCalc: calc.runDetailCalc,
-    recalcAggregates: recalcAggregatesProxy
+    recalcAggregates: recalcAggregatesProxy,
+    detailGridApisByTab
   });
 
   const { save } = useSave({
@@ -70,6 +91,7 @@ export function useMetaRuntime(params: {
     detailValidationRulesByTab: meta.detailValidationRulesByTab,
     masterColumnMeta: meta.masterColumnMeta,
     detailColumnMetaByTab: meta.detailColumnMetaByTab,
+    detailFkColumnByTab: meta.detailFkColumnByTab,
     masterGridApi,
     notifyInfo,
     notifyError,
@@ -79,11 +101,16 @@ export function useMetaRuntime(params: {
   const runtimeApi = {
     pageCode,
     masterGridApi,
+    detailGridApisByTab,
+    masterGridKey: meta.masterGridKey,
+    detailTabsKey: meta.detailTabsKey,
     ...meta,
     ...data,
     ...calc,
     ...lookup,
-    save
+    save,
+    applyGridConfig: gridConfig.applyGridConfig,
+    saveGridConfig: gridConfig.saveGridConfig
   };
 
   function applyRuntimeExtensions() {
