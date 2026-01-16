@@ -223,10 +223,9 @@ const local: App.I18n.Schema = {
     403: '无权限',
     404: '页面不存在',
     500: '服务器错误',
+    dynamic: '动态',
     'iframe-page': '外链页面',
     home: '首页',
-    cost: '成本管理',
-    cost_eval: '成本测算'
   },
   page: {
     login: {

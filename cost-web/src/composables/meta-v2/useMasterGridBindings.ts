@@ -101,9 +101,7 @@ export function useMasterGridBindings(params: {
 
   function onGridReady(params: GridReadyEvent) {
     if (runtime.masterGridApi) runtime.masterGridApi.value = params.api;
-    const currentDefs = (params.api.getColumnDefs?.() as ColDef[] | undefined)
-      ?? params.columnApi?.getAllGridColumns?.().map(col => col.getColDef())
-      ?? [];
+    const currentDefs = (params.api.getColumnDefs?.() as ColDef[] | undefined) ?? [];
     const hasExplicitWidth = currentDefs.some(def => typeof def.width === 'number' && def.width > 0);
     if (gridOptions?.autoSizeColumns) {
       autoSizeColumnsOnReady(params.api, currentDefs, gridOptions);

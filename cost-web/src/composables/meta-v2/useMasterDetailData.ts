@@ -144,6 +144,11 @@ export function useMasterDetailData(params: {
     }
     masterRows.value.push(newRow);
 
+    if (sourceMasterId == null) {
+      setTimeout(() => masterGridApi.value?.ensureIndexVisible(masterRows.value.length - 1), 100);
+      return;
+    }
+
     let sourceCached = detailCache.get(sourceMasterId);
     if (!sourceCached) {
       await loadDetailData(sourceMasterId);

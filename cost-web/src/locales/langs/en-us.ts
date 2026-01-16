@@ -227,6 +227,7 @@ const local: App.I18n.Schema = {
     403: 'No Permission',
     404: 'Page Not Found',
     500: 'Server Error',
+    dynamic: 'Dynamic',
     'iframe-page': 'Iframe',
     home: 'Home'
   },

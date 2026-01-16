@@ -1,7 +1,6 @@
 ﻿import type { Ref, ShallowRef } from 'vue';
 import type { GridApi } from 'ag-grid-community';
 import { saveDynamicData } from '@/service/api';
-import { runSaveHooks } from '@/composables/meta-v2/registry';
 import {
   validateRows,
   formatValidationErrors,
@@ -111,7 +110,7 @@ export function useSave(params: {
   function buildRecordItem(row: RowData, tableCode: string, extraExcludeFields: string[] = []) {
     const isNew = isFlagTrue(row._isNew);
     const isDeleted = isFlagTrue(row._isDeleted);
-    const dirtyFields = row._dirtyFields || {};
+    const dirtyFields = (row._dirtyFields || {}) as Record<string, { originalValue: any; type: 'user' | 'calc' }>;
 
     let status: 'added' | 'modified' | 'deleted' | 'unchanged';
     if (isDeleted) status = 'deleted';
@@ -177,8 +176,6 @@ export function useSave(params: {
       addError: (message: string) => saveStats.errors.push(message)
     };
 
-    if (!runSaveHooks('beforeValidate', hookContext)) return;
-
     if (dirtyMaster.length === 0 && !Object.values(dirtyDetailByTab).some(arr => arr.length > 0)) {
       notifyInfo('没有需要保存的数据');
       return;
@@ -206,13 +203,9 @@ export function useSave(params: {
       }
     }
 
-    if (!runSaveHooks('afterValidate', hookContext)) return;
-
-    if (!runSaveHooks('beforeSave', hookContext)) return;
-
     const masterIdsToSave = new Set<number>();
     for (const row of dirtyMaster) {
-      masterIdsToSave.add(row.id);
+      if (row.id != null) masterIdsToSave.add(row.id);
     }
 
     for (const [masterId, tabData] of detailCache.entries()) {
@@ -234,11 +227,13 @@ export function useSave(params: {
       const cached = detailCache.get(masterId);
       if (cached) {
         for (const tab of pageConfig.value?.tabs || []) {
+          const tableCode = tab.tableCode || pageConfig.value?.detailTableCode;
+          if (!tableCode) continue;
           const rows = cached[tab.key] || [];
           const dirtyRows = rows.filter(r => r._isNew || r._isDeleted || r._dirtyFields);
           if (dirtyRows.length > 0) {
             const fkField = detailFkColumnByTab.value[tab.key] || 'masterId';
-            detailsMap[tab.tableCode] = dirtyRows.map(r => buildRecordItem(r, tab.tableCode, [fkField]));
+            detailsMap[tableCode] = dirtyRows.map(r => buildRecordItem(r, tableCode, [fkField]));
           }
         }
       }
@@ -251,7 +246,8 @@ export function useSave(params: {
 
       const { error, data } = await saveDynamicData(paramsToSave);
       if (error) {
-        saveStats.errors.push(`主表 ${masterId}: ${error.msg || '保存失败'}`);
+        const errorMessage = (error as any)?.response?.data?.msg || (error as any)?.msg || error.message || '保存失败';
+        saveStats.errors.push(`主表 ${masterId}: ${errorMessage}`);
       } else {
         const mapping = normalizeIdMapping((data as any)?.idMapping);
         if (mapping.size > 0) {
@@ -312,8 +308,6 @@ export function useSave(params: {
     }
 
     masterGridApi.value?.refreshCells({ force: true });
-
-    if (!runSaveHooks('afterSave', hookContext)) return;
 
     if (saveStats.errors.length > 0) {
       notifyError(`成功 ${saveStats.successCount} 条，失败 ${saveStats.errors.length} 条\n${saveStats.errors.join('\n')}`);

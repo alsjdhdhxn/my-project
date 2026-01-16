@@ -95,6 +95,7 @@ export function buildSummaryRow(params: {
   }
 
   return {
+    id: null,
     _tabKey: tab.key,
     _masterId: masterId,
     _detailRows: rows,

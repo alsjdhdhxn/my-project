@@ -1,6 +1,17 @@
 <template>
   <div class="meta-grid" :class="gridClass" :style="containerStyle">
+    <!-- 加载中 -->
+    <div v-if="status === 'loading'" class="meta-grid-placeholder">
+      <span>加载中...</span>
+    </div>
+    <!-- 错误状态 -->
+    <div v-else-if="status === 'error'" class="meta-grid-error">
+      <div class="meta-grid-error-icon">⚠️</div>
+      <div class="meta-grid-error-message">{{ errorMessage }}</div>
+    </div>
+    <!-- 正常渲染 -->
     <AgGridVue
+      v-else
       class="ag-theme-quartz"
       style="width: 100%; height: 100%"
       :rowData="rowData"
@@ -76,6 +87,9 @@ const containerStyle = computed(() => ({
 
 const gridClass = computed(() => gridConfig.value.className || '');
 
+const status = computed(() => state.value.status || 'ready');
+const errorMessage = computed(() => state.value.error?.message || '组件加载失败');
+
 const rowData = computed(() => unwrap(state.value.rowData) ?? []);
 const columnDefs = computed<ColDef[]>(() => unwrap(state.value.columnDefs) ?? []);
 const defaultColDef = computed<ColDef>(() => ({
@@ -119,5 +133,34 @@ function handleCellEditingStopped(event: any) {
 .meta-grid {
   width: 100%;
   height: 100%;
+}
+
+.meta-grid-placeholder,
+.meta-grid-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  color: #666;
+  background: #fafafa;
+  border: 1px dashed #ddd;
+  border-radius: 4px;
+}
+
+.meta-grid-error {
+  color: #d03050;
+  background: #fff2f0;
+  border-color: #ffccc7;
+}
+
+.meta-grid-error-icon {
+  font-size: 32px;
+  margin-bottom: 8px;
+}
+
+.meta-grid-error-message {
+  font-size: 14px;
 }
 </style>

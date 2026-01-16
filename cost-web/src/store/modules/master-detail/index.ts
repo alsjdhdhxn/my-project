@@ -477,15 +477,21 @@ export function useMasterDetailStore(pageCode: string) {
       
       for (const master of masterRows.value) {
         // 替换主表ID
-        if (mapping[master.id]) {
-          master.id = mapping[master.id];
+        if (master.id != null) {
+          const mappedMasterId = mapping[master.id];
+          if (mappedMasterId != null) {
+            master.id = mappedMasterId;
+          }
         }
         
         // 替换从表ID和外键
         if (master._details?.rows) {
           for (const detail of master._details.rows) {
-            if (mapping[detail.id]) {
-              detail.id = mapping[detail.id];
+            if (detail.id != null) {
+              const mappedDetailId = mapping[detail.id];
+              if (mappedDetailId != null) {
+                detail.id = mappedDetailId;
+              }
             }
           }
         }

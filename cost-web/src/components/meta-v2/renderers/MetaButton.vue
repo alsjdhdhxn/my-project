@@ -9,6 +9,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { NButton } from 'naive-ui';
+import type { ButtonProps } from 'naive-ui';
 import type { PageComponentWithRules } from '@/composables/meta-v2/types';
 
 type ButtonConfig = {
@@ -46,8 +47,8 @@ const config = computed(() => parseButtonConfig(props.component.componentConfig)
 const state = computed(() => resolveComponentState());
 
 const label = computed(() => config.value.label || config.value.text || props.component.componentKey);
-const buttonType = computed(() => config.value.type || 'default');
-const buttonSize = computed(() => config.value.size || 'medium');
+const buttonType = computed<ButtonProps['type']>(() => (config.value.type as ButtonProps['type']) || 'default');
+const buttonSize = computed<ButtonProps['size']>(() => (config.value.size as ButtonProps['size']) || 'medium');
 const isDisabled = computed(() => Boolean(config.value.disabled || state.value.disabled));
 
 function handleClick() {

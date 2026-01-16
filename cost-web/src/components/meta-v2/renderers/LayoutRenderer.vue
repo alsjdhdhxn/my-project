@@ -6,6 +6,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import type { CSSProperties } from 'vue';
 import MetaPageRenderer from '@/components/meta-v2/renderers/MetaPageRenderer.vue';
 import type { PageComponentWithRules } from '@/composables/meta-v2/types';
 
@@ -31,7 +32,7 @@ function parseLayoutConfig(config?: string): LayoutConfig {
   }
 }
 
-const layoutStyle = computed(() => {
+const layoutStyle = computed<CSSProperties>(() => {
   const config = parseLayoutConfig(props.component.componentConfig);
   const gap = config.gap != null ? (typeof config.gap === 'number' ? `${config.gap}px` : config.gap) : undefined;
   return {
@@ -42,7 +43,7 @@ const layoutStyle = computed(() => {
     justifyContent: config.justify,
     width: '100%',
     height: '100%'
-  };
+  } as CSSProperties;
 });
 </script>
 

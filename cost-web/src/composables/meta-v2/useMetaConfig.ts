@@ -103,8 +103,9 @@ function resolveLayoutKeys(
   };
   components.forEach(visit);
 
-  let masterGridKey = relation?.masterKey;
-  let detailTabsKey = relation?.detailKey;
+  const relationValue = relation as RelationRule | null;
+  let masterGridKey = relationValue?.masterKey;
+  let detailTabsKey = relationValue?.detailKey;
 
   if (!masterGridKey) {
     for (const [key, role] of roleMap.entries()) {
@@ -137,8 +138,8 @@ function resolveLayoutKeys(
   return {
     masterGridKey,
     detailTabsKey,
-    detailType: relation?.detailType,
-    splitConfig: relation?.splitConfig
+    detailType: relationValue?.detailType,
+    splitConfig: relationValue?.splitConfig
   };
 }
 
@@ -204,6 +205,7 @@ function inheritDetailGridOptions(master?: ResolvedGridOptions | null): Resolved
 export function useMetaConfig(pageCode: string, notifyError: (message: string) => void) {
   const pageConfig = shallowRef<ParsedPageConfig | null>(null);
   const pageComponents = shallowRef<PageComponentWithRules[]>([]);
+  const rulesByComponent = shallowRef<Map<string, PageRule[]>>(new Map());
   const broadcastFields = shallowRef<string[]>([]);
   const masterColumnDefs = shallowRef<ColDef[]>([]);
   const detailColumnsByTab = shallowRef<Record<string, ColDef[]>>({});
@@ -227,9 +229,10 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
 
   const masterLookupRules = shallowRef<LookupRule[]>([]);
   const detailLookupRulesByTab = shallowRef<Record<string, LookupRule[]>>({});
-  const componentStateByKey = shallowRef<Record<string, any>>({});
+  const layoutDetailTypeRef = shallowRef<string | null>(null);
+  const layoutSplitConfigRef = shallowRef<SplitLayoutConfig | null>(null);
 
-  async function loadMetadata() {
+  async function loadComponents() {
     const pageRes = await fetchPageComponents(pageCode);
     if (pageRes.error || !pageRes.data) {
       notifyError('加载页面配置失败');
@@ -239,16 +242,34 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
     const pageComponentsData = pageRes.data as PageComponentWithRules[];
     const pageComponentTree = buildComponentTree(pageComponentsData);
     pageComponents.value = pageComponentTree;
-    const rulesByComponent = groupRulesByComponent(collectPageRules(pageComponentTree));
+
+    const rulesMap = groupRulesByComponent(collectPageRules(pageComponentTree));
+    rulesByComponent.value = rulesMap;
+
     const {
       masterGridKey: resolvedMasterGridKey,
       detailTabsKey: resolvedDetailTabsKey,
       detailType,
       splitConfig
-    } = resolveLayoutKeys(pageComponentTree, rulesByComponent);
+    } = resolveLayoutKeys(pageComponentTree, rulesMap);
+
     masterGridKey.value = resolvedMasterGridKey ?? null;
     detailTabsKey.value = resolvedDetailTabsKey ?? null;
-    const config = parsePageComponents(pageComponentTree, {
+    layoutDetailTypeRef.value = detailType ?? null;
+    layoutSplitConfigRef.value = splitConfig || null;
+    return true;
+  }
+
+  function parseConfig() {
+    const components = pageComponents.value || [];
+    if (components.length === 0) {
+      notifyError('解析页面配置失败');
+      return false;
+    }
+
+    const resolvedMasterGridKey = masterGridKey.value ?? undefined;
+    const resolvedDetailTabsKey = detailTabsKey.value ?? undefined;
+    const config = parsePageComponents(components, {
       masterGridKey: resolvedMasterGridKey,
       detailTabsKey: resolvedDetailTabsKey
     });
@@ -257,13 +278,14 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
       return false;
     }
 
-    const tabsComponentKeys = collectComponentKeysByType(pageComponentTree, 'TABS');
+    const rulesMap = rulesByComponent.value;
+    const tabsComponentKeys = collectComponentKeysByType(components, 'TABS');
     const ruleKeys = resolvedDetailTabsKey ? [resolvedDetailTabsKey] : tabsComponentKeys;
     let detailTabsRules: PageRule[] = [];
     let detailTabsRuleLabel = resolvedDetailTabsKey || ruleKeys[0] || 'tabs';
 
     if (ruleKeys.length > 0) {
-      detailTabsRules = getComponentRules(rulesByComponent, ruleKeys);
+      detailTabsRules = getComponentRules(rulesMap, ruleKeys);
       detailTabsRuleLabel = resolvedDetailTabsKey || ruleKeys[0] || 'tabs';
       const broadcastOverride = parseBroadcastRuleConfig(detailTabsRuleLabel, detailTabsRules);
       if (broadcastOverride !== null) {
@@ -277,22 +299,41 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
       }
     }
 
-    const resolvedDetailType = detailType?.toLowerCase();
+    const resolvedDetailType = layoutDetailTypeRef.value?.toLowerCase();
     detailLayoutMode.value = resolvedDetailType === 'split' ? 'split' : 'nested';
-    detailSplitConfig.value = splitConfig || null;
+    detailSplitConfig.value = layoutSplitConfigRef.value || null;
 
     pageConfig.value = config;
-    componentStateByKey.value = {};
     broadcastFields.value = config.broadcast || [];
 
     const enterpriseOptions = normalizeGridOptions(enterpriseToGridOptions(config.enterpriseConfig));
-
     const masterRuleKeys = uniqueKeys([resolvedMasterGridKey, 'master', 'masterGrid']);
-    const masterRules = collectRulesByKeys(rulesByComponent, masterRuleKeys);
+    const masterRules = collectRulesByKeys(rulesMap, masterRuleKeys);
     const masterRuleLabel = resolvedMasterGridKey || 'master';
     const masterGridRuleOptions = normalizeGridOptions(parseGridOptionsRule(masterRuleLabel, masterRules));
     masterGridOptions.value = mergeGridOptions(enterpriseOptions, masterGridRuleOptions);
 
+    const detailBaseRuleOptions = normalizeGridOptions(parseGridOptionsRule(detailTabsRuleLabel, detailTabsRules));
+    const detailBaseOptions = mergeGridOptions(
+      inheritDetailGridOptions(masterGridOptions.value),
+      detailBaseRuleOptions
+    );
+
+    detailGridOptionsByTab.value = {};
+    for (const tab of config.tabs || []) {
+      const tabRules = getComponentRules(rulesMap, [tab.key]);
+      const tabGridRuleOptions = normalizeGridOptions(parseGridOptionsRule(tab.key, tabRules));
+      detailGridOptionsByTab.value[tab.key] = mergeGridOptions(detailBaseOptions, tabGridRuleOptions);
+    }
+
+    return true;
+  }
+
+  async function loadMeta() {
+    if (!pageConfig.value) return false;
+
+    const config = pageConfig.value;
+    const resolvedMasterGridKey = masterGridKey.value ?? undefined;
     const masterMeta = await loadTableMeta(config.masterTableCode, pageCode, resolvedMasterGridKey ?? 'masterGrid');
     if (!masterMeta) {
       notifyError('加载主表元数据失败');
@@ -310,8 +351,58 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
     );
     masterColumnDefs.value = masterColumns;
     masterRowClassGetter.value = masterMeta.getRowClass;
-
     masterColumnMeta.value = masterMeta.rawColumns || [];
+
+    detailColumnsByTab.value = {};
+    detailRowClassGetterByTab.value = {};
+    detailColumnMetaByTab.value = {};
+    detailFkColumnByTab.value = {};
+
+    for (const tab of config.tabs || []) {
+      const tableCode = tab.tableCode || config.detailTableCode;
+      if (!tableCode) continue;
+
+      const detailMeta = await loadTableMeta(tableCode, pageCode, tab.key);
+      if (!detailMeta) {
+        console.warn(`[load detail meta failed] ${tableCode}`);
+        continue;
+      }
+
+      const tabGridOptions = detailGridOptionsByTab.value[tab.key];
+      detailColumnsByTab.value[tab.key] = mergeCellClassRules(
+        applyGroupByColumns(
+          filterColumnsByVariant(
+            detailMeta.columns,
+            tab.variantKey,
+            detailMeta.rawColumns || []
+          ),
+          tabGridOptions?.groupBy
+        ),
+        DIRTY_CELL_CLASS_RULES
+      );
+      detailRowClassGetterByTab.value[tab.key] = detailMeta.getRowClass;
+
+      const fkColumnName = detailMeta.metadata.parentFkColumn;
+      detailFkColumnByTab.value[tab.key] = fkColumnName
+        ? (detailMeta.rawColumns.find(col => col.columnName.toUpperCase() === fkColumnName.toUpperCase())?.fieldName || 'masterId')
+        : 'masterId';
+
+      detailColumnMetaByTab.value[tab.key] = detailMeta.rawColumns || [];
+    }
+
+    return true;
+  }
+
+  function compileRules() {
+    const config = pageConfig.value;
+    if (!config) return false;
+
+    const resolvedMasterGridKey = masterGridKey.value ?? undefined;
+    const rulesMap = rulesByComponent.value;
+    const masterRuleKeys = uniqueKeys([resolvedMasterGridKey, 'master', 'masterGrid']);
+    const masterRules = collectRulesByKeys(rulesMap, masterRuleKeys);
+    const masterRuleLabel = resolvedMasterGridKey || 'master';
+
     const masterValidation = parseValidationRuleConfig(masterRuleLabel, masterRules);
     masterValidationRules.value = masterValidation.length > 0 ? masterValidation : parseValidationRules(masterColumnMeta.value);
 
@@ -336,59 +427,25 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
       compiledAggRules.value = [];
     }
 
-    const detailBaseRuleOptions = normalizeGridOptions(parseGridOptionsRule(detailTabsRuleLabel, detailTabsRules));
-    const detailBaseOptions = mergeGridOptions(
-      inheritDetailGridOptions(masterGridOptions.value),
-      detailBaseRuleOptions
-    );
-    detailRowClassGetterByTab.value = {};
-    detailGridOptionsByTab.value = {};
+    detailValidationRulesByTab.value = {};
+    detailLookupRulesByTab.value = {};
+    detailCalcRulesByTab.value = {};
 
     for (const tab of config.tabs || []) {
-      const tableCode = tab.tableCode || config.detailTableCode;
-      if (!tableCode) continue;
-
-      const detailMeta = await loadTableMeta(tableCode, pageCode, tab.key);
-      if (!detailMeta) {
-        console.warn(`[load detail meta failed] ${tableCode}`);
-        continue;
-      }
-
-      const tabRules = getComponentRules(rulesByComponent, [tab.key]);
-      const tabGridRuleOptions = normalizeGridOptions(parseGridOptionsRule(tab.key, tabRules));
-      const tabGridOptions = mergeGridOptions(detailBaseOptions, tabGridRuleOptions);
-      detailGridOptionsByTab.value[tab.key] = tabGridOptions;
-      detailColumnsByTab.value[tab.key] = mergeCellClassRules(
-        applyGroupByColumns(
-          filterColumnsByVariant(
-            detailMeta.columns,
-            tab.variantKey,
-            detailMeta.rawColumns || []
-          ),
-          tabGridOptions.groupBy
-        ),
-        DIRTY_CELL_CLASS_RULES
-      );
-      detailRowClassGetterByTab.value[tab.key] = detailMeta.getRowClass;
-
-      const fkColumnName = detailMeta.metadata.parentFkColumn;
-      detailFkColumnByTab.value[tab.key] = fkColumnName
-        ? (detailMeta.rawColumns.find(col => col.columnName.toUpperCase() === fkColumnName.toUpperCase())?.fieldName || 'masterId')
-        : 'masterId';
-
-      detailColumnMetaByTab.value[tab.key] = detailMeta.rawColumns || [];
+      const tabRules = getComponentRules(rulesMap, [tab.key]);
+      const rawColumns = detailColumnMetaByTab.value[tab.key] || [];
       const detailValidation = parseValidationRuleConfig(tab.key, tabRules);
       detailValidationRulesByTab.value[tab.key] = detailValidation.length > 0
         ? detailValidation
-        : parseValidationRules(detailMeta.rawColumns || []);
+        : parseValidationRules(rawColumns);
 
       const detailLookup = parseLookupRuleConfig(tab.key, tabRules);
       detailLookupRulesByTab.value[tab.key] = detailLookup.length > 0
         ? detailLookup
-        : extractLookupRules(detailMeta.rawColumns || []);
+        : extractLookupRules(rawColumns);
 
       const detailCalcRules = parseCalcRuleConfig(tab.key, tabRules);
-      const calcRules = detailCalcRules.length > 0 ? detailCalcRules : extractCalcRules(detailMeta.rawColumns);
+      const calcRules = detailCalcRules.length > 0 ? detailCalcRules : extractCalcRules(rawColumns);
       if (calcRules.length > 0) {
         detailCalcRulesByTab.value[tab.key] = compileCalcRules(calcRules, `${pageCode}_${tab.key}`);
         console.log(`[detail calc rules] ${tab.key}:`, calcRules.length, 'rules');
@@ -398,31 +455,43 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
     return true;
   }
 
-    return {
-      pageConfig,
-      pageComponents,
-      broadcastFields,
-      masterColumnDefs,
-      detailColumnsByTab,
-      detailCalcRulesByTab,
-      detailFkColumnByTab,
-      compiledAggRules,
-      compiledMasterCalcRules,
-      masterRowClassGetter,
-      detailRowClassGetterByTab,
-      masterGridOptions,
-      detailGridOptionsByTab,
-      detailLayoutMode,
-      detailSplitConfig,
-      masterGridKey,
-      detailTabsKey,
-      masterValidationRules,
-      detailValidationRulesByTab,
-      masterColumnMeta,
-      detailColumnMetaByTab,
-      masterLookupRules,
+  async function loadMetadata() {
+    const ok = await loadComponents();
+    if (!ok) return false;
+    if (!parseConfig()) return false;
+    if (!await loadMeta()) return false;
+    return compileRules();
+  }
+
+  return {
+    pageConfig,
+    pageComponents,
+    rulesByComponent,
+    broadcastFields,
+    masterColumnDefs,
+    detailColumnsByTab,
+    detailCalcRulesByTab,
+    detailFkColumnByTab,
+    compiledAggRules,
+    compiledMasterCalcRules,
+    masterRowClassGetter,
+    detailRowClassGetterByTab,
+    masterGridOptions,
+    detailGridOptionsByTab,
+    detailLayoutMode,
+    detailSplitConfig,
+    masterGridKey,
+    detailTabsKey,
+    masterValidationRules,
+    detailValidationRulesByTab,
+    masterColumnMeta,
+    detailColumnMetaByTab,
+    masterLookupRules,
     detailLookupRulesByTab,
-    componentStateByKey,
+    loadComponents,
+    parseConfig,
+    loadMeta,
+    compileRules,
     loadMetadata
   };
 }

@@ -111,8 +111,8 @@ export function useUserGridConfig(params: {
       return;
     }
 
-    const payload = normalizeColumns(state);
-    const { error } = await saveUserGridConfig(pageCode, resolvedKey, payload);
+    const payload: GridConfigPayload = { columns: normalizeColumns(state) };
+    const { error } = await saveUserGridConfig(pageCode, resolvedKey, payload.columns);
     if (error) {
       notifyError('保存列配置失败');
       return;

@@ -159,7 +159,7 @@ export const useRouteStore = defineStore(SetupStoreId.Route, () => {
     } else {
       const { data, error } = await fetchGetConstantRoutes();
 
-      if (!error) {
+      if (!error && data) {
         addConstantRoutes(data);
       } else {
         // if fetch constant routes failed, use static constant routes

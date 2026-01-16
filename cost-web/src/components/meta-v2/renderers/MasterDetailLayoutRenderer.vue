@@ -147,7 +147,8 @@ const {
   saveGridConfig
 } = runtime;
 
-const hasDetailTabs = computed(() => (pageConfig.value?.tabs?.length || 0) > 0);
+const detailFeatureEnabled = computed(() => runtime?.features?.detailTabs !== false);
+const hasDetailTabs = computed(() => detailFeatureEnabled.value && (pageConfig.value?.tabs?.length || 0) > 0);
 const isSplitMode = computed(() => detailLayoutMode?.value === 'split');
 const splitConfig = computed(() => ({
   defaultSize: detailSplitConfig?.value?.defaultSize ?? 0.5,
@@ -179,6 +180,7 @@ const {
   metaRowClassGetter: masterRowClassGetter?.value,
   gridOptions: masterGridOptions?.value,
   onSelectionChanged: async (rows) => {
+    if (!hasDetailTabs.value) return;
     const selected = rows?.[0];
     activeMasterId.value = selected?.id ?? null;
     if (activeMasterId.value == null) return;

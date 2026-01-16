@@ -1,7 +1,6 @@
 import type { ColDef } from 'ag-grid-community';
 import type { AggRule, CalcRule, ValidationRule, NestedConfig } from '@/logic/calc-engine';
 import type { LookupRule } from '@/composables/useMetaColumns';
-import { registerRuleParser } from '@/composables/meta-v2/registry';
 import type {
   PageRule,
   PageComponentWithRules,
@@ -58,7 +57,7 @@ function getRuleByType(rules: PageRule[], ruleType: string): PageRule | undefine
   return rules.find(rule => rule.ruleType === ruleType);
 }
 
-export function parseRuleArray<T>(rule: PageRule | undefined, label: string): T[] {
+function parseRuleArray<T>(rule: PageRule | undefined, label: string): T[] {
   if (!rule?.rules) return [];
   try {
     const raw = typeof rule.rules === 'string' ? JSON.parse(rule.rules) : rule.rules;
@@ -73,7 +72,7 @@ export function parseRuleArray<T>(rule: PageRule | undefined, label: string): T[
   }
 }
 
-export function parseRuleObject<T>(rule: PageRule | undefined, label: string): T | null {
+function parseRuleObject<T>(rule: PageRule | undefined, label: string): T | null {
   if (!rule?.rules) return null;
   try {
     const raw = typeof rule.rules === 'string' ? JSON.parse(rule.rules) : rule.rules;
@@ -213,16 +212,3 @@ export function attachGroupCellRenderer(columns: ColDef[]): ColDef[] {
     return { ...col, cellRenderer: 'agGroupCellRenderer' };
   });
 }
-
-registerRuleParser('COLUMN_OVERRIDE', ({ componentKey, rules }) => parseColumnOverrideConfig(componentKey, rules));
-registerRuleParser('VALIDATION', ({ componentKey, rules }) => parseValidationRuleConfig(componentKey, rules));
-registerRuleParser('LOOKUP', ({ componentKey, rules }) => parseLookupRuleConfig(componentKey, rules));
-registerRuleParser('CALC', ({ componentKey, rules }) => parseCalcRuleConfig(componentKey, rules));
-registerRuleParser('AGGREGATE', ({ componentKey, rules }) => parseAggregateRuleConfig(componentKey, rules));
-registerRuleParser('BROADCAST', ({ componentKey, rules }) => parseBroadcastRuleConfig(componentKey, rules));
-registerRuleParser('SUMMARY_CONFIG', ({ componentKey, rules }) => parseSummaryConfigRule(componentKey, rules));
-registerRuleParser('NESTED_CONFIG', ({ componentKey, rules }) => parseSummaryConfigRule(componentKey, rules));
-registerRuleParser('ROLE_BINDING', ({ componentKey, rules }) => parseRoleBindingRule(componentKey, rules));
-registerRuleParser('RELATION', ({ componentKey, rules }) => parseRelationRule(componentKey, rules));
-registerRuleParser('GRID_OPTIONS', ({ componentKey, rules }) => parseGridOptionsRule(componentKey, rules));
-registerRuleParser('GRID_FEATURES', ({ componentKey, rules }) => parseGridOptionsRule(componentKey, rules));
