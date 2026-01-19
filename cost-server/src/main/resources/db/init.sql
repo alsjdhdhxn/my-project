@@ -905,6 +905,28 @@ VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'detailTabs', 'BROADCAST',
 INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
 VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'detailTabs', 'SUMMARY_CONFIG',
 '{"enabled":true,"groupLabelField":"groupLabel","groupLabelHeader":"分类","summaryColumns":[{"field":"totalAmount","headerName":"汇总金额","width":120},{"field":"rowCount","headerName":"行数","width":80}],"summaryAggregates":[{"sourceField":"costBatch","targetField":"totalAmount","algorithm":"SUM"},{"sourceField":"costBatch","targetField":"rowCount","algorithm":"COUNT"}]}', 'system');
+INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'masterGrid', 'CONTEXT_MENU',
+'{"items":[{"action":"addRow"},{"action":"copyRow","requiresRow":true},{"action":"deleteRow","requiresRow":true},{"type":"separator"},{"action":"saveGridConfig"},{"type":"separator"},{"label":"\u5bfc\u51fa","items":[{"action":"exportSelected","requiresSelection":true},{"action":"exportCurrent"},{"action":"exportAll"},{"type":"separator"},{"action":"resetExportConfig"},{"action":"openHeaderConfig"}]},{"type":"separator"},{"action":"save"},{"type":"separator"},{"action":"clipboard.copy"},{"action":"clipboard.paste"}]}', 'system');
+
+INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'material', 'CONTEXT_MENU',
+'{"items":[{"action":"addRow"},{"action":"copyRow","requiresRow":true},{"action":"deleteRow","requiresRow":true},{"type":"separator"},{"action":"saveGridConfig"},{"type":"separator"},{"action":"clipboard.copy"},{"action":"clipboard.paste"}]}', 'system');
+
+INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'package', 'CONTEXT_MENU',
+'{"items":[{"action":"addRow"},{"action":"copyRow","requiresRow":true},{"action":"deleteRow","requiresRow":true},{"type":"separator"},{"action":"saveGridConfig"},{"type":"separator"},{"action":"clipboard.copy"},{"action":"clipboard.paste"}]}', 'system');
+INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'detailTabs', 'CONTEXT_MENU',
+'{"items":[{"action":"addRow"},{"action":"copyRow","requiresRow":true},{"action":"deleteRow","requiresRow":true},{"type":"separator"},{"action":"saveGridConfig"},{"type":"separator"},{"action":"clipboard.copy"},{"action":"clipboard.paste"}]}', 'system');
+
+INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'user-manage', 'grid', 'CONTEXT_MENU',
+'{"items":[{"action":"addRow"},{"action":"copyRow","requiresRow":true},{"action":"deleteRow","requiresRow":true},{"type":"separator"},{"action":"saveGridConfig"},{"type":"separator"},{"label":"\u5bfc\u51fa","items":[{"action":"exportSelected","requiresSelection":true},{"action":"exportCurrent"},{"action":"exportAll"},{"type":"separator"},{"action":"resetExportConfig"},{"action":"openHeaderConfig"}]},{"type":"separator"},{"action":"save"},{"type":"separator"},{"action":"clipboard.copy"},{"action":"clipboard.paste"}]}', 'system');
+
+INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'role-manage', 'grid', 'CONTEXT_MENU',
+'{"items":[{"action":"addRow"},{"action":"copyRow","requiresRow":true},{"action":"deleteRow","requiresRow":true},{"type":"separator"},{"action":"saveGridConfig"},{"type":"separator"},{"label":"\u5bfc\u51fa","items":[{"action":"exportSelected","requiresSelection":true},{"action":"exportCurrent"},{"action":"exportAll"},{"type":"separator"},{"action":"resetExportConfig"},{"action":"openHeaderConfig"}]},{"type":"separator"},{"action":"save"},{"type":"separator"},{"action":"clipboard.copy"},{"action":"clipboard.paste"}]}', 'system');
 
 COMMIT;
 

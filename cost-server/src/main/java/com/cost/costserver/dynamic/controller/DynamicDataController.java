@@ -38,7 +38,7 @@ public class DynamicDataController {
     public Result<PageResult<Map<String, Object>>> query(
             @PathVariable String tableCode,
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int pageSize,
+            @RequestParam(required = false) Integer pageSize,
             @RequestParam(required = false) String sortField,
             @RequestParam(required = false) String sortOrder,
             @RequestParam(required = false) String pageCode,
@@ -47,7 +47,7 @@ public class DynamicDataController {
 
         QueryParam param = new QueryParam();
         param.setPage(page);
-        param.setPageSize(pageSize);
+        param.setPageSize(pageSize != null ? pageSize : -1); // -1 表示不分页
         param.setSortField(sortField);
         param.setSortOrder(sortOrder);
         param.setPageCode(pageCode);
@@ -68,6 +68,11 @@ public class DynamicDataController {
         }
         param.setConditions(conditions);
 
+        // pageSize 为 null 或 -1 时不分页
+        if (pageSize == null || pageSize <= 0) {
+            List<Map<String, Object>> list = dynamicDataService.queryAllWithConditions(tableCode, param);
+            return Result.ok(new PageResult<>(list, list.size(), 1, list.size()));
+        }
         return Result.ok(dynamicDataService.query(tableCode, param));
     }
 
@@ -76,6 +81,12 @@ public class DynamicDataController {
     public Result<PageResult<Map<String, Object>>> search(
             @PathVariable String tableCode,
             @RequestBody QueryParam param) {
+        // pageSize 为空或 <= 0 时不分页
+        Integer pageSize = param != null ? param.getPageSize() : null;
+        if (pageSize == null || pageSize <= 0) {
+            List<Map<String, Object>> list = dynamicDataService.queryAllWithConditions(tableCode, param);
+            return Result.ok(new PageResult<>(list, list.size(), 1, list.size()));
+        }
         return Result.ok(dynamicDataService.query(tableCode, param));
     }
 

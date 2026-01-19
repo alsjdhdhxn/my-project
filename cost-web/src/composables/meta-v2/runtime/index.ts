@@ -9,6 +9,7 @@ import { useUserGridConfig } from '@/composables/meta-v2/useUserGridConfig';
 import { useExportExcel } from '@/composables/meta-v2/useExportExcel';
 import { useMasterGridBindings } from '@/composables/meta-v2/useMasterGridBindings';
 import { useAuthStore } from '@/store/modules/auth';
+import { executeAction as executeActionApi } from '@/service/api/dynamic';
 import { createRuntimeLogger } from './logger';
 import type { ComponentState, GridState, MetaError, RuntimeFeatures, RuntimeStage } from './types';
 
@@ -68,7 +69,8 @@ function findFirstGridKey(components: any[]): string | null {
 
 export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFeatures) {
   const { pageCode, notifyInfo, notifyError, notifySuccess } = options;
-  const resolvedFeatures = resolveFeatures(features);
+  const autoFeatureEnabled = !features;
+  const resolvedFeatures = ref<Required<RuntimeFeatures>>(resolveFeatures(features));
   const logger = createRuntimeLogger(pageCode, notifyError);
 
   const isReady = ref(false);
@@ -91,15 +93,15 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
   } = meta;
   const gridConfig = useUserGridConfig({ pageCode, notifyError, notifySuccess });
 
-  const recalcAggregatesRef = { current: (_masterId: number) => {} };
+  const recalcAggregatesRef = { current: (_masterId: number) => { } };
   const recalcAggregatesProxy = (masterId: number) => {
-    if (!resolvedFeatures.aggregates) return;
+    if (!resolvedFeatures.value.aggregates) return;
     recalcAggregatesRef.current(masterId);
   };
 
   const addRowHooks = {
-    onMasterRowAdded: (_row: any) => {},
-    onDetailRowAdded: (_masterId: number, _tabKey: string, _row: any) => {}
+    onMasterRowAdded: (_row: any) => { },
+    onDetailRowAdded: (_masterId: number, _tabKey: string, _row: any) => { }
   };
 
   const data = useMasterDetailData({
@@ -131,14 +133,14 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     calc.runMasterCalc(null, row);
   };
   addRowHooks.onDetailRowAdded = (masterId, tabKey, row) => {
-    if (!resolvedFeatures.detailTabs) return;
+    if (!resolvedFeatures.value.detailTabs) return;
     const api = detailGridApisByTab.value?.[tabKey];
     calc.runDetailCalc(null, api, row, masterId, tabKey);
   };
 
   recalcAggregatesRef.current = calc.recalcAggregates;
 
-  const lookup = resolvedFeatures.lookup ? useLookupDialog({
+  const lookup = useLookupDialog({
     masterRows: data.masterRows,
     detailCache: data.detailCache,
     masterGridApi,
@@ -149,13 +151,7 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     runDetailCalc: calc.runDetailCalc,
     recalcAggregates: recalcAggregatesProxy,
     detailGridApisByTab
-  }) : {
-    currentLookupRule: ref(null),
-    lookupDialogRef: ref(null),
-    onDetailCellClicked: () => {},
-    onLookupSelect: () => {},
-    onLookupCancel: () => {}
-  };
+  });
 
   const { save } = useSave({
     pageCode,
@@ -173,7 +169,7 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     notifySuccess
   });
 
-  const exportExcel = resolvedFeatures.export ? useExportExcel({
+  const exportExcel = useExportExcel({
     pageCode,
     masterGridApi,
     masterGridKey: meta.masterGridKey,
@@ -182,7 +178,26 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     notifyInfo,
     notifyError,
     notifySuccess
-  }) : {};
+  });
+
+  async function executeAction(actionCode: string, options?: { tableCode?: string; data?: Record<string, any> }) {
+    if (!actionCode) return;
+    const tableCode = options?.tableCode || meta.pageConfig.value?.masterTableCode;
+    if (!tableCode) {
+      notifyError('Action tableCode missing');
+      return;
+    }
+    const { error } = await executeActionApi(tableCode, {
+      actionCodes: [actionCode],
+      data: options?.data
+    });
+    if (error) {
+      notifyError('Action failed');
+      return;
+    }
+    notifySuccess('Action executed');
+    await data.loadMasterData();
+  }
 
   const runtimeApi = {
     pageCode,
@@ -193,11 +208,42 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     ...data,
     markFieldChange: calc.markFieldChange,
     runMasterCalc: calc.runMasterCalc,
-    runDetailCalc: resolvedFeatures.detailTabs ? calc.runDetailCalc : () => {},
-    recalcAggregates: resolvedFeatures.aggregates ? calc.recalcAggregates : () => {},
-    broadcastToDetail: resolvedFeatures.broadcast ? calc.broadcastToDetail : async () => {},
+    runDetailCalc: (node: any, api: any, row: any, masterId: number, tabKey: string) => {
+      if (!resolvedFeatures.value.detailTabs) return;
+      return calc.runDetailCalc(node, api, row, masterId, tabKey);
+    },
+    recalcAggregates: (masterId: number) => {
+      if (!resolvedFeatures.value.aggregates) return;
+      return calc.recalcAggregates(masterId);
+    },
+    broadcastToDetail: async (masterId: number, row: any) => {
+      if (!resolvedFeatures.value.broadcast) return;
+      return calc.broadcastToDetail(masterId, row);
+    },
     ...lookup,
     ...exportExcel,
+    onMasterCellClicked: (event: any) => {
+      if (!resolvedFeatures.value.lookup) return;
+      lookup.onMasterCellClicked(event);
+    },
+    onDetailCellClicked: (event: any, masterId: number, tabKey: string) => {
+      if (!resolvedFeatures.value.lookup) return;
+      lookup.onDetailCellClicked(event, masterId, tabKey);
+    },
+    onLookupSelect: (fillData: Record<string, any>) => {
+      if (!resolvedFeatures.value.lookup) return;
+      lookup.onLookupSelect(fillData);
+    },
+    onLookupCancel: () => {
+      if (!resolvedFeatures.value.lookup) return;
+      lookup.onLookupCancel();
+    },
+    exportSelected: () => resolvedFeatures.value.export ? exportExcel.exportSelected?.() : undefined,
+    exportCurrent: () => resolvedFeatures.value.export ? exportExcel.exportCurrent?.() : undefined,
+    exportAll: () => resolvedFeatures.value.export ? exportExcel.exportAll?.() : undefined,
+    resetExportConfig: () => resolvedFeatures.value.export ? exportExcel.resetExportConfig?.() : undefined,
+    openHeaderConfig: () => resolvedFeatures.value.export ? exportExcel.openHeaderConfig?.() : undefined,
+    executeAction,
     save,
     applyGridConfig: gridConfig.applyGridConfig,
     saveGridConfig: gridConfig.saveGridConfig
@@ -206,10 +252,58 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
   const runtimeStatus = ref<'loading' | 'ready' | 'error'>('loading');
   const runtimeError = ref<MetaError | null>(null);
 
-  function setComponentError(componentKey: string, stage: RuntimeStage, message: string, raw?: unknown) {
+  function resolveComponentType(componentKey: string) {
+    const components = meta.pageComponents.value || [];
+    const match = components.find(item => item.componentKey === componentKey);
+    return match?.componentType || 'UNKNOWN';
+  }
+
+  function applyErrorToState(componentKey: string, error: MetaError) {
+    const state = componentStateByKey.value[componentKey];
+    if (state) {
+      state.status = 'error';
+      state.error = error;
+      return;
+    }
+    componentStateByKey.value[componentKey] = {
+      componentKey,
+      componentType: resolveComponentType(componentKey),
+      status: 'error',
+      error
+    };
+  }
+
+  function reportComponentError(componentKey: string, stage: RuntimeStage, message: string, raw?: unknown) {
     const error = makeError({ pageCode, stage, message, componentKey, raw });
     componentErrors.value[componentKey] = error;
+    applyErrorToState(componentKey, error);
     logger.error(error);
+  }
+
+  function deriveFeaturesFromMeta(): Required<RuntimeFeatures> {
+    const hasTabs = (meta.pageConfig.value?.tabs?.length ?? 0) > 0;
+    const hasBroadcast = (meta.broadcastFields.value?.length ?? 0) > 0;
+    const hasAgg = (meta.compiledAggRules.value?.length ?? 0) > 0;
+    const masterLookup = (meta.masterLookupRules.value?.length ?? 0) > 0;
+    const detailLookup = Object.values(meta.detailLookupRulesByTab.value || {}).some(
+      list => (list?.length ?? 0) > 0
+    );
+    const hasLookup = masterLookup || detailLookup;
+    const hasGrid = Boolean(meta.masterGridKey.value || findFirstGridKey(meta.pageComponents.value || []));
+
+    return {
+      detailTabs: hasTabs,
+      broadcast: hasBroadcast,
+      aggregates: hasAgg,
+      lookup: hasLookup,
+      export: hasGrid,
+      contextMenu: hasGrid
+    };
+  }
+
+  function refreshAutoFeatures() {
+    if (!autoFeatureEnabled) return;
+    resolvedFeatures.value = deriveFeaturesFromMeta();
   }
 
   async function loadComponents() {
@@ -243,7 +337,7 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     const ok = await loadMetaRaw();
     if (!ok) {
       const key = meta.masterGridKey.value || findFirstGridKey(meta.pageComponents.value) || 'masterGrid';
-      setComponentError(key, 'loadMeta', 'Failed to load table metadata');
+      reportComponentError(key, 'loadMeta', 'Failed to load table metadata');
     }
     return ok;
   }
@@ -251,9 +345,10 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
   function compileRules() {
     logger.log('compileRules', 'start');
     const ok = compileRulesRaw();
+    refreshAutoFeatures();
     if (!ok) {
       const key = meta.masterGridKey.value || findFirstGridKey(meta.pageComponents.value) || 'masterGrid';
-      setComponentError(key, 'compileRules', 'Failed to compile rules');
+      reportComponentError(key, 'compileRules', 'Failed to compile rules');
     }
     return ok;
   }
@@ -319,7 +414,9 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
       metaRowClassGetter: meta.masterRowClassGetter?.value,
       gridOptions: meta.masterGridOptions?.value,
       columnDefs: meta.masterColumnDefs,
-      gridKey: masterKey
+      gridKey: masterKey,
+      contextMenuConfig: meta.masterContextMenu,
+      rowEditableRules: meta.masterRowEditableRules?.value
     });
 
     gridState.defaultColDef = bindings.defaultColDef;
@@ -327,7 +424,7 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     gridState.autoSizeStrategy = bindings.autoSizeStrategy;
     gridState.getRowId = bindings.getRowId;
     gridState.getRowClass = bindings.getRowClass;
-    gridState.getContextMenuItems = resolvedFeatures.contextMenu ? bindings.getContextMenuItems : undefined;
+    gridState.getContextMenuItems = resolvedFeatures.value.contextMenu ? bindings.getContextMenuItems : undefined;
     gridState.gridOptions = bindings.gridOptions;
     gridState.rowHeight = bindings.rowHeight;
     gridState.headerHeight = bindings.headerHeight;
@@ -365,6 +462,7 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     status: runtimeStatus,
     pageError: runtimeError,
     features: resolvedFeatures,
+    reportComponentError,
     init,
     loadComponents,
     parseConfig,

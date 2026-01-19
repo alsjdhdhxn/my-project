@@ -60,3 +60,26 @@ export type RelationRule = {
   detailType?: string;
   splitConfig?: SplitLayoutConfig;
 };
+
+export type ContextMenuItemRule = {
+  type?: 'action' | 'separator' | 'group';
+  action?: string;
+  label?: string;
+  items?: ContextMenuItemRule[];
+  visible?: boolean;
+  disabled?: boolean;
+  requiresRow?: boolean;
+  requiresSelection?: boolean;
+  permission?: string;
+};
+
+export type ContextMenuRule = {
+  items: ContextMenuItemRule[];
+};
+
+/** 行级可编辑规则 */
+export type RowEditableRule = {
+  field: string;
+  operator: 'notNull' | 'eq' | 'ne' | 'in' | 'notIn';
+  value?: any;
+};

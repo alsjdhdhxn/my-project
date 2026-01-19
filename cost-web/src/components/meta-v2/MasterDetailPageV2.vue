@@ -7,6 +7,14 @@
     <div v-else class="loading">
       <NSpin size="large" />
     </div>
+    <LookupDialog
+      v-if="currentLookupRule"
+      ref="lookupDialogRef"
+      :lookupCode="currentLookupRule.lookupCode"
+      :mapping="currentLookupRule.mapping"
+      @select="onLookupSelect"
+      @cancel="onLookupCancel"
+    />
   </div>
 </template>
 
@@ -14,6 +22,7 @@
 import { onMounted } from 'vue';
 import { NEmpty, NSpin, useMessage } from 'naive-ui';
 import MetaPageRenderer from '@/components/meta-v2/renderers/MetaPageRenderer.vue';
+import LookupDialog from '@/components/meta-v2/LookupDialog.vue';
 import { useMetaRuntime } from '@/composables/meta-v2/useMetaRuntime';
 
 const props = defineProps<{ pageCode: string }>();
@@ -27,6 +36,7 @@ const runtime = useMetaRuntime({
 });
 
 const { isReady, pageComponents, init } = runtime;
+const { lookupDialogRef, currentLookupRule, onLookupSelect, onLookupCancel } = runtime;
 const pageError = (runtime as any).pageError;
 
 onMounted(async () => {

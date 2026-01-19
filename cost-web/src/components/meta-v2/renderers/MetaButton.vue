@@ -1,16 +1,20 @@
 <template>
   <div class="meta-button">
-    <NButton :type="buttonType" :size="buttonSize" :disabled="isDisabled" @click="handleClick">
+    <div v-if="status === 'error'" class="meta-button-error">
+      {{ errorMessage }}
+    </div>
+    <NButton v-else :type="buttonType" :size="buttonSize" :disabled="isDisabled" @click="handleClick">
       {{ label }}
     </NButton>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, unref } from 'vue';
 import { NButton } from 'naive-ui';
 import type { ButtonProps } from 'naive-ui';
 import type { PageComponentWithRules } from '@/composables/meta-v2/types';
+import type { ComponentStateByKey, MetaRuntime } from '@/composables/meta-v2/runtime/types';
 
 type ButtonConfig = {
   text?: string;
@@ -19,11 +23,13 @@ type ButtonConfig = {
   size?: string;
   disabled?: boolean;
   action?: string;
+  tableCode?: string;
+  actionData?: Record<string, any>;
 };
 
 const props = defineProps<{
   component: PageComponentWithRules;
-  runtime: any;
+  runtime: MetaRuntime;
 }>();
 
 function parseButtonConfig(config?: string): ButtonConfig {
@@ -38,7 +44,7 @@ function parseButtonConfig(config?: string): ButtonConfig {
 
 function resolveComponentState(): Record<string, any> {
   const source = props.runtime?.componentStateByKey;
-  const stateByKey = source?.value ?? source;
+  const stateByKey = (source && 'value' in source ? source.value : source) as ComponentStateByKey | undefined;
   if (!stateByKey) return {};
   return stateByKey[props.component.componentKey] || {};
 }
@@ -49,7 +55,9 @@ const state = computed(() => resolveComponentState());
 const label = computed(() => config.value.label || config.value.text || props.component.componentKey);
 const buttonType = computed<ButtonProps['type']>(() => (config.value.type as ButtonProps['type']) || 'default');
 const buttonSize = computed<ButtonProps['size']>(() => (config.value.size as ButtonProps['size']) || 'medium');
-const isDisabled = computed(() => Boolean(config.value.disabled || state.value.disabled));
+const isDisabled = computed(() => Boolean(config.value.disabled || unref(state.value.disabled) || status.value === 'error'));
+const status = computed(() => state.value.status || 'ready');
+const errorMessage = computed(() => state.value.error?.message || 'Button render failed');
 
 function handleClick() {
   if (typeof state.value.onClick === 'function') {
@@ -57,8 +65,18 @@ function handleClick() {
     return;
   }
   const action = config.value.action;
-  if (action && typeof props.runtime?.[action] === 'function') {
-    props.runtime[action](props.component);
+  if (action) {
+    const runtime = props.runtime as Record<string, any>;
+    if (typeof runtime[action] === 'function') {
+      runtime[action](props.component);
+      return;
+    }
+    if (typeof runtime.executeAction === 'function') {
+      runtime.executeAction(action, {
+        tableCode: config.value.tableCode,
+        data: config.value.actionData
+      });
+    }
   }
 }
 </script>
@@ -66,5 +84,14 @@ function handleClick() {
 <style scoped>
 .meta-button {
   display: inline-flex;
+}
+
+.meta-button-error {
+  padding: 6px 10px;
+  border: 1px dashed #ffccc7;
+  border-radius: 4px;
+  color: #d03050;
+  background: #fff2f0;
+  font-size: 12px;
 }
 </style>

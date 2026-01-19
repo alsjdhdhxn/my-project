@@ -8,7 +8,9 @@ import type {
   GridOptionsRule,
   LookupRuleConfig,
   RoleBindingRule,
-  RelationRule
+  RelationRule,
+  ContextMenuRule,
+  RowEditableRule
 } from '@/composables/meta-v2/types';
 
 export function collectPageRules(components: PageComponentWithRules[]): PageRule[] {
@@ -181,6 +183,28 @@ export function parseGridOptionsRule(componentKey: string, rules: PageRule[]): G
   return parseRuleObject<GridOptionsRule>(rule, `${componentKey}.${rule.ruleType || 'GRID_OPTIONS'}`);
 }
 
+export function parseContextMenuRule(componentKey: string, rules: PageRule[]): ContextMenuRule | null {
+  const rule = getRuleByType(rules, 'CONTEXT_MENU');
+  if (!rule?.rules) return null;
+  try {
+    const raw = typeof rule.rules === 'string' ? JSON.parse(rule.rules) : rule.rules;
+    if (Array.isArray(raw)) {
+      return { items: raw };
+    }
+    if (raw && typeof raw === 'object') {
+      const obj = raw as { items?: unknown };
+      if (Array.isArray(obj.items)) {
+        return { items: obj.items };
+      }
+    }
+    console.warn(`[PageRule] ${componentKey}.CONTEXT_MENU is not a valid object`);
+    return null;
+  } catch (error) {
+    console.warn(`[PageRule] Failed to parse ${componentKey}.CONTEXT_MENU`, error);
+    return null;
+  }
+}
+
 export function applyColumnOverrides(columns: ColDef[], overrides: ColumnOverrideRule[]): ColDef[] {
   if (!overrides || overrides.length === 0) return columns;
   const overrideMap = new Map<string, ColumnOverrideRule>();
@@ -211,4 +235,51 @@ export function attachGroupCellRenderer(columns: ColDef[]): ColDef[] {
     if (idx !== index) return col;
     return { ...col, cellRenderer: 'agGroupCellRenderer' };
   });
+}
+
+/** 解析 ROW_EDITABLE 规则 */
+export function parseRowEditableRule(componentKey: string, rules: PageRule[]): RowEditableRule[] {
+  const rule = rules.find(r => r.ruleType === 'ROW_EDITABLE');
+  if (!rule?.rules) return [];
+  try {
+    const raw = typeof rule.rules === 'string' ? JSON.parse(rule.rules) : rule.rules;
+    if (Array.isArray(raw)) return raw as RowEditableRule[];
+    if (raw && typeof raw === 'object') return [raw as RowEditableRule];
+    return [];
+  } catch (error) {
+    console.warn(`[PageRule] Failed to parse ${componentKey}.ROW_EDITABLE`, error);
+    return [];
+  }
+}
+
+/** 根据 ROW_EDITABLE 规则生成 editable 回调 */
+export function buildRowEditableCallback(rules: RowEditableRule[]): ((params: any) => boolean) | undefined {
+  if (!rules || rules.length === 0) return undefined;
+  return (params: any) => {
+    const data = params.data;
+    if (!data) return true;
+    for (const rule of rules) {
+      const fieldValue = data[rule.field];
+      let passed = true;
+      switch (rule.operator) {
+        case 'notNull':
+          passed = fieldValue != null;
+          break;
+        case 'eq':
+          passed = fieldValue === rule.value;
+          break;
+        case 'ne':
+          passed = fieldValue !== rule.value;
+          break;
+        case 'in':
+          passed = Array.isArray(rule.value) && rule.value.includes(fieldValue);
+          break;
+        case 'notIn':
+          passed = !Array.isArray(rule.value) || !rule.value.includes(fieldValue);
+          break;
+      }
+      if (!passed) return false;
+    }
+    return true;
+  };
 }

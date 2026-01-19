@@ -1,6 +1,8 @@
-import { ref, type Ref } from 'vue';
+import { ref, type Ref, watch } from 'vue';
 import type { ColDef, GridReadyEvent, CellValueChangedEvent } from 'ag-grid-community';
 import { useGridContextMenu } from '@/composables/meta-v2/useGridContextMenu';
+import type { ContextMenuRule, RowEditableRule } from '@/composables/meta-v2/types';
+import { buildRowEditableCallback } from '@/composables/meta-v2/usePageRules';
 import {
   buildGridRuntimeOptions,
   autoSizeColumnsOnReady,
@@ -40,6 +42,8 @@ export function useMasterGridBindings(params: {
   columnDefs?: Ref<ColDef[]>;
   onSelectionChanged?: (rows: any[]) => void;
   gridKey?: string | null;
+  contextMenuConfig?: ContextMenuRule | null;
+  rowEditableRules?: RowEditableRule[];
 }) {
   const { runtime } = params;
   const isUserEditing = params.isUserEditing ?? ref(false);
@@ -47,16 +51,41 @@ export function useMasterGridBindings(params: {
   const gridOptions = params.gridOptions || null;
 
   const cellClassRules = DIRTY_CELL_CLASS_RULES;
+  const rowEditableRules = params.rowEditableRules
+    ?? (runtime as any).masterRowEditableRules?.value
+    ?? [];
+  const rowEditableCallback = buildRowEditableCallback(rowEditableRules);
 
   const defaultColDef: ColDef = {
     sortable: true,
     filter: true,
     resizable: true,
-    editable: true,
+    editable: rowEditableCallback ?? true,
     wrapText: true,
     autoHeight: true,
     cellClassRules
   };
+
+  function wrapColumnEditable(def: ColDef, callback: (params: any) => boolean) {
+    if (!def || (def as any).__rowEditableWrapped) return;
+    const existing = def.editable;
+    def.editable = (params: any) => {
+      const base = typeof existing === 'function' ? existing(params) : existing === false ? false : true;
+      return base && callback(params);
+    };
+    (def as any).__rowEditableWrapped = true;
+  }
+
+  if (rowEditableCallback && params.columnDefs) {
+    watch(
+      params.columnDefs,
+      (defs) => {
+        if (!Array.isArray(defs)) return;
+        defs.forEach(def => wrapColumnEditable(def, rowEditableCallback));
+      },
+      { immediate: true }
+    );
+  }
 
   const autoSizeStrategy = undefined;
   const rowSelection = {
@@ -96,7 +125,8 @@ export function useMasterGridBindings(params: {
     exportAll: runtime.exportAll,
     resetExportConfig: runtime.resetExportConfig,
     openHeaderConfig: runtime.openHeaderConfig,
-    masterGridKey
+    masterGridKey,
+    masterMenuConfig: params.contextMenuConfig
   });
 
   function onGridReady(params: GridReadyEvent) {

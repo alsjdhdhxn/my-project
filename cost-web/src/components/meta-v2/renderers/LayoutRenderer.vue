@@ -1,5 +1,5 @@
 <template>
-  <div class="meta-layout" :style="layoutStyle">
+  <div class="meta-layout" :class="layoutClass" :style="layoutStyle">
     <MetaPageRenderer :components="component.children || []" :runtime="runtime" />
   </div>
 </template>
@@ -15,6 +15,11 @@ type LayoutConfig = {
   gap?: number | string;
   align?: string;
   justify?: string;
+  width?: string | number;
+  height?: string | number;
+  flex?: string | number;
+  className?: string;
+  fill?: boolean;
 };
 
 const props = defineProps<{
@@ -32,17 +37,30 @@ function parseLayoutConfig(config?: string): LayoutConfig {
   }
 }
 
+function toCssSize(value?: string | number) {
+  if (value == null) return undefined;
+  return typeof value === 'number' ? `${value}px` : value;
+}
+
+const layoutClass = computed(() => {
+  const config = parseLayoutConfig(props.component.componentConfig);
+  return config.className || '';
+});
+
 const layoutStyle = computed<CSSProperties>(() => {
   const config = parseLayoutConfig(props.component.componentConfig);
   const gap = config.gap != null ? (typeof config.gap === 'number' ? `${config.gap}px` : config.gap) : undefined;
+  const isRoot = !props.component.parentKey;
+  const fill = config.fill ?? isRoot;
   return {
     display: 'flex',
     flexDirection: config.direction === 'horizontal' ? 'row' : 'column',
     gap,
     alignItems: config.align,
     justifyContent: config.justify,
-    width: '100%',
-    height: '100%'
+    width: toCssSize(config.width) || '100%',
+    height: toCssSize(config.height) || (fill ? '100%' : undefined),
+    flex: config.flex as CSSProperties['flex']
   } as CSSProperties;
 });
 </script>
@@ -50,6 +68,5 @@ const layoutStyle = computed<CSSProperties>(() => {
 <style scoped>
 .meta-layout {
   width: 100%;
-  height: 100%;
 }
 </style>

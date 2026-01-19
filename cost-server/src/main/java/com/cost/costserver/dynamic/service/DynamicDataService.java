@@ -45,7 +45,7 @@ public class DynamicDataService {
     public PageResult<Map<String, Object>> query(String tableCode, QueryParam param) {
         // Lookup 查询放行：不校验 pageCode，不注入数据权限
         boolean isLookup = param != null && Boolean.TRUE.equals(param.getLookup());
-        
+
         if (!isLookup) {
             if (param == null || StrUtil.isBlank(param.getPageCode())) {
                 throw new BusinessException(400, "pageCode不能为空");
@@ -65,7 +65,7 @@ public class DynamicDataService {
 
         String queryView = metadata.queryView();
         String whereClause = buildWhereClause(param != null ? param.getConditions() : null, columnMap);
-        
+
         // 注入数据权限条件（Lookup 查询不注入）
         if (!isLookup && param != null && StrUtil.isNotBlank(param.getPageCode())) {
             Long userId = SecurityUtils.getCurrentUserId();
@@ -73,23 +73,22 @@ public class DynamicDataService {
             String dataRuleClause = buildDataRuleClause(permission, columnMap);
             whereClause = whereClause + dataRuleClause;
         }
-        
+
         String orderClause = buildOrderClause(
-            param != null ? param.getSortField() : null, 
-            param != null ? param.getSortOrder() : null, 
-            columnMap
-        );
+                param != null ? param.getSortField() : null,
+                param != null ? param.getSortOrder() : null,
+                columnMap);
 
         String countSql = String.format("SELECT COUNT(*) FROM %s WHERE DELETED = 0 %s", queryView, whereClause);
         Long total = dynamicMapper.selectCount(countSql);
 
         int page = param != null ? param.getPage() : 1;
-        int pageSize = param != null ? param.getPageSize() : 20;
+        Integer pSize = param != null ? param.getPageSize() : null;
+        int pageSize = (pSize != null && pSize > 0) ? pSize : 20;
         int offset = (page - 1) * pageSize;
         String dataSql = String.format(
-            "SELECT * FROM (SELECT t.*, ROWNUM rn FROM (SELECT * FROM %s WHERE DELETED = 0 %s %s) t WHERE ROWNUM <= %d) WHERE rn > %d",
-            queryView, whereClause, orderClause, offset + pageSize, offset
-        );
+                "SELECT * FROM (SELECT t.*, ROWNUM rn FROM (SELECT * FROM %s WHERE DELETED = 0 %s %s) t WHERE ROWNUM <= %d) WHERE rn > %d",
+                queryView, whereClause, orderClause, offset + pageSize, offset);
 
         List<Map<String, Object>> list = dynamicMapper.selectList(dataSql);
         list = list.stream().map(row -> convertToCamelCase(row, columnMap)).collect(Collectors.toList());
@@ -97,7 +96,7 @@ public class DynamicDataService {
         // 合并历史对比数据
         mergeHistoryData(list, metadata, columnMap);
 
-        return new PageResult<>(list, total, param.getPage(), param.getPageSize());
+        return new PageResult<>(list, total, page, pageSize);
     }
 
     /**
@@ -133,12 +132,12 @@ public class DynamicDataService {
         }
 
         String orderClause = buildOrderClause(
-            param != null ? param.getSortField() : null,
-            param != null ? param.getSortOrder() : null,
-            columnMap
-        );
+                param != null ? param.getSortField() : null,
+                param != null ? param.getSortOrder() : null,
+                columnMap);
 
-        String sql = String.format("SELECT * FROM %s WHERE DELETED = 0 %s %s", metadata.queryView(), whereClause, orderClause);
+        String sql = String.format("SELECT * FROM %s WHERE DELETED = 0 %s %s", metadata.queryView(), whereClause,
+                orderClause);
         List<Map<String, Object>> list = dynamicMapper.selectList(sql);
         return list.stream().map(row -> convertToCamelCase(row, columnMap)).collect(Collectors.toList());
     }
@@ -147,22 +146,22 @@ public class DynamicDataService {
         if (permission == null || permission.dataRules() == null || permission.dataRules().isEmpty()) {
             return "";
         }
-        
+
         StringBuilder sb = new StringBuilder();
         for (DataRule rule : permission.dataRules()) {
             if (StrUtil.isBlank(rule.fieldName()) || StrUtil.isBlank(rule.operator())) {
                 continue;
             }
-            
+
             ColumnMetadataDTO col = columnMap.get(rule.fieldName());
             String columnName = col != null ? col.columnName() : camelToUnderscore(rule.fieldName());
-            
+
             // 解析值（支持占位符）
             String value = resolveValue(rule.value(), rule.valueType());
             if (value == null) {
                 continue;
             }
-            
+
             sb.append(" AND ");
             switch (rule.operator()) {
                 case "eq" -> sb.append(columnName).append(" = ").append(formatRuleValue(value, col));
@@ -186,12 +185,12 @@ public class DynamicDataService {
         if (value == null) {
             return null;
         }
-        
+
         if ("placeholder".equals(valueType)) {
             // 解析占位符
             Long userId = SecurityUtils.getCurrentUserId();
             String username = SecurityUtils.getCurrentUsername();
-            
+
             return switch (value) {
                 case "${userId}" -> userId != null ? userId.toString() : null;
                 case "${username}" -> username;
@@ -202,7 +201,7 @@ public class DynamicDataService {
                 }
             };
         }
-        
+
         return value;
     }
 
@@ -235,7 +234,7 @@ public class DynamicDataService {
         Map<String, ColumnMetadataDTO> columnMap = buildColumnMap(metadata);
 
         String sql = String.format("SELECT * FROM %s WHERE %s = %d AND DELETED = 0",
-            metadata.queryView(), metadata.pkColumn(), id);
+                metadata.queryView(), metadata.pkColumn(), id);
 
         List<Map<String, Object>> list = dynamicMapper.selectList(sql);
         if (list.isEmpty()) {
@@ -263,12 +262,12 @@ public class DynamicDataService {
 
         for (Map.Entry<String, Object> entry : data.entrySet()) {
             ColumnMetadataDTO col = columnMap.get(entry.getKey());
-            
+
             // 跳过虚拟列
             if (col != null && Boolean.TRUE.equals(col.isVirtual())) {
                 continue;
             }
-            
+
             // 优先用 targetColumn，其次 columnName，最后转换
             String columnName = getTargetColumnName(col, entry.getKey());
 
@@ -285,7 +284,7 @@ public class DynamicDataService {
         }
 
         String sql = String.format("INSERT INTO %s (%s) VALUES (%s)",
-            metadata.targetTable(), columns, values);
+                metadata.targetTable(), columns, values);
 
         dynamicMapper.insert(sql);
         return id;
@@ -293,6 +292,7 @@ public class DynamicDataService {
 
     /**
      * 主从表批量保存
+     * 
      * @param param 包含主表和从表数据，通过 tempId/masterTempId 关联
      * @return 主表真实 ID
      */
@@ -323,7 +323,8 @@ public class DynamicDataService {
                 String fkFieldName = underscoreToCamel(fkColumn);
 
                 for (Map<String, Object> row : detail.getRows()) {
-                    if (row == null) continue;
+                    if (row == null)
+                        continue;
                     String rowMasterTempId = (String) row.get("masterTempId");
                     // 只处理关联到当前主表的从表记录
                     if (masterTempId != null && masterTempId.equals(rowMasterTempId)) {
@@ -360,12 +361,12 @@ public class DynamicDataService {
         StringBuilder setClause = new StringBuilder();
         for (Map.Entry<String, Object> entry : data.entrySet()) {
             ColumnMetadataDTO col = columnMap.get(entry.getKey());
-            
+
             // 跳过虚拟列
             if (col != null && Boolean.TRUE.equals(col.isVirtual())) {
                 continue;
             }
-            
+
             String columnName = getTargetColumnName(col, entry.getKey());
 
             if (col == null && !isAuditField(entry.getKey())) {
@@ -383,7 +384,7 @@ public class DynamicDataService {
         }
 
         String sql = String.format("UPDATE %s SET %s WHERE %s = %d AND DELETED = 0",
-            metadata.targetTable(), setClause, metadata.pkColumn(), id);
+                metadata.targetTable(), setClause, metadata.pkColumn(), id);
 
         int rows = dynamicMapper.update(sql);
         if (rows == 0) {
@@ -408,17 +409,15 @@ public class DynamicDataService {
                 continue;
             }
             String childSql = String.format(
-                "UPDATE %s SET DELETED = 1, UPDATE_TIME = TO_TIMESTAMP('%s', 'YYYY-MM-DD HH24:MI:SS'), UPDATE_BY = 'system' WHERE %s = %d AND DELETED = 0",
-                child.targetTable(), now, child.parentFkColumn(), id
-            );
+                    "UPDATE %s SET DELETED = 1, UPDATE_TIME = TO_TIMESTAMP('%s', 'YYYY-MM-DD HH24:MI:SS'), UPDATE_BY = 'system' WHERE %s = %d AND DELETED = 0",
+                    child.targetTable(), now, child.parentFkColumn(), id);
             dynamicMapper.delete(childSql);
         }
 
         // 2. 再删除主表数据
         String sql = String.format(
-            "UPDATE %s SET DELETED = 1, UPDATE_TIME = TO_TIMESTAMP('%s', 'YYYY-MM-DD HH24:MI:SS'), UPDATE_BY = 'system' WHERE %s = %d AND DELETED = 0",
-            metadata.targetTable(), now, metadata.pkColumn(), id
-        );
+                "UPDATE %s SET DELETED = 1, UPDATE_TIME = TO_TIMESTAMP('%s', 'YYYY-MM-DD HH24:MI:SS'), UPDATE_BY = 'system' WHERE %s = %d AND DELETED = 0",
+                metadata.targetTable(), now, metadata.pkColumn(), id);
 
         int rows = dynamicMapper.delete(sql);
         if (rows == 0) {
@@ -428,11 +427,11 @@ public class DynamicDataService {
 
     private Map<String, ColumnMetadataDTO> buildColumnMap(TableMetadataDTO metadata) {
         return metadata.columns().stream()
-            .collect(Collectors.toMap(ColumnMetadataDTO::fieldName, c -> c));
+                .collect(Collectors.toMap(ColumnMetadataDTO::fieldName, c -> c));
     }
 
-    
-    private String buildWhereClause(List<QueryParam.QueryCondition> conditions, Map<String, ColumnMetadataDTO> columnMap) {
+    private String buildWhereClause(List<QueryParam.QueryCondition> conditions,
+            Map<String, ColumnMetadataDTO> columnMap) {
         if (conditions == null || conditions.isEmpty()) {
             return "";
         }
@@ -466,8 +465,10 @@ public class DynamicDataService {
 
             String clause = null;
             switch (op) {
-                case "eq" -> clause = columnName + (value == null ? " IS NULL" : " = " + formatValue(value, col, fieldName));
-                case "ne" -> clause = columnName + (value == null ? " IS NOT NULL" : " <> " + formatValue(value, col, fieldName));
+                case "eq" ->
+                    clause = columnName + (value == null ? " IS NULL" : " = " + formatValue(value, col, fieldName));
+                case "ne" -> clause = columnName
+                        + (value == null ? " IS NOT NULL" : " <> " + formatValue(value, col, fieldName));
                 case "gt" -> clause = columnName + " > " + formatValue(value, col, fieldName);
                 case "ge" -> clause = columnName + " >= " + formatValue(value, col, fieldName);
                 case "lt" -> clause = columnName + " < " + formatValue(value, col, fieldName);
@@ -476,7 +477,7 @@ public class DynamicDataService {
                 case "between" -> {
                     if (cond.getValue2() != null) {
                         clause = columnName + " BETWEEN " + formatValue(value, col, fieldName) + " AND "
-                            + formatValue(cond.getValue2(), col, fieldName);
+                                + formatValue(cond.getValue2(), col, fieldName);
                     }
                 }
                 case "in" -> {
@@ -495,8 +496,7 @@ public class DynamicDataService {
         return sb.toString();
     }
 
-
-private String buildInClause(Object value, ColumnMetadataDTO col, String fieldName) {
+    private String buildInClause(Object value, ColumnMetadataDTO col, String fieldName) {
         if (value == null) {
             return null;
         }
@@ -538,7 +538,7 @@ private String buildInClause(Object value, ColumnMetadataDTO col, String fieldNa
             return "NULL";
         }
         String strValue = escapeSql(value.toString());
-        
+
         // 审计字段中的时间字段
         if ("createTime".equals(fieldName) || "updateTime".equals(fieldName)) {
             return String.format("TO_TIMESTAMP('%s', 'YYYY-MM-DD HH24:MI:SS')", strValue);
@@ -547,7 +547,7 @@ private String buildInClause(Object value, ColumnMetadataDTO col, String fieldNa
         if ("id".equals(fieldName) || "deleted".equals(fieldName)) {
             return validateAndFormatNumber(strValue);
         }
-        
+
         if (col != null && ("date".equals(col.dataType()) || "datetime".equals(col.dataType()))) {
             return String.format("TO_TIMESTAMP('%s', 'YYYY-MM-DD HH24:MI:SS')", strValue);
         }
@@ -572,14 +572,15 @@ private String buildInClause(Object value, ColumnMetadataDTO col, String fieldNa
     }
 
     private String escapeSql(String value) {
-        if (value == null) return "";
+        if (value == null)
+            return "";
         return value.replace("'", "''");
     }
 
     private Map<String, Object> convertToCamelCase(Map<String, Object> row, Map<String, ColumnMetadataDTO> columnMap) {
         Map<String, Object> result = new LinkedHashMap<>();
         Map<String, String> reverseMap = columnMap.values().stream()
-            .collect(Collectors.toMap(c -> c.columnName().toUpperCase(), ColumnMetadataDTO::fieldName));
+                .collect(Collectors.toMap(c -> c.columnName().toUpperCase(), ColumnMetadataDTO::fieldName));
 
         for (Map.Entry<String, Object> entry : row.entrySet()) {
             String key = entry.getKey().toUpperCase();
@@ -655,13 +656,17 @@ private String buildInClause(Object value, ColumnMetadataDTO col, String fieldNa
     }
 
     private Long extractTempId(Map<String, Object> data) {
-        if (data == null) return null;
+        if (data == null)
+            return null;
         Object raw = data.get("id");
-        if (raw == null) return null;
-        if (raw instanceof Number) return ((Number) raw).longValue();
+        if (raw == null)
+            return null;
+        if (raw instanceof Number)
+            return ((Number) raw).longValue();
         if (raw instanceof String) {
             String value = ((String) raw).trim();
-            if (value.isEmpty()) return null;
+            if (value.isEmpty())
+                return null;
             try {
                 return Long.parseLong(value);
             } catch (NumberFormatException ignored) {
@@ -699,8 +704,8 @@ private String buildInClause(Object value, ColumnMetadataDTO col, String fieldNa
         master.getData().remove("_tableCode");
 
         // 开始操作日志记录
-        String operationType = "added".equals(master.getStatus()) ? "INSERT" : 
-                              "deleted".equals(master.getStatus()) ? "DELETE" : "UPDATE";
+        String operationType = "added".equals(master.getStatus()) ? "INSERT"
+                : "deleted".equals(master.getStatus()) ? "DELETE" : "UPDATE";
         OperationLogContext.start(operationType, masterTableCode, currentUser);
 
         final String userName = currentUser; // for lambda
@@ -727,8 +732,8 @@ private String buildInClause(Object value, ColumnMetadataDTO col, String fieldNa
                     }
                     // 审计日志 - 新增
                     TableMetadataDTO masterMeta = metadataService.getTableMetadata(masterTableCode);
-                    auditLogService.logInsert(userName, param.getPageCode(), masterTableCode, 
-                        masterMeta.tableName(), masterId, master.getData());
+                    auditLogService.logInsert(userName, param.getPageCode(), masterTableCode,
+                            masterMeta.tableName(), masterId, master.getData());
                 }
                 case "modified" -> {
                     masterId = master.getId();
@@ -736,7 +741,7 @@ private String buildInClause(Object value, ColumnMetadataDTO col, String fieldNa
                     // 审计日志 - 修改（只记录用户变更）
                     TableMetadataDTO masterMeta = metadataService.getTableMetadata(masterTableCode);
                     auditLogService.logAsync(userName, param.getPageCode(), masterTableCode,
-                        masterMeta.tableName(), masterId, "UPDATE", master.getChanges());
+                            masterMeta.tableName(), masterId, "UPDATE", master.getChanges());
                 }
                 case "deleted" -> {
                     masterId = master.getId();
@@ -744,7 +749,7 @@ private String buildInClause(Object value, ColumnMetadataDTO col, String fieldNa
                     // 审计日志 - 删除
                     TableMetadataDTO masterMeta = metadataService.getTableMetadata(masterTableCode);
                     auditLogService.logDelete(userName, param.getPageCode(), masterTableCode,
-                        masterMeta.tableName(), masterId);
+                            masterMeta.tableName(), masterId);
                 }
                 case "unchanged" -> masterId = master.getId();
                 default -> throw new BusinessException(400, "无效的主表状态: " + master.getStatus());
@@ -767,14 +772,16 @@ private String buildInClause(Object value, ColumnMetadataDTO col, String fieldNa
                     String detailTableCode = entry.getKey();
                     List<com.cost.costserver.dynamic.dto.SaveParam.RecordItem> items = entry.getValue();
 
-                    if (items == null || items.isEmpty()) continue;
+                    if (items == null || items.isEmpty())
+                        continue;
 
                     TableMetadataDTO detailMeta = metadataService.getTableMetadata(detailTableCode);
                     String fkColumn = detailMeta.parentFkColumn();
                     String fkFieldName = StrUtil.isNotBlank(fkColumn) ? underscoreToCamel(fkColumn) : null;
 
                     for (var item : items) {
-                        if (item == null || "unchanged".equals(item.getStatus())) continue;
+                        if (item == null || "unchanged".equals(item.getStatus()))
+                            continue;
 
                         // 后端验证 - 从表（非删除操作）
                         ValidationReport detailValidationReport = null;
@@ -801,25 +808,27 @@ private String buildInClause(Object value, ColumnMetadataDTO col, String fieldNa
                                 }
                                 Map<String, Object> actionData = new HashMap<>(item.getData());
                                 actionData.put("id", detailId);
-                                actionService.execute(detailTableCode, "after_save", null, actionData, detailValidationReport);
+                                actionService.execute(detailTableCode, "after_save", null, actionData,
+                                        detailValidationReport);
                                 // 审计日志 - 从表新增
                                 auditLogService.logInsert(userName, param.getPageCode(), detailTableCode,
-                                    detailMeta.tableName(), detailId, item.getData());
+                                        detailMeta.tableName(), detailId, item.getData());
                             }
                             case "modified" -> {
                                 update(detailTableCode, item.getId(), item.getData());
                                 Map<String, Object> actionData = new HashMap<>(item.getData());
                                 actionData.put("id", item.getId());
-                                actionService.execute(detailTableCode, "after_save", null, actionData, detailValidationReport);
+                                actionService.execute(detailTableCode, "after_save", null, actionData,
+                                        detailValidationReport);
                                 // 审计日志 - 从表修改
                                 auditLogService.logAsync(userName, param.getPageCode(), detailTableCode,
-                                    detailMeta.tableName(), item.getId(), "UPDATE", item.getChanges());
+                                        detailMeta.tableName(), item.getId(), "UPDATE", item.getChanges());
                             }
                             case "deleted" -> {
                                 delete(detailTableCode, item.getId());
                                 // 审计日志 - 从表删除
                                 auditLogService.logDelete(userName, param.getPageCode(), detailTableCode,
-                                    detailMeta.tableName(), item.getId());
+                                        detailMeta.tableName(), item.getId());
                             }
                         }
                     }
@@ -845,57 +854,63 @@ private String buildInClause(Object value, ColumnMetadataDTO col, String fieldNa
      * 2. 查询历史表（表名_HIS）中昨天的数据
      * 3. 按 ID 合并，添加 xxxHis 字段
      */
-    private void mergeHistoryData(List<Map<String, Object>> list, TableMetadataDTO metadata, Map<String, ColumnMetadataDTO> columnMap) {
-        if (list == null || list.isEmpty()) return;
-        
+    private void mergeHistoryData(List<Map<String, Object>> list, TableMetadataDTO metadata,
+            Map<String, ColumnMetadataDTO> columnMap) {
+        if (list == null || list.isEmpty())
+            return;
+
         // 1. 找出需要对比的列
         List<CompareColumn> compareColumns = new ArrayList<>();
         for (ColumnMetadataDTO col : metadata.columns()) {
-            if (StrUtil.isBlank(col.rulesConfig())) continue;
+            if (StrUtil.isBlank(col.rulesConfig()))
+                continue;
             try {
                 cn.hutool.json.JSONObject config = cn.hutool.json.JSONUtil.parseObj(col.rulesConfig());
                 cn.hutool.json.JSONObject compare = config.getJSONObject("compare");
                 if (compare != null && compare.getBool("enabled", false)) {
                     compareColumns.add(new CompareColumn(
-                        col.fieldName(),
-                        col.columnName(),
-                        compare.getStr("format", "value") // value/percent/both
+                            col.fieldName(),
+                            col.columnName(),
+                            compare.getStr("format", "value") // value/percent/both
                     ));
                 }
             } catch (Exception e) {
                 log.warn("解析 compare 配置失败: {}", col.fieldName(), e);
             }
         }
-        
-        if (compareColumns.isEmpty()) return;
-        
+
+        if (compareColumns.isEmpty())
+            return;
+
         // 2. 构建历史表名（约定：TARGET_TABLE + _HIS）
         String historyTable = metadata.targetTable() + "_HIS";
-        
+
         // 3. 收集所有 ID
         List<Long> ids = list.stream()
-            .map(row -> {
-                Object id = row.get("id");
-                if (id instanceof Number) return ((Number) id).longValue();
-                if (id instanceof String) return Long.parseLong((String) id);
-                return null;
-            })
-            .filter(Objects::nonNull)
-            .collect(Collectors.toList());
-        
-        if (ids.isEmpty()) return;
-        
+                .map(row -> {
+                    Object id = row.get("id");
+                    if (id instanceof Number)
+                        return ((Number) id).longValue();
+                    if (id instanceof String)
+                        return Long.parseLong((String) id);
+                    return null;
+                })
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+
+        if (ids.isEmpty())
+            return;
+
         // 4. 构建查询历史数据的 SQL
         String idList = ids.stream().map(String::valueOf).collect(Collectors.joining(","));
         String columnList = compareColumns.stream()
-            .map(c -> c.columnName)
-            .collect(Collectors.joining(", "));
-        
+                .map(c -> c.columnName)
+                .collect(Collectors.joining(", "));
+
         String historySql = String.format(
-            "SELECT ID, %s FROM %s WHERE ID IN (%s) AND TRUNC(HIS_TIME) = TRUNC(SYSDATE - 1)",
-            columnList, historyTable, idList
-        );
-        
+                "SELECT ID, %s FROM %s WHERE ID IN (%s) AND TRUNC(HIS_TIME) = TRUNC(SYSDATE - 1)",
+                columnList, historyTable, idList);
+
         // 5. 查询历史数据
         Map<Long, Map<String, Object>> historyMap = new HashMap<>();
         try {
@@ -909,31 +924,32 @@ private String buildInClause(Object value, ColumnMetadataDTO col, String fieldNa
             log.warn("查询历史表失败: {}, SQL: {}", e.getMessage(), historySql);
             return; // 历史表不存在或查询失败，静默跳过
         }
-        
+
         // 6. 合并到主数据
         for (Map<String, Object> row : list) {
             Object idObj = row.get("id");
-            Long id = idObj instanceof Number ? ((Number) idObj).longValue() : 
-                      idObj instanceof String ? Long.parseLong((String) idObj) : null;
-            if (id == null) continue;
-            
+            Long id = idObj instanceof Number ? ((Number) idObj).longValue()
+                    : idObj instanceof String ? Long.parseLong((String) idObj) : null;
+            if (id == null)
+                continue;
+
             Map<String, Object> historyRow = historyMap.get(id);
-            
+
             for (CompareColumn col : compareColumns) {
                 Object currentValue = row.get(col.fieldName);
                 Object historyValue = historyRow != null ? historyRow.get(col.columnName.toUpperCase()) : null;
-                
+
                 // 添加历史值字段
                 row.put(col.fieldName + "His", historyValue);
-                
+
                 // 计算差值（仅数值类型）
                 if (currentValue instanceof Number && historyValue instanceof Number) {
                     double current = ((Number) currentValue).doubleValue();
                     double history = ((Number) historyValue).doubleValue();
                     double diff = current - history;
-                    
+
                     row.put(col.fieldName + "Diff", diff);
-                    
+
                     if (history != 0) {
                         double percent = (diff / history) * 100;
                         row.put(col.fieldName + "DiffPercent", Math.round(percent * 100) / 100.0); // 保留2位小数
@@ -942,7 +958,8 @@ private String buildInClause(Object value, ColumnMetadataDTO col, String fieldNa
             }
         }
     }
-    
+
     /** 对比列配置 */
-    private record CompareColumn(String fieldName, String columnName, String format) {}
+    private record CompareColumn(String fieldName, String columnName, String format) {
+    }
 }

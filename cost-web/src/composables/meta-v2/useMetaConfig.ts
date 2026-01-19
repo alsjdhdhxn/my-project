@@ -2,7 +2,7 @@
 import type { ColDef } from 'ag-grid-community';
 import { fetchPageComponents } from '@/service/api';
 import { loadTableMeta, extractCalcRules, extractLookupRules, filterColumnsByVariant, type LookupRule } from '@/composables/useMetaColumns';
-import type { PageComponentWithRules, RelationRule, PageRule, GridOptionsRule, SplitLayoutConfig } from '@/composables/meta-v2/types';
+import type { PageComponentWithRules, RelationRule, PageRule, GridOptionsRule, SplitLayoutConfig, ContextMenuRule } from '@/composables/meta-v2/types';
 import {
   parsePageComponents,
   compileCalcRules,
@@ -25,6 +25,8 @@ import {
   parseRoleBindingRule,
   parseRelationRule,
   parseGridOptionsRule,
+  parseContextMenuRule,
+  parseRowEditableRule,
   attachGroupCellRenderer
 } from '@/composables/meta-v2/usePageRules';
 import {
@@ -226,11 +228,15 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
   const detailValidationRulesByTab = shallowRef<Record<string, ValidationRule[]>>({});
   const masterColumnMeta = shallowRef<any[]>([]);
   const detailColumnMetaByTab = shallowRef<Record<string, any[]>>({});
+  const masterContextMenu = shallowRef<ContextMenuRule | null>(null);
+  const detailContextMenuByTab = shallowRef<Record<string, ContextMenuRule | null>>({});
+  const detailContextMenuDefault = shallowRef<ContextMenuRule | null>(null);
 
   const masterLookupRules = shallowRef<LookupRule[]>([]);
   const detailLookupRulesByTab = shallowRef<Record<string, LookupRule[]>>({});
   const layoutDetailTypeRef = shallowRef<string | null>(null);
   const layoutSplitConfigRef = shallowRef<SplitLayoutConfig | null>(null);
+  const masterRowEditableRules = shallowRef<import('@/composables/meta-v2/types').RowEditableRule[]>([]);
 
   async function loadComponents() {
     const pageRes = await fetchPageComponents(pageCode);
@@ -398,6 +404,7 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
     if (!config) return false;
 
     const resolvedMasterGridKey = masterGridKey.value ?? undefined;
+    const resolvedDetailTabsKey = detailTabsKey.value ?? undefined;
     const rulesMap = rulesByComponent.value;
     const masterRuleKeys = uniqueKeys([resolvedMasterGridKey, 'master', 'masterGrid']);
     const masterRules = collectRulesByKeys(rulesMap, masterRuleKeys);
@@ -430,6 +437,21 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
     detailValidationRulesByTab.value = {};
     detailLookupRulesByTab.value = {};
     detailCalcRulesByTab.value = {};
+    detailContextMenuByTab.value = {};
+
+    masterContextMenu.value = parseContextMenuRule(masterRuleLabel, masterRules);
+    masterRowEditableRules.value = parseRowEditableRule(masterRuleLabel, masterRules);
+    detailContextMenuDefault.value = null;
+
+    const tabsComponentKeys = collectComponentKeysByType(pageComponents.value || [], 'TABS');
+    const detailRuleKeys = resolvedDetailTabsKey ? [resolvedDetailTabsKey] : tabsComponentKeys;
+    let detailTabsRules: PageRule[] = [];
+    let detailTabsRuleLabel = resolvedDetailTabsKey || detailRuleKeys[0] || 'tabs';
+    if (detailRuleKeys.length > 0) {
+      detailTabsRules = getComponentRules(rulesMap, detailRuleKeys);
+      detailTabsRuleLabel = resolvedDetailTabsKey || detailRuleKeys[0] || 'tabs';
+    }
+    detailContextMenuDefault.value = parseContextMenuRule(detailTabsRuleLabel, detailTabsRules);
 
     for (const tab of config.tabs || []) {
       const tabRules = getComponentRules(rulesMap, [tab.key]);
@@ -450,6 +472,8 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
         detailCalcRulesByTab.value[tab.key] = compileCalcRules(calcRules, `${pageCode}_${tab.key}`);
         console.log(`[detail calc rules] ${tab.key}:`, calcRules.length, 'rules');
       }
+
+      detailContextMenuByTab.value[tab.key] = parseContextMenuRule(tab.key, tabRules) || detailContextMenuDefault.value;
     }
 
     return true;
@@ -486,8 +510,11 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
     detailValidationRulesByTab,
     masterColumnMeta,
     detailColumnMetaByTab,
+    masterContextMenu,
+    detailContextMenuByTab,
     masterLookupRules,
     detailLookupRulesByTab,
+    masterRowEditableRules,
     loadComponents,
     parseConfig,
     loadMeta,

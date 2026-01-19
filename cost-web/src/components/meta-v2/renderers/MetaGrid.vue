@@ -39,6 +39,7 @@ import { computed, unref } from 'vue';
 import { AgGridVue } from 'ag-grid-vue3';
 import type { ColDef, GridReadyEvent } from 'ag-grid-community';
 import type { PageComponentWithRules } from '@/composables/meta-v2/types';
+import type { ComponentStateByKey, MetaRuntime } from '@/composables/meta-v2/runtime/types';
 
 type GridConfig = {
   width?: string | number;
@@ -48,7 +49,7 @@ type GridConfig = {
 
 const props = defineProps<{
   component: PageComponentWithRules;
-  runtime: any;
+  runtime: MetaRuntime;
 }>();
 
 function parseGridConfig(config?: string): GridConfig {
@@ -63,7 +64,7 @@ function parseGridConfig(config?: string): GridConfig {
 
 function resolveComponentState(): Record<string, any> {
   const source = props.runtime?.componentStateByKey;
-  const stateByKey = source?.value ?? source;
+  const stateByKey = (source && 'value' in source ? source.value : source) as ComponentStateByKey | undefined;
   if (!stateByKey) return {};
   return stateByKey[props.component.componentKey] || {};
 }

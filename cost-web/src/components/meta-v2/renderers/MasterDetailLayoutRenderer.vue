@@ -85,14 +85,6 @@
       />
     </div>
 
-    <LookupDialog
-      v-if="currentLookupRule"
-      ref="lookupDialogRef"
-      :lookupCode="currentLookupRule.lookupCode"
-      :mapping="currentLookupRule.mapping"
-      @select="onLookupSelect"
-      @cancel="onLookupCancel"
-    />
   </div>
 </template>
 
@@ -100,7 +92,6 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { AgGridVue } from 'ag-grid-vue3';
 import { NSplit } from 'naive-ui';
-import LookupDialog from '@/components/meta-v2/LookupDialog.vue';
 import DetailTabsPanel from '@/components/meta-v2/renderers/DetailTabsPanel.vue';
 import type { PageComponentWithRules } from '@/composables/meta-v2/types';
 import { useNestedDetailParams } from '@/composables/meta-v2/useNestedDetailParams';
@@ -127,6 +118,8 @@ const {
   detailLayoutMode,
   detailSplitConfig,
   detailGridApisByTab,
+  masterContextMenu,
+  detailContextMenuByTab,
   applyGridConfig,
   loadDetailData,
   addMasterRow,
@@ -138,11 +131,7 @@ const {
   markFieldChange,
   runDetailCalc,
   recalcAggregates,
-  lookupDialogRef,
-  currentLookupRule,
   onDetailCellClicked,
-  onLookupSelect,
-  onLookupCancel,
   save,
   saveGridConfig
 } = runtime;
@@ -179,6 +168,7 @@ const {
   isUserEditing: editingState,
   metaRowClassGetter: masterRowClassGetter?.value,
   gridOptions: masterGridOptions?.value,
+  contextMenuConfig: masterContextMenu,
   onSelectionChanged: async (rows) => {
     if (!hasDetailTabs.value) return;
     const selected = rows?.[0];
@@ -198,7 +188,8 @@ const { getDetailContextMenuItems } = useGridContextMenu({
   deleteDetailRow,
   copyDetailRow,
   save,
-  saveGridConfig
+  saveGridConfig,
+  detailMenuByTab: detailContextMenuByTab
 });
 
 function onDetailCellValueChanged(event: any, masterId: number, tabKey: string) {

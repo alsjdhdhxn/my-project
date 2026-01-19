@@ -1,3 +1,4 @@
+import type { Ref } from 'vue';
 import type { ColDef } from 'ag-grid-community';
 
 export type RuntimeStage =
@@ -38,6 +39,16 @@ export type ComponentStateBase = {
   error?: MetaError;
 };
 
+export type FormState = ComponentStateBase & {
+  renderer?: any;
+  placeholder?: string;
+};
+
+export type ButtonState = ComponentStateBase & {
+  disabled?: boolean;
+  onClick?: (context: any) => void;
+};
+
 export type GridState = ComponentStateBase & {
   rowData: any[];
   columnDefs: ColDef[];
@@ -57,7 +68,17 @@ export type GridState = ComponentStateBase & {
   onCellEditingStopped?: (event: any) => void;
 };
 
-export type ComponentState = ComponentStateBase | GridState;
+export type ComponentState = ComponentStateBase | GridState | FormState | ButtonState;
+
+export type ComponentStateByKey = Record<string, ComponentState>;
+
+export type MetaRuntime = {
+  pageCode: string;
+  componentStateByKey: Ref<ComponentStateByKey> | ComponentStateByKey;
+  status?: Ref<'loading' | 'ready' | 'error'> | 'loading' | 'ready' | 'error';
+  pageError?: Ref<MetaError | null> | MetaError | null;
+  reportComponentError?: (componentKey: string, stage: RuntimeStage, message: string, raw?: unknown) => void;
+};
 
 export type RuntimeLogger = {
   log: (stage: RuntimeStage, message: string, componentKey?: string) => void;
