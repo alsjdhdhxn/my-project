@@ -443,6 +443,7 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     gridState.onCellEditingStopped = bindings.onCellEditingStopped;
     gridState.onCellValueChanged = bindings.onCellValueChanged;
     gridState.onCellClicked = bindings.onCellClicked;
+    gridState.onFilterChanged = bindings.onFilterChanged;
   }
 
   async function init() {

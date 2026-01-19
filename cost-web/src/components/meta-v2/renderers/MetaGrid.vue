@@ -30,6 +30,7 @@
       @cell-clicked="handleCellClicked"
       @cell-editing-started="handleCellEditingStarted"
       @cell-editing-stopped="handleCellEditingStopped"
+      @filter-changed="handleFilterChanged"
     />
   </div>
 </template>
@@ -130,6 +131,10 @@ function handleCellEditingStarted(event: any) {
 
 function handleCellEditingStopped(event: any) {
   state.value.onCellEditingStopped?.(event);
+}
+
+function handleFilterChanged() {
+  state.value.onFilterChanged?.();
 }
 </script>
 

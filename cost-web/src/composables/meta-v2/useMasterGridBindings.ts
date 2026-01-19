@@ -60,12 +60,13 @@ export function useMasterGridBindings(params: {
 
   const defaultColDef: ColDef = {
     sortable: true,
-    filter: true,
+    filter: 'agTextColumnFilter',
     resizable: true,
     editable: rowEditableCallback ?? true,
     wrapText: true,
     autoHeight: true,
-    cellClassRules
+    cellClassRules,
+    suppressHeaderMenuButton: true
   };
 
   function wrapColumnEditable(def: ColDef, callback: (params: any) => boolean) {
@@ -195,6 +196,13 @@ export function useMasterGridBindings(params: {
     params.onSelectionChanged?.(rows);
   }
 
+  function onFilterChanged() {
+    const api = runtime.masterGridApi?.value;
+    if (!api) return;
+    // 清除缓存，强制从 startRow=0 重新请求
+    api.purgeInfiniteCache?.();
+  }
+
   return {
     isUserEditing,
     cellClassRules,
@@ -212,6 +220,7 @@ export function useMasterGridBindings(params: {
     onCellEditingStopped,
     onCellValueChanged,
     onCellClicked,
-    onSelectionChanged
+    onSelectionChanged,
+    onFilterChanged
   };
 }

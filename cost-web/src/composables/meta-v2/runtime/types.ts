@@ -66,6 +66,7 @@ export type GridState = ComponentStateBase & {
   onCellClicked?: (event: any) => void;
   onCellEditingStarted?: (event: any) => void;
   onCellEditingStopped?: (event: any) => void;
+  onFilterChanged?: () => void;
 };
 
 export type ComponentState = ComponentStateBase | GridState | FormState | ButtonState;
