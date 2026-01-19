@@ -27,6 +27,7 @@ import {
   parseGridOptionsRule,
   parseContextMenuRule,
   parseRowEditableRule,
+  parseRowClassRule,
   attachGroupCellRenderer
 } from '@/composables/meta-v2/usePageRules';
 import {
@@ -237,6 +238,7 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
   const layoutDetailTypeRef = shallowRef<string | null>(null);
   const layoutSplitConfigRef = shallowRef<SplitLayoutConfig | null>(null);
   const masterRowEditableRules = shallowRef<import('@/composables/meta-v2/types').RowEditableRule[]>([]);
+  const masterRowClassRules = shallowRef<import('@/composables/meta-v2/types').RowClassRule[]>([]);
 
   async function loadComponents() {
     const pageRes = await fetchPageComponents(pageCode);
@@ -441,6 +443,7 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
 
     masterContextMenu.value = parseContextMenuRule(masterRuleLabel, masterRules);
     masterRowEditableRules.value = parseRowEditableRule(masterRuleLabel, masterRules);
+    masterRowClassRules.value = parseRowClassRule(masterRuleLabel, masterRules);
     detailContextMenuDefault.value = null;
 
     const tabsComponentKeys = collectComponentKeysByType(pageComponents.value || [], 'TABS');
@@ -515,6 +518,7 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
     masterLookupRules,
     detailLookupRulesByTab,
     masterRowEditableRules,
+    masterRowClassRules,
     loadComponents,
     parseConfig,
     loadMeta,

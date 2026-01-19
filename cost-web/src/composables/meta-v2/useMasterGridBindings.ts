@@ -1,8 +1,8 @@
 import { ref, type Ref, watch } from 'vue';
 import type { ColDef, GridReadyEvent, CellValueChangedEvent } from 'ag-grid-community';
 import { useGridContextMenu } from '@/composables/meta-v2/useGridContextMenu';
-import type { ContextMenuRule, RowEditableRule } from '@/composables/meta-v2/types';
-import { buildRowEditableCallback } from '@/composables/meta-v2/usePageRules';
+import type { ContextMenuRule, RowEditableRule, RowClassRule } from '@/composables/meta-v2/types';
+import { buildRowEditableCallback, buildRowClassCallback } from '@/composables/meta-v2/usePageRules';
 import {
   buildGridRuntimeOptions,
   autoSizeColumnsOnReady,
@@ -44,6 +44,7 @@ export function useMasterGridBindings(params: {
   gridKey?: string | null;
   contextMenuConfig?: ContextMenuRule | null;
   rowEditableRules?: RowEditableRule[];
+  rowClassRules?: RowClassRule[];
 }) {
   const { runtime } = params;
   const isUserEditing = params.isUserEditing ?? ref(false);
@@ -98,10 +99,19 @@ export function useMasterGridBindings(params: {
   const headerHeight = 28;
 
   const getRowId = (params: any) => String(params.data?.id);
+
+  // 行级样式回调（来自 ROW_CLASS 规则）
+  const rowClassRules = params.rowClassRules ?? (runtime as any).masterRowClassRules?.value ?? [];
+  const rowClassCallback = buildRowClassCallback(rowClassRules);
+
   function getRowClass(params: any): string | undefined {
     const classes: string[] = [];
     if (isFlagTrue(params.data?._isDeleted)) classes.push('row-deleted');
     if (isFlagTrue(params.data?._isNew)) classes.push('row-new');
+    // 应用 ROW_CLASS 规则
+    const ruleClass = rowClassCallback?.(params);
+    if (ruleClass) classes.push(ruleClass);
+    // 应用元数据行样式
     const metaClass = metaRowClassGetter?.(params);
     if (metaClass) classes.push(metaClass);
     return classes.length > 0 ? classes.join(' ') : undefined;
@@ -112,13 +122,13 @@ export function useMasterGridBindings(params: {
   const masterGridKey = resolveGridKey(params.gridKey ?? runtimeMasterKey);
 
   const { getMasterContextMenuItems } = useGridContextMenu({
-    addMasterRow: runtime.addMasterRow || (() => {}),
-    deleteMasterRow: runtime.deleteMasterRow || (() => {}),
-    copyMasterRow: runtime.copyMasterRow || (() => {}),
-    addDetailRow: runtime.addDetailRow || (() => {}),
-    deleteDetailRow: runtime.deleteDetailRow || (() => {}),
-    copyDetailRow: runtime.copyDetailRow || (() => {}),
-    save: runtime.save || (() => {}),
+    addMasterRow: runtime.addMasterRow || (() => { }),
+    deleteMasterRow: runtime.deleteMasterRow || (() => { }),
+    copyMasterRow: runtime.copyMasterRow || (() => { }),
+    addDetailRow: runtime.addDetailRow || (() => { }),
+    deleteDetailRow: runtime.deleteDetailRow || (() => { }),
+    copyDetailRow: runtime.copyDetailRow || (() => { }),
+    save: runtime.save || (() => { }),
     saveGridConfig: (runtime as any).saveGridConfig,
     exportSelected: runtime.exportSelected,
     exportCurrent: runtime.exportCurrent,

@@ -10,7 +10,8 @@ import type {
   RoleBindingRule,
   RelationRule,
   ContextMenuRule,
-  RowEditableRule
+  RowEditableRule,
+  RowClassRule
 } from '@/composables/meta-v2/types';
 
 export function collectPageRules(components: PageComponentWithRules[]): PageRule[] {
@@ -281,5 +282,55 @@ export function buildRowEditableCallback(rules: RowEditableRule[]): ((params: an
       if (!passed) return false;
     }
     return true;
+  };
+}
+
+/** 解析 ROW_CLASS 规则 */
+export function parseRowClassRule(componentKey: string, rules: PageRule[]): RowClassRule[] {
+  const rule = rules.find(r => r.ruleType === 'ROW_CLASS');
+  if (!rule?.rules) return [];
+  try {
+    const raw = typeof rule.rules === 'string' ? JSON.parse(rule.rules) : rule.rules;
+    if (Array.isArray(raw)) return raw as RowClassRule[];
+    if (raw && typeof raw === 'object') return [raw as RowClassRule];
+    return [];
+  } catch (error) {
+    console.warn(`[PageRule] Failed to parse ${componentKey}.ROW_CLASS`, error);
+    return [];
+  }
+}
+
+/** 根据 ROW_CLASS 规则生成 getRowClass 回调 */
+export function buildRowClassCallback(rules: RowClassRule[]): ((params: any) => string | undefined) | undefined {
+  if (!rules || rules.length === 0) return undefined;
+  return (params: any) => {
+    const data = params.data;
+    if (!data) return undefined;
+    const classes: string[] = [];
+    for (const rule of rules) {
+      const fieldValue = data[rule.field];
+      let matched = false;
+      switch (rule.operator) {
+        case 'notNull':
+          matched = fieldValue != null;
+          break;
+        case 'eq':
+          matched = fieldValue === rule.value;
+          break;
+        case 'ne':
+          matched = fieldValue !== rule.value;
+          break;
+        case 'in':
+          matched = Array.isArray(rule.value) && rule.value.includes(fieldValue);
+          break;
+        case 'notIn':
+          matched = !Array.isArray(rule.value) || !rule.value.includes(fieldValue);
+          break;
+      }
+      if (matched && rule.className) {
+        classes.push(rule.className);
+      }
+    }
+    return classes.length > 0 ? classes.join(' ') : undefined;
   };
 }

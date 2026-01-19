@@ -316,6 +316,7 @@ CREATE TABLE T_COST_GOODS (
     PACKTYPE       VARCHAR2(100),
     TRANPOSID      NUMBER(19),
     ZX_CUSTOMERID  NUMBER(19),
+    ISERP          NUMBER(1) DEFAULT 0,
     DELETED        NUMBER(1) DEFAULT 0,
     CREATE_TIME    TIMESTAMP DEFAULT SYSTIMESTAMP,
     UPDATE_TIME    TIMESTAMP DEFAULT SYSTIMESTAMP,
@@ -333,6 +334,7 @@ SELECT B.GOODSID,
        B.ZX_CUSTOMERID,
        B.CUSTOMNAME,
        B.TRANPOSNAME,
+       1 AS ISERP,
        0 AS DELETED,
        NULL AS CREATE_TIME,
        NULL AS UPDATE_TIME,
@@ -350,6 +352,7 @@ SELECT A.GOODSID,
        A.ZX_CUSTOMERID,
        B.CUSTOMNAME,
        C.TRANPOSNAME,
+       NVL(A.ISERP, 0) AS ISERP,
        A.DELETED,
        A.CREATE_TIME,
        A.UPDATE_TIME,
@@ -399,6 +402,12 @@ BEGIN
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY)
     VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_goods_id, 'customname', 'CUSTOMNAME', '客户名称', 'text', 7, 'system');
 
+    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY)
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_goods_id, 'iserp', 'ISERP', '是否ERP', 'number', 98, 'system');
+
+    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY)
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_goods_id, 'createBy', 'CREATE_BY', '创建人', 'text', 99, 'system');
+
     COMMIT;
 END;
 /
@@ -427,10 +436,12 @@ VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'goods-manage', 'grid', 'COLUMN_OVERRIDE',
   {"field":"goodsname","width":200,"editable":true,"searchable":true},
   {"field":"goodstype","width":150,"editable":true,"searchable":true},
   {"field":"packtype","width":150,"editable":true},
-  {"field":"tranposid","visible":false,"editable":false},
+  {"field":"tranposid","width":100,"editable":true},
   {"field":"tranposname","width":150,"editable":false},
-  {"field":"zxCustomerid","visible":false,"editable":false},
-  {"field":"customname","width":150,"editable":false}
+  {"field":"zxCustomerid","width":100,"editable":true},
+  {"field":"customname","width":150,"editable":false},
+  {"field":"iserp","visible":false},
+  {"field":"createBy","visible":false}
 ]', 'system');
 
 INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
@@ -456,6 +467,14 @@ VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'goods-manage', 'grid', 'CONTEXT_MENU',
   {"action":"clipboard.copy"},
   {"action":"clipboard.paste"}
 ]}', 'system');
+
+INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'goods-manage', 'grid', 'ROW_CLASS',
+'[{"field":"iserp","operator":"eq","value":1,"className":"row-confirmed"}]', 'system');
+
+INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'goods-manage', 'grid', 'ROW_EDITABLE',
+'[{"field":"iserp","operator":"ne","value":1}]', 'system');
 
 COMMIT;
 

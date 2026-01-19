@@ -48,4 +48,16 @@ onMounted(async () => {
 .master-detail-page-v2 { width: 100%; height: 100%; }
 .loading { display: flex; justify-content: center; align-items: center; height: 100%; }
 .error { display: flex; justify-content: center; align-items: center; height: 100%; }
+/* 单元格变更颜色标识 */
+:deep(.cell-new) { background-color: #0b3d91 !important; color: #ffffff; }
+:deep(.cell-user-changed) { background-color: #b7f4b3 !important; color: #1a1a1a !important; }
+:deep(.cell-calc-changed) { background-color: #fff2a8 !important; color: #1a1a1a !important; }
+:deep(.cell-deleted) { background-color: #f8d7da !important; text-decoration: line-through; }
+/* 行级样式 */
+:deep(.row-deleted) { opacity: 0.5; }
+:deep(.row-new) { background-color: #0b3d91; color: #ffffff; font-style: italic; }
+:deep(.row-confirmed) { background-color: #e6ffed !important; } /* 浅绿色背景 */
+/* 表头样式 */
+:deep(.ag-header-cell-label) { white-space: normal !important; line-height: 1.2; }
+:deep(.ag-header-cell) { height: auto !important; }
 </style>

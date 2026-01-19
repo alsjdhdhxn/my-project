@@ -83,3 +83,11 @@ export type RowEditableRule = {
   operator: 'notNull' | 'eq' | 'ne' | 'in' | 'notIn';
   value?: any;
 };
+
+/** 行级样式规则 */
+export type RowClassRule = {
+  field: string;
+  operator: 'notNull' | 'eq' | 'ne' | 'in' | 'notIn';
+  value?: any;
+  className: string;
+};
