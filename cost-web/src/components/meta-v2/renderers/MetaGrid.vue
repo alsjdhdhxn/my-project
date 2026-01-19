@@ -91,7 +91,6 @@ const gridClass = computed(() => gridConfig.value.className || '');
 const status = computed(() => state.value.status || 'ready');
 const errorMessage = computed(() => state.value.error?.message || '组件加载失败');
 
-const rowData = computed(() => unwrap(state.value.rowData) ?? []);
 const columnDefs = computed<ColDef[]>(() => unwrap(state.value.columnDefs) ?? []);
 const defaultColDef = computed<ColDef>(() => ({
   sortable: true,
@@ -101,6 +100,10 @@ const defaultColDef = computed<ColDef>(() => ({
 }));
 
 const gridOptions = computed(() => unwrap(state.value.gridOptions) ?? {});
+const rowData = computed(() => {
+  if (gridOptions.value?.rowModelType === 'infinite') return undefined;
+  return unwrap(state.value.rowData) ?? [];
+});
 const rowSelection = computed(() => unwrap(state.value.rowSelection));
 const autoSizeStrategy = computed(() => unwrap(state.value.autoSizeStrategy));
 const getRowId = computed(() => unwrap(state.value.getRowId));

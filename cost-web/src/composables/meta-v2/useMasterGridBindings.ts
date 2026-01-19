@@ -45,6 +45,7 @@ export function useMasterGridBindings(params: {
   contextMenuConfig?: ContextMenuRule | null;
   rowEditableRules?: RowEditableRule[];
   rowClassRules?: RowClassRule[];
+  dataSource?: any;
 }) {
   const { runtime } = params;
   const isUserEditing = params.isUserEditing ?? ref(false);
@@ -103,6 +104,7 @@ export function useMasterGridBindings(params: {
   // 行级样式回调（来自 ROW_CLASS 规则）
   const rowClassRules = params.rowClassRules ?? (runtime as any).masterRowClassRules?.value ?? [];
   const rowClassCallback = buildRowClassCallback(rowClassRules);
+  const dataSource = params.dataSource;
 
   function getRowClass(params: any): string | undefined {
     const classes: string[] = [];
@@ -141,6 +143,13 @@ export function useMasterGridBindings(params: {
 
   function onGridReady(params: GridReadyEvent) {
     if (runtime.masterGridApi) runtime.masterGridApi.value = params.api;
+    if (gridOptions?.rowModelType === 'infinite' && dataSource) {
+      if (typeof params.api.setDatasource === 'function') {
+        params.api.setDatasource(dataSource);
+      } else if (typeof (params.api as any).setGridOption === 'function') {
+        (params.api as any).setGridOption('datasource', dataSource);
+      }
+    }
     const currentDefs = (params.api.getColumnDefs?.() as ColDef[] | undefined) ?? [];
     const hasExplicitWidth = currentDefs.some(def => typeof def.width === 'number' && def.width > 0);
     if (gridOptions?.autoSizeColumns) {

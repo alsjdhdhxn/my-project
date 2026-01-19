@@ -6,7 +6,13 @@
 
 -- 清理旧数据
 BEGIN
-  FOR v IN (SELECT view_name FROM user_views WHERE view_name LIKE 'V_COST_%') LOOP
+  FOR v IN (
+    SELECT view_name
+      FROM user_views
+     WHERE view_name LIKE 'V_COST_%'
+        OR view_name LIKE 'T_COST_%_V'
+        OR view_name = 'ERP_FORMONEY_V'
+  ) LOOP
     EXECUTE IMMEDIATE 'DROP VIEW ' || v.view_name;
   END LOOP;
 END;
@@ -408,6 +414,99 @@ CREATE TABLE T_COST_MATERIAL (
 );
 CREATE SEQUENCE SEQ_COST_MATERIAL START WITH 1 INCREMENT BY 1;
 
+-- 外币管理
+CREATE TABLE T_COST_FORMONEY
+(
+  FMID        NUMBER(10)   NOT NULL, -- 外币ID（主键）
+  FMOPCODE    VARCHAR2(60),          -- 外币编码
+  FMNAME      VARCHAR2(120),         -- 外币名称
+  FMSIGN      VARCHAR2(60),          -- 外币符号
+  FMUNIT      VARCHAR2(60),          -- 外币单位
+  FMRATE      NUMBER(16,6),          -- 外币税率
+  USESTATUS   NUMBER(2),             -- 使用状态
+  DELETED     NUMBER(1) DEFAULT 0,
+  CREATE_TIME TIMESTAMP DEFAULT SYSTIMESTAMP,
+  UPDATE_TIME TIMESTAMP DEFAULT SYSTIMESTAMP,
+  CREATE_BY   VARCHAR2(64),
+  UPDATE_BY   VARCHAR2(64),
+  CONSTRAINT PK_COST_FORMONEY PRIMARY KEY (FMID)
+);
+CREATE SEQUENCE SEQ_COST_FORMONEY START WITH 1 INCREMENT BY 1;
+
+-- 部门管理
+CREATE TABLE T_COST_DEPT (
+    DEPTID       NUMBER(19) PRIMARY KEY,
+    DEPTNAME     VARCHAR2(300),
+    MANAGER      NUMBER,
+    DELETED      NUMBER(1)   DEFAULT 0,
+    CREATE_TIME  TIMESTAMP  DEFAULT SYSTIMESTAMP,
+    UPDATE_TIME  TIMESTAMP  DEFAULT SYSTIMESTAMP,
+    CREATE_BY    VARCHAR2(64),
+    UPDATE_BY    VARCHAR2(64)
+);
+CREATE SEQUENCE SEQ_COST_DEPT START WITH 1 INCREMENT BY 1;
+
+-- 产品信息
+CREATE TABLE T_COST_GOODS (
+    GOODSID        NUMBER(19) PRIMARY KEY,
+    GOODSNAME      VARCHAR2(200),
+    GOODSTYPE      VARCHAR2(100),
+    PACKTYPE       VARCHAR2(100),
+    TRANPOSID      NUMBER(19),
+    ZX_CUSTOMERID  NUMBER(19),
+    ISERP          NUMBER(1) DEFAULT 0,
+    DELETED        NUMBER(1) DEFAULT 0,
+    CREATE_TIME    TIMESTAMP DEFAULT SYSTIMESTAMP,
+    UPDATE_TIME    TIMESTAMP DEFAULT SYSTIMESTAMP,
+    CREATE_BY      VARCHAR2(64),
+    UPDATE_BY      VARCHAR2(64)
+);
+CREATE SEQUENCE SEQ_COST_GOODS START WITH 1 INCREMENT BY 1;
+
+-- Product price
+CREATE TABLE T_COST_GOODS_PRICE (
+    GOODSID      NUMBER(10) PRIMARY KEY,
+    GOODSNAME    VARCHAR2(300),
+    PRICE        NUMBER,
+    USEFLAG      VARCHAR2(15),
+    GOODSTYPE    VARCHAR2(3000),
+    PACKTYPE     VARCHAR2(600),
+    FACTORYNAME  VARCHAR2(300),
+    DELETED      NUMBER(1) DEFAULT 0,
+    CREATE_TIME  TIMESTAMP DEFAULT SYSTIMESTAMP,
+    UPDATE_TIME  TIMESTAMP DEFAULT SYSTIMESTAMP,
+    CREATE_BY    VARCHAR2(64),
+    UPDATE_BY    VARCHAR2(64),
+    ISERP        NUMBER(1) DEFAULT 0
+);
+CREATE SEQUENCE SEQ_COST_GOODS_PRICE START WITH 1 INCREMENT BY 1;
+
+-- 客户信息
+CREATE TABLE T_COST_CUSTOMER (
+    CUSTOMID    NUMBER(19) PRIMARY KEY,
+    ZONE        VARCHAR2(500),
+    CUSTOMNAME  VARCHAR2(500),
+    DELETED     NUMBER(1)   DEFAULT 0,
+    CREATE_TIME TIMESTAMP  DEFAULT SYSTIMESTAMP,
+    UPDATE_TIME TIMESTAMP  DEFAULT SYSTIMESTAMP,
+    CREATE_BY   VARCHAR2(64),
+    UPDATE_BY   VARCHAR2(64)
+);
+CREATE SEQUENCE SEQ_COST_CUSTOMER START WITH 1 INCREMENT BY 1;
+
+-- 分销商信息
+CREATE TABLE T_COST_TRANPOSER (
+    TRANPOSID    NUMBER(19) PRIMARY KEY,
+    CUSTOMID     NUMBER(19),
+    TRANPOSNAME  VARCHAR2(500),
+    DELETED      NUMBER(1)   DEFAULT 0,
+    CREATE_TIME  TIMESTAMP  DEFAULT SYSTIMESTAMP,
+    UPDATE_TIME  TIMESTAMP  DEFAULT SYSTIMESTAMP,
+    CREATE_BY    VARCHAR2(64),
+    UPDATE_BY    VARCHAR2(64)
+);
+CREATE SEQUENCE SEQ_COST_TRANPOSER START WITH 1 INCREMENT BY 1;
+
 COMMIT;
 
 -- A4. 日志模块表结构
@@ -547,6 +646,159 @@ JOIN T_COST_USER u ON ur.USER_ID = u.ID
 JOIN T_COST_ROLE r ON ur.ROLE_ID = r.ID
 WHERE ur.DELETED = 0;
 
+-- B4. 外币管理视图
+CREATE OR REPLACE VIEW ERP_FORMONEY_V AS
+SELECT 
+       DECODE(b.fmid,     NULL, a.fmid,     b.fmid)     fmid,
+       DECODE(b.fmopcode, NULL, a.fmopcode, b.fmopcode) fmopcode,
+       DECODE(b.fmname,   NULL, a.fmname,   b.fmname)   fmname,
+       DECODE(b.fmsign,   NULL, a.fmsign,   b.fmsign)   fmsign,
+       DECODE(b.fmunit,   NULL, a.fmunit,   b.fmunit)   fmunit,
+       DECODE(b.fmrate,   NULL, a.fmrate,   b.fmrate)   fmrate,
+       DECODE(b.usestatus,NULL, a.usestatus,b.usestatus) usestatus,
+       NVL(b.deleted, 0)  deleted,
+       b.create_time,
+       b.update_time,
+       b.create_by,
+       b.update_by
+  FROM pub_formoney_v@hyerp a, T_COST_FORMONEY b
+ WHERE a.fmid = b.fmid(+);
+
+-- B5. 产品信息视图
+CREATE OR REPLACE VIEW T_COST_GOODS_V AS
+SELECT B.GOODSID,
+       B.GOODSNAME,
+       B.GOODSTYPE,
+       B.PACKTYPE,
+       B.TRANPOSID,
+       B.ZX_CUSTOMERID,
+       B.CUSTOMNAME,
+       B.TRANPOSNAME,
+       1 AS ISERP,
+       0 AS DELETED,
+       NULL AS CREATE_TIME,
+       NULL AS UPDATE_TIME,
+       NULL AS CREATE_BY,
+       NULL AS UPDATE_BY
+  FROM PUB_GOODS_V@hyerp B
+ WHERE B.ZX_WMS_GOODSCLASS IN (10)
+   AND B.GSPFLAG = 1
+UNION ALL
+SELECT A.GOODSID,
+       A.GOODSNAME,
+       A.GOODSTYPE,
+       A.PACKTYPE,
+       A.TRANPOSID,
+       A.ZX_CUSTOMERID,
+       B.CUSTOMNAME,
+       C.TRANPOSNAME,
+       NVL(A.ISERP, 0) AS ISERP,
+       A.DELETED,
+       A.CREATE_TIME,
+       A.UPDATE_TIME,
+       A.CREATE_BY,
+       A.UPDATE_BY
+  FROM T_COST_GOODS A, PUB_CUSTOMER@hyerp B, BMS_TR_POS_DEF@hyerp C
+ WHERE A.ZX_CUSTOMERID = B.CUSTOMID(+)
+   AND A.TRANPOSID = C.TRANPOSID(+)
+   AND A.Deleted=0;
+
+-- B6. 产品价格视图
+CREATE OR REPLACE VIEW T_COST_GOODS_PRICE_V AS
+SELECT GOODSID,
+       GOODSNAME,
+       PRICE,
+       USEFLAG,
+       GOODSTYPE,
+       PACKTYPE,
+       FACTORYNAME,
+       DELETED,
+       CREATE_TIME,
+       UPDATE_TIME,
+       CREATE_BY,
+       UPDATE_BY,
+       ISERP,
+       CASE
+           WHEN ISERP = 1
+            AND NVL(LOWER(UPDATE_BY), '#') <> 'system'
+            AND PRICE IS NULL THEN 'erp-price-null'
+           WHEN ISERP = 1
+            AND NVL(LOWER(UPDATE_BY), '#') <> 'system' THEN 'erp-updated'
+           WHEN ISERP = 1 THEN 'erp'
+           ELSE NULL
+       END AS ROW_CLASS_FLAG
+  FROM T_COST_GOODS_PRICE;
+
+-- B7. 客户/分销商视图
+CREATE OR REPLACE VIEW T_COST_CUSTOMER_V AS
+SELECT CUSTOMID,
+       CUSTOMNAME,
+       ZONE,
+       1 AS ISERP,
+       0 AS DELETED,
+       NULL AS CREATE_TIME,
+       NULL AS UPDATE_TIME,
+       NULL AS CREATE_BY,
+       NULL AS UPDATE_BY
+  FROM PUB_CUSTOMER@hyerp
+UNION ALL
+SELECT CUSTOMID,
+       CUSTOMNAME,
+       ZONE,
+       0 AS ISERP,
+       DELETED,
+       CREATE_TIME,
+       UPDATE_TIME,
+       CREATE_BY,
+       UPDATE_BY
+  FROM T_COST_CUSTOMER
+  where DELETED=0 ;
+
+CREATE OR REPLACE VIEW T_COST_TRANPOSER_V AS
+SELECT CUSTOMID,
+       TRANPOSID,
+       TRANPOSNAME,
+       0 AS ISERP,
+       DELETED,
+       CREATE_TIME,
+       UPDATE_TIME,
+       CREATE_BY,
+       UPDATE_BY
+  FROM T_COST_TRANPOSER where DELETED=0
+UNION ALL
+SELECT COMPANYID,
+       TRANPOSID,
+       TRANPOSNAME,
+       1 AS ISERP,
+       0 AS DELETED,
+       NULL AS CREATE_TIME,
+       NULL AS UPDATE_TIME,
+       NULL AS CREATE_BY,
+       NULL AS UPDATE_BY
+  FROM BMS_TR_POS_DEF@hyerp;
+
+-- B7. 客户 + 分销商回填视图（产品信息用）
+CREATE OR REPLACE VIEW T_COST_CUST_TRANPOSER_REL_V AS
+SELECT a.customname,
+       a.zone,
+       b.tranposname,
+       a.customid,
+       b.tranposid,
+       0 deleted
+  FROM pub_customer@hyerp a, bms_tr_pos_def@hyerp b
+ WHERE a.customid = b.companyid
+   AND a.zone IS NOT NULL
+UNION ALL
+SELECT a.customname,
+       a.zone,
+       b.tranposname,
+       a.customid,
+       b.tranposid,
+       a.deleted
+  FROM (select * from t_cost_customer where deleted=0) a, (select * from t_cost_tranposer where deleted=0) b
+ WHERE a.customid = b.customid;
+
+
 COMMIT;
 
 
@@ -598,6 +850,22 @@ BEGIN
     -- 成本评估V2
     INSERT INTO T_COST_RESOURCE (ID, RESOURCE_CODE, RESOURCE_NAME, RESOURCE_TYPE, PAGE_CODE, ICON, ROUTE, PARENT_ID, SORT_ORDER, CREATE_BY)
     VALUES (SEQ_COST_RESOURCE.NEXTVAL, 'cost-pinggu-v2', '成本评估', 'PAGE', 'cost-pinggu-v2', 'mdi:calculator-variant', '/cost/cost-pinggu-v2', v_cost_id, 1, 'system');
+
+    -- 成本管理 - 外币管理
+    INSERT INTO T_COST_RESOURCE (ID, RESOURCE_CODE, RESOURCE_NAME, RESOURCE_TYPE, PAGE_CODE, ICON, ROUTE, PARENT_ID, SORT_ORDER, CREATE_BY)
+    VALUES (SEQ_COST_RESOURCE.NEXTVAL, 'formoney', '外币管理', 'PAGE', 'formoney-manage', 'mdi:currency-usd', '/cost/formoney', v_cost_id, 10, 'system');
+
+    -- 成本管理 - 产品信息
+    INSERT INTO T_COST_RESOURCE (ID, RESOURCE_CODE, RESOURCE_NAME, RESOURCE_TYPE, PAGE_CODE, ICON, ROUTE, PARENT_ID, SORT_ORDER, CREATE_BY)
+    VALUES (SEQ_COST_RESOURCE.NEXTVAL, 'goods', '产品信息', 'PAGE', 'goods-manage', 'mdi:package-variant', '/cost/goods', v_cost_id, 2, 'system');
+
+    -- 成本管理 - 产品价格
+    INSERT INTO T_COST_RESOURCE (ID, RESOURCE_CODE, RESOURCE_NAME, RESOURCE_TYPE, PAGE_CODE, ICON, ROUTE, PARENT_ID, SORT_ORDER, CREATE_BY)
+    VALUES (SEQ_COST_RESOURCE.NEXTVAL, 'goods-price', '产品价格', 'PAGE', 'goods-price-manage', 'mdi:tag-outline', '/cost/goods-price', v_cost_id, 4, 'system');
+
+    -- 成本管理 - 客户信息
+    INSERT INTO T_COST_RESOURCE (ID, RESOURCE_CODE, RESOURCE_NAME, RESOURCE_TYPE, PAGE_CODE, ICON, ROUTE, PARENT_ID, SORT_ORDER, CREATE_BY)
+    VALUES (SEQ_COST_RESOURCE.NEXTVAL, 'customer', '客户信息', 'PAGE', 'customer-manage', 'mdi:account-box', '/cost/customer', v_cost_id, 3, 'system');
     
     -- 系统管理 - 人员管理
     INSERT INTO T_COST_RESOURCE (ID, RESOURCE_CODE, RESOURCE_NAME, RESOURCE_TYPE, PAGE_CODE, ICON, ROUTE, PARENT_ID, SORT_ORDER, CREATE_BY)
@@ -606,6 +874,10 @@ BEGIN
     -- 系统管理 - 角色管理
     INSERT INTO T_COST_RESOURCE (ID, RESOURCE_CODE, RESOURCE_NAME, RESOURCE_TYPE, PAGE_CODE, ICON, ROUTE, PARENT_ID, SORT_ORDER, CREATE_BY)
     VALUES (SEQ_COST_RESOURCE.NEXTVAL, 'role', '角色管理', 'PAGE', 'role-manage', 'mdi:shield-account', '/system/role', v_system_id, 2, 'system');
+
+    -- 系统管理 - 部门管理
+    INSERT INTO T_COST_RESOURCE (ID, RESOURCE_CODE, RESOURCE_NAME, RESOURCE_TYPE, PAGE_CODE, ICON, ROUTE, PARENT_ID, SORT_ORDER, CREATE_BY)
+    VALUES (SEQ_COST_RESOURCE.NEXTVAL, 'dept', '部门管理', 'PAGE', 'dept-manage', 'mdi:domain', '/system/dept', v_system_id, 3, 'system');
 END;
 /
 
@@ -928,6 +1200,257 @@ INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CR
 VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'role-manage', 'grid', 'CONTEXT_MENU',
 '{"items":[{"action":"addRow"},{"action":"copyRow","requiresRow":true},{"action":"deleteRow","requiresRow":true},{"type":"separator"},{"action":"saveGridConfig"},{"type":"separator"},{"label":"\u5bfc\u51fa","items":[{"action":"exportSelected","requiresSelection":true},{"action":"exportCurrent"},{"action":"exportAll"},{"type":"separator"},{"action":"resetExportConfig"},{"action":"openHeaderConfig"}]},{"type":"separator"},{"action":"save"},{"type":"separator"},{"action":"clipboard.copy"},{"action":"clipboard.paste"}]}', 'system');
 
+INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'user-manage', 'grid', 'LOOKUP',
+'[
+  {"field":"departmentId","lookupCode":"dept","mapping":{"departmentId":"id"}}
+]', 'system');
+
+-- 外币管理规则
+INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'formoney-manage', 'grid', 'COLUMN_OVERRIDE',
+'[
+  {"field":"id","visible":false,"editable":false},
+  {"field":"fmopcode","width":140,"editable":true,"searchable":true},
+  {"field":"fmname","width":180,"editable":true,"searchable":true},
+  {"field":"fmsign","width":120,"editable":true},
+  {"field":"fmunit","width":120,"editable":true},
+  {"field":"fmrate","width":120,"editable":true},
+  {"field":"usestatus","width":120,"editable":true}
+]', 'system');
+
+INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'formoney-manage', 'grid', 'CONTEXT_MENU',
+'{"items":[
+  {"action":"addRow"},
+  {"action":"copyRow","requiresRow":true},
+  {"action":"deleteRow","requiresRow":true},
+  {"type":"separator"},
+  {"action":"saveGridConfig"},
+  {"type":"separator"},
+  {"label":"导出","items":[
+    {"action":"exportSelected","requiresSelection":true},
+    {"action":"exportCurrent"},
+    {"action":"exportAll"},
+    {"type":"separator"},
+    {"action":"resetExportConfig"},
+    {"action":"openHeaderConfig"}
+  ]},
+  {"type":"separator"},
+  {"action":"save"},
+  {"type":"separator"},
+  {"action":"clipboard.copy"},
+  {"action":"clipboard.paste"}
+]}', 'system');
+
+-- 部门管理规则
+INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'dept-manage', 'grid', 'CONTEXT_MENU',
+'{"items":[
+  {"action":"addRow"},
+  {"action":"copyRow","requiresRow":true},
+  {"action":"deleteRow","requiresRow":true},
+  {"type":"separator"},
+  {"action":"saveGridConfig"},
+  {"type":"separator"},
+  {"label":"导出","items":[
+    {"action":"exportSelected","requiresSelection":true},
+    {"action":"exportCurrent"},
+    {"action":"exportAll"},
+    {"type":"separator"},
+    {"action":"resetExportConfig"},
+    {"action":"openHeaderConfig"}
+  ]},
+  {"type":"separator"},
+  {"action":"save"},
+  {"type":"separator"},
+  {"action":"clipboard.copy"},
+  {"action":"clipboard.paste"}
+]}', 'system');
+
+-- 产品信息规则
+INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'goods-manage', 'grid', 'COLUMN_OVERRIDE',
+'[
+  {"field":"id","visible":false,"editable":false},
+  {"field":"goodsname","width":200,"editable":true,"searchable":true},
+  {"field":"goodstype","width":150,"editable":true,"searchable":true},
+  {"field":"packtype","width":150,"editable":true},
+  {"field":"tranposid","width":100,"editable":true},
+  {"field":"tranposname","width":150,"editable":false},
+  {"field":"zxCustomerid","width":100,"editable":true},
+  {"field":"customname","width":150,"editable":false},
+  {"field":"iserp","visible":false},
+  {"field":"createBy","visible":false}
+]', 'system');
+
+INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'goods-manage', 'grid', 'LOOKUP',
+'[
+  {"field":"customname","lookupCode":"customer","mapping":{"zxCustomerid":"customid","customname":"customname","tranposid":"tranposid","tranposname":"tranposname"}}
+]', 'system');
+
+INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'goods-manage', 'grid', 'CONTEXT_MENU',
+'{"items":[
+  {"action":"addRow"},
+  {"action":"copyRow","requiresRow":true},
+  {"action":"deleteRow","requiresRow":true},
+  {"type":"separator"},
+  {"action":"saveGridConfig"},
+  {"type":"separator"},
+  {"label":"导出","items":[
+    {"action":"exportSelected","requiresSelection":true},
+    {"action":"exportCurrent"},
+    {"action":"exportAll"},
+    {"type":"separator"},
+    {"action":"resetExportConfig"},
+    {"action":"openHeaderConfig"}
+  ]},
+  {"type":"separator"},
+  {"action":"save"},
+  {"type":"separator"},
+  {"action":"clipboard.copy"},
+  {"action":"clipboard.paste"}
+]}', 'system');
+
+INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'goods-manage', 'grid', 'ROW_CLASS',
+'[{"field":"iserp","operator":"eq","value":1,"className":"row-confirmed"}]', 'system');
+
+INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'goods-manage', 'grid', 'ROW_EDITABLE',
+'[{"field":"iserp","operator":"ne","value":1}]', 'system');
+
+-- 产品价格规则
+INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'goods-price-manage', 'grid', 'COLUMN_OVERRIDE',
+'[
+  {"field":"id","visible":false,"editable":false},
+  {"field":"goodsname","width":200,"editable":true,"searchable":true},
+  {"field":"price","width":120,"editable":true},
+  {"field":"useflag","width":120,"editable":true},
+  {"field":"goodstype","width":200,"editable":true},
+  {"field":"packtype","width":160,"editable":true},
+  {"field":"factoryname","width":200,"editable":true},
+  {"field":"iserp","width":80,"editable":false}
+]', 'system');
+
+INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'goods-price-manage', 'grid', 'GRID_OPTIONS',
+'{"rowModelType":"infinite","cacheBlockSize":200,"maxBlocksInCache":10}', 'system');
+
+INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'goods-price-manage', 'grid', 'ROW_CLASS',
+'[
+  {"field":"rowClassFlag","operator":"eq","value":"erp","className":"row-iserp"},
+  {"field":"rowClassFlag","operator":"eq","value":"erp-updated","className":"row-iserp-updated"},
+  {"field":"rowClassFlag","operator":"eq","value":"erp-price-null","className":"row-iserp-price-null"}
+]', 'system');
+
+INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'goods-price-manage', 'grid', 'CONTEXT_MENU',
+'{"items":[
+  {"action":"addRow"},
+  {"action":"copyRow","requiresRow":true},
+  {"action":"deleteRow","requiresRow":true},
+  {"type":"separator"},
+  {"action":"saveGridConfig"},
+  {"type":"separator"},
+  {"label":"导出","items":[
+    {"action":"exportSelected","requiresSelection":true},
+    {"action":"exportCurrent"},
+    {"action":"exportAll"},
+    {"type":"separator"},
+    {"action":"resetExportConfig"},
+    {"action":"openHeaderConfig"}
+  ]},
+  {"type":"separator"},
+  {"action":"save"},
+  {"type":"separator"},
+  {"action":"clipboard.copy"},
+  {"action":"clipboard.paste"}
+]}', 'system');
+
+-- 客户/分销商规则
+INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'customer-manage', 'detailTabs', 'RELATION',
+'{"masterKey":"masterGrid","detailKey":"detailTabs"}', 'system');
+
+INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'customer-manage', 'masterGrid', 'COLUMN_OVERRIDE',
+'[
+  {"field":"id","width":120,"editable":true},
+  {"field":"customname","width":200,"editable":true,"searchable":true},
+  {"field":"zone","width":160,"editable":true},
+  {"field":"iserp","visible":false}
+]', 'system');
+
+INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'customer-manage', 'tranposer', 'COLUMN_OVERRIDE',
+'[
+  {"field":"id","width":120,"editable":true},
+  {"field":"customid","visible":false,"editable":false},
+  {"field":"tranposname","width":220,"editable":true},
+  {"field":"iserp","visible":false}
+]', 'system');
+
+INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'customer-manage', 'masterGrid', 'ROW_CLASS',
+'[{"field":"iserp","operator":"eq","value":1,"className":"row-confirmed"}]', 'system');
+
+INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'customer-manage', 'tranposer', 'ROW_CLASS',
+'[{"field":"iserp","operator":"eq","value":1,"className":"row-confirmed"}]', 'system');
+
+INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'customer-manage', 'masterGrid', 'CONTEXT_MENU',
+'{"items":[
+  {"action":"addRow"},
+  {"action":"copyRow","requiresRow":true},
+  {"action":"deleteRow","requiresRow":true},
+  {"type":"separator"},
+  {"action":"saveGridConfig"},
+  {"type":"separator"},
+  {"label":"导出","items":[
+    {"action":"exportSelected","requiresSelection":true},
+    {"action":"exportCurrent"},
+    {"action":"exportAll"},
+    {"type":"separator"},
+    {"action":"resetExportConfig"},
+    {"action":"openHeaderConfig"}
+  ]},
+  {"type":"separator"},
+  {"action":"save"},
+  {"type":"separator"},
+  {"action":"clipboard.copy"},
+  {"action":"clipboard.paste"}
+]}', 'system');
+
+INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'customer-manage', 'tranposer', 'CONTEXT_MENU',
+'{"items":[
+  {"action":"addRow"},
+  {"action":"copyRow","requiresRow":true},
+  {"action":"deleteRow","requiresRow":true},
+  {"type":"separator"},
+  {"action":"saveGridConfig"},
+  {"type":"separator"},
+  {"label":"导出","items":[
+    {"action":"exportSelected","requiresSelection":true},
+    {"action":"exportCurrent"},
+    {"action":"exportAll"},
+    {"type":"separator"},
+    {"action":"resetExportConfig"},
+    {"action":"openHeaderConfig"}
+  ]},
+  {"type":"separator"},
+  {"action":"save"},
+  {"type":"separator"},
+  {"action":"clipboard.copy"},
+  {"action":"clipboard.paste"}
+]}', 'system');
+
 COMMIT;
 
 -- D5. 基础物料表元数据 (BaseMaterial - 用于 Lookup)
@@ -978,7 +1501,9 @@ BEGIN
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY)
     VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_user_id, 'phone', 'PHONE', '电话', 'text', 4, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_user_id, 'status', 'STATUS', '状态', 'text', 5, 'system');
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_user_id, 'departmentId', 'DEPARTMENT_ID', '部门ID', 'number', 5, 'system');
+    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY)
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_user_id, 'status', 'STATUS', '状态', 'text', 6, 'system');
     COMMIT;
 END;
 /
@@ -1023,6 +1548,219 @@ BEGIN
 END;
 /
 
+-- D7. 外币管理元数据 (CostFormoney)
+DECLARE
+    v_formoney_id NUMBER;
+BEGIN
+    SELECT SEQ_COST_TABLE_METADATA.NEXTVAL INTO v_formoney_id FROM DUAL;
+    INSERT INTO T_COST_TABLE_METADATA
+        (ID, TABLE_CODE, TABLE_NAME, QUERY_VIEW, TARGET_TABLE, SEQUENCE_NAME, PK_COLUMN, ACTION_RULES, CREATE_BY)
+    VALUES
+        (v_formoney_id, 'CostFormoney', '外币管理', 'ERP_FORMONEY_V', 'T_COST_FORMONEY', 'SEQ_COST_FORMONEY', 'FMID',
+         '[{"order":1,"code":"syncErpPrice","name":"同步ERP采购价","group":"manual","enabled":true,"type":"sql","sql":"UPDATE T_COST_FORMONEY SET FMOPCODE=NULL,FMNAME=NULL,FMSIGN=NULL,FMUNIT=NULL,FMRATE=NULL,USESTATUS=NULL,DELETED=NULL,CREATE_TIME=NULL,UPDATE_TIME=NULL,CREATE_BY=NULL,UPDATE_BY=NULL"}]',
+         'system');
+
+    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY)
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_formoney_id, 'id', 'FMID', '外币ID', 'number', 0, 'system');
+    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY)
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_formoney_id, 'fmopcode', 'FMOPCODE', '外币编码', 'text', 1, 'system');
+    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY)
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_formoney_id, 'fmname', 'FMNAME', '外币名称', 'text', 2, 'system');
+    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY)
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_formoney_id, 'fmsign', 'FMSIGN', '外币符号', 'text', 3, 'system');
+    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY)
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_formoney_id, 'fmunit', 'FMUNIT', '外币单位', 'text', 4, 'system');
+    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY)
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_formoney_id, 'fmrate', 'FMRATE', '外币税率', 'number', 5, 'system');
+    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY)
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_formoney_id, 'usestatus', 'USESTATUS', '使用状态', 'number', 6, 'system');
+    COMMIT;
+END;
+/
+
+-- D8. 部门管理元数据 (CostDept)
+DECLARE
+    v_dept_id NUMBER;
+BEGIN
+    SELECT SEQ_COST_TABLE_METADATA.NEXTVAL INTO v_dept_id FROM DUAL;
+    INSERT INTO T_COST_TABLE_METADATA
+        (ID, TABLE_CODE, TABLE_NAME, QUERY_VIEW, TARGET_TABLE, SEQUENCE_NAME, PK_COLUMN, CREATE_BY)
+    VALUES
+        (v_dept_id, 'CostDept', '部门管理', 'T_COST_DEPT', 'T_COST_DEPT', 'SEQ_COST_DEPT', 'DEPTID', 'system');
+
+    INSERT INTO T_COST_COLUMN_METADATA
+        (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY)
+    VALUES
+        (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_dept_id, 'id', 'DEPTID', '部门ID', 'number', 0, 'system');
+    INSERT INTO T_COST_COLUMN_METADATA
+        (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY)
+    VALUES
+        (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_dept_id, 'deptName', 'DEPTNAME', '部门名称', 'text', 1, 'system');
+    INSERT INTO T_COST_COLUMN_METADATA
+        (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY)
+    VALUES
+        (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_dept_id, 'manager', 'MANAGER', '负责人ID', 'number', 2, 'system');
+    COMMIT;
+END;
+/
+
+-- D9. 客户/分销商元数据 (CostCustomer / CostTranposer)
+DECLARE
+    v_customer_main_id NUMBER;
+BEGIN
+    SELECT SEQ_COST_TABLE_METADATA.NEXTVAL INTO v_customer_main_id FROM DUAL;
+    INSERT INTO T_COST_TABLE_METADATA
+        (ID, TABLE_CODE, TABLE_NAME, QUERY_VIEW, TARGET_TABLE, SEQUENCE_NAME, PK_COLUMN, CREATE_BY)
+    VALUES
+        (v_customer_main_id, 'CostCustomer', '客户信息', 'T_COST_CUSTOMER_V', 'T_COST_CUSTOMER', 'SEQ_COST_CUSTOMER', 'CUSTOMID', 'system');
+
+    INSERT INTO T_COST_COLUMN_METADATA
+        (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY)
+    VALUES
+        (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_customer_main_id, 'id', 'CUSTOMID', '客户ID', 'number', 0, 'system');
+    INSERT INTO T_COST_COLUMN_METADATA
+        (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY)
+    VALUES
+        (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_customer_main_id, 'customname', 'CUSTOMNAME', '客户名称', 'text', 1, 'system');
+    INSERT INTO T_COST_COLUMN_METADATA
+        (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY)
+    VALUES
+        (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_customer_main_id, 'zone', 'ZONE', '区域', 'text', 2, 'system');
+    INSERT INTO T_COST_COLUMN_METADATA
+        (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, IS_VIRTUAL, CREATE_BY)
+    VALUES
+        (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_customer_main_id, 'iserp', 'ISERP', '是否ERP', 'number', 99, 1, 'system');
+    COMMIT;
+END;
+/
+
+DECLARE
+    v_tranposer_id NUMBER;
+BEGIN
+    SELECT SEQ_COST_TABLE_METADATA.NEXTVAL INTO v_tranposer_id FROM DUAL;
+    INSERT INTO T_COST_TABLE_METADATA
+        (ID, TABLE_CODE, TABLE_NAME, QUERY_VIEW, TARGET_TABLE, SEQUENCE_NAME, PK_COLUMN, PARENT_TABLE_CODE, PARENT_FK_COLUMN, CREATE_BY)
+    VALUES
+        (v_tranposer_id, 'CostTranposer', '分销商信息', 'T_COST_TRANPOSER_V', 'T_COST_TRANPOSER', 'SEQ_COST_TRANPOSER', 'TRANPOSID', 'CostCustomer', 'CUSTOMID', 'system');
+
+    INSERT INTO T_COST_COLUMN_METADATA
+        (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY)
+    VALUES
+        (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_tranposer_id, 'id', 'TRANPOSID', '分销商ID', 'number', 0, 'system');
+    INSERT INTO T_COST_COLUMN_METADATA
+        (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY)
+    VALUES
+        (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_tranposer_id, 'customid', 'CUSTOMID', '客户ID', 'number', 1, 'system');
+    INSERT INTO T_COST_COLUMN_METADATA
+        (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY)
+    VALUES
+        (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_tranposer_id, 'tranposname', 'TRANPOSNAME', '分销商名称', 'text', 2, 'system');
+    INSERT INTO T_COST_COLUMN_METADATA
+        (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, IS_VIRTUAL, CREATE_BY)
+    VALUES
+        (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_tranposer_id, 'iserp', 'ISERP', '是否ERP', 'number', 99, 1, 'system');
+    COMMIT;
+END;
+/
+
+-- D10. 客户回填视图元数据 (CostCustomerRelLookup)
+DECLARE
+    v_customer_rel_id NUMBER;
+BEGIN
+    SELECT SEQ_COST_TABLE_METADATA.NEXTVAL INTO v_customer_rel_id FROM DUAL;
+    INSERT INTO T_COST_TABLE_METADATA
+        (ID, TABLE_CODE, TABLE_NAME, QUERY_VIEW, TARGET_TABLE, SEQUENCE_NAME, PK_COLUMN, CREATE_BY)
+    VALUES
+        (v_customer_rel_id, 'CostCustomerRelLookup', '客户信息(查)', 'T_COST_CUST_TRANPOSER_REL_V', 'T_COST_CUST_TRANPOSER_REL_V', NULL, 'CUSTOMID', 'system');
+
+    INSERT INTO T_COST_COLUMN_METADATA
+        (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY)
+    VALUES
+        (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_customer_rel_id, 'customname', 'CUSTOMNAME', '客户名称', 'text', 0, 'system');
+    INSERT INTO T_COST_COLUMN_METADATA
+        (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY)
+    VALUES
+        (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_customer_rel_id, 'zone', 'ZONE', '区域', 'text', 1, 'system');
+    INSERT INTO T_COST_COLUMN_METADATA
+        (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY)
+    VALUES
+        (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_customer_rel_id, 'tranposname', 'TRANPOSNAME', '分销商', 'text', 2, 'system');
+    INSERT INTO T_COST_COLUMN_METADATA
+        (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY)
+    VALUES
+        (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_customer_rel_id, 'customid', 'CUSTOMID', '客户ID', 'number', 3, 'system');
+    INSERT INTO T_COST_COLUMN_METADATA
+        (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY)
+    VALUES
+        (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_customer_rel_id, 'tranposid', 'TRANPOSID', '分销商ID', 'number', 4, 'system');
+    COMMIT;
+END;
+/
+
+-- D11. 产品信息元数据 (CostGoods)
+DECLARE
+    v_goods_id NUMBER;
+BEGIN
+    SELECT SEQ_COST_TABLE_METADATA.NEXTVAL INTO v_goods_id FROM DUAL;
+    INSERT INTO T_COST_TABLE_METADATA
+        (ID, TABLE_CODE, TABLE_NAME, QUERY_VIEW, TARGET_TABLE, SEQUENCE_NAME, PK_COLUMN, CREATE_BY)
+    VALUES
+        (v_goods_id, 'CostGoods', '产品信息', 'T_COST_GOODS_V', 'T_COST_GOODS', 'SEQ_COST_GOODS', 'GOODSID', 'system');
+
+    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY)
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_goods_id, 'id', 'GOODSID', '产品ID', 'number', 0, 'system');
+    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY)
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_goods_id, 'goodsname', 'GOODSNAME', '产品名称', 'text', 1, 'system');
+    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY)
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_goods_id, 'goodstype', 'GOODSTYPE', '规格', 'text', 2, 'system');
+    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY)
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_goods_id, 'packtype', 'PACKTYPE', '包装规格', 'text', 3, 'system');
+    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY)
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_goods_id, 'tranposid', 'TRANPOSID', '分销商ID', 'number', 4, 'system');
+    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, IS_VIRTUAL, CREATE_BY)
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_goods_id, 'tranposname', 'TRANPOSNAME', '分销商', 'text', 5, 1, 'system');
+    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY)
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_goods_id, 'zxCustomerid', 'ZX_CUSTOMERID', '客户ID', 'number', 6, 'system');
+    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, IS_VIRTUAL, CREATE_BY)
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_goods_id, 'customname', 'CUSTOMNAME', '客户名称', 'text', 7, 1, 'system');
+    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY)
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_goods_id, 'iserp', 'ISERP', '是否ERP', 'number', 98, 'system');
+INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY)
+VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_goods_id, 'createBy', 'CREATE_BY', '创建人', 'text', 99, 'system');
+    COMMIT;
+END;
+/
+
+-- D12. 产品价格元数据 (CostGoodsPrice)
+DECLARE
+    v_goods_price_id NUMBER;
+BEGIN
+    SELECT SEQ_COST_TABLE_METADATA.NEXTVAL INTO v_goods_price_id FROM DUAL;
+    INSERT INTO T_COST_TABLE_METADATA
+        (ID, TABLE_CODE, TABLE_NAME, QUERY_VIEW, TARGET_TABLE, SEQUENCE_NAME, PK_COLUMN, CREATE_BY)
+    VALUES
+        (v_goods_price_id, 'CostGoodsPrice', '产品价格', 'T_COST_GOODS_PRICE_V', 'T_COST_GOODS_PRICE', 'SEQ_COST_GOODS_PRICE', 'GOODSID', 'system');
+
+    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY)
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_goods_price_id, 'id', 'GOODSID', '产品ID', 'number', 0, 'system');
+    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY)
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_goods_price_id, 'goodsname', 'GOODSNAME', '产品名称', 'text', 1, 'system');
+    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY)
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_goods_price_id, 'price', 'PRICE', '价格', 'number', 2, 'system');
+    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY)
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_goods_price_id, 'useflag', 'USEFLAG', '用途', 'text', 3, 'system');
+    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY)
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_goods_price_id, 'goodstype', 'GOODSTYPE', '规格', 'text', 4, 'system');
+    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY)
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_goods_price_id, 'packtype', 'PACKTYPE', '包装规格', 'text', 5, 'system');
+    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY)
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_goods_price_id, 'factoryname', 'FACTORYNAME', '供应商', 'text', 6, 'system');
+    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY)
+    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_goods_price_id, 'iserp', 'ISERP', '是否ERP', 'number', 7, 'system');
+    COMMIT;
+END;
+/
+
 -- =====================================================
 -- E. 页面组件配置
 -- =====================================================
@@ -1058,6 +1796,53 @@ VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'role-manage', 'root', 'LAYOUT', NULL, 
 INSERT INTO T_COST_PAGE_COMPONENT (ID, PAGE_CODE, COMPONENT_KEY, COMPONENT_TYPE, PARENT_KEY, SORT_ORDER, REF_TABLE_CODE, COMPONENT_CONFIG, CREATE_BY)
 VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'role-manage', 'grid', 'GRID', 'root', 1, 'CostRole', '{"height":"100%"}', 'system');
 
+-- E4. 外币管理页面
+INSERT INTO T_COST_PAGE_COMPONENT (ID, PAGE_CODE, COMPONENT_KEY, COMPONENT_TYPE, PARENT_KEY, SORT_ORDER, COMPONENT_CONFIG, CREATE_BY)
+VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'formoney-manage', 'root', 'LAYOUT', NULL, 0, '{"direction":"vertical","gap":8}', 'system');
+
+INSERT INTO T_COST_PAGE_COMPONENT (ID, PAGE_CODE, COMPONENT_KEY, COMPONENT_TYPE, PARENT_KEY, SORT_ORDER, COMPONENT_CONFIG, CREATE_BY)
+VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'formoney-manage', 'toolbar', 'LAYOUT', 'root', 1,
+'{"direction":"horizontal","gap":8,"align":"center","justify":"flex-start"}', 'system');
+
+INSERT INTO T_COST_PAGE_COMPONENT (ID, PAGE_CODE, COMPONENT_KEY, COMPONENT_TYPE, PARENT_KEY, SORT_ORDER, COMPONENT_CONFIG, CREATE_BY)
+VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'formoney-manage', 'syncErpPrice', 'BUTTON', 'toolbar', 1,
+'{"label":"同步ERP采购价","type":"primary","action":"syncErpPrice"}', 'system');
+
+INSERT INTO T_COST_PAGE_COMPONENT (ID, PAGE_CODE, COMPONENT_KEY, COMPONENT_TYPE, PARENT_KEY, SORT_ORDER, REF_TABLE_CODE, COMPONENT_CONFIG, CREATE_BY)
+VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'formoney-manage', 'grid', 'GRID', 'root', 2, 'CostFormoney', '{"height":"100%","selectionMode":"single"}', 'system');
+
+-- E5. 部门管理页面
+INSERT INTO T_COST_PAGE_COMPONENT (ID, PAGE_CODE, COMPONENT_KEY, COMPONENT_TYPE, PARENT_KEY, SORT_ORDER, COMPONENT_CONFIG, CREATE_BY)
+VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'dept-manage', 'root', 'LAYOUT', NULL, 0, '{"direction":"vertical"}', 'system');
+
+INSERT INTO T_COST_PAGE_COMPONENT (ID, PAGE_CODE, COMPONENT_KEY, COMPONENT_TYPE, PARENT_KEY, SORT_ORDER, REF_TABLE_CODE, COMPONENT_CONFIG, CREATE_BY)
+VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'dept-manage', 'grid', 'GRID', 'root', 1, 'CostDept', '{"height":"100%"}', 'system');
+
+-- E6. 产品信息页面
+INSERT INTO T_COST_PAGE_COMPONENT (ID, PAGE_CODE, COMPONENT_KEY, COMPONENT_TYPE, PARENT_KEY, SORT_ORDER, COMPONENT_CONFIG, CREATE_BY)
+VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'goods-manage', 'root', 'LAYOUT', NULL, 0, '{"direction":"vertical"}', 'system');
+
+INSERT INTO T_COST_PAGE_COMPONENT (ID, PAGE_CODE, COMPONENT_KEY, COMPONENT_TYPE, PARENT_KEY, SORT_ORDER, REF_TABLE_CODE, COMPONENT_CONFIG, CREATE_BY)
+VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'goods-manage', 'grid', 'GRID', 'root', 1, 'CostGoods', '{"height":"100%"}', 'system');
+
+-- E7. 产品价格页面
+INSERT INTO T_COST_PAGE_COMPONENT (ID, PAGE_CODE, COMPONENT_KEY, COMPONENT_TYPE, PARENT_KEY, SORT_ORDER, COMPONENT_CONFIG, CREATE_BY)
+VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'goods-price-manage', 'root', 'LAYOUT', NULL, 0, '{"direction":"vertical"}', 'system');
+
+INSERT INTO T_COST_PAGE_COMPONENT (ID, PAGE_CODE, COMPONENT_KEY, COMPONENT_TYPE, PARENT_KEY, SORT_ORDER, REF_TABLE_CODE, COMPONENT_CONFIG, CREATE_BY)
+VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'goods-price-manage', 'grid', 'GRID', 'root', 1, 'CostGoodsPrice', '{"height":"100%"}', 'system');
+
+-- E8. 客户/分销商页面
+INSERT INTO T_COST_PAGE_COMPONENT (ID, PAGE_CODE, COMPONENT_KEY, COMPONENT_TYPE, PARENT_KEY, SORT_ORDER, COMPONENT_CONFIG, CREATE_BY)
+VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'customer-manage', 'root', 'LAYOUT', NULL, 0, '{"direction":"vertical","gap":8}', 'system');
+
+INSERT INTO T_COST_PAGE_COMPONENT (ID, PAGE_CODE, COMPONENT_KEY, COMPONENT_TYPE, PARENT_KEY, SORT_ORDER, REF_TABLE_CODE, COMPONENT_CONFIG, CREATE_BY)
+VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'customer-manage', 'masterGrid', 'GRID', 'root', 1, 'CostCustomer', '{"height":"50%","selectionMode":"single"}', 'system');
+
+INSERT INTO T_COST_PAGE_COMPONENT (ID, PAGE_CODE, COMPONENT_KEY, COMPONENT_TYPE, PARENT_KEY, SORT_ORDER, COMPONENT_CONFIG, CREATE_BY)
+VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'customer-manage', 'detailTabs', 'TABS', 'root', 2,
+'{"mode":"single","tabs":[{"key":"tranposer","title":"分销商","tableCode":"CostTranposer"}]}', 'system');
+
 COMMIT;
 
 -- =====================================================
@@ -1074,6 +1859,16 @@ VALUES (SEQ_COST_LOOKUP_CONFIG.NEXTVAL, 'package', '包材选择', 'BaseMaterial
   '[{"field":"materialCode","header":"包材编码","width":100},{"field":"materialName","header":"包材名称","width":150},{"field":"spec","header":"规格","width":100},{"field":"price","header":"单价","width":80}]',
   '["materialCode","materialName"]', 'id', 'materialName', 'system');
 
+INSERT INTO T_COST_LOOKUP_CONFIG (ID, LOOKUP_CODE, LOOKUP_NAME, DATA_SOURCE, DISPLAY_COLUMNS, SEARCH_COLUMNS, VALUE_FIELD, LABEL_FIELD, CREATE_BY)
+VALUES (SEQ_COST_LOOKUP_CONFIG.NEXTVAL, 'dept', '部门选择', 'CostDept',
+  '[{"field":"deptName","header":"部门名称","width":200},{"field":"id","header":"部门ID","width":80},{"field":"manager","header":"负责人ID","width":100}]',
+  '["deptName"]', 'id', 'deptName', 'system');
+
+INSERT INTO T_COST_LOOKUP_CONFIG (ID, LOOKUP_CODE, LOOKUP_NAME, DATA_SOURCE, DISPLAY_COLUMNS, SEARCH_COLUMNS, VALUE_FIELD, LABEL_FIELD, CREATE_BY)
+VALUES (SEQ_COST_LOOKUP_CONFIG.NEXTVAL, 'customer', '客户选择', 'CostCustomerRelLookup',
+  '[{"field":"customname","header":"客户名称","width":160},{"field":"zone","header":"区域","width":120},{"field":"tranposname","header":"分销商","width":160},{"field":"customid","header":"客户ID","width":100},{"field":"tranposid","header":"分销商ID","width":100}]',
+  '["customname","zone","tranposname","customid","tranposid"]', 'customid', 'customname', 'system');
+
 COMMIT;
 
 -- =====================================================
@@ -1086,6 +1881,16 @@ INSERT INTO T_COST_ROLE_PAGE (ID, ROLE_ID, PAGE_CODE, BUTTON_POLICY, COLUMN_POLI
 VALUES (SEQ_COST_ROLE_PAGE.NEXTVAL, 1, 'user-manage', '["*"]', NULL, 'system');
 INSERT INTO T_COST_ROLE_PAGE (ID, ROLE_ID, PAGE_CODE, BUTTON_POLICY, COLUMN_POLICY, CREATE_BY)
 VALUES (SEQ_COST_ROLE_PAGE.NEXTVAL, 1, 'role-manage', '["*"]', NULL, 'system');
+INSERT INTO T_COST_ROLE_PAGE (ID, ROLE_ID, PAGE_CODE, BUTTON_POLICY, COLUMN_POLICY, CREATE_BY)
+VALUES (SEQ_COST_ROLE_PAGE.NEXTVAL, 1, 'formoney-manage', '["*"]', NULL, 'system');
+INSERT INTO T_COST_ROLE_PAGE (ID, ROLE_ID, PAGE_CODE, BUTTON_POLICY, COLUMN_POLICY, CREATE_BY)
+VALUES (SEQ_COST_ROLE_PAGE.NEXTVAL, 1, 'dept-manage', '["*"]', NULL, 'system');
+INSERT INTO T_COST_ROLE_PAGE (ID, ROLE_ID, PAGE_CODE, BUTTON_POLICY, COLUMN_POLICY, CREATE_BY)
+VALUES (SEQ_COST_ROLE_PAGE.NEXTVAL, 1, 'goods-manage', '["*"]', NULL, 'system');
+INSERT INTO T_COST_ROLE_PAGE (ID, ROLE_ID, PAGE_CODE, BUTTON_POLICY, COLUMN_POLICY, CREATE_BY)
+VALUES (SEQ_COST_ROLE_PAGE.NEXTVAL, 1, 'goods-price-manage', '["*"]', NULL, 'system');
+INSERT INTO T_COST_ROLE_PAGE (ID, ROLE_ID, PAGE_CODE, BUTTON_POLICY, COLUMN_POLICY, CREATE_BY)
+VALUES (SEQ_COST_ROLE_PAGE.NEXTVAL, 1, 'customer-manage', '["*"]', NULL, 'system');
 
 COMMIT;
 

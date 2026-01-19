@@ -47,6 +47,9 @@ export type GridOptionsRule = {
   sideBar?: boolean | Record<string, any>;
   enableSidebar?: boolean;
   cellSelection?: boolean | Record<string, any>;
+  rowModelType?: 'clientSide' | 'infinite';
+  cacheBlockSize?: number;
+  maxBlocksInCache?: number;
   groupBy?: string[];
   groupColumnName?: string;
   groupDefaultExpanded?: number;

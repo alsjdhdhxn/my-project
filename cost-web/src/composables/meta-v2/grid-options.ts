@@ -4,6 +4,9 @@ import type { GridOptionsRule } from '@/composables/meta-v2/types';
 export type ResolvedGridOptions = {
   sideBar?: boolean | Record<string, any>;
   cellSelection?: boolean | Record<string, any>;
+  rowModelType?: 'clientSide' | 'infinite';
+  cacheBlockSize?: number;
+  maxBlocksInCache?: number;
   groupBy?: string[];
   groupColumnName?: string;
   groupDefaultExpanded?: number;
@@ -63,6 +66,9 @@ export function normalizeGridOptions(rule?: GridOptionsRule | null): ResolvedGri
   return {
     sideBar: normalizeSideBar(rule.sideBar ?? rule.enableSidebar),
     cellSelection: normalizeCellSelection(rule.cellSelection),
+    rowModelType: rule.rowModelType,
+    cacheBlockSize: rule.cacheBlockSize,
+    maxBlocksInCache: rule.maxBlocksInCache,
     groupBy: Array.isArray(rule.groupBy) ? rule.groupBy : undefined,
     groupColumnName: rule.groupColumnName,
     groupDefaultExpanded: rule.groupDefaultExpanded,
@@ -84,6 +90,9 @@ export function mergeGridOptions(
 
   assign('sideBar');
   assign('cellSelection');
+  assign('rowModelType');
+  assign('cacheBlockSize');
+  assign('maxBlocksInCache');
   assign('groupBy');
   assign('groupColumnName');
   assign('groupDefaultExpanded');
@@ -110,6 +119,9 @@ export function buildGridRuntimeOptions(options?: ResolvedGridOptions | null) {
   const runtimeOptions: Record<string, any> = {};
   if (options.sideBar !== undefined) runtimeOptions.sideBar = options.sideBar;
   if (options.cellSelection !== undefined) runtimeOptions.cellSelection = options.cellSelection;
+  if (options.rowModelType) runtimeOptions.rowModelType = options.rowModelType;
+  if (options.cacheBlockSize) runtimeOptions.cacheBlockSize = options.cacheBlockSize;
+  if (options.maxBlocksInCache != null) runtimeOptions.maxBlocksInCache = options.maxBlocksInCache;
   if (options.groupBy && options.groupBy.length > 0) {
     runtimeOptions.autoGroupColumnDef = {
       headerName: options.groupColumnName || '分组',

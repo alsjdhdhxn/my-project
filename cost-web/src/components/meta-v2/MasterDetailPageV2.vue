@@ -57,6 +57,9 @@ onMounted(async () => {
 :deep(.row-deleted) { opacity: 0.5; }
 :deep(.row-new) { background-color: #0b3d91; color: #ffffff; font-style: italic; }
 :deep(.row-confirmed) { background-color: #e6ffed !important; } /* 浅绿色背景 */
+:deep(.row-iserp) { background-color: #e6ffed !important; }
+:deep(.row-iserp-updated) { background-color: #fff2a8 !important; }
+:deep(.row-iserp-price-null) { background-color: #f8d7da !important; }
 /* 表头样式 */
 :deep(.ag-header-cell-label) { white-space: normal !important; line-height: 1.2; }
 :deep(.ag-header-cell) { height: auto !important; }

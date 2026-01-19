@@ -359,6 +359,8 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     logger.log('buildStates', 'start');
     const components = meta.pageComponents.value || [];
     const nextStates: Record<string, ComponentState> = {};
+    const masterGridOptions = meta.masterGridOptions?.value;
+    const isInfinite = masterGridOptions?.rowModelType === 'infinite';
 
     for (const component of components) {
       nextStates[component.componentKey] = {
@@ -380,7 +382,7 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
         componentType: 'GRID',
         status: gridError ? 'error' : 'ready',
         error: gridError,
-        rowData: data.masterRows.value || [],
+        rowData: isInfinite ? [] : (data.masterRows.value || []),
         columnDefs: meta.masterColumnDefs.value || []
       };
       nextStates[masterKey] = gridState;
@@ -390,10 +392,12 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
 
     if (!watchersAttached && masterKey) {
       watchersAttached = true;
-      watch(data.masterRows, (rows) => {
-        const state = componentStateByKey.value[masterKey] as GridState | undefined;
-        if (state) state.rowData = rows || [];
-      }, { deep: false });
+      if (!isInfinite) {
+        watch(data.masterRows, (rows) => {
+          const state = componentStateByKey.value[masterKey] as GridState | undefined;
+          if (state) state.rowData = rows || [];
+        }, { deep: false });
+      }
       watch(meta.masterColumnDefs, (defs) => {
         const state = componentStateByKey.value[masterKey] as GridState | undefined;
         if (state) state.columnDefs = defs || [];
@@ -409,14 +413,20 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     const gridState = componentStateByKey.value[masterKey] as GridState | undefined;
     if (!gridState) return;
 
+    const masterGridOptions = meta.masterGridOptions?.value;
+    const dataSource = masterGridOptions?.rowModelType === 'infinite'
+      ? (runtimeApi as any).createMasterDataSource?.({ pageSize: masterGridOptions.cacheBlockSize })
+      : null;
+
     const bindings = useMasterGridBindings({
       runtime: runtimeApi,
       metaRowClassGetter: meta.masterRowClassGetter?.value,
-      gridOptions: meta.masterGridOptions?.value,
+      gridOptions: masterGridOptions,
       columnDefs: meta.masterColumnDefs,
       gridKey: masterKey,
       contextMenuConfig: meta.masterContextMenu,
-      rowEditableRules: meta.masterRowEditableRules?.value
+      rowEditableRules: meta.masterRowEditableRules?.value,
+      dataSource
     });
 
     gridState.defaultColDef = bindings.defaultColDef;
@@ -454,7 +464,10 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     applyExtensions();
     runtimeStatus.value = runtimeError.value ? 'error' : 'ready';
     isReady.value = true;
-    await data.loadMasterData();
+    const masterGridOptions = meta.masterGridOptions?.value;
+    if (masterGridOptions?.rowModelType !== 'infinite') {
+      await data.loadMasterData();
+    }
   }
 
   return {

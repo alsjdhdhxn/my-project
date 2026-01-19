@@ -4,6 +4,7 @@ import { searchDynamicData } from '@/service/api';
 import { generateTempId, initRowData, type ParsedPageConfig, type RowData } from '@/logic/calc-engine';
 
 type RecalcAggregates = (masterId: number) => void;
+type QueryCondition = { field: string; operator: string; value: any; value2?: any };
 
 export function useMasterDetailData(params: {
   pageCode: string;
@@ -30,6 +31,133 @@ export function useMasterDetailData(params: {
 
   const masterRows = ref<RowData[]>([]);
   const detailCache = new Map<number, Record<string, RowData[]>>();
+  const masterRowMap = new Map<number, RowData>();
+
+  function resetMasterCache(rows: RowData[]) {
+    masterRowMap.clear();
+    masterRows.value = rows;
+    for (const row of rows) {
+      const id = row?.id;
+      if (typeof id === 'number') {
+        masterRowMap.set(id, row);
+      }
+    }
+  }
+
+  function mergeMasterCache(rows: RowData[]) {
+    const merged: RowData[] = [];
+    for (const row of rows) {
+      const id = row?.id;
+      if (typeof id === 'number') {
+        const existing = masterRowMap.get(id);
+        if (existing) {
+          merged.push(existing);
+          continue;
+        }
+        masterRowMap.set(id, row);
+      }
+      masterRows.value.push(row);
+      merged.push(row);
+    }
+    return merged;
+  }
+
+  function toTextCondition(field: string, type: string, value: any): QueryCondition | null {
+    if (value == null || value === '') return null;
+    switch (type) {
+      case 'contains':
+      case 'startsWith':
+      case 'endsWith':
+        return { field, operator: 'like', value };
+      case 'equals':
+        return { field, operator: 'eq', value };
+      case 'notEqual':
+        return { field, operator: 'ne', value };
+      default:
+        return null;
+    }
+  }
+
+  function toNumberCondition(field: string, type: string, value: any, value2?: any): QueryCondition | null {
+    if (value == null || value === '') return null;
+    switch (type) {
+      case 'equals':
+        return { field, operator: 'eq', value };
+      case 'notEqual':
+        return { field, operator: 'ne', value };
+      case 'lessThan':
+        return { field, operator: 'lt', value };
+      case 'lessThanOrEqual':
+        return { field, operator: 'le', value };
+      case 'greaterThan':
+        return { field, operator: 'gt', value };
+      case 'greaterThanOrEqual':
+        return { field, operator: 'ge', value };
+      case 'inRange':
+        if (value2 == null || value2 === '') return null;
+        return { field, operator: 'between', value, value2 };
+      default:
+        return null;
+    }
+  }
+
+  function toDateCondition(field: string, type: string, value: any, value2?: any): QueryCondition | null {
+    if (value == null || value === '') return null;
+    switch (type) {
+      case 'equals':
+        return { field, operator: 'eq', value };
+      case 'notEqual':
+        return { field, operator: 'ne', value };
+      case 'lessThan':
+        return { field, operator: 'lt', value };
+      case 'greaterThan':
+        return { field, operator: 'gt', value };
+      case 'inRange':
+        if (value2 == null || value2 === '') return null;
+        return { field, operator: 'between', value, value2 };
+      default:
+        return null;
+    }
+  }
+
+  function buildConditionsFromFilterModel(filterModel: Record<string, any> | null | undefined): QueryCondition[] {
+    if (!filterModel) return [];
+    const conditions: QueryCondition[] = [];
+    for (const [field, filter] of Object.entries(filterModel)) {
+      if (!filter) continue;
+      if (filter.operator && filter.condition1) {
+        const first = buildConditionsFromFilterModel({ [field]: filter.condition1 });
+        const second = buildConditionsFromFilterModel({ [field]: filter.condition2 });
+        conditions.push(...first);
+        if (filter.operator === 'AND') {
+          conditions.push(...second);
+        }
+        continue;
+      }
+      if (filter.filterType === 'set' && Array.isArray(filter.values)) {
+        if (filter.values.length > 0) {
+          conditions.push({ field, operator: 'in', value: filter.values });
+        }
+        continue;
+      }
+      const type = filter.type;
+      if (filter.filterType === 'text') {
+        const cond = toTextCondition(field, type, filter.filter);
+        if (cond) conditions.push(cond);
+        continue;
+      }
+      if (filter.filterType === 'number') {
+        const cond = toNumberCondition(field, type, filter.filter, filter.filterTo);
+        if (cond) conditions.push(cond);
+        continue;
+      }
+      if (filter.filterType === 'date') {
+        const cond = toDateCondition(field, type, filter.dateFrom, filter.dateTo);
+        if (cond) conditions.push(cond);
+      }
+    }
+    return conditions;
+  }
 
   async function loadMasterData() {
     const tableCode = pageConfig.value?.masterTableCode;
@@ -39,7 +167,8 @@ export function useMasterDetailData(params: {
       notifyError('加载主表数据失败');
       return;
     }
-    masterRows.value = (data?.list || []).map((row: any) => initRowData(row));
+    const rows = (data?.list || []).map((row: any) => initRowData(row));
+    resetMasterCache(rows);
   }
 
   async function loadDetailData(masterId: number) {
@@ -75,6 +204,9 @@ export function useMasterDetailData(params: {
   function addMasterRow() {
     const newRow = initRowData({ id: generateTempId() }, true);
     masterRows.value.push(newRow);
+    if (typeof newRow.id === 'number') {
+      masterRowMap.set(newRow.id, newRow);
+    }
     afterAddMasterRow?.(newRow);
     setTimeout(() => masterGridApi.value?.ensureIndexVisible(masterRows.value.length - 1), 100);
   }
@@ -143,6 +275,9 @@ export function useMasterDetailData(params: {
       if (!key.startsWith('_') && key !== 'id') newRow[key] = value;
     }
     masterRows.value.push(newRow);
+    if (typeof newRow.id === 'number') {
+      masterRowMap.set(newRow.id, newRow);
+    }
 
     if (sourceMasterId == null) {
       setTimeout(() => masterGridApi.value?.ensureIndexVisible(masterRows.value.length - 1), 100);
@@ -206,6 +341,52 @@ export function useMasterDetailData(params: {
     addDetailRow,
     deleteDetailRow,
     copyMasterRow,
-    copyDetailRow
+    copyDetailRow,
+    createMasterDataSource: (options?: { tableCode?: string; pageSize?: number }) => {
+      const tableCode = options?.tableCode || pageConfig.value?.masterTableCode;
+      const pageSizeFallback = options?.pageSize || 200;
+      if (!tableCode) return null;
+      let lastQueryKey = '';
+      return {
+        getRows: async (params: any) => {
+          const startRow = params.request?.startRow ?? params.startRow ?? 0;
+          const endRow = params.request?.endRow ?? params.endRow ?? startRow + pageSizeFallback;
+          const pageSize = Math.max(endRow - startRow, 1);
+          const page = Math.floor(startRow / pageSize) + 1;
+
+          const sortModel = params.request?.sortModel ?? params.sortModel ?? [];
+          const sortField = sortModel[0]?.colId;
+          const sortOrder = sortModel[0]?.sort;
+
+          const filterModel = params.request?.filterModel ?? params.filterModel;
+          const conditions = buildConditionsFromFilterModel(filterModel);
+          const queryKey = JSON.stringify({ filterModel, sortModel });
+          if (startRow === 0 && queryKey !== lastQueryKey) {
+            resetMasterCache([]);
+            lastQueryKey = queryKey;
+          }
+
+          const { data, error } = await searchDynamicData(tableCode, {
+            pageCode,
+            page,
+            pageSize,
+            sortField,
+            sortOrder,
+            conditions: conditions.length > 0 ? conditions : undefined
+          });
+
+          if (error) {
+            params.failCallback?.();
+            notifyError('加载主表数据失败');
+            return;
+          }
+
+          const rows = (data?.list || []).map((row: any) => initRowData(row));
+          const synced = mergeMasterCache(rows);
+          const total = data?.total ?? synced.length;
+          params.successCallback?.(synced, total);
+        }
+      };
+    }
   };
 }
