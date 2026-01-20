@@ -34,6 +34,8 @@
         <hutool.version>5.8.25</hutool.version>
         <jjwt.version>0.12.3</jjwt.version>
         <flyway.version>10.10.0</flyway.version>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
     </properties>
     <dependencies>
         <!-- MyBatis-Plus -->

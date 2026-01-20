@@ -145,14 +145,14 @@ export function evalCondition(condition: string | undefined, row: Record<string,
  * @param row 行数据
  * @param context 上下文（主表广播字段）
  * @param rules 编译后的计算规则
- * @param precision 小数精度，默认 2
+ * @param precision Optional display precision; null keeps raw values
  * @returns 计算后的字段值 Map
  */
 export function calcRowFields(
   row: Record<string, any>,
   context: Record<string, any>,
   rules: CompiledCalcRule[],
-  precision = 2
+  precision: number | null = null
 ): Record<string, number> {
   const results: Record<string, number> = {};
   
@@ -214,10 +214,11 @@ export function calcRowFields(
         continue;
       }
 
-      const rounded = round(value, precision);
-      results[rule.field] = rounded;
+      const raw = normalizeNumber(Number(value));
+      const output = applyPrecision(raw, precision);
+      results[rule.field] = output;
       // 更新 scope，支持级联计算
-      scope[rule.field] = rounded;
+      scope[rule.field] = raw;
     } catch (e) {
       console.warn('[Calculator] 计算错误:', rule.field, e);
       results[rule.field] = 0;
@@ -296,7 +297,7 @@ export function getAffectedRules(
  * @param rows 从表行数组
  * @param rules 编译后的聚合规则
  * @param currentMaster 当前主表行（用于表达式计算）
- * @param precision 小数精度
+ * @param precision Optional display precision; null keeps raw values
  * @param postProcess 后处理表达式
  * @returns 聚合结果 Map
  */
@@ -304,7 +305,7 @@ export function calcAggregates(
   rows: Record<string, any>[],
   rules: CompiledAggRule[],
   currentMaster: Record<string, any> = {},
-  precision = 2,
+  precision: number | null = null,
   postProcess?: string
 ): Record<string, number> {
   const results: Record<string, number> = {};
@@ -314,7 +315,7 @@ export function calcAggregates(
     if (rule.algorithm && rule.sourceField) {
       const filteredRows = rule.filter ? filterRows(rows, rule.filter) : rows;
       const value = aggregate(filteredRows, rule.sourceField, rule.algorithm);
-      results[rule.targetField] = round(value, precision);
+      results[rule.targetField] = normalizeNumber(value);
     }
   }
 
@@ -324,7 +325,7 @@ export function calcAggregates(
       const context = { ...currentMaster, ...results };
       try {
         const value = rule.compiledExpr.evaluate(context);
-        results[rule.targetField] = round(Number(value) || 0, precision);
+        results[rule.targetField] = normalizeNumber(Number(value) || 0);
       } catch (e) {
         console.warn('[Calculator] 聚合表达式计算失败:', rule.expression, e);
         results[rule.targetField] = 0;
@@ -345,7 +346,7 @@ export function calcAggregates(
       // 更新结果并四舍五入
       for (const field of fields) {
         if (typeof processed[field] === 'number') {
-          results[field] = round(processed[field], precision);
+          results[field] = normalizeNumber(processed[field]);
         }
       }
     } catch (e) {
@@ -353,7 +354,7 @@ export function calcAggregates(
     }
   }
 
-  return results;
+  return applyPrecisionMap(results, precision);
 }
 
 /**
@@ -401,6 +402,28 @@ function round(value: number, precision: number): number {
   if (Number.isNaN(value) || !Number.isFinite(value)) return 0;
   const factor = 10 ** precision;
   return Math.round(value * factor) / factor;
+}
+
+function normalizeNumber(value: number): number {
+  if (Number.isNaN(value) || !Number.isFinite(value)) return 0;
+  return value;
+}
+
+function applyPrecision(value: number, precision: number | null): number {
+  if (precision == null) return value;
+  return round(value, precision);
+}
+
+function applyPrecisionMap(
+  results: Record<string, number>,
+  precision: number | null
+): Record<string, number> {
+  if (precision == null) return results;
+  const output: Record<string, number> = {};
+  for (const [field, value] of Object.entries(results)) {
+    output[field] = applyPrecision(value, precision);
+  }
+  return output;
 }
 
 /**

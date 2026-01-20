@@ -1,0 +1,307 @@
+CREATE OR REPLACE PROCEDURE p_pinggu_compute(p_docid     number,
+                                             is_all_comp number) as
+  v_apex_pl   number;
+  v_dtl_count number;
+begin
+  SELECT COUNT(*)
+    INTO v_dtl_count
+    FROM t_cost_pinggu_dtl
+   WHERE docid = p_docid;
+  DBMS_OUTPUT.PUT_LINE('明细数量: ' || v_dtl_count || ',' || 'DOCID是' ||
+                       p_docid);
+  IF v_dtl_count = 0 THEN
+    RETURN; -- 没有明细数据，直接退出
+  END IF;
+  BEGIN
+    SELECT a.apex_pl
+      INTO v_apex_pl
+      FROM t_cost_pinggu a
+     WHERE a.docid = p_docid;
+  EXCEPTION
+    WHEN NO_DATA_FOUND THEN
+      RETURN; -- 找不到数据，直接退出
+  END;
+  if is_all_comp = 0 then
+    update t_cost_pinggu_dtl a
+       set a.per_hl = a.batch_qty / v_apex_pl * 1000000
+     where a.docid = p_docid
+       and a.dtl_useflag in ('原料', '辅料');
+    update t_cost_pinggu_dtl a
+       set a.per_hl = a.batch_qty / v_apex_pl * 1000000
+     where a.docid = p_docid
+       and a.dtl_useflag in ('印字包材', '非印字包材')
+       AND REGEXP_LIKE(a.apex_goodsname, '硬片|铝箔');
+  end if;
+  update t_cost_pinggu_dtl a
+     set a.batch_qty =
+         (select batch_qty
+            from t_cost_pinggu_dtl_v
+           where dtlid = a.dtlid model dimension by(DTLID)
+           measures(docid,
+                          apex_goodsid,
+                          apex_goodsname,
+                          dtl_useflag,
+                          spec,
+                          per_hl,
+                          nvl(exadd_mater, 0) exadd_mater,
+                          price,
+                          cost_batch,
+                          memo,
+                          apex_factoryname,
+                          apex_factoryid,
+                          modifydate,
+                          zx_source,
+                          base_price,
+                          suqty,
+                          goodstype,
+                          goodsname_en,
+                          APEX_PL,
+                          P_PERPACK,
+                          S_PERBACK,
+                          X_PERBACK,
+                          cast(null as number) batch_qty -- 初始化 batch_qty 为空
+                          ) rules automatic
+           order(batch_qty [ any ] =case
+          -- 非印字包材 / 印字包材 + 桶/瓶子/瓶盖/瓶签/说明书
+            when (dtl_useflag [ cv()
+                  ] in ('非印字包材', '印字包材')) and
+                 regexp_like(apex_goodsname [ cv() ],
+                             '桶|说明书|小盒|标签|瓶|盖') then
+             ROUND((APEX_PL [ cv()
+                    ] /
+                    NULLIF(P_PERPACK [ cv() ], 0)) *
+                   (1 + exadd_mater [ cv() ]),
+                   4)
+          
+          -- 辅料 + 胶囊
+            when dtl_useflag [ cv()
+             ] = '辅料' and
+                 regexp_like(apex_goodsname [ cv() ],
+                             '胶囊') then
+             round((APEX_PL [ cv() ] / 10000), 4)
+          
+          -- 原料 / 辅料：按投料系数 + 附加物料比例
+            when dtl_useflag [ cv()
+             ] in ('原料', '辅料') then
+             round((per_hl [ cv() ] * APEX_PL [ cv()
+                    ] * (1 +
+                    (exadd_mater [ cv() ] / 100)) /
+                    1000000),
+                   4)
+          --印字包材  硬片铝箔
+            when dtl_useflag [ cv()
+             ] in ('印字包材', '非印字包材') and
+                 regexp_like(apex_goodsname [ cv() ],
+                             '硬片|铝箔|复合膜') then
+             round((per_hl [ cv() ] * APEX_PL [ cv()
+                    ] * (1 +
+                    (exadd_mater [ cv() ] / 100)) /
+                    1000000),
+                   4)
+          -- 非印字包材 / 印字包材 + 大纸箱
+            when (dtl_useflag [ cv()
+                  ] in ('非印字包材', '印字包材')) and
+                 regexp_like(apex_goodsname [ cv() ],
+                             '大纸箱') then
+             round(ceil(APEX_PL [ cv() ] /
+                        (P_PERPACK [ cv() ] *
+                         S_PERBACK [ cv() ])),
+                   4)
+          
+          -- 非印字包材 / 印字包材 + 托盘
+            when (dtl_useflag [ cv()
+                  ] in ('非印字包材', '印字包材')) and
+                 regexp_like(apex_goodsname [ cv() ],
+                             '托盘') then
+             round(ceil(APEX_PL [ cv() ] /
+                        (P_PERPACK [ cv() ] *
+                         S_PERBACK [ cv() ] *
+                         X_PERBACK [ cv() ])),
+                   4)
+          
+            else
+             null
+          end))
+   where a.docid = p_docid;
+
+  update t_cost_pinggu_dtl a
+     set a.cost_batch = a.batch_qty * a.price
+   where a.docid = p_docid;
+
+end;
+/
+
+CREATE OR REPLACE PROCEDURE CALCULATE_PINGGU_FIELDS_P (
+  p_docid IN NUMBER
+) IS
+  -- 基础数据变量
+  v_apex_pl       NUMBER;
+  v_p_perpack     NUMBER;
+  v_yield         NUMBER;
+  v_out_price_rmb NUMBER;
+  v_annual_qty    NUMBER;
+  v_total_fl      NUMBER;
+  v_total_bc      NUMBER;
+  v_total_yl      NUMBER;
+  v_total_cost    NUMBER;
+
+  -- 计算结果变量
+  v_salemoney     NUMBER;
+  v_jgf_batch     NUMBER;
+  v_jgf_perqp     NUMBER;
+  v_cost_perqp    NUMBER;
+  v_ml_perqp      NUMBER;
+  v_y_jg_re       NUMBER;
+  v_y_ml          NUMBER;
+  v_y_sale        NUMBER;
+
+  -- 原料金额总和（用于判断是否需要除以1.13）
+  v_sum_yl        NUMBER := 0;
+  is_exists          NUMBER;
+
+BEGIN
+  select count(1) into is_exists from t_cost_pinggu
+   WHERE docid = p_docid;
+   if is_exists>0 then 
+  -- 1. 获取主表基础数据
+  SELECT apex_pl,
+         p_perpack,
+         yield,
+         out_price_rmb,
+         annual_qty,
+         cost_perqp
+    INTO v_apex_pl,
+         v_p_perpack,
+         v_yield,
+         v_out_price_rmb,
+         v_annual_qty,
+         v_cost_perqp
+    FROM t_cost_pinggu
+   WHERE docid = p_docid;
+
+  -- 2. 计算原料总金额（用于判断是否除以1.13）
+  SELECT NVL(SUM(CASE
+                   WHEN dtl_useflag = '原料' THEN
+                    cost_batch
+                   ELSE
+                    0
+                 END), 0)
+    INTO v_sum_yl
+    FROM t_cost_pinggu_dtl
+   WHERE docid = p_docid;
+
+  -- 3. 根据原料总金额判断是否需要除以1.13，计算各类成本
+  IF v_sum_yl > 0 THEN
+    -- 原料金额>0，所有类型都除以1.13
+    SELECT NVL(SUM(CASE
+                     WHEN dtl_useflag = '原料' THEN
+                      cost_batch / 1.13
+                     ELSE
+                      0
+                   END), 0) AS total_yl,
+           NVL(SUM(CASE
+                     WHEN dtl_useflag = '辅料' THEN
+                      cost_batch / 1.13
+                     ELSE
+                      0
+                   END), 0) AS total_fl,
+           NVL(SUM(CASE
+                     WHEN dtl_useflag IN ('非印字包材', '印字包材') THEN
+                      cost_batch / 1.13
+                     ELSE
+                      0
+                   END), 0) AS total_bc
+      INTO v_total_yl, v_total_fl, v_total_bc
+      FROM t_cost_pinggu_dtl
+     WHERE docid = p_docid;
+  ELSE
+    -- 原料金额=0或NULL，按原金额计算
+    SELECT NVL(SUM(CASE
+                     WHEN dtl_useflag = '原料' THEN
+                      cost_batch
+                     ELSE
+                      0
+                   END), 0) AS total_yl,
+           NVL(SUM(CASE
+                     WHEN dtl_useflag = '辅料' THEN
+                      cost_batch
+                     ELSE
+                      0
+                   END), 0) AS total_fl,
+           NVL(SUM(CASE
+                     WHEN dtl_useflag IN ('非印字包材', '印字包材') THEN
+                      cost_batch
+                     ELSE
+                      0
+                   END), 0) AS total_bc
+      INTO v_total_yl, v_total_fl, v_total_bc
+      FROM t_cost_pinggu_dtl
+     WHERE docid = p_docid;
+  END IF;
+
+  -- 4. 计算总成本
+  v_total_cost := v_total_fl + v_total_bc + v_total_yl;
+
+  -- 5. 级联计算各个字段（按依赖顺序）
+
+  -- salemoney = round(out_price_rmb / p_perpack * apex_pl * (yield / 100), 2)
+  v_salemoney := ROUND(NVL(v_out_price_rmb, 0) /
+                       NULLIF(v_p_perpack, 0) *
+                       NVL(v_apex_pl, 0) *
+                       (NVL(v_yield, 0) / 100), 2);
+
+  -- jgf_batch = round(salemoney - total_cost, 2)
+  v_jgf_batch := ROUND(NVL(v_salemoney, 0) - NVL(v_total_cost, 0), 2);
+
+  -- jgf_perqp = round(jgf_batch / apex_pl * 1000, 2)
+  v_jgf_perqp := ROUND(NVL(v_jgf_batch, 0) /
+                       NULLIF(v_apex_pl, 0) * 1000, 2);
+
+  -- cost_perqp = round(total_cost / apex_pl * 1000, 2)
+/*  -v_cost_perqp := ROUND(NVL(v_total_cost, 0) /
+                        NULLIF(v_apex_pl, 0) * 1000, 2);*/
+
+  -- ml_perqp = round(jgf_perqp - cost_perqp, 2)
+  v_ml_perqp := ROUND(NVL(v_jgf_perqp, 0) - NVL(v_cost_perqp, 0), 2);
+
+  -- y_jg_re = round(jgf_perqp / 1000 * annual_qty, 2)
+  v_y_jg_re := ROUND(NVL(v_jgf_perqp, 0) / 1000 *
+                     NVL(v_annual_qty, 0), 2);
+
+  -- y_ml = round(ml_perqp / 1000 * annual_qty, 2)
+  v_y_ml := ROUND(NVL(v_ml_perqp, 0) / 1000 *
+                  NVL(v_annual_qty, 0), 2);
+
+  -- y_sale = round(salemoney / apex_pl * annual_qty, 2)
+  v_y_sale := ROUND(NVL(v_salemoney, 0) /
+                    NULLIF(v_apex_pl, 0) *
+                    NVL(v_annual_qty, 0), 2);
+
+  -- 6. 更新t_cost_pinggu表
+  UPDATE t_cost_pinggu a
+     SET salemoney  = v_salemoney,
+         jgf_batch  = v_jgf_batch,
+         jgf_perqp  = v_jgf_perqp,
+    --     cost_perqp = v_cost_perqp,
+         ml_perqp   = v_ml_perqp,
+         y_jg_re    = v_y_jg_re,
+         y_ml       = v_y_ml,
+         y_sale     = v_y_sale,
+         total_fl=v_total_fl,
+         total_bc=v_total_bc,
+         total_yl=v_total_yl,
+         total_cost=v_total_cost
+   WHERE docid = p_docid;
+end if;
+
+EXCEPTION
+  WHEN NO_DATA_FOUND THEN
+    ROLLBACK;
+   --- DBMS_OUTPUT.PUT_LINE('错误: 未找到DOCID ' || p_docid || ' 的数据');
+    RAISE;
+  WHEN OTHERS THEN
+    ROLLBACK;
+    DBMS_OUTPUT.PUT_LINE('错误: ' || SQLERRM);
+    DBMS_OUTPUT.PUT_LINE('错误代码: ' || SQLCODE);
+    RAISE;
+END CALCULATE_PINGGU_FIELDS_P;

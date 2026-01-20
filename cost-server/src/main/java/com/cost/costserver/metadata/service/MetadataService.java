@@ -12,6 +12,7 @@ import com.cost.costserver.metadata.entity.*;
 import com.cost.costserver.metadata.mapper.*;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -116,7 +117,7 @@ public class MetadataService {
                 editable = false;
             }
             result.add(copyColumn(col, col.displayOrder(), col.width(), col.visible(), editable,
-                col.required(), col.searchable(), col.sortable(), col.pinned()));
+                col.required(), col.searchable(), col.sortable(), col.pinned(), col.rulesConfig()));
         }
         return result;
     }
@@ -141,7 +142,8 @@ public class MetadataService {
             Boolean searchable = override.searchable() != null ? override.searchable() : col.searchable();
             Boolean sortable = override.sortable() != null ? override.sortable() : col.sortable();
             String pinned = override.pinned() != null ? override.pinned() : col.pinned();
-            result.add(copyColumn(col, displayOrder, width, visible, editable, required, searchable, sortable, pinned));
+            String rulesConfig = mergeRulesConfig(col.rulesConfig(), override, col.fieldName());
+            result.add(copyColumn(col, displayOrder, width, visible, editable, required, searchable, sortable, pinned, rulesConfig));
         }
         return result;
     }
@@ -193,7 +195,7 @@ public class MetadataService {
             }
 
             result.add(copyColumn(col, displayOrder, width, visible, col.editable(),
-                col.required(), col.searchable(), col.sortable(), pinned));
+                col.required(), col.searchable(), col.sortable(), pinned, col.rulesConfig()));
             index++;
         }
         return result;
@@ -264,7 +266,11 @@ public class MetadataService {
                     bool(node, "searchable"),
                     bool(node, "sortable"),
                     normalizePinned(text(node, "pinned")),
-                    number(node, "order", "displayOrder")
+                    number(node, "order", "displayOrder"),
+                    parseOverrideConfig(node.get("format"), "format"),
+                    number(node, "precision"),
+                    bool(node, "trimZeros"),
+                    parseOverrideConfig(node.get("rulesConfig"), "rulesConfig")
                 );
                 result.put(field, override);
             }
@@ -313,6 +319,72 @@ public class MetadataService {
         return value != null && value.isTextual() ? value.asText() : null;
     }
 
+    private JsonNode parseOverrideConfig(JsonNode node, String label) {
+        if (node == null || node.isNull()) return null;
+        if (node.isObject()) return node;
+        if (node.isTextual()) {
+            try {
+                return objectMapper.readTree(node.asText());
+            } catch (Exception e) {
+                log.warn("Failed to parse {} JSON: {}", label, e.getMessage());
+            }
+        }
+        return null;
+    }
+
+    private String mergeRulesConfig(String baseConfig, ColumnOverride override, String fieldName) {
+        if (override == null) return baseConfig;
+        if (override.format() == null && override.precision() == null && override.trimZeros() == null
+            && override.rulesConfig() == null) {
+            return baseConfig;
+        }
+
+        ObjectNode root = parseRulesConfig(baseConfig, fieldName);
+        if (override.rulesConfig() instanceof ObjectNode overrideNode) {
+            mergeObjectNode(root, overrideNode);
+        }
+
+        if (override.format() instanceof ObjectNode formatNode) {
+            root.set("format", formatNode);
+        }
+
+        if (override.precision() != null || override.trimZeros() != null) {
+            ObjectNode format = root.with("format");
+            if (override.precision() != null) {
+                format.put("precision", override.precision());
+            }
+            if (override.trimZeros() != null) {
+                format.put("trimZeros", override.trimZeros());
+            }
+        }
+
+        return root.toString();
+    }
+
+    private ObjectNode parseRulesConfig(String raw, String fieldName) {
+        if (StrUtil.isBlank(raw)) {
+            return objectMapper.createObjectNode();
+        }
+        try {
+            JsonNode parsed = objectMapper.readTree(raw);
+            if (parsed instanceof ObjectNode objectNode) {
+                return objectNode;
+            }
+            log.warn("rulesConfig is not an object: {}", fieldName);
+        } catch (Exception e) {
+            log.warn("Failed to parse rulesConfig for {}: {}", fieldName, e.getMessage());
+        }
+        return objectMapper.createObjectNode();
+    }
+
+    private void mergeObjectNode(ObjectNode target, ObjectNode override) {
+        Iterator<Map.Entry<String, JsonNode>> fields = override.fields();
+        while (fields.hasNext()) {
+            Map.Entry<String, JsonNode> entry = fields.next();
+            target.set(entry.getKey(), entry.getValue());
+        }
+    }
+
     private ColumnMetadataDTO copyColumn(
             ColumnMetadataDTO col,
             Integer displayOrder,
@@ -322,7 +394,8 @@ public class MetadataService {
             Boolean required,
             Boolean searchable,
             Boolean sortable,
-            String pinned
+            String pinned,
+            String rulesConfig
     ) {
         return new ColumnMetadataDTO(
             col.id(),
@@ -343,7 +416,7 @@ public class MetadataService {
             col.dictType(),
             col.lookupConfigId(),
             col.defaultValue(),
-            col.rulesConfig(),
+            rulesConfig,
             col.isVirtual()
         );
     }
@@ -356,7 +429,11 @@ public class MetadataService {
         Boolean searchable,
         Boolean sortable,
         String pinned,
-        Integer order
+        Integer order,
+        JsonNode format,
+        Integer precision,
+        Boolean trimZeros,
+        JsonNode rulesConfig
     ) {}
 
     public boolean isValidTable(String tableCode) {

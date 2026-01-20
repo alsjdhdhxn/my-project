@@ -8,6 +8,13 @@ import type { CalcRule } from '@/logic/calc-engine';
 
 type ColumnMetadata = Api.Metadata.ColumnMetadata;
 
+interface NumberFormatConfig {
+  precision: number;
+  trimZeros?: boolean;
+}
+
+const DEFAULT_NUMBER_PRECISION = 2;
+
 /** 样式规则 */
 export interface StyleRule {
   condition: StyleCondition;
@@ -63,6 +70,7 @@ export function metaToColDef(col: ColumnMetadata): ColDef {
         const val = Number(params.newValue);
         return isNaN(val) ? 0 : val;
       };
+      colDef.valueFormatter = (params) => formatNumberValue(params.value);
       break;
     case 'date':
       colDef.valueFormatter = (params) => {
@@ -84,6 +92,10 @@ export function metaToColDef(col: ColumnMetadata): ColDef {
   if (col.rulesConfig) {
     try {
       const config = JSON.parse(col.rulesConfig);
+      const numberFormat = resolveNumberFormat(config);
+      if (col.dataType === 'number' && numberFormat) {
+        colDef.valueFormatter = (params) => formatNumberValue(params.value, numberFormat);
+      }
       
       // 0. 自定义排序
       if (config.comparator) {
@@ -128,6 +140,36 @@ export function metaToColDef(col: ColumnMetadata): ColDef {
   }
 
   return colDef;
+}
+
+function resolveNumberFormat(config: any): NumberFormatConfig | null {
+  if (!config || typeof config !== 'object') return null;
+  const format = config.format ?? null;
+  const precisionRaw = format?.precision ?? config.precision;
+  if (precisionRaw == null) return null;
+  const precision = Number(precisionRaw);
+  if (!Number.isFinite(precision) || precision < 0) return null;
+  const trimZeros = Boolean(format?.trimZeros ?? config.trimZeros);
+  return { precision: Math.floor(precision), trimZeros };
+}
+
+function formatNumberValue(value: any, format?: NumberFormatConfig): string {
+  if (value === null || value === undefined || value === '') return '';
+  const num = Number(value);
+  if (!Number.isFinite(num)) return String(value);
+  if (!format) {
+    if (Number.isInteger(num)) return String(num);
+    return trimTrailingZeros(num.toFixed(DEFAULT_NUMBER_PRECISION));
+  }
+  let text = num.toFixed(format.precision);
+  if (format.trimZeros) {
+    text = trimTrailingZeros(text);
+  }
+  return text;
+}
+
+function trimTrailingZeros(value: string): string {
+  return value.replace(/(?:\.0+|(\.\d+?)0+)$/, '$1');
 }
 
 /**

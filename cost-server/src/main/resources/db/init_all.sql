@@ -596,7 +596,7 @@ FROM T_COST_PINGGU_DTL d
 WHERE d.DTL_USEFLAG IN ('原料', '辅料')
   AND (d.DELETED = 0 OR d.DELETED IS NULL);
 
--- B2. 包材视图
+-- B2. 包材视图：严格按存储过程分支
 CREATE OR REPLACE VIEW V_COST_PINGGU_PACKAGE AS
 SELECT 
     d.DTLID AS ID,
@@ -605,6 +605,8 @@ SELECT
     d.APEX_GOODSNAME,
     d.DTL_USEFLAG,
     d.SPEC,
+    d.PER_HL,
+    d.EXADD_MATER,
     d.PRICE,
     d.BATCH_QTY,
     d.COST_BATCH,
@@ -618,14 +620,14 @@ SELECT
     d.CREATE_BY,
     d.UPDATE_BY,
     CASE
-        WHEN REGEXP_LIKE(d.APEX_GOODSNAME, '桶|说明书|小盒|标签|瓶|纸') THEN 'A'
+        WHEN REGEXP_LIKE(d.APEX_GOODSNAME, '桶|说明书|小盒|标签|瓶|盖') THEN 'A'
+        WHEN REGEXP_LIKE(d.APEX_GOODSNAME, '硬片|铝箔|复合膜') THEN 'D'
         WHEN REGEXP_LIKE(d.APEX_GOODSNAME, '大纸箱') THEN 'E'
         WHEN REGEXP_LIKE(d.APEX_GOODSNAME, '托盘') THEN 'F'
-        WHEN REGEXP_LIKE(d.APEX_GOODSNAME, '硬片|铝箔') THEN 'D'
-        ELSE 'A'
+        ELSE NULL
     END AS FORMULA_TYPE
 FROM T_COST_PINGGU_DTL d
-WHERE d.DTL_USEFLAG IN ('包材', '非印字包材', '印字包材')
+WHERE d.DTL_USEFLAG IN ('非印字包材', '印字包材')
   AND (d.DELETED = 0 OR d.DELETED IS NULL);
 
 -- B3. 用户角色视图
@@ -1842,6 +1844,49 @@ VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'customer-manage', 'masterGrid', 'GRID'
 INSERT INTO T_COST_PAGE_COMPONENT (ID, PAGE_CODE, COMPONENT_KEY, COMPONENT_TYPE, PARENT_KEY, SORT_ORDER, COMPONENT_CONFIG, CREATE_BY)
 VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'customer-manage', 'detailTabs', 'TABS', 'root', 2,
 '{"mode":"single","tabs":[{"key":"tranposer","title":"分销商","tableCode":"CostTranposer"}]}', 'system');
+
+COMMIT;
+
+-- =====================================================
+-- E9. 页面规则配置（计算/聚合）
+-- =====================================================
+
+-- E9.1 原辅料公式：B / C
+INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'material', 'CALC',
+q'~[
+  {"field":"batchQty","formulaField":"formulaType","formulas":{
+    "B":{"expression":"apexPl / 10000","triggerFields":["apexPl"]},
+    "C":{"expression":"perHl * apexPl * (1 + exaddMater / 100) / 1000000","triggerFields":["perHl","apexPl","exaddMater"]}
+  }},
+  {"field":"costBatch","expression":"batchQty * price","triggerFields":["batchQty","price"]}
+]~', 'system');
+
+-- E9.2 包材公式：A / D / E / F
+INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'package', 'CALC',
+q'~[
+  {"field":"batchQty","formulaField":"formulaType","formulas":{
+    "A":{"expression":"(apexPl / pPerpack) * (1 + exaddMater)","triggerFields":["apexPl","pPerpack","exaddMater"]},
+    "D":{"expression":"perHl * apexPl * (1 + exaddMater / 100) / 1000000","triggerFields":["perHl","apexPl","exaddMater"]},
+    "E":{"expression":"ceil(apexPl / (pPerpack * sPerback))","triggerFields":["apexPl","pPerpack","sPerback"]},
+    "F":{"expression":"ceil(apexPl / (pPerpack * sPerback * xPerback))","triggerFields":["apexPl","pPerpack","sPerback","xPerback"]}
+  }},
+  {"field":"costBatch","expression":"batchQty * price","triggerFields":["batchQty","price"]}
+]~', 'system');
+
+-- E9.3 汇总：原料金额>0 时三类都 /1.13（严格按存储过程）
+INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'masterGrid', 'AGGREGATE',
+q'~[
+  {"sourceField":"costBatch","targetField":"totalYl","algorithm":"SUM","sourceTab":"material","filter":"dtlUseflag === '原料'"},
+  {"sourceField":"costBatch","targetField":"totalFl","algorithm":"SUM","sourceTab":"material","filter":"dtlUseflag === '辅料'"},
+  {"sourceField":"costBatch","targetField":"totalBc","algorithm":"SUM","sourceTab":"package","filter":"dtlUseflag === '非印字包材' || dtlUseflag === '印字包材'"},
+  {"targetField":"totalYl","expression":"totalYl > 0 ? totalYl / 1.13 : totalYl"},
+  {"targetField":"totalFl","expression":"totalFl > 0 ? totalFl / 1.13 : totalFl"},
+  {"targetField":"totalBc","expression":"totalBc > 0 ? totalBc / 1.13 : totalBc"},
+  {"targetField":"totalCost","expression":"totalYl + totalFl + totalBc"}
+]~', 'system');
 
 COMMIT;
 
