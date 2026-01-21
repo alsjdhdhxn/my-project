@@ -9,6 +9,7 @@ import {
   type ResolvedGridOptions
 } from '@/composables/meta-v2/grid-options';
 import { DIRTY_CELL_CLASS_RULES, isFlagTrue } from '@/composables/meta-v2/cell-style';
+import type { CustomExportConfig } from '@/service/api/export-config';
 
 type RuntimeApi = {
   masterGridApi?: Ref<any>;
@@ -23,11 +24,8 @@ type RuntimeApi = {
   save?: () => void;
   saveGridConfig?: (gridKey: string, api: any, columnApi: any) => void;
   applyGridConfig?: (gridKey: string, api: any, columnApi: any) => void;
-  exportSelected?: () => void;
-  exportCurrent?: () => void;
-  exportAll?: () => void;
-  resetExportConfig?: () => void;
-  openHeaderConfig?: () => void;
+  customExportConfigs?: Ref<CustomExportConfig[]> | CustomExportConfig[];
+  executeCustomExport?: (exportCode: string, mode: 'all' | 'current') => void;
   markFieldChange?: (row: any, field: string, oldValue: any, newValue: any, type: 'user' | 'calc') => void;
   runMasterCalc?: (node: any, row: any) => void;
   broadcastToDetail?: (masterId: number, row: any) => Promise<void> | void;
@@ -133,11 +131,8 @@ export function useMasterGridBindings(params: {
     copyDetailRow: runtime.copyDetailRow || (() => { }),
     save: runtime.save || (() => { }),
     saveGridConfig: (runtime as any).saveGridConfig,
-    exportSelected: runtime.exportSelected,
-    exportCurrent: runtime.exportCurrent,
-    exportAll: runtime.exportAll,
-    resetExportConfig: runtime.resetExportConfig,
-    openHeaderConfig: runtime.openHeaderConfig,
+    customExportConfigs: runtime.customExportConfigs,
+    executeCustomExport: runtime.executeCustomExport,
     masterGridKey,
     masterMenuConfig: params.contextMenuConfig
   });

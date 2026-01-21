@@ -45,18 +45,16 @@ public class MetadataService {
         }
 
         TableMetadata table = tableMetadataMapper.selectOne(
-            new LambdaQueryWrapper<TableMetadata>()
-                .eq(TableMetadata::getTableCode, tableCode)
-        );
+                new LambdaQueryWrapper<TableMetadata>()
+                        .eq(TableMetadata::getTableCode, tableCode));
         if (table == null) {
             throw new BusinessException(400, "表元数据不存在: " + tableCode);
         }
 
         List<ColumnMetadata> columns = columnMetadataMapper.selectList(
-            new LambdaQueryWrapper<ColumnMetadata>()
-                .eq(ColumnMetadata::getTableMetadataId, table.getId())
-                .orderByAsc(ColumnMetadata::getDisplayOrder)
-        );
+                new LambdaQueryWrapper<ColumnMetadata>()
+                        .eq(ColumnMetadata::getTableMetadataId, table.getId())
+                        .orderByAsc(ColumnMetadata::getDisplayOrder));
 
         TableMetadataDTO dto = TableMetadataDTO.from(table, columns);
         cache.put(tableCode, dto);
@@ -72,8 +70,7 @@ public class MetadataService {
             String pageCode,
             String gridKey,
             PagePermission permission,
-            Long userId
-    ) {
+            Long userId) {
         return getTableMetadataWithPermission(tableCode, pageCode, gridKey, permission, userId, true);
     }
 
@@ -83,8 +80,7 @@ public class MetadataService {
             String gridKey,
             PagePermission permission,
             Long userId,
-            boolean applyUserPreferences
-    ) {
+            boolean applyUserPreferences) {
         TableMetadataDTO base = getTableMetadata(tableCode);
         List<ColumnMetadataDTO> columns = applyColumnOverrides(base.columns(), pageCode, gridKey);
         columns = applyPermission(columns, permission);
@@ -117,12 +113,13 @@ public class MetadataService {
                 editable = false;
             }
             result.add(copyColumn(col, col.displayOrder(), col.width(), col.visible(), editable,
-                col.required(), col.searchable(), col.sortable(), col.pinned(), col.rulesConfig()));
+                    col.required(), col.searchable(), col.sortable(), col.pinned(), col.rulesConfig()));
         }
         return result;
     }
 
-    private List<ColumnMetadataDTO> applyColumnOverrides(List<ColumnMetadataDTO> columns, String pageCode, String gridKey) {
+    private List<ColumnMetadataDTO> applyColumnOverrides(List<ColumnMetadataDTO> columns, String pageCode,
+            String gridKey) {
         Map<String, ColumnOverride> overrides = loadColumnOverrides(pageCode, gridKey);
         if (overrides.isEmpty()) {
             return columns;
@@ -143,7 +140,8 @@ public class MetadataService {
             Boolean sortable = override.sortable() != null ? override.sortable() : col.sortable();
             String pinned = override.pinned() != null ? override.pinned() : col.pinned();
             String rulesConfig = mergeRulesConfig(col.rulesConfig(), override, col.fieldName());
-            result.add(copyColumn(col, displayOrder, width, visible, editable, required, searchable, sortable, pinned, rulesConfig));
+            result.add(copyColumn(col, displayOrder, width, visible, editable, required, searchable, sortable, pinned,
+                    rulesConfig));
         }
         return result;
     }
@@ -152,21 +150,20 @@ public class MetadataService {
             List<ColumnMetadataDTO> columns,
             Long userId,
             String pageCode,
-            String gridKey
-    ) {
+            String gridKey) {
         if (userId == null || StrUtil.isBlank(pageCode) || StrUtil.isBlank(gridKey)) {
             return columns;
         }
-        Map<String, ColumnPreference> preferences =
-            userGridConfigService.getColumnPreferences(userId, pageCode, gridKey);
+        Map<String, ColumnPreference> preferences = userGridConfigService.getColumnPreferences(userId, pageCode,
+                gridKey);
         if (preferences.isEmpty()) {
             return columns;
         }
         int maxOrder = preferences.values().stream()
-            .map(ColumnPreference::order)
-            .filter(Objects::nonNull)
-            .max(Integer::compareTo)
-            .orElse(0);
+                .map(ColumnPreference::order)
+                .filter(Objects::nonNull)
+                .max(Integer::compareTo)
+                .orElse(0);
 
         List<ColumnMetadataDTO> result = new ArrayList<>();
         int index = 0;
@@ -195,7 +192,7 @@ public class MetadataService {
             }
 
             result.add(copyColumn(col, displayOrder, width, visible, col.editable(),
-                col.required(), col.searchable(), col.sortable(), pinned, col.rulesConfig()));
+                    col.required(), col.searchable(), col.sortable(), pinned, col.rulesConfig()));
             index++;
         }
         return result;
@@ -215,13 +212,12 @@ public class MetadataService {
         }
 
         List<PageRule> rules = pageRuleMapper.selectList(
-            new LambdaQueryWrapper<PageRule>()
-                .eq(PageRule::getPageCode, pageCode)
-                .eq(PageRule::getRuleType, "COLUMN_OVERRIDE")
-                .eq(PageRule::getDeleted, 0)
-                .in(PageRule::getComponentKey, componentKeys)
-                .orderByAsc(PageRule::getSortOrder)
-        );
+                new LambdaQueryWrapper<PageRule>()
+                        .eq(PageRule::getPageCode, pageCode)
+                        .eq(PageRule::getRuleType, "COLUMN_OVERRIDE")
+                        .eq(PageRule::getDeleted, 0)
+                        .in(PageRule::getComponentKey, componentKeys)
+                        .orderByAsc(PageRule::getSortOrder));
 
         if (rules.isEmpty()) {
             return Collections.emptyMap();
@@ -235,7 +231,8 @@ public class MetadataService {
                     break;
                 }
             }
-            if (selected != null) break;
+            if (selected != null)
+                break;
         }
 
         if (selected == null || StrUtil.isBlank(selected.getRules())) {
@@ -257,21 +254,21 @@ public class MetadataService {
                 if (StrUtil.isBlank(field)) {
                     field = text(node, "fieldName");
                 }
-                if (StrUtil.isBlank(field)) continue;
+                if (StrUtil.isBlank(field))
+                    continue;
                 ColumnOverride override = new ColumnOverride(
-                    number(node, "width"),
-                    bool(node, "visible"),
-                    bool(node, "editable"),
-                    bool(node, "required"),
-                    bool(node, "searchable"),
-                    bool(node, "sortable"),
-                    normalizePinned(text(node, "pinned")),
-                    number(node, "order", "displayOrder"),
-                    parseOverrideConfig(node.get("format"), "format"),
-                    number(node, "precision"),
-                    bool(node, "trimZeros"),
-                    parseOverrideConfig(node.get("rulesConfig"), "rulesConfig")
-                );
+                        number(node, "width"),
+                        bool(node, "visible"),
+                        bool(node, "editable"),
+                        bool(node, "required"),
+                        bool(node, "searchable"),
+                        bool(node, "sortable"),
+                        normalizePinned(text(node, "pinned")),
+                        number(node, "order", "displayOrder"),
+                        parseOverrideConfig(node.get("format"), "format"),
+                        number(node, "precision"),
+                        bool(node, "trimZeros"),
+                        parseOverrideConfig(node.get("rulesConfig"), "rulesConfig"));
                 result.put(field, override);
             }
             return result;
@@ -282,17 +279,22 @@ public class MetadataService {
     }
 
     private String normalizePinned(String value) {
-        if (value == null) return null;
-        if ("left".equalsIgnoreCase(value)) return "left";
-        if ("right".equalsIgnoreCase(value)) return "right";
+        if (value == null)
+            return null;
+        if ("left".equalsIgnoreCase(value))
+            return "left";
+        if ("right".equalsIgnoreCase(value))
+            return "right";
         return null;
     }
 
     private Integer number(JsonNode node, String... keys) {
         for (String key : keys) {
             JsonNode value = node.get(key);
-            if (value == null || value.isNull()) continue;
-            if (value.isNumber()) return value.intValue();
+            if (value == null || value.isNull())
+                continue;
+            if (value.isNumber())
+                return value.intValue();
             if (value.isTextual()) {
                 try {
                     return Integer.parseInt(value.asText());
@@ -306,8 +308,10 @@ public class MetadataService {
 
     private Boolean bool(JsonNode node, String key) {
         JsonNode value = node.get(key);
-        if (value == null || value.isNull()) return null;
-        if (value.isBoolean()) return value.asBoolean();
+        if (value == null || value.isNull())
+            return null;
+        if (value.isBoolean())
+            return value.asBoolean();
         if (value.isTextual()) {
             return Boolean.parseBoolean(value.asText());
         }
@@ -320,8 +324,10 @@ public class MetadataService {
     }
 
     private JsonNode parseOverrideConfig(JsonNode node, String label) {
-        if (node == null || node.isNull()) return null;
-        if (node.isObject()) return node;
+        if (node == null || node.isNull())
+            return null;
+        if (node.isObject())
+            return node;
         if (node.isTextual()) {
             try {
                 return objectMapper.readTree(node.asText());
@@ -333,9 +339,10 @@ public class MetadataService {
     }
 
     private String mergeRulesConfig(String baseConfig, ColumnOverride override, String fieldName) {
-        if (override == null) return baseConfig;
+        if (override == null)
+            return baseConfig;
         if (override.format() == null && override.precision() == null && override.trimZeros() == null
-            && override.rulesConfig() == null) {
+                && override.rulesConfig() == null) {
             return baseConfig;
         }
 
@@ -395,52 +402,49 @@ public class MetadataService {
             Boolean searchable,
             Boolean sortable,
             String pinned,
-            String rulesConfig
-    ) {
+            String rulesConfig) {
         return new ColumnMetadataDTO(
-            col.id(),
-            col.fieldName(),
-            col.columnName(),
-            col.queryColumn(),
-            col.targetColumn(),
-            col.headerText(),
-            col.dataType(),
-            displayOrder,
-            width,
-            visible,
-            editable,
-            required,
-            searchable,
-            sortable,
-            pinned,
-            col.dictType(),
-            col.lookupConfigId(),
-            col.defaultValue(),
-            rulesConfig,
-            col.isVirtual()
-        );
+                col.id(),
+                col.fieldName(),
+                col.columnName(),
+                col.queryColumn(),
+                col.targetColumn(),
+                col.headerText(),
+                col.dataType(),
+                displayOrder,
+                width,
+                visible,
+                editable,
+                required,
+                searchable,
+                sortable,
+                pinned,
+                col.dictType(),
+                col.lookupConfigId(),
+                col.defaultValue(),
+                rulesConfig,
+                col.isVirtual());
     }
 
     private record ColumnOverride(
-        Integer width,
-        Boolean visible,
-        Boolean editable,
-        Boolean required,
-        Boolean searchable,
-        Boolean sortable,
-        String pinned,
-        Integer order,
-        JsonNode format,
-        Integer precision,
-        Boolean trimZeros,
-        JsonNode rulesConfig
-    ) {}
+            Integer width,
+            Boolean visible,
+            Boolean editable,
+            Boolean required,
+            Boolean searchable,
+            Boolean sortable,
+            String pinned,
+            Integer order,
+            JsonNode format,
+            Integer precision,
+            Boolean trimZeros,
+            JsonNode rulesConfig) {
+    }
 
     public boolean isValidTable(String tableCode) {
         return cache.containsKey(tableCode) || tableMetadataMapper.selectCount(
-            new LambdaQueryWrapper<TableMetadata>()
-                .eq(TableMetadata::getTableCode, tableCode)
-        ) > 0;
+                new LambdaQueryWrapper<TableMetadata>()
+                        .eq(TableMetadata::getTableCode, tableCode)) > 0;
     }
 
     /**
@@ -448,12 +452,11 @@ public class MetadataService {
      */
     public List<TableMetadataDTO> findChildTables(String parentTableCode) {
         List<TableMetadata> childTables = tableMetadataMapper.selectList(
-            new LambdaQueryWrapper<TableMetadata>()
-                .eq(TableMetadata::getParentTableCode, parentTableCode)
-        );
+                new LambdaQueryWrapper<TableMetadata>()
+                        .eq(TableMetadata::getParentTableCode, parentTableCode));
         return childTables.stream()
-            .map(t -> getTableMetadata(t.getTableCode()))
-            .toList();
+                .map(t -> getTableMetadata(t.getTableCode()))
+                .toList();
     }
 
     /**
@@ -461,26 +464,25 @@ public class MetadataService {
      */
     public List<PageComponentDTO> getPageComponents(String pageCode) {
         List<PageComponent> components = pageComponentMapper.selectList(
-            new LambdaQueryWrapper<PageComponent>()
-                .eq(PageComponent::getPageCode, pageCode)
-                .orderByAsc(PageComponent::getSortOrder)
-        );
+                new LambdaQueryWrapper<PageComponent>()
+                        .eq(PageComponent::getPageCode, pageCode)
+                        .orderByAsc(PageComponent::getSortOrder));
 
         Map<String, List<PageRuleDTO>> rulesByComponent = getPageRules(pageCode).stream()
-            .filter(rule -> StrUtil.isNotBlank(rule.componentKey()))
-            .collect(Collectors.groupingBy(PageRuleDTO::componentKey));
+                .filter(rule -> StrUtil.isNotBlank(rule.componentKey()))
+                .collect(Collectors.groupingBy(PageRuleDTO::componentKey));
 
         // 构建树形结构
         Map<String, List<PageComponentDTO>> childrenMap = components.stream()
-            .filter(c -> StrUtil.isNotBlank(c.getParentKey()))
-            .map(component -> toDTOWithRules(component, rulesByComponent))
-            .collect(Collectors.groupingBy(PageComponentDTO::parentKey));
+                .filter(c -> StrUtil.isNotBlank(c.getParentKey()))
+                .map(component -> toDTOWithRules(component, rulesByComponent))
+                .collect(Collectors.groupingBy(PageComponentDTO::parentKey));
 
         return components.stream()
-            .filter(c -> StrUtil.isBlank(c.getParentKey()))
-            .map(component -> toDTOWithRules(component, rulesByComponent))
-            .map(dto -> buildTree(dto, childrenMap))
-            .toList();
+                .filter(c -> StrUtil.isBlank(c.getParentKey()))
+                .map(component -> toDTOWithRules(component, rulesByComponent))
+                .map(dto -> buildTree(dto, childrenMap))
+                .toList();
     }
 
     private PageComponentDTO buildTree(PageComponentDTO node, Map<String, List<PageComponentDTO>> childrenMap) {
@@ -489,18 +491,17 @@ public class MetadataService {
             return node;
         }
         List<PageComponentDTO> builtChildren = children.stream()
-            .map(child -> buildTree(child, childrenMap))
-            .toList();
+                .map(child -> buildTree(child, childrenMap))
+                .toList();
         return node.withChildren(builtChildren);
     }
 
     public List<PageRuleDTO> getPageRules(String pageCode) {
         List<PageRule> rules = pageRuleMapper.selectList(
-            new LambdaQueryWrapper<PageRule>()
-                .eq(PageRule::getPageCode, pageCode)
-                .eq(PageRule::getDeleted, 0)
-                .orderByAsc(PageRule::getSortOrder)
-        );
+                new LambdaQueryWrapper<PageRule>()
+                        .eq(PageRule::getPageCode, pageCode)
+                        .eq(PageRule::getDeleted, 0)
+                        .orderByAsc(PageRule::getSortOrder));
         return rules.stream().map(PageRuleDTO::from).toList();
     }
 
@@ -513,7 +514,8 @@ public class MetadataService {
         return dto.withRules(rules);
     }
 
-    private List<PageRuleDTO> resolveComponentRules(PageComponent component, Map<String, List<PageRuleDTO>> rulesByComponent) {
+    private List<PageRuleDTO> resolveComponentRules(PageComponent component,
+            Map<String, List<PageRuleDTO>> rulesByComponent) {
         List<PageRuleDTO> rules = new ArrayList<>();
         addRules(rules, rulesByComponent.get(component.getComponentKey()));
         if ("masterGrid".equals(component.getComponentKey())) {
@@ -565,18 +567,16 @@ public class MetadataService {
      */
     public List<DictionaryItemDTO> getDictItems(String dictType) {
         DictionaryType type = dictionaryTypeMapper.selectOne(
-            new LambdaQueryWrapper<DictionaryType>()
-                .eq(DictionaryType::getTypeCode, dictType)
-        );
+                new LambdaQueryWrapper<DictionaryType>()
+                        .eq(DictionaryType::getTypeCode, dictType));
         if (type == null) {
             return Collections.emptyList();
         }
 
         List<DictionaryItem> items = dictionaryItemMapper.selectList(
-            new LambdaQueryWrapper<DictionaryItem>()
-                .eq(DictionaryItem::getTypeId, type.getId())
-                .orderByAsc(DictionaryItem::getSortOrder)
-        );
+                new LambdaQueryWrapper<DictionaryItem>()
+                        .eq(DictionaryItem::getTypeId, type.getId())
+                        .orderByAsc(DictionaryItem::getSortOrder));
 
         return items.stream().map(DictionaryItemDTO::from).toList();
     }
@@ -585,7 +585,8 @@ public class MetadataService {
         StringBuilder sb = new StringBuilder();
         for (char c : camel.toCharArray()) {
             if (Character.isUpperCase(c)) {
-                if (!sb.isEmpty()) sb.append('-');
+                if (!sb.isEmpty())
+                    sb.append('-');
                 sb.append(Character.toLowerCase(c));
             } else {
                 sb.append(c);
@@ -599,12 +600,51 @@ public class MetadataService {
      */
     public LookupConfigDTO getLookupConfig(String lookupCode) {
         LookupConfig config = lookupConfigMapper.selectOne(
-            new LambdaQueryWrapper<LookupConfig>()
-                .eq(LookupConfig::getLookupCode, lookupCode)
-        );
+                new LambdaQueryWrapper<LookupConfig>()
+                        .eq(LookupConfig::getLookupCode, lookupCode));
         if (config == null) {
             throw new BusinessException(400, "弹窗选择器配置不存在: " + lookupCode);
         }
         return LookupConfigDTO.from(config);
+    }
+
+    /**
+     * 通过页面编码获取关联的主表元数据
+     * 查找页面组件中 componentType=GRID 且 componentKey=masterGrid 的组件，获取其 refTableCode
+     */
+    public TableMetadataDTO getTableMetadataByPageCode(String pageCode) {
+        if (StrUtil.isBlank(pageCode)) {
+            return null;
+        }
+        List<PageComponent> components = pageComponentMapper.selectList(
+                new LambdaQueryWrapper<PageComponent>()
+                        .eq(PageComponent::getPageCode, pageCode)
+                        .eq(PageComponent::getComponentType, "GRID"));
+
+        // 优先找 masterGrid，其次找 grid
+        PageComponent masterGrid = null;
+        for (PageComponent c : components) {
+            if ("masterGrid".equals(c.getComponentKey()) || "master".equals(c.getComponentKey())) {
+                masterGrid = c;
+                break;
+            }
+            if ("grid".equals(c.getComponentKey()) && masterGrid == null) {
+                masterGrid = c;
+            }
+        }
+        if (masterGrid == null && !components.isEmpty()) {
+            masterGrid = components.get(0);
+        }
+
+        if (masterGrid == null || StrUtil.isBlank(masterGrid.getRefTableCode())) {
+            return null;
+        }
+
+        try {
+            return getTableMetadata(masterGrid.getRefTableCode());
+        } catch (Exception e) {
+            log.warn("Failed to get table metadata for page {}: {}", pageCode, e.getMessage());
+            return null;
+        }
     }
 }

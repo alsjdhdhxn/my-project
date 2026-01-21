@@ -1,4 +1,4 @@
-import { computed, ref, shallowRef, watch } from 'vue';
+import { ref, shallowRef, watch } from 'vue';
 import type { GridApi } from 'ag-grid-community';
 import { useMetaConfig } from '@/composables/meta-v2/useMetaConfig';
 import { useMasterDetailData } from '@/composables/meta-v2/useMasterDetailData';
@@ -6,9 +6,8 @@ import { useCalcBroadcast } from '@/composables/meta-v2/useCalcBroadcast';
 import { useLookupDialog } from '@/composables/meta-v2/useLookupDialog';
 import { useSave } from '@/composables/meta-v2/useSave';
 import { useUserGridConfig } from '@/composables/meta-v2/useUserGridConfig';
-import { useExportExcel } from '@/composables/meta-v2/useExportExcel';
+import { useCustomExport } from '@/composables/meta-v2/useCustomExport';
 import { useMasterGridBindings } from '@/composables/meta-v2/useMasterGridBindings';
-import { useAuthStore } from '@/store/modules/auth';
 import { executeAction as executeActionApi } from '@/service/api/dynamic';
 import { createRuntimeLogger } from './logger';
 import type { ComponentState, GridState, MetaError, RuntimeFeatures, RuntimeStage } from './types';
@@ -80,8 +79,6 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
   const masterGridApi = shallowRef<GridApi | null>(null);
   const detailGridApisByTab = ref<Record<string, any>>({});
 
-  const authStore = useAuthStore();
-  const isAdmin = computed(() => authStore.userInfo.roles?.includes('ADMIN'));
 
   const meta = useMetaConfig(pageCode, notifyError);
   const {
@@ -169,12 +166,9 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     notifySuccess
   });
 
-  const exportExcel = useExportExcel({
+  const customExport = useCustomExport({
     pageCode,
     masterGridApi,
-    masterGridKey: meta.masterGridKey,
-    pageConfig: meta.pageConfig,
-    isAdmin,
     notifyInfo,
     notifyError,
     notifySuccess
@@ -221,7 +215,8 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
       return calc.broadcastToDetail(masterId, row);
     },
     ...lookup,
-    ...exportExcel,
+    customExportConfigs: customExport.customExportConfigs,
+    executeCustomExport: customExport.executeCustomExport,
     onMasterCellClicked: (event: any) => {
       if (!resolvedFeatures.value.lookup) return;
       lookup.onMasterCellClicked(event);
@@ -238,11 +233,6 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
       if (!resolvedFeatures.value.lookup) return;
       lookup.onLookupCancel();
     },
-    exportSelected: () => resolvedFeatures.value.export ? exportExcel.exportSelected?.() : undefined,
-    exportCurrent: () => resolvedFeatures.value.export ? exportExcel.exportCurrent?.() : undefined,
-    exportAll: () => resolvedFeatures.value.export ? exportExcel.exportAll?.() : undefined,
-    resetExportConfig: () => resolvedFeatures.value.export ? exportExcel.resetExportConfig?.() : undefined,
-    openHeaderConfig: () => resolvedFeatures.value.export ? exportExcel.openHeaderConfig?.() : undefined,
     executeAction,
     save,
     applyGridConfig: gridConfig.applyGridConfig,

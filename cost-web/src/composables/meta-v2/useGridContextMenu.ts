@@ -1,4 +1,5 @@
 import type { ContextMenuItemRule, ContextMenuRule } from '@/composables/meta-v2/types';
+import type { CustomExportConfig } from '@/service/api/export-config';
 
 const LABEL_ADD = '\u65b0\u589e';
 const LABEL_COPY = '\u590d\u5236';
@@ -10,6 +11,7 @@ const LABEL_EXPORT_CURRENT = '\u5bfc\u51fa\u5f53\u524d';
 const LABEL_EXPORT_ALL = '\u5bfc\u51fa\u5168\u90e8';
 const LABEL_RESET_EXPORT = '\u91cd\u7f6e\u5bfc\u51fa\u914d\u7f6e';
 const LABEL_HEADER_CONFIG = '\u8868\u5934\u914d\u7f6e';
+const LABEL_CUSTOM_EXPORT = '\u81ea\u5b9a\u4e49\u5bfc\u51fa';
 
 type MenuConfigInput = ContextMenuRule | { value?: ContextMenuRule | null } | null | undefined;
 
@@ -37,6 +39,10 @@ export function useGridContextMenu(params: {
   masterGridKey?: string | null;
   masterMenuConfig?: MenuConfigInput;
   detailMenuByTab?: Record<string, ContextMenuRule | null> | { value?: Record<string, ContextMenuRule | null> };
+  /** 自定义导出配置列表 */
+  customExportConfigs?: CustomExportConfig[] | { value?: CustomExportConfig[] };
+  /** 执行自定义导出的回调 */
+  executeCustomExport?: (exportCode: string, mode: 'all' | 'current') => void;
 }) {
   const {
     addMasterRow,
@@ -54,7 +60,9 @@ export function useGridContextMenu(params: {
     openHeaderConfig,
     masterGridKey,
     masterMenuConfig,
-    detailMenuByTab
+    detailMenuByTab,
+    customExportConfigs,
+    executeCustomExport
   } = params;
 
   function resolveMenuConfig(config: MenuConfigInput): ContextMenuRule | null {
@@ -278,10 +286,46 @@ export function useGridContextMenu(params: {
     return result;
   }
 
+  function resolveCustomExportConfigs(): CustomExportConfig[] {
+    const raw = (customExportConfigs as any)?.value ?? customExportConfigs;
+    return Array.isArray(raw) ? raw : [];
+  }
+
+  function buildCustomExportSubMenu(): any[] {
+    const configs = resolveCustomExportConfigs();
+    if (configs.length === 0 || !executeCustomExport) return [];
+
+    const subMenuItems: any[] = [];
+    for (const config of configs) {
+      // 每个配置提供两个选项：导出当前、导出所有
+      subMenuItems.push({
+        name: `${config.exportName} - \u5bfc\u51fa\u5f53\u524d`,
+        action: () => executeCustomExport(config.exportCode, 'current')
+      });
+      subMenuItems.push({
+        name: `${config.exportName} - \u5bfc\u51fa\u6240\u6709`,
+        action: () => executeCustomExport(config.exportCode, 'all')
+      });
+    }
+    return subMenuItems;
+  }
+
   function getMasterContextMenuItems(params: any) {
     const config = resolveMenuConfig(masterMenuConfig);
     if (!config) return [];
-    return buildMenuItems(config.items || [], { type: 'master', params });
+    const items = buildMenuItems(config.items || [], { type: 'master', params });
+
+    // 添加自定义导出子菜单
+    const customExportSubMenu = buildCustomExportSubMenu();
+    if (customExportSubMenu.length > 0) {
+      items.push('separator');
+      items.push({
+        name: LABEL_CUSTOM_EXPORT,
+        subMenu: customExportSubMenu
+      });
+    }
+
+    return normalizeSeparators(items);
   }
 
   function getDetailContextMenuItems(masterId: number, tabKey: string) {

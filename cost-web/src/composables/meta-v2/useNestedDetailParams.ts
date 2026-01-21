@@ -48,7 +48,14 @@ export function useNestedDetailParams(params: {
     refreshStrategy: 'nothing' as const,
     detailGridOptions: {
       columnDefs: buildSummaryColumnDefs(summaryConfig.value),
-      defaultColDef: { sortable: false, filter: false, resizable: true, wrapHeaderText: true, autoHeaderHeight: true },
+      defaultColDef: {
+        sortable: false,
+        filter: false,
+        resizable: true,
+        wrapHeaderText: true,
+        autoHeaderHeight: true,
+        suppressHeaderMenuButton: true
+      },
       rowHeight: 28,
       masterDetail: true,
       keepDetailRows: true,
@@ -111,7 +118,16 @@ export function useNestedDetailParams(params: {
         refreshStrategy: 'nothing' as const,
         detailGridOptions: {
           columnDefs: columns,
-          defaultColDef: { sortable: true, filter: true, resizable: true, editable: true, wrapHeaderText: true, autoHeaderHeight: true, cellClassRules },
+          defaultColDef: {
+            sortable: true,
+            filter: true,
+            resizable: true,
+            editable: true,
+            wrapHeaderText: true,
+            autoHeaderHeight: true,
+            cellClassRules,
+            suppressHeaderMenuButton: true
+          },
           rowHeight: 28,
           getRowId: (rowParams: any) => String(rowParams.data?.id),
           getRowClass: mergedRowClass,

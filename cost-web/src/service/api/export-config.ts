@@ -1,54 +1,84 @@
 import { request } from '../request';
+import { getServiceBaseURL } from '@/utils/service';
+import { getAuthorization } from '@/service/request/shared';
 
-export type ExportUserPref = {
-  autoExport?: boolean;
-  useUserConfig?: boolean;
+export type CustomExportConfig = {
+  id: number;
+  exportCode: string;
+  exportName: string;
+  pageCode: string;
+  displayOrder?: number;
 };
 
-export type ExportHeaderConfigDTO = {
+export type QueryCondition = {
   field: string;
-  defaultHeader: string;
-  customHeader?: string | null;
-  visible?: boolean | null;
+  operator: string;
+  value: any;
+  value2?: any;
 };
 
-export type ExportHeaderConfigItem = {
+export type CustomExportMode = 'all' | 'current';
+
+export type CustomExportSort = {
   field: string;
-  header?: string | null;
-  visible?: boolean | null;
+  order?: 'asc' | 'desc' | string;
 };
 
-export function fetchExportUserPref(pageCode: string) {
-  return request<ExportUserPref | null>({
-    url: `/api/export-config/prefs/${pageCode}`
+export type CustomExportRequest = {
+  mode: CustomExportMode;
+  conditions?: QueryCondition[];
+  sorts?: CustomExportSort[];
+};
+
+const isHttpProxy = import.meta.env.DEV && import.meta.env.VITE_HTTP_PROXY === 'Y';
+const { baseURL } = getServiceBaseURL(import.meta.env, isHttpProxy);
+
+function parseFileName(contentDisposition: string | null, fallback: string) {
+  if (!contentDisposition) return fallback;
+  const match = /filename\*?=(?:UTF-8''|"?)([^";]+)/i.exec(contentDisposition);
+  if (!match || !match[1]) return fallback;
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return match[1];
+  }
+}
+
+export function fetchCustomExportConfigs(pageCode: string) {
+  return request<CustomExportConfig[]>({
+    url: `/api/export-config/custom/${pageCode}`
   });
 }
 
-export function saveExportUserPref(pageCode: string, payload: ExportUserPref) {
-  return request<void>({
-    url: `/api/export-config/prefs/${pageCode}`,
+export async function executeCustomExport(exportCode: string, payload: CustomExportRequest) {
+  const Authorization = getAuthorization();
+  const response = await fetch(`${baseURL}/api/export-config/custom/${exportCode}/export`, {
     method: 'POST',
-    data: payload
+    headers: {
+      'Content-Type': 'application/json',
+      ...(Authorization ? { Authorization } : {})
+    },
+    body: JSON.stringify(payload)
   });
-}
 
-export function resetExportUserPref(pageCode: string) {
-  return request<void>({
-    url: `/api/export-config/prefs/${pageCode}`,
-    method: 'DELETE'
-  });
-}
+  if (!response.ok) {
+    let message = 'export failed';
+    try {
+      const data = await response.json();
+      if (data?.msg) message = data.msg;
+    } catch {
+      // ignore
+    }
+    throw new Error(message);
+  }
 
-export function fetchExportHeaderConfig(pageCode: string, gridKey: string) {
-  return request<ExportHeaderConfigDTO[]>({
-    url: `/api/export-config/headers/${pageCode}/${gridKey}`
-  });
-}
+  const blob = await response.blob();
+  const fallback = 'export.xlsx';
+  const filename = parseFileName(response.headers.get('content-disposition'), fallback);
 
-export function saveExportHeaderConfig(pageCode: string, gridKey: string, headers: ExportHeaderConfigItem[]) {
-  return request<void>({
-    url: `/api/export-config/headers/${pageCode}/${gridKey}`,
-    method: 'POST',
-    data: { headers }
-  });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(link.href);
 }
