@@ -16,7 +16,6 @@
         :rowSelection="rowSelection"
         :getContextMenuItems="contextMenuItems"
         :rowHeight="28"
-        :headerHeight="28"
         v-bind="currentGridOptions"
         @grid-ready="onGridReady"
         @cell-value-changed="onCellValueChanged"
@@ -102,6 +101,8 @@ const defaultColDef = computed<ColDef>(() => ({
   filter: true,
   resizable: true,
   editable: true,
+  wrapHeaderText: true,
+  autoHeaderHeight: true,
   cellClassRules: props.cellClassRules
 }));
 

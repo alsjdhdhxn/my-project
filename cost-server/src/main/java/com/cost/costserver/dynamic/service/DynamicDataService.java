@@ -607,6 +607,15 @@ public class DynamicDataService {
         if (value instanceof java.sql.Date date) {
             return date.toLocalDate().toString();
         }
+        // java.sql.Clob -> String
+        if (value instanceof java.sql.Clob clob) {
+            try {
+                return clob.getSubString(1, (int) clob.length());
+            } catch (java.sql.SQLException e) {
+                log.warn("CLOB 转换失败: {}", e.getMessage());
+                return null;
+            }
+        }
         // 其他类型保持原样
         return value;
     }

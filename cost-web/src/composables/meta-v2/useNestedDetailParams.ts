@@ -28,19 +28,19 @@ export function useNestedDetailParams(params: {
   const {
     pageConfig,
     detailColumnsByTab,
-  detailCache,
-  loadDetailData,
-  cellClassRules,
-  getRowClass,
-  detailRowClassByTab,
-  detailGridOptionsByTab,
-  applyGridConfig,
-  getDetailContextMenuItems,
-  onCellEditingStarted,
-  onCellEditingStopped,
-  onDetailCellValueChanged,
-  onDetailCellClicked
-} = params;
+    detailCache,
+    loadDetailData,
+    cellClassRules,
+    getRowClass,
+    detailRowClassByTab,
+    detailGridOptionsByTab,
+    applyGridConfig,
+    getDetailContextMenuItems,
+    onCellEditingStarted,
+    onCellEditingStopped,
+    onDetailCellValueChanged,
+    onDetailCellClicked
+  } = params;
 
   const summaryConfig = computed(() => resolveSummaryConfig(pageConfig.value));
 
@@ -48,9 +48,8 @@ export function useNestedDetailParams(params: {
     refreshStrategy: 'nothing' as const,
     detailGridOptions: {
       columnDefs: buildSummaryColumnDefs(summaryConfig.value),
-      defaultColDef: { sortable: false, filter: false, resizable: true },
+      defaultColDef: { sortable: false, filter: false, resizable: true, wrapHeaderText: true, autoHeaderHeight: true },
       rowHeight: 28,
-      headerHeight: 28,
       masterDetail: true,
       keepDetailRows: true,
       detailRowAutoHeight: true,
@@ -112,9 +111,8 @@ export function useNestedDetailParams(params: {
         refreshStrategy: 'nothing' as const,
         detailGridOptions: {
           columnDefs: columns,
-          defaultColDef: { sortable: true, filter: true, resizable: true, editable: true, cellClassRules },
+          defaultColDef: { sortable: true, filter: true, resizable: true, editable: true, wrapHeaderText: true, autoHeaderHeight: true, cellClassRules },
           rowHeight: 28,
-          headerHeight: 28,
           getRowId: (rowParams: any) => String(rowParams.data?.id),
           getRowClass: mergedRowClass,
           getContextMenuItems: getDetailContextMenuItems(masterId, tabKey),

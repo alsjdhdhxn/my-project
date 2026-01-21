@@ -63,8 +63,8 @@ export function useMasterGridBindings(params: {
     filter: 'agTextColumnFilter',
     resizable: true,
     editable: rowEditableCallback ?? true,
-    wrapText: true,
-    autoHeight: true,
+    wrapHeaderText: true,
+    autoHeaderHeight: true,
     cellClassRules,
     suppressHeaderMenuButton: true
   };
@@ -145,11 +145,8 @@ export function useMasterGridBindings(params: {
   function onGridReady(params: GridReadyEvent) {
     if (runtime.masterGridApi) runtime.masterGridApi.value = params.api;
     if (gridOptions?.rowModelType === 'infinite' && dataSource) {
-      if (typeof params.api.setDatasource === 'function') {
-        params.api.setDatasource(dataSource);
-      } else if (typeof (params.api as any).setGridOption === 'function') {
-        (params.api as any).setGridOption('datasource', dataSource);
-      }
+      // AG Grid v35: 使用 setGridOption 设置 datasource
+      params.api.setGridOption('datasource', dataSource);
     }
     const currentDefs = (params.api.getColumnDefs?.() as ColDef[] | undefined) ?? [];
     const hasExplicitWidth = currentDefs.some(def => typeof def.width === 'number' && def.width > 0);
