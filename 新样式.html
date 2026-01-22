@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AG Grid Reactive Engine with Multi-Views</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/ag-grid-enterprise@31.0.0/dist/ag-grid-enterprise.min.js"></script>
+    
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; }
+        
+        /* Tab 样式 */
+        .tab-btn.active {
+            border-bottom: 2px solid #2563eb;
+            color: #2563eb;
+            font-weight: 600;
+        }
+        .tab-btn {
+            padding: 8px 16px;
+            cursor: pointer;
+            color: #64748b;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+        }
+        .tab-btn:hover { color: #1e293b; }
+
+        .hidden-content { display: none !important; }
+        
+        /* 修复：Detail Panel 样式 */
+        .detail-panel { 
+            background: #fff; 
+            padding: 15px; 
+            width: 100%; 
+            /* height: 100%;  注意：在堆叠模式下不能设为100%，JS会动态控制 */
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        /* 堆叠模式标题 */
+        .stack-title {
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: #64748b;
+            text-transform: uppercase;
+            margin-bottom: 0.5rem;
+            margin-top: 1rem;
+            border-left: 3px solid #3b82f6;
+            padding-left: 8px;
+        }
+
+        .ag-theme-quartz .ag-value-change-delta-up { color: #16a34a !important; } 
+        .ag-theme-quartz .ag-value-change-delta-down { color: #dc2626 !important; } 
+        .profit-positive { color: #16a34a; font-weight: bold; }
+        .profit-negative { color: #dc2626; font-weight: bold; }
+    </style>
+</head>
+<body class="bg-gray-100 p-8 h-screen flex flex-col">
+
+    <div class="bg-white p-4 rounded-lg shadow mb-6 flex flex-col gap-4">
+        <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div>
+                <h1 class="text-xl font-bold text-gray-800">AG Grid: 多子表依赖计算引擎</h1>
+                <p class="text-sm text-gray-500 mt-1">
+                    同时支持 <b>Inventory</b> 和 <b>Sales</b> 两个子表，数据修改会触发跨表连锁计算。
+                </p>
+            </div>
+            
+            <!-- 视图切换器 -->
+            <div class="flex items-center gap-3 bg-blue-50 px-4 py-2 rounded-lg border border-blue-100">
+                <span class="text-sm font-semibold text-blue-800">视图模式:</span>
+                <select id="viewModeSelector" onchange="changeViewMode(this.value)" class="p-2 border border-blue-200 rounded text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <option value="tab">📑 Tab 选项卡模式</option>
+                    <option value="stack">📚 垂直堆叠模式</option>
+                </select>
+            </div>
+        </div>
+        
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-mono bg-gray-50 p-3 rounded border border-gray-200">
+            <div>
+                <h3 class="font-bold text-blue-600 mb-2">引擎规则 (Rules):</h3>
+                <ul class="space-y-1 text-gray-600">
+                    <li>1. [Inventory] Cost = Base * [Master]Markup</li>
+                    <li>2. [Master] Stock = SUM([Inventory]Qty)</li>
+                    <li>3. [Master] Sold = SUM([Sales]Units)</li>
+                    <li>4. [Master] Profit = (Sold * Price) - TotalCost</li>
+                </ul>
+            </div>
+            <div id="console-log" class="h-24 overflow-y-auto bg-white p-2 border border-gray-100 rounded">
+                <div class="text-gray-400 italic">System ready...</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="myGrid" class="ag-theme-quartz flex-1 w-full shadow-lg rounded-lg overflow-hidden"></div>
+
+    <script>
+        agGrid.LicenseManager.setLicenseKey("[TRIAL]_this_{AG_Charts_and_AG_Grid}_Enterprise_key_{AG-117218}_is_granted_for_evaluation_only___Use_in_production_is_not_permitted___Please_report_misuse_to_legal@ag-grid.com___For_help_with_purchasing_a_production_key_please_contact_info@ag-grid.com___You_are_granted_a_{Single_Application}_Developer_License_for_one_application_only___All_Front-End_JavaScript_developers_working_on_the_application_would_need_to_be_licensed___This_key_will_deactivate_on_{5 February 2026}____[v3]_[0102]_MTc3MDI0OTYwMDAwMA==9d3efdd51844a5a7d4f5ab5808f942f1");
+
+        function log(msg) {
+            const el = document.getElementById('console-log');
+            const time = new Date().toLocaleTimeString();
+            el.innerHTML = `<div class="border-b border-gray-100 py-1"><span class="text-blue-600">[${time}]</span> ${msg}</div>` + el.innerHTML;
+        }
+
+        // ==========================================
+        // 1. 全局数据源 (Inventory + Sales)
+        // ==========================================
+        const masterRowData = [
+            { id: 1, name: 'MacBook Pro M3', markup: 1.2, sale_price: 15000, total_stock: 0, total_sold: 0, total_cost: 0, profit: 0 },
+            { id: 2, name: 'iPhone 15 Pro', markup: 1.1, sale_price: 8999, total_stock: 0, total_sold: 0, total_cost: 0, profit: 0 },
+        ];
+
+        const GLOBAL_DATA_STORE = {
+            inventory: {
+                1: [
+                    { part: 'M3 Chip', quantity: 50, base_cost: 200, calc_unit_cost: 0, calc_line_total: 0 },
+                    { part: 'Screen', quantity: 10, base_cost: 150, calc_unit_cost: 0, calc_line_total: 0 }
+                ],
+                2: [
+                    { part: 'A17 Chip', quantity: 100, base_cost: 100, calc_unit_cost: 0, calc_line_total: 0 },
+                    { part: 'Body', quantity: 50, base_cost: 80, calc_unit_cost: 0, calc_line_total: 0 }
+                ]
+            },
+            sales: {
+                1: [
+                    { date: '2023-10-01', customer: 'Alice Inc', units: 5 },
+                    { date: '2023-10-05', customer: 'Bob Ltd', units: 2 }
+                ],
+                2: [
+                    { date: '2023-10-02', customer: 'Charlie', units: 10 }
+                ]
+            }
+        };
+
+        // 注册表结构更新：productId -> { inventory: api, sales: api }
+        const activeDetailApis = {};
+
+        // ==========================================
+        // 2. 规则配置 (支持多子表 scope)
+        // ==========================================
+        const FORMULA_RULES = [
+            // Rule 1: [Master]Markup -> [Inventory]UnitCost
+            {
+                target: { scope: 'inventory', field: 'calc_unit_cost' },
+                deps: ['inventory.base_cost', 'master.markup'], 
+                calc: (data, master) => Number((data.base_cost * master.markup).toFixed(2))
+            },
+            // Rule 2: [Inventory]Internal Calc
+            {
+                target: { scope: 'inventory', field: 'calc_line_total' },
+                deps: ['inventory.calc_unit_cost', 'inventory.quantity'],
+                calc: (data) => Number((data.calc_unit_cost * data.quantity).toFixed(2))
+            },
+            // Rule 3: [Inventory]Quantity -> [Master]Stock
+            {
+                target: { scope: 'master', field: 'total_stock' },
+                deps: ['inventory.quantity'],
+                type: 'AGGREGATION',
+                sourceScope: 'inventory',
+                aggFunc: (rows) => rows.reduce((sum, row) => sum + (Number(row.quantity)||0), 0)
+            },
+            // Rule 4: [Inventory]LineTotal -> [Master]Cost
+            {
+                target: { scope: 'master', field: 'total_cost' },
+                deps: ['inventory.calc_line_total'],
+                type: 'AGGREGATION',
+                sourceScope: 'inventory',
+                aggFunc: (rows) => rows.reduce((sum, row) => sum + (Number(row.calc_line_total)||0), 0)
+            },
+            // Rule 5: [Sales]Units -> [Master]Sold (新规则)
+            {
+                target: { scope: 'master', field: 'total_sold' },
+                deps: ['sales.units'],
+                type: 'AGGREGATION',
+                sourceScope: 'sales',
+                aggFunc: (rows) => rows.reduce((sum, row) => sum + (Number(row.units)||0), 0)
+            },
+            // Rule 6: [Master] Profit Calculation
+            {
+                target: { scope: 'master', field: 'profit' },
+                deps: ['master.total_sold', 'master.sale_price', 'master.total_cost'],
+                calc: (master) => Number(((master.total_sold * master.sale_price) - master.total_cost).toFixed(2))
+            }
+        ];
+
+        // ==========================================
+        // 3. 响应式引擎 (支持多 scope)
+        // ==========================================
+        class ReactiveEngine {
+            constructor(rules, dataStore, gridApi) {
+                this.rules = rules;
+                this.dataStore = dataStore;
+                this.gridApi = gridApi;
+                this.dependencyMap = this.buildDependencyMap();
+            }
+
+            buildDependencyMap() {
+                const map = {};
+                this.rules.forEach(rule => {
+                    rule.deps.forEach(depStr => {
+                        if (!map[depStr]) map[depStr] = [];
+                        map[depStr].push(rule);
+                    });
+                });
+                return map;
+            }
+
+            notifyChange(scope, productId, field, newValue) {
+                const key = `${scope}.${field}`;
+                const affectedRules = this.dependencyMap[key];
+                if (!affectedRules || affectedRules.length === 0) return;
+
+                affectedRules.forEach(rule => this.executeRule(rule, productId));
+            }
+
+            executeRule(rule, productId) {
+                const masterNode = this.gridApi.getRowNode(String(productId));
+                if (!masterNode) return;
+                const masterData = masterNode.data;
+                const targetScope = rule.target.scope;
+
+                // --- Case A: 更新子表 (inventory 或 sales) ---
+                if (targetScope !== 'master') {
+                    const rows = this.dataStore[targetScope][productId] || [];
+                    let updated = false;
+                    
+                    rows.forEach(row => {
+                        const newVal = rule.calc(row, masterData);
+                        if (row[rule.target.field] !== newVal) {
+                            row[rule.target.field] = newVal;
+                            updated = true;
+                            this.notifyChange(targetScope, productId, rule.target.field, newVal);
+                        }
+                    });
+                    
+                    // 刷新特定的子表 Grid
+                    if (updated && activeDetailApis[productId] && activeDetailApis[productId][targetScope]) {
+                        activeDetailApis[productId][targetScope].setGridOption('rowData', rows);
+                    }
+                } 
+                // --- Case B: 更新主表 ---
+                else {
+                    let newVal;
+                    if (rule.type === 'AGGREGATION') {
+                        // 聚合需要知道数据源是哪个子表
+                        const sourceRows = this.dataStore[rule.sourceScope][productId] || [];
+                        newVal = rule.aggFunc(sourceRows);
+                    } else {
+                        newVal = rule.calc(masterData);
+                    }
+
+                    if (masterData[rule.target.field] !== newVal) {
+                        masterNode.setDataValue(rule.target.field, newVal);
+                        log(`Master Updated [${rule.target.field}] -> ${newVal}`);
+                        this.notifyChange('master', productId, rule.target.field, newVal);
+                    }
+                }
+            }
+            
+            recalculateAll(productId) {
+                const masterNode = this.gridApi.getRowNode(String(productId));
+                if (!masterNode) return;
+                const data = masterNode.data;
+                
+                // 触发主表变化
+                this.notifyChange('master', productId, 'markup', data.markup);
+                this.notifyChange('master', productId, 'sale_price', data.sale_price);
+
+                // 触发子表变化 (取第一行触发即可)
+                const invRows = this.dataStore.inventory[productId] || [];
+                if (invRows.length > 0) this.notifyChange('inventory', productId, 'quantity', invRows[0].quantity);
+                
+                const salesRows = this.dataStore.sales[productId] || [];
+                if (salesRows.length > 0) this.notifyChange('sales', productId, 'units', salesRows[0].units);
+            }
+        }
+
+        // ==========================================
+        // 4. Renderers: 支持 Tab 和 Stack 模式
+        // ==========================================
+        let engine;
+
+        // 注册 API 的辅助函数
+        function registerDetailApi(productId, scope, api) {
+            if (!activeDetailApis[productId]) activeDetailApis[productId] = {};
+            activeDetailApis[productId][scope] = api;
+        }
+        function unregisterDetailApi(productId) {
+            delete activeDetailApis[productId];
+        }
+
+        // 列定义
+        const colDefs = {
+            inventory: [
+                { field: 'part', headerName: 'Part', flex: 1 },
+                { field: 'base_cost', headerName: 'Base Cost', width: 90 },
+                { field: 'quantity', headerName: 'Qty (Edit)', editable: true, cellClass: 'bg-yellow-50 font-bold', width: 90, type: 'numericColumn' },
+                { field: 'calc_unit_cost', headerName: 'UnitCost', width: 90, cellStyle: {color: '#666'} },
+                { field: 'calc_line_total', headerName: 'TotalCost', width: 100, cellStyle: {fontWeight: 'bold', color: '#1d4ed8'} }
+            ],
+            sales: [
+                { field: 'date', headerName: 'Date', flex: 1 },
+                { field: 'customer', headerName: 'Customer', flex: 1 },
+                { field: 'units', headerName: 'Sold Units (Edit)', editable: true, cellClass: 'bg-green-50 font-bold', width: 120, type: 'numericColumn' }
+            ]
+        };
+
+        // --- Renderer A: Tabbed ---
+        class TabbedDetailRenderer {
+            init(params) {
+                this.pid = params.data.id;
+                this.eGui = document.createElement('div');
+                this.eGui.className = 'detail-panel h-full'; // Tab 模式高度填充
+                
+                this.eGui.innerHTML = `
+                    <div class="flex flex-col h-full w-full">
+                        <div class="flex border-b border-gray-200 mb-2">
+                            <div class="tab-btn active" data-tab="inventory">📦 Inventory</div>
+                            <div class="tab-btn" data-tab="sales">📈 Sales</div>
+                        </div>
+                        <div class="flex-1 relative overflow-hidden">
+                            <div id="grid-inv-${this.pid}" class="h-full w-full ag-theme-quartz"></div>
+                            <div id="grid-sales-${this.pid}" class="h-full w-full ag-theme-quartz hidden-content"></div>
+                        </div>
+                    </div>
+                `;
+
+                // Tab 切换逻辑
+                const tabs = this.eGui.querySelectorAll('.tab-btn');
+                tabs.forEach(tab => tab.addEventListener('click', (e) => {
+                    tabs.forEach(t => t.classList.remove('active'));
+                    e.currentTarget.classList.add('active');
+                    const target = e.currentTarget.getAttribute('data-tab');
+                    
+                    const invGrid = this.eGui.querySelector(`#grid-inv-${this.pid}`);
+                    const salesGrid = this.eGui.querySelector(`#grid-sales-${this.pid}`);
+                    
+                    invGrid.classList.add('hidden-content');
+                    salesGrid.classList.add('hidden-content');
+                    
+                    if (target === 'inventory') invGrid.classList.remove('hidden-content');
+                    if (target === 'sales') salesGrid.classList.remove('hidden-content');
+                }));
+
+                // 初始化 Grids
+                setTimeout(() => {
+                    this.createGrid('inventory', `#grid-inv-${this.pid}`);
+                    this.createGrid('sales', `#grid-sales-${this.pid}`);
+                }, 0);
+            }
+            
+            createGrid(scope, selector) {
+                const el = this.eGui.querySelector(selector);
+                agGrid.createGrid(el, {
+                    columnDefs: colDefs[scope],
+                    rowData: GLOBAL_DATA_STORE[scope][this.pid] || [],
+                    defaultColDef: { resizable: true },
+                    headerHeight: 30, rowHeight: 30,
+                    onGridReady: (p) => registerDetailApi(this.pid, scope, p.api),
+                    onGridPreDestroyed: () => unregisterDetailApi(this.pid),
+                    onCellValueChanged: (e) => engine.notifyChange(scope, this.pid, e.colDef.field, e.newValue)
+                });
+            }
+            getGui() { return this.eGui; }
+        }
+
+        // --- Renderer B: Stacked ---
+        class StackedDetailRenderer {
+            init(params) {
+                this.pid = params.data.id;
+                this.eGui = document.createElement('div');
+                this.eGui.className = 'detail-panel'; // 堆叠模式高度自动
+                
+                this.eGui.innerHTML = `
+                    <div class="flex flex-col gap-4 pb-4">
+                        <div>
+                            <div class="stack-title">📦 Inventory</div>
+                            <div id="stack-inv-${this.pid}" class="ag-theme-quartz" style="height: 180px;"></div>
+                        </div>
+                        <div>
+                            <div class="stack-title">📈 Sales Records</div>
+                            <div id="stack-sales-${this.pid}" class="ag-theme-quartz" style="height: 180px;"></div>
+                        </div>
+                    </div>
+                `;
+
+                setTimeout(() => {
+                    this.createGrid('inventory', `#stack-inv-${this.pid}`);
+                    this.createGrid('sales', `#stack-sales-${this.pid}`);
+                }, 0);
+            }
+            
+            createGrid(scope, selector) {
+                const el = this.eGui.querySelector(selector);
+                agGrid.createGrid(el, {
+                    columnDefs: colDefs[scope],
+                    rowData: GLOBAL_DATA_STORE[scope][this.pid] || [],
+                    defaultColDef: { resizable: true },
+                    headerHeight: 30, rowHeight: 30,
+                    onGridReady: (p) => registerDetailApi(this.pid, scope, p.api),
+                    onCellValueChanged: (e) => engine.notifyChange(scope, this.pid, e.colDef.field, e.newValue)
+                });
+            }
+            getGui() { return this.eGui; }
+        }
+
+        // ==========================================
+        // 5. Main Grid Setup
+        // ==========================================
+        const masterColDefs = [
+            { field: 'name', headerName: 'Product', width: 180, cellRenderer: 'agGroupCellRenderer' },
+            { field: 'markup', editable: true, cellClass: 'bg-blue-50 font-bold', width: 90 },
+            { field: 'sale_price', editable: true, cellClass: 'bg-blue-50 font-bold', width: 110 },
+            { field: 'total_stock', headerName: 'Stock', width: 90, enableCellChangeFlash: true },
+            { field: 'total_sold', headerName: 'Sold', width: 90, enableCellChangeFlash: true },
+            { field: 'total_cost', headerName: 'Cost', width: 100, enableCellChangeFlash: true },
+            { field: 'profit', headerName: 'Profit', flex: 1, enableCellChangeFlash: true, 
+              cellRenderer: p => `<span class="${p.value >= 0 ? 'profit-positive' : 'profit-negative'}">${p.value}</span>` }
+        ];
+
+        let gridApi;
+
+        const gridOptions = {
+            getRowId: params => String(params.data.id),
+            columnDefs: masterColDefs,
+            rowData: masterRowData,
+            masterDetail: true,
+            // 默认配置 (Tab模式)
+            detailRowHeight: 300,
+            detailCellRenderer: TabbedDetailRenderer,
+            
+            onGridReady: (params) => {
+                gridApi = params.api;
+                engine = new ReactiveEngine(FORMULA_RULES, GLOBAL_DATA_STORE, params.api);
+                setTimeout(() => {
+                    masterRowData.forEach(row => engine.recalculateAll(row.id));
+                    log('Initial calculation complete.');
+                }, 200);
+            },
+            onCellValueChanged: (e) => {
+                engine.notifyChange('master', e.data.id, e.colDef.field, e.newValue);
+            }
+        };
+
+        // 切换视图逻辑
+        function changeViewMode(mode) {
+            gridApi.collapseAll();
+            
+            if (mode === 'tab') {
+                gridApi.updateGridOptions({
+                    detailRowAutoHeight: false,
+                    detailRowHeight: 300,
+                    detailCellRenderer: TabbedDetailRenderer
+                });
+            } else {
+                gridApi.updateGridOptions({
+                    detailRowHeight: undefined,
+                    detailRowAutoHeight: true,
+                    detailCellRenderer: StackedDetailRenderer
+                });
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const gridDiv = document.querySelector('#myGrid');
+            agGrid.createGrid(gridDiv, gridOptions);
+        });
+
+    </script>
+</body>
+</html>

@@ -183,9 +183,22 @@ public class MenuService {
             if ("home".equals(resource.getPageCode())) {
                 return "layout.base$view.home";
             }
+            if (isV3Page(resource)) {
+                return "layout.base$view.dynamic-v3";
+            }
             return "layout.base$view.dynamic";
         }
         // 子级页面只返回视图组件
+        if (isV3Page(resource)) {
+            return "view.dynamic-v3";
+        }
         return "view.dynamic";
+    }
+
+    private boolean isV3Page(Resource resource) {
+        if (resource == null) {
+            return false;
+        }
+        return "cost-pinggu-v3".equalsIgnoreCase(resource.getResourceCode());
     }
 }

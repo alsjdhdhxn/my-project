@@ -49,6 +49,15 @@ export const generatedRoutes: GeneratedRoute[] = [
     }
   },
   {
+    name: 'dynamic-v3',
+    path: '/dynamic-v3',
+    component: 'layout.base$view.dynamic-v3',
+    meta: {
+      title: 'dynamic-v3',
+      i18nKey: 'route.dynamic-v3'
+    }
+  },
+  {
     name: 'home',
     path: '/home',
     component: 'layout.base$view.home',

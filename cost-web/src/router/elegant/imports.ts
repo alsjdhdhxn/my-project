@@ -18,6 +18,7 @@ export const views: Record<LastLevelRouteKey, RouteComponent | (() => Promise<Ro
   403: () => import("@/views/_builtin/403/index.vue"),
   404: () => import("@/views/_builtin/404/index.vue"),
   500: () => import("@/views/_builtin/500/index.vue"),
+  "dynamic-v3": () => import("@/views/_builtin/dynamic-v3/index.vue"),
   dynamic: () => import("@/views/_builtin/dynamic/index.vue"),
   "iframe-page": () => import("@/views/_builtin/iframe-page/[url].vue"),
   login: () => import("@/views/_builtin/login/index.vue"),

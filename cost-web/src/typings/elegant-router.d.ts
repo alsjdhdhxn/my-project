@@ -21,6 +21,7 @@ declare module "@elegant-router/types" {
     "404": "/404";
     "500": "/500";
     "dynamic": "/dynamic";
+    "dynamic-v3": "/dynamic-v3";
     "home": "/home";
     "iframe-page": "/iframe-page/:url";
     "login": "/login/:module(pwd-login|code-login|register|reset-pwd|bind-wechat)?";
@@ -59,6 +60,7 @@ declare module "@elegant-router/types" {
     | "404"
     | "500"
     | "dynamic"
+    | "dynamic-v3"
     | "home"
     | "iframe-page"
     | "login"
@@ -81,6 +83,7 @@ declare module "@elegant-router/types" {
     | "403"
     | "404"
     | "500"
+    | "dynamic-v3"
     | "dynamic"
     | "iframe-page"
     | "login"

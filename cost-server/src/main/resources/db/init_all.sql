@@ -2085,6 +2085,13 @@ BEGIN
     VALUES (SEQ_COST_RESOURCE.NEXTVAL, 'cost-pinggu-v2', '成本评估', 'PAGE', 'cost-pinggu-v2', 'mdi:calculator-variant', '/cost/cost-pinggu-v2', v_cost_id, 1, 'system');
 
 
+    -- v3测试
+
+    INSERT INTO T_COST_RESOURCE (ID, RESOURCE_CODE, RESOURCE_NAME, RESOURCE_TYPE, PAGE_CODE, ICON, ROUTE, PARENT_ID, SORT_ORDER, CREATE_BY)
+
+    VALUES (SEQ_COST_RESOURCE.NEXTVAL, 'cost-pinggu-v3', 'v3测试', 'PAGE', 'cost-pinggu-v2', 'mdi:flask', '/cost/cost-pinggu-v3', v_cost_id, 6, 'system');
+
+
 
     -- 成本管理 - 外币管理
 
