@@ -65,7 +65,8 @@ const defaultColDef = computed<ColDef>(() => ({
   editable: true,
   wrapHeaderText: true,
   autoHeaderHeight: true,
-  cellClassRules: props.cellClassRules
+  cellClassRules: props.cellClassRules,
+  suppressHeaderMenuButton: true
 }));
 
 const gridRuntimeOptions = computed(() => buildGridRuntimeOptions(props.gridOptions));
@@ -179,4 +180,3 @@ watch(
   min-width: 0;
 }
 </style>
-
