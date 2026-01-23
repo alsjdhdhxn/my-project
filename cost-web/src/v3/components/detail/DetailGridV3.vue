@@ -127,7 +127,7 @@ const gridWrapStyle = computed(() => {
   return { height: `${calculatedHeight.value}px` };
 });
 
-const rowSelection = { mode: 'multiRow', checkboxes: false, enableClickSelection: true } as const;
+const rowSelection = { mode: 'multiRow', checkboxes: true, enableClickSelection: true } as const;
 
 const defaultColDef = computed<ColDef>(() => ({
   sortable: true,

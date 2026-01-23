@@ -39,7 +39,7 @@ export function useGridContextMenu(params: {
   masterGridKey?: string | null;
   masterMenuConfig?: MenuConfigInput;
   detailMenuByTab?: Record<string, ContextMenuRule | null> | { value?: Record<string, ContextMenuRule | null> };
-  /** 自定义导出配置列�?*/
+  /** 自定义导出配置列�?*/
   customExportConfigs?: CustomExportConfig[] | { value?: CustomExportConfig[] };
   /** 执行自定义导出的回调 */
   executeCustomExport?: (exportCode: string, mode: 'all' | 'current') => void;
@@ -166,10 +166,23 @@ export function useGridContextMenu(params: {
           label: LABEL_COPY,
           requiresRow: true,
           handler: () => {
-            const row = resolveRow(ctx.params);
-            if (!row) return;
-            if (ctx.type === 'master') copyMasterRow(row);
-            else if (ctx.masterId != null && ctx.tabKey) copyDetailRow(ctx.masterId, ctx.tabKey, row);
+            const api = ctx.params?.api;
+            const selectedRows = api?.getSelectedRows?.() || [];
+            
+            if (selectedRows.length > 1) {
+              // 多选复制
+              if (ctx.type === 'master') {
+                selectedRows.forEach((row: any) => copyMasterRow(row));
+              } else if (ctx.masterId != null && ctx.tabKey) {
+                selectedRows.forEach((row: any) => copyDetailRow(ctx.masterId!, ctx.tabKey!, row));
+              }
+            } else {
+              // 单行复制
+              const row = resolveRow(ctx.params);
+              if (!row) return;
+              if (ctx.type === 'master') copyMasterRow(row);
+              else if (ctx.masterId != null && ctx.tabKey) copyDetailRow(ctx.masterId, ctx.tabKey, row);
+            }
           }
         };
       case 'deleteRow':
@@ -177,10 +190,23 @@ export function useGridContextMenu(params: {
           label: LABEL_DELETE,
           requiresRow: true,
           handler: () => {
-            const row = resolveRow(ctx.params);
-            if (!row) return;
-            if (ctx.type === 'master') deleteMasterRow(row);
-            else if (ctx.masterId != null && ctx.tabKey) deleteDetailRow(ctx.masterId, ctx.tabKey, row);
+            const api = ctx.params?.api;
+            const selectedRows = api?.getSelectedRows?.() || [];
+            
+            if (selectedRows.length > 1) {
+              // 多选删除
+              if (ctx.type === 'master') {
+                selectedRows.forEach((row: any) => deleteMasterRow(row));
+              } else if (ctx.masterId != null && ctx.tabKey) {
+                selectedRows.forEach((row: any) => deleteDetailRow(ctx.masterId!, ctx.tabKey!, row));
+              }
+            } else {
+              // 单行删除
+              const row = resolveRow(ctx.params);
+              if (!row) return;
+              if (ctx.type === 'master') deleteMasterRow(row);
+              else if (ctx.masterId != null && ctx.tabKey) deleteDetailRow(ctx.masterId, ctx.tabKey, row);
+            }
           }
         };
       case 'save':
@@ -297,7 +323,7 @@ export function useGridContextMenu(params: {
 
     const subMenuItems: any[] = [];
     for (const config of configs) {
-      // 每个配置提供两个选项：导出当前、导出所�?
+      // 每个配置提供两个选项：导出当前、导出所�?
       subMenuItems.push({
         name: `${config.exportName} - \u5bfc\u51fa\u5f53\u524d`,
         action: () => executeCustomExport(config.exportCode, 'current')
