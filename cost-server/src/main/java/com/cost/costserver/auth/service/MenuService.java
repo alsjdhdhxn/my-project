@@ -199,6 +199,8 @@ public class MenuService {
         if (resource == null) {
             return false;
         }
-        return "cost-pinggu-v3".equalsIgnoreCase(resource.getResourceCode());
+        String code = resource.getResourceCode();
+        return "cost-pinggu-v3".equalsIgnoreCase(code) 
+            || "wms-con-doc".equalsIgnoreCase(code);
     }
 }

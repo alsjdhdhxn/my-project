@@ -37,12 +37,15 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { AgGridVue } from 'ag-grid-vue3';
+import { useDialog } from 'naive-ui';
 import DetailRowRendererV3 from '@/v3/components/detail/DetailRowRendererV3.vue';
 import { useMasterGridBindings } from '@/v3/composables/meta-v3/useMasterGridBindings';
 import { useGridContextMenu } from '@/v3/composables/meta-v3/useGridContextMenu';
 import { useThemeStore } from '@/store/modules/theme';
 
 const props = defineProps<{ runtime: any }>();
+
+const dialog = useDialog();
 
 const themeStore = useThemeStore();
 const runtime = props.runtime;
@@ -255,6 +258,40 @@ function getRowHeight(params: any): number | undefined {
   return Math.min(totalHeight, maxContainerHeight);
 }
 
+// 检测指定主表行及其子表是否有未保存的修改
+function hasUnsavedChanges(masterId: number): boolean {
+  // 检查主表行
+  const masterRow = masterRows.value.find((r: any) => r.id === masterId);
+  if (masterRow && (masterRow._isNew || masterRow._isDeleted || masterRow._dirtyFields)) {
+    return true;
+  }
+  
+  // 检查子表
+  const cached = detailCache.get(masterId);
+  if (cached) {
+    for (const rows of Object.values(cached)) {
+      for (const row of rows as any[]) {
+        if (row._isNew || row._isDeleted || row._dirtyFields) {
+          return true;
+        }
+      }
+    }
+  }
+  
+  return false;
+}
+
+// 获取当前展开行的masterId
+function getExpandedMasterId(api: any): number | null {
+  let expandedMasterId: number | null = null;
+  api?.forEachNode?.((node: any) => {
+    if (node?.master && node.expanded) {
+      expandedMasterId = node.data?.id;
+    }
+  });
+  return expandedMasterId;
+}
+
 function onDetailRowOpened(event: any) {
   if (!event?.node?.master) return;
   
@@ -267,25 +304,47 @@ function onDetailRowOpened(event: any) {
   if (!currentNode.expanded) return;
   
   // 检查是否有其他展开的行
-  let hasOtherExpanded = false;
+  let expandedNode: any = null;
   api?.forEachNode?.((node: any) => {
     if (node?.master && node !== currentNode && node.expanded) {
-      hasOtherExpanded = true;
+      expandedNode = node;
     }
   });
   
-  if (hasOtherExpanded) {
+  if (expandedNode) {
+    const expandedMasterId = expandedNode.data?.id;
+    
     // 先收起当前行（阻止本次展开）
     currentNode.setExpanded(false);
     
-    // 收起其他所有展开的行
-    api?.forEachNode?.((node: any) => {
-      if (node?.master && node.expanded) {
-        node.setExpanded(false);
-      }
-    });
+    // 检查原展开行是否有未保存的修改
+    if (hasUnsavedChanges(expandedMasterId)) {
+      dialog.warning({
+        title: '提示',
+        content: '当前数据有未保存的修改，是否保存？',
+        positiveText: '保存',
+        negativeText: '稍后保存',
+        onPositiveClick: async () => {
+          await save();
+          // 保存后收起旧行，展开新行
+          expandedNode.setExpanded(false);
+          setTimeout(() => {
+            currentNode.setExpanded(true);
+          }, 50);
+        },
+        onNegativeClick: () => {
+          // 不保存，直接收起旧行，展开新行
+          expandedNode.setExpanded(false);
+          setTimeout(() => {
+            currentNode.setExpanded(true);
+          }, 50);
+        }
+      });
+      return;
+    }
     
-    // 延迟后再展开当前行
+    // 没有修改，直接收起旧行，展开新行
+    expandedNode.setExpanded(false);
     setTimeout(() => {
       currentNode.setExpanded(true);
     }, 50);
