@@ -1,5 +1,5 @@
 <template>
-  <div class="detail-grid-wrap">
+  <div class="detail-grid-wrap" :style="gridWrapStyle">
     <div v-if="showTitle" class="stack-title-row">
       <div class="stack-title">{{ tab.title }}</div>
       <div class="stack-title-extra">
@@ -20,6 +20,7 @@
       :headerHeight="28"
       v-bind="gridRuntimeOptions"
       @grid-ready="onGridReady"
+      @row-data-updated="updateHeightFromGrid"
       @cell-value-changed="onCellValueChanged"
       @cell-clicked="onCellClicked"
       @cell-editing-started="onCellEditingStarted"
@@ -45,6 +46,8 @@ const props = defineProps<{
   cellClassRules: ColDef['cellClassRules'];
   contextMenuItems?: (params: any) => any[];
   showTitle?: boolean;
+  tabCount?: number;
+  refreshDetailRowHeight?: () => void;
   registerDetailGridApi: (tabKey: string, api: any) => void;
   unregisterDetailGridApi?: (tabKey: string, api: any) => void;
   applyGridConfig?: (gridKey: string, api: any, columnApi: any) => void;
@@ -55,6 +58,73 @@ const props = defineProps<{
 }>();
 
 const gridApi = ref<any>(null);
+const calculatedHeight = ref<number>(120);
+
+// 计算grid高度
+function calcHeight(): number {
+  // 如果没有指定tabCount，说明不是堆叠模式，使用默认高度
+  if (!props.tabCount) {
+    return 300;
+  }
+  
+  const rowHeight = 28;
+  const headerHeight = 28;
+  const titleHeight = props.showTitle ? 32 : 0;
+  const minRows = 2;
+  const tabCount = props.tabCount;
+  const gap = 16;
+  const padding = 40;
+  
+  // 每个子表最大高度 = (屏幕高度 - padding - gaps) / 子表数量
+  const availableHeight = window.innerHeight - 100 - padding - (gap * (tabCount - 1));
+  const maxHeight = Math.floor(availableHeight / tabCount);
+  // 最小高度 = 表头 + 2行 + 标题
+  const minHeight = headerHeight + rowHeight * minRows + titleHeight;
+  
+  // 实际内容高度 = 表头 + 数据行 + 标题
+  const dataRows = props.rows?.length || 0;
+  const contentHeight = headerHeight + Math.max(dataRows, minRows) * rowHeight + titleHeight;
+  
+  // 限制在最小和最大之间
+  return Math.max(minHeight, Math.min(contentHeight, maxHeight));
+}
+
+// 监听rows变化，更新高度
+watch(
+  () => props.rows?.length,
+  () => {
+    calculatedHeight.value = calcHeight();
+  },
+  { immediate: true }
+);
+
+// 监听gridApi的rowData变化（处理新增/删除行）
+function updateHeightFromGrid() {
+  if (gridApi.value) {
+    const rowCount = gridApi.value.getDisplayedRowCount?.() || 0;
+    const rowHeight = 28;
+    const headerHeight = 28;
+    const titleHeight = props.showTitle ? 32 : 0;
+    const minRows = 2;
+    const tabCount = props.tabCount || 1;
+    const gap = 16;
+    const padding = 40;
+    
+    const availableHeight = window.innerHeight - 100 - padding - (gap * (tabCount - 1));
+    const maxHeight = Math.floor(availableHeight / tabCount);
+    const minHeight = headerHeight + rowHeight * minRows + titleHeight;
+    const contentHeight = headerHeight + Math.max(rowCount, minRows) * rowHeight + titleHeight;
+    
+    calculatedHeight.value = Math.max(minHeight, Math.min(contentHeight, maxHeight));
+    
+    // 通知主表刷新detail行高度
+    props.refreshDetailRowHeight?.();
+  }
+}
+
+const gridWrapStyle = computed(() => {
+  return { height: `${calculatedHeight.value}px` };
+});
 
 const rowSelection = { mode: 'multiRow', checkboxes: false, enableClickSelection: true } as const;
 
@@ -148,8 +218,7 @@ watch(
 
 <style scoped>
 .detail-grid-wrap {
-  height: 100%;
-  min-height: 180px;
+  min-height: 120px;
   display: flex;
   flex-direction: column;
   gap: 8px;

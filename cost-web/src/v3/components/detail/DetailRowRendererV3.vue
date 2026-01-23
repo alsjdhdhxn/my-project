@@ -17,6 +17,7 @@
       :registerDetailGridApi="registerDetailGridApi"
       :unregisterDetailGridApi="unregisterDetailGridApi"
       :getDetailContextMenuItems="getDetailContextMenuItems"
+      :refreshDetailRowHeight="refreshDetailRowHeight"
       :defaultViewMode="defaultViewMode"
       :viewMode="detailViewMode"
       :onViewModeChange="setDetailViewMode"
@@ -58,6 +59,7 @@ const loadDetailData = computed(() => panelContext.value.loadDetailData || noopL
 const registerDetailGridApi = computed(() => panelContext.value.registerDetailGridApi || noop);
 const unregisterDetailGridApi = computed(() => panelContext.value.unregisterDetailGridApi || noop);
 const getDetailContextMenuItems = computed(() => panelContext.value.getDetailContextMenuItems || noopMenu);
+const refreshDetailRowHeight = computed(() => panelContext.value.refreshDetailRowHeight || noop);
 const defaultViewMode = computed(() => panelContext.value.defaultViewMode || 'stack');
 const detailViewMode = computed(() => unref(panelContext.value.detailViewMode));
 const setDetailViewMode = computed(() => panelContext.value.setDetailViewMode || noop);

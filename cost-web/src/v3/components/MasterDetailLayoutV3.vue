@@ -149,9 +149,17 @@ const { getDetailContextMenuItems } = useGridContextMenu({
   detailMenuByTab: detailContextMenuByTab
 });
 
+const masterGridApi = ref<any>(null);
+
 function handleMasterGridReady(event: any) {
+  masterGridApi.value = event.api;
   onMasterGridReady(event);
   applyGridConfig?.(masterGridKey.value, event.api, event.columnApi);
+}
+
+// 刷新detail行高度
+function refreshDetailRowHeight() {
+  masterGridApi.value?.resetRowHeights();
 }
 
 function onDetailCellValueChanged(event: any, masterId: number, tabKey: string) {
@@ -198,6 +206,7 @@ const gridContext = {
     registerDetailGridApi,
     unregisterDetailGridApi,
     getDetailContextMenuItems,
+    refreshDetailRowHeight,
     defaultViewMode: 'stack',
     detailViewMode,
     setDetailViewMode
@@ -206,18 +215,46 @@ const gridContext = {
 
 function getRowHeight(params: any): number | undefined {
   if (!params.node?.detail) return undefined;
-  // detail行撑满屏幕，只预留主表一行高度
-  const maxHeight = window.innerHeight - 100;
-  return maxHeight;
+  
+  const masterId = params.node?.data?.id;
+  const tabs = detailTabs.value || [];
+  const tabCount = tabs.length || 1;
+  const rowHeight = 28;
+  const headerHeight = 28;
+  const titleHeight = 32;
+  const gap = 16;
+  const padding = 40;
+  const minRows = 2;
+  
+  // 每个子表最大高度 = 屏幕高度 / 子表数量
+  const maxGridHeight = Math.floor(window.innerHeight / tabCount);
+  // 每个子表最小高度 = 表头 + 2行 + 标题
+  const minGridHeight = headerHeight + rowHeight * minRows + titleHeight;
+  
+  // 计算所有子表的总高度
+  const cached = detailCache.get(masterId);
+  let totalHeight = padding;
+  
+  for (let i = 0; i < tabs.length; i++) {
+    const tabKey = tabs[i].key;
+    const rows = cached?.[tabKey] || [];
+    // 实际内容高度
+    const contentHeight = headerHeight + Math.max(rows.length, minRows) * rowHeight + titleHeight;
+    // 限制在最小和最大之间
+    const gridHeight = Math.max(minGridHeight, Math.min(contentHeight, maxGridHeight));
+    totalHeight += gridHeight;
+    if (i < tabs.length - 1) totalHeight += gap;
+  }
+  
+  // 最大不超过屏幕高度 - 100
+  const maxContainerHeight = window.innerHeight - 100;
+  return Math.min(totalHeight, maxContainerHeight);
 }
 
 function onDetailRowOpened(event: any) {
   if (!event?.node?.expanded || !event?.node?.master) return;
   const masterIdRaw = event.node?.data?.id;
   const masterId = typeof masterIdRaw === 'number' ? masterIdRaw : Number(masterIdRaw);
-  if (!Number.isNaN(masterId) && !detailCache.get(masterId)) {
-    loadDetailData(masterId);
-  }
   const api = event.api;
   
   // 将当前行滚动到顶部
@@ -233,6 +270,14 @@ function onDetailRowOpened(event: any) {
       node.setExpanded(false);
     }
   });
+  
+  // 加载数据，完成后刷新行高
+  if (!Number.isNaN(masterId) && !detailCache.get(masterId)) {
+    loadDetailData(masterId).then(() => {
+      // 数据加载完成后重新计算行高
+      api?.resetRowHeights();
+    });
+  }
 }
 
 function setDetailViewMode(mode: 'tab' | 'stack') {

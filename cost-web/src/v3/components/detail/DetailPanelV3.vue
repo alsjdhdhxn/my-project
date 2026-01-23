@@ -43,7 +43,7 @@
           :onCellEditingStopped="onCellEditingStopped"
         />
 
-        <div v-else class="detail-stack" :style="{ '--tab-count': tabs.length }">
+        <div v-else class="detail-stack">
           <DetailGridV3
             v-for="(tab, index) in tabs"
             :key="tab.key"
@@ -55,6 +55,8 @@
             :cellClassRules="cellClassRules"
             :contextMenuItems="getDetailContextMenuItemsFor(tab.key)"
             :showTitle="true"
+            :tabCount="tabs.length"
+            :refreshDetailRowHeight="refreshDetailRowHeight"
             :registerDetailGridApi="handleRegister"
             :unregisterDetailGridApi="handleUnregister"
             :applyGridConfig="applyGridConfig"
@@ -107,6 +109,7 @@ const props = defineProps<{
   registerDetailGridApi: (tabKey: string, api: any) => void;
   unregisterDetailGridApi?: (tabKey: string, api: any) => void;
   getDetailContextMenuItems: (masterId: number, tabKey: string) => (params: any) => any[];
+  refreshDetailRowHeight?: () => void;
 }>();
 
 const localViewMode = ref<'tab' | 'stack'>(props.defaultViewMode ?? 'tab');
@@ -115,6 +118,7 @@ const gridApis = ref<Record<string, any>>({});
 
 const hasTabs = computed(() => Array.isArray(props.tabs) && props.tabs.length > 0);
 const hasExternalViewMode = computed(() => props.viewMode != null);
+
 const currentViewMode = computed<'tab' | 'stack'>({
   get: () => props.viewMode ?? localViewMode.value,
   set: (mode) => {
@@ -316,10 +320,6 @@ function refreshLayout() {
   display: flex;
   flex-direction: column;
   gap: 16px;
-}
-
-.detail-stack :deep(.detail-grid-wrap) {
-  height: calc((100vh - 200px) / var(--tab-count, 2));
 }
 
 .detail-empty {
