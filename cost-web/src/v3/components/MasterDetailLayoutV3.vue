@@ -12,7 +12,8 @@
         :autoSizeStrategy="autoSizeStrategy"
         :getContextMenuItems="getMasterContextMenuItems"
         :masterDetail="hasDetailTabs"
-        :detailRowAutoHeight="hasDetailTabs"
+        :detailRowAutoHeight="false"
+        :getRowHeight="getRowHeight"
         :keepDetailRows="hasDetailTabs"
         :detailCellRenderer="hasDetailTabs ? DetailRowRendererV3 : undefined"
         :context="gridContext"
@@ -202,6 +203,13 @@ const gridContext = {
     setDetailViewMode
   }
 };
+
+function getRowHeight(params: any): number | undefined {
+  if (!params.node?.detail) return undefined;
+  // detail行撑满屏幕，只预留主表一行高度
+  const maxHeight = window.innerHeight - 100;
+  return maxHeight;
+}
 
 function onDetailRowOpened(event: any) {
   if (!event?.node?.expanded || !event?.node?.master) return;

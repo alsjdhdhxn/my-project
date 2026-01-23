@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="detail-grid-wrap">
     <div v-if="showTitle" class="stack-title-row">
       <div class="stack-title">{{ tab.title }}</div>

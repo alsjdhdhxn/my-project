@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="detail-panel-inner" :class="{ 'tab-mode': currentViewMode === 'tab' }">
     <div class="detail-toolbar" v-if="hasTabs && currentViewMode === 'tab'">
       <div class="detail-tabs">

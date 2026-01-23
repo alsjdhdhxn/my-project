@@ -65,9 +65,10 @@ const setDetailViewMode = computed(() => panelContext.value.setDetailViewMode ||
 
 <style scoped>
 .detail-row-renderer {
-  max-height: 66vh;
+  height: 100%;
   overflow: auto;
   padding: 8px 12px 12px 12px;
   background: #f8fafc;
+  box-sizing: border-box;
 }
 </style>
