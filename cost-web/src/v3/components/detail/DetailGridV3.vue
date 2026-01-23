@@ -73,23 +73,21 @@ function calcHeight(): number {
   const minRows = 2;
   const tabCount = props.tabCount;
   const gap = 16;
-  const padding = 60;
+  const padding = 80; // 增加padding余量
   
-  // 可用总高度
+  // 可用总高度（屏幕高度 - 主表行高 - padding - 子表间隙）
   const availableHeight = window.innerHeight - 100 - padding - (gap * (tabCount - 1));
-  // 每个子表平均可用高度
-  const avgHeight = Math.floor(availableHeight / tabCount);
+  // 每个子表最大可用高度
+  const maxHeight = Math.floor(availableHeight / tabCount);
   // 最小高度 = 表头 + 2行 + 标题
   const minHeight = headerHeight + rowHeight * minRows + titleHeight;
   
-  // 实际内容高度 = 表头 + 数据行 + 标题 + 1/4表格高度余量
+  // 实际内容高度 = 表头 + 数据行 + 标题 + 少量余量
   const dataRows = props.rows?.length || 0;
-  const baseHeight = headerHeight + Math.max(dataRows, minRows) * rowHeight + titleHeight;
-  const contentHeight = baseHeight + Math.floor(baseHeight * 0.25);
+  const contentHeight = headerHeight + Math.max(dataRows, minRows) * rowHeight + titleHeight + 20;
   
-  // 如果内容高度小于平均可用高度，直接用内容高度
-  // 否则限制在平均可用高度
-  return Math.max(minHeight, Math.min(contentHeight, avgHeight));
+  // 限制在最小和最大之间
+  return Math.max(minHeight, Math.min(contentHeight, maxHeight));
 }
 
 // 监听rows变化，更新高度
@@ -111,15 +109,14 @@ function updateHeightFromGrid() {
     const minRows = 2;
     const tabCount = props.tabCount || 1;
     const gap = 16;
-    const padding = 60;
+    const padding = 80;
     
     const availableHeight = window.innerHeight - 100 - padding - (gap * (tabCount - 1));
-    const avgHeight = Math.floor(availableHeight / tabCount);
+    const maxHeight = Math.floor(availableHeight / tabCount);
     const minHeight = headerHeight + rowHeight * minRows + titleHeight;
-    const baseHeight = headerHeight + Math.max(rowCount, minRows) * rowHeight + titleHeight;
-    const contentHeight = baseHeight + Math.floor(baseHeight * 0.25);
+    const contentHeight = headerHeight + Math.max(rowCount, minRows) * rowHeight + titleHeight + 20;
     
-    calculatedHeight.value = Math.max(minHeight, Math.min(contentHeight, avgHeight));
+    calculatedHeight.value = Math.max(minHeight, Math.min(contentHeight, maxHeight));
     
     // 通知主表刷新detail行高度
     props.refreshDetailRowHeight?.();

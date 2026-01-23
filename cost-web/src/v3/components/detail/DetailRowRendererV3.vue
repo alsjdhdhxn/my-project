@@ -1,5 +1,5 @@
 ﻿<template>
-  <div class="detail-row-renderer">
+  <div class="detail-row-renderer" @mouseenter="onMouseEnter" @mouseleave="onMouseLeave">
     <DetailPanelV3
       :tabs="tabs"
       :activeMasterId="masterId"
@@ -63,6 +63,28 @@ const refreshDetailRowHeight = computed(() => panelContext.value.refreshDetailRo
 const defaultViewMode = computed(() => panelContext.value.defaultViewMode || 'stack');
 const detailViewMode = computed(() => unref(panelContext.value.detailViewMode));
 const setDetailViewMode = computed(() => panelContext.value.setDetailViewMode || noop);
+
+// 鼠标进入子表区域时，禁用主表滚动
+function onMouseEnter() {
+  const masterGrid = document.querySelector('.master-grid');
+  if (masterGrid) {
+    const viewport = masterGrid.querySelector('.ag-body-viewport') as HTMLElement;
+    if (viewport) {
+      viewport.style.overflowY = 'hidden';
+    }
+  }
+}
+
+// 鼠标离开子表区域时，恢复主表滚动
+function onMouseLeave() {
+  const masterGrid = document.querySelector('.master-grid');
+  if (masterGrid) {
+    const viewport = masterGrid.querySelector('.ag-body-viewport') as HTMLElement;
+    if (viewport) {
+      viewport.style.overflowY = '';
+    }
+  }
+}
 </script>
 
 <style scoped>

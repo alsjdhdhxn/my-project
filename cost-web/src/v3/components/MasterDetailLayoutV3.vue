@@ -223,13 +223,13 @@ function getRowHeight(params: any): number | undefined {
   const headerHeight = 28;
   const titleHeight = 32;
   const gap = 16;
-  const padding = 60;
+  const padding = 80;
   const minRows = 2;
   
   // 可用总高度
   const availableHeight = window.innerHeight - 100 - padding - (gap * (tabCount - 1));
-  // 每个子表平均可用高度
-  const avgGridHeight = Math.floor(availableHeight / tabCount);
+  // 每个子表最大可用高度
+  const maxGridHeight = Math.floor(availableHeight / tabCount);
   // 每个子表最小高度 = 表头 + 2行 + 标题
   const minGridHeight = headerHeight + rowHeight * minRows + titleHeight;
   
@@ -240,11 +240,10 @@ function getRowHeight(params: any): number | undefined {
   for (let i = 0; i < tabs.length; i++) {
     const tabKey = tabs[i].key;
     const rows = cached?.[tabKey] || [];
-    // 实际内容高度 + 1/4表格高度余量
-    const baseHeight = headerHeight + Math.max(rows.length, minRows) * rowHeight + titleHeight;
-    const contentHeight = baseHeight + Math.floor(baseHeight * 0.25);
-    // 如果内容高度小于平均可用高度，用内容高度；否则限制在平均可用高度
-    const gridHeight = Math.max(minGridHeight, Math.min(contentHeight, avgGridHeight));
+    // 实际内容高度 + 少量余量
+    const contentHeight = headerHeight + Math.max(rows.length, minRows) * rowHeight + titleHeight + 20;
+    // 限制在最小和最大之间
+    const gridHeight = Math.max(minGridHeight, Math.min(contentHeight, maxGridHeight));
     totalHeight += gridHeight;
     if (i < tabs.length - 1) totalHeight += gap;
   }
