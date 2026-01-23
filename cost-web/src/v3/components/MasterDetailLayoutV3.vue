@@ -3,7 +3,7 @@
     <div class="master-panel">
       <AgGridVue
         class="ag-theme-quartz master-grid"
-        :rowData="masterRows"
+        :rowData="masterRowData"
         :columnDefs="masterColumnDefs"
         :defaultColDef="defaultColDef"
         :getRowId="getMasterRowId"
@@ -82,6 +82,16 @@ const hasDetailTabs = computed(() => detailFeatureEnabled.value && (pageConfig.v
 const detailTabs = computed(() => pageConfig.value?.tabs || []);
 
 const masterGridOptionsValue = computed(() => masterGridOptions?.value || null);
+
+// 判断是否服务端模式
+const isServerSideMode = computed(() => {
+  const type = masterGridOptionsValue.value?.rowModelType;
+  return type === 'serverSide' || type === 'infinite';
+});
+
+// 只有客户端模式才传 rowData
+const masterRowData = computed(() => isServerSideMode.value ? undefined : masterRows.value);
+
 const dataSource = computed(() => {
   const rowModelType = masterGridOptionsValue.value?.rowModelType;
   if (rowModelType === 'serverSide') {
