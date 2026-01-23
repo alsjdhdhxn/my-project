@@ -194,6 +194,11 @@ const local: App.I18n.Schema = {
           }
         },
         fixedHeaderAndTab: 'Fixed Header And Tab'
+      },
+      detailViewMode: {
+        title: 'Detail View Mode',
+        tab: 'Tab Mode',
+        stack: 'Stack Mode'
       }
     },
     general: {

@@ -13,10 +13,6 @@
             {{ tab.title }}
           </button>
         </template>
-        <div class="detail-toggle">
-          <button class="toggle-btn" :class="{ active: currentViewMode === 'tab' }" @click="setViewMode('tab')">Tab</button>
-          <button class="toggle-btn" :class="{ active: currentViewMode === 'stack' }" @click="setViewMode('stack')">Stack</button>
-        </div>
       </div>
     </div>
 
@@ -45,7 +41,7 @@
 
         <div v-else class="detail-stack">
           <DetailGridV3
-            v-for="(tab, index) in tabs"
+            v-for="tab in tabs"
             :key="tab.key"
             :tab="tab"
             :rows="resolveRows(tab.key)"
@@ -64,18 +60,7 @@
             :onCellClicked="(event) => onDetailCellClicked(event, activeMasterId!, tab.key)"
             :onCellEditingStarted="onCellEditingStarted"
             :onCellEditingStopped="onCellEditingStopped"
-          >
-            <template v-if="index === 0" #title-extra>
-              <div class="detail-toggle">
-                <button class="toggle-btn" :class="{ active: currentViewMode === 'tab' }" @click="setViewMode('tab')">
-                  Tab
-                </button>
-                <button class="toggle-btn" :class="{ active: currentViewMode === 'stack' }" @click="setViewMode('stack')">
-                  Stack
-                </button>
-              </div>
-            </template>
-          </DetailGridV3>
+          />
         </div>
       </div>
     </div>
@@ -99,7 +84,6 @@ const props = defineProps<{
   cellClassRules: ColDef['cellClassRules'];
   defaultViewMode?: 'tab' | 'stack';
   viewMode?: 'tab' | 'stack';
-  onViewModeChange?: (mode: 'tab' | 'stack') => void;
   applyGridConfig?: (gridKey: string, api: any, columnApi: any) => void;
   onDetailCellValueChanged: (event: any, masterId: number, tabKey: string) => void;
   onDetailCellClicked: (event: any, masterId: number, tabKey: string) => void;
@@ -117,18 +101,8 @@ const activeTab = ref<string>('');
 const gridApis = ref<Record<string, any>>({});
 
 const hasTabs = computed(() => Array.isArray(props.tabs) && props.tabs.length > 0);
-const hasExternalViewMode = computed(() => props.viewMode != null);
 
-const currentViewMode = computed<'tab' | 'stack'>({
-  get: () => props.viewMode ?? localViewMode.value,
-  set: (mode) => {
-    if (props.onViewModeChange) {
-      props.onViewModeChange(mode);
-    } else {
-      localViewMode.value = mode;
-    }
-  }
-});
+const currentViewMode = computed<'tab' | 'stack'>(() => props.viewMode ?? localViewMode.value);
 
 const activeTabConfig = computed(() => {
   if (!hasTabs.value) return null;
@@ -171,10 +145,6 @@ watch(currentViewMode, async () => {
   await nextTick();
   refreshLayout();
 });
-
-function setViewMode(mode: 'tab' | 'stack') {
-  currentViewMode.value = mode;
-}
 
 function handleRegister(tabKey: string, api: any) {
   gridApis.value[tabKey] = api;
@@ -270,36 +240,6 @@ function refreshLayout() {
 .tab-btn.active {
   color: #2563eb;
   border-bottom-color: #2563eb;
-  font-weight: 600;
-}
-
-.detail-toggle {
-  margin-left: auto;
-  display: inline-flex;
-  gap: 4px;
-  height: calc(var(--detail-title-height) - 6px);
-  padding: 0 2px;
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 999px;
-}
-
-.toggle-btn {
-  border: none;
-  background: transparent;
-  height: 100%;
-  padding: 0 8px;
-  line-height: calc(var(--detail-title-height) - 6px);
-  border-radius: 999px;
-  font-size: 11px;
-  color: #64748b;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.toggle-btn.active {
-  background: #2563eb;
-  color: #ffffff;
   font-weight: 600;
 }
 

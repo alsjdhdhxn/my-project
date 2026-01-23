@@ -210,6 +210,15 @@ export const useThemeStore = defineStore(SetupStoreId.Theme, () => {
     naiveThemeOverrides.value = overrides;
   }
 
+  /**
+   * Set detail view mode
+   *
+   * @param mode Detail view mode ('tab' or 'stack')
+   */
+  function setDetailViewMode(mode: 'tab' | 'stack') {
+    settings.value.detailViewMode = mode;
+  }
+
   /** Only run timer when watermark is visible and time display is enabled */
   function updateWatermarkTimer() {
     const { watermark } = settings.value;
@@ -297,6 +306,7 @@ export const useThemeStore = defineStore(SetupStoreId.Theme, () => {
     setThemeLayout,
     setWatermarkEnableUserName,
     setWatermarkEnableTime,
-    setNaiveThemeOverrides
+    setNaiveThemeOverrides,
+    setDetailViewMode
   };
 });

@@ -20,7 +20,6 @@
       :refreshDetailRowHeight="refreshDetailRowHeight"
       :defaultViewMode="defaultViewMode"
       :viewMode="detailViewMode"
-      :onViewModeChange="setDetailViewMode"
     />
   </div>
 </template>
@@ -62,7 +61,6 @@ const getDetailContextMenuItems = computed(() => panelContext.value.getDetailCon
 const refreshDetailRowHeight = computed(() => panelContext.value.refreshDetailRowHeight || noop);
 const defaultViewMode = computed(() => panelContext.value.defaultViewMode || 'stack');
 const detailViewMode = computed(() => unref(panelContext.value.detailViewMode));
-const setDetailViewMode = computed(() => panelContext.value.setDetailViewMode || noop);
 
 // 鼠标进入子表区域时，禁用主表滚动
 function onMouseEnter() {

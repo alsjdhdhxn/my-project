@@ -57,6 +57,7 @@ export const themeSettings: App.Theme.ThemeSetting = {
     height: 48,
     right: true
   },
+  detailViewMode: 'stack',
   watermark: {
     visible: false,
     text: 'SoybeanAdmin',

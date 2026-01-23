@@ -35,14 +35,16 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { AgGridVue } from 'ag-grid-vue3';
 import DetailRowRendererV3 from '@/v3/components/detail/DetailRowRendererV3.vue';
 import { useMasterGridBindings } from '@/v3/composables/meta-v3/useMasterGridBindings';
 import { useGridContextMenu } from '@/v3/composables/meta-v3/useGridContextMenu';
+import { useThemeStore } from '@/store/modules/theme';
 
 const props = defineProps<{ runtime: any }>();
 
+const themeStore = useThemeStore();
 const runtime = props.runtime;
 const {
   masterRows,
@@ -76,7 +78,9 @@ const {
 } = runtime;
 
 const editingState = ref(false);
-const detailViewMode = ref<'tab' | 'stack'>('stack');
+
+// 使用全局主题设置的detailViewMode
+const detailViewMode = computed(() => themeStore.detailViewMode);
 
 const detailFeatureEnabled = computed(() => runtime?.features?.detailTabs !== false);
 const hasDetailTabs = computed(() => detailFeatureEnabled.value && (pageConfig.value?.tabs?.length || 0) > 0);
@@ -208,8 +212,7 @@ const gridContext = {
     getDetailContextMenuItems,
     refreshDetailRowHeight,
     defaultViewMode: 'stack',
-    detailViewMode,
-    setDetailViewMode
+    detailViewMode
   }
 };
 
@@ -221,7 +224,6 @@ function getRowHeight(params: any): number | undefined {
   const tabCount = tabs.length || 1;
   const rowHeight = 28;
   const headerHeight = 28;
-  const titleHeight = 32;
   const gap = 16;
   const padding = 80;
   const minRows = 2;
@@ -230,8 +232,8 @@ function getRowHeight(params: any): number | undefined {
   const availableHeight = window.innerHeight - 100 - padding - (gap * (tabCount - 1));
   // 每个子表最大可用高度
   const maxGridHeight = Math.floor(availableHeight / tabCount);
-  // 每个子表最小高度 = 表头 + 2行 + 标题
-  const minGridHeight = headerHeight + rowHeight * minRows + titleHeight;
+  // 每个子表最小高度 = 表头 + 2行
+  const minGridHeight = headerHeight + rowHeight * minRows;
   
   // 计算所有子表的总高度
   const cached = detailCache.get(masterId);
@@ -241,7 +243,7 @@ function getRowHeight(params: any): number | undefined {
     const tabKey = tabs[i].key;
     const rows = cached?.[tabKey] || [];
     // 实际内容高度 + 少量余量
-    const contentHeight = headerHeight + Math.max(rows.length, minRows) * rowHeight + titleHeight + 20;
+    const contentHeight = headerHeight + Math.max(rows.length, minRows) * rowHeight + 20;
     // 限制在最小和最大之间
     const gridHeight = Math.max(minGridHeight, Math.min(contentHeight, maxGridHeight));
     totalHeight += gridHeight;
@@ -280,10 +282,6 @@ function onDetailRowOpened(event: any) {
       api?.resetRowHeights();
     });
   }
-}
-
-function setDetailViewMode(mode: 'tab' | 'stack') {
-  detailViewMode.value = mode;
 }
 
 function onKeyDown(event: KeyboardEvent) {

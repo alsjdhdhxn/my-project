@@ -1,11 +1,6 @@
 <template>
   <div class="detail-grid-wrap" :style="gridWrapStyle">
-    <div v-if="showTitle" class="stack-title-row">
-      <div class="stack-title">{{ tab.title }}</div>
-      <div class="stack-title-extra">
-        <slot name="title-extra" />
-      </div>
-    </div>
+    <div v-if="showTitle" class="detail-watermark">{{ tab.title }}</div>
     <AgGridVue
       class="ag-theme-quartz"
       style="width: 100%; height: 100%"
@@ -69,7 +64,6 @@ function calcHeight(): number {
   
   const rowHeight = 28;
   const headerHeight = 28;
-  const titleHeight = props.showTitle ? 32 : 0;
   const minRows = 2;
   const tabCount = props.tabCount;
   const gap = 16;
@@ -79,12 +73,12 @@ function calcHeight(): number {
   const availableHeight = window.innerHeight - 100 - padding - (gap * (tabCount - 1));
   // 每个子表最大可用高度
   const maxHeight = Math.floor(availableHeight / tabCount);
-  // 最小高度 = 表头 + 2行 + 标题
-  const minHeight = headerHeight + rowHeight * minRows + titleHeight;
+  // 最小高度 = 表头 + 2行
+  const minHeight = headerHeight + rowHeight * minRows;
   
-  // 实际内容高度 = 表头 + 数据行 + 标题 + 少量余量
+  // 实际内容高度 = 表头 + 数据行 + 少量余量
   const dataRows = props.rows?.length || 0;
-  const contentHeight = headerHeight + Math.max(dataRows, minRows) * rowHeight + titleHeight + 20;
+  const contentHeight = headerHeight + Math.max(dataRows, minRows) * rowHeight + 20;
   
   // 限制在最小和最大之间
   return Math.max(minHeight, Math.min(contentHeight, maxHeight));
@@ -105,7 +99,6 @@ function updateHeightFromGrid() {
     const rowCount = gridApi.value.getDisplayedRowCount?.() || 0;
     const rowHeight = 28;
     const headerHeight = 28;
-    const titleHeight = props.showTitle ? 32 : 0;
     const minRows = 2;
     const tabCount = props.tabCount || 1;
     const gap = 16;
@@ -113,8 +106,8 @@ function updateHeightFromGrid() {
     
     const availableHeight = window.innerHeight - 100 - padding - (gap * (tabCount - 1));
     const maxHeight = Math.floor(availableHeight / tabCount);
-    const minHeight = headerHeight + rowHeight * minRows + titleHeight;
-    const contentHeight = headerHeight + Math.max(rowCount, minRows) * rowHeight + titleHeight + 20;
+    const minHeight = headerHeight + rowHeight * minRows;
+    const contentHeight = headerHeight + Math.max(rowCount, minRows) * rowHeight + 20;
     
     calculatedHeight.value = Math.max(minHeight, Math.min(contentHeight, maxHeight));
     
@@ -222,31 +215,20 @@ watch(
   min-height: 120px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  position: relative;
 }
 
-.stack-title-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  height: var(--detail-title-height);
-  min-height: var(--detail-title-height);
-}
-
-.stack-title {
-  font-size: 12px;
+.detail-watermark {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 32px;
   font-weight: 700;
-  color: #64748b;
-  text-transform: uppercase;
-  border-left: 3px solid #3b82f6;
-  padding-left: 8px;
-}
-
-.stack-title-extra {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  min-width: 0;
+  color: rgba(0, 0, 0, 0.06);
+  pointer-events: none;
+  z-index: 1;
+  white-space: nowrap;
+  user-select: none;
 }
 </style>

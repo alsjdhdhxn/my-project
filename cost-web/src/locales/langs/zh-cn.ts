@@ -190,6 +190,11 @@ const local: App.I18n.Schema = {
           }
         },
         fixedHeaderAndTab: '固定头部和标签栏'
+      },
+      detailViewMode: {
+        title: '从表视图模式',
+        tab: 'Tab模式',
+        stack: '堆叠模式'
       }
     },
     general: {
