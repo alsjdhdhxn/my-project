@@ -256,24 +256,47 @@ function getRowHeight(params: any): number | undefined {
 }
 
 function onDetailRowOpened(event: any) {
-  if (!event?.node?.expanded || !event?.node?.master) return;
+  if (!event?.node?.master) return;
+  
   const masterIdRaw = event.node?.data?.id;
   const masterId = typeof masterIdRaw === 'number' ? masterIdRaw : Number(masterIdRaw);
   const api = event.api;
+  const currentNode = event.node;
+  
+  // 如果是收起操作，不做处理
+  if (!currentNode.expanded) return;
+  
+  // 检查是否有其他展开的行
+  let hasOtherExpanded = false;
+  api?.forEachNode?.((node: any) => {
+    if (node?.master && node !== currentNode && node.expanded) {
+      hasOtherExpanded = true;
+    }
+  });
+  
+  if (hasOtherExpanded) {
+    // 先收起当前行（阻止本次展开）
+    currentNode.setExpanded(false);
+    
+    // 收起其他所有展开的行
+    api?.forEachNode?.((node: any) => {
+      if (node?.master && node.expanded) {
+        node.setExpanded(false);
+      }
+    });
+    
+    // 延迟后再展开当前行
+    setTimeout(() => {
+      currentNode.setExpanded(true);
+    }, 50);
+    return;
+  }
   
   // 将当前行滚动到顶部
-  const rowIndex = event.node.rowIndex;
+  const rowIndex = currentNode.rowIndex;
   if (rowIndex != null) {
     api?.ensureIndexVisible(rowIndex, 'top');
   }
-  
-  // 折叠其他展开的行
-  api?.forEachNode?.((node: any) => {
-    if (!node?.master) return;
-    if (node !== event.node && node.expanded) {
-      node.setExpanded(false);
-    }
-  });
   
   // 加载数据，完成后刷新行高
   if (!Number.isNaN(masterId) && !detailCache.get(masterId)) {
