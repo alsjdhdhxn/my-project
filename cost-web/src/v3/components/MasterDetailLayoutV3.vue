@@ -22,7 +22,7 @@
         :undoRedoCellEditingLimit="20"
         v-bind="masterGridRuntimeOptions"
         @grid-ready="handleMasterGridReady"
-        @detail-row-opened="onDetailRowOpened"
+        @row-group-opened="onDetailRowOpened"
         @cell-editing-started="onCellEditingStarted"
         @cell-editing-stopped="onCellEditingStopped"
         @cell-value-changed="onMasterCellValueChanged"
@@ -211,6 +211,14 @@ function onDetailRowOpened(event: any) {
     loadDetailData(masterId);
   }
   const api = event.api;
+  
+  // 将当前行滚动到顶部
+  const rowIndex = event.node.rowIndex;
+  if (rowIndex != null) {
+    api?.ensureIndexVisible(rowIndex, 'top');
+  }
+  
+  // 折叠其他展开的行
   api?.forEachNode?.((node: any) => {
     if (!node?.master) return;
     if (node !== event.node && node.expanded) {

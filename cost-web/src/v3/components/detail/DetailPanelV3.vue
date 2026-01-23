@@ -222,7 +222,6 @@ function refreshLayout() {
 
 <style scoped>
 .detail-panel-inner {
-  height: 100%;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -301,28 +300,30 @@ function refreshLayout() {
 }
 
 .detail-body {
-  flex: 1;
-  min-height: 0;
   padding: 0 12px 12px 12px;
 }
 
 .detail-content {
-  height: 100%;
 }
 
+/* Tab 模式下单个 grid */
 .detail-panel-inner.tab-mode :deep(.detail-grid-wrap) {
-  height: 240px;
+  height: 300px;
 }
 
+/* 堆叠模式：多个子表垂直排列 */
 .detail-stack {
-  height: 100%;
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 16px;
-  grid-auto-rows: minmax(180px, auto);
+}
+
+.detail-stack :deep(.detail-grid-wrap) {
+  height: 200px;
 }
 
 .detail-empty {
-  height: 100%;
+  height: 100px;
   display: flex;
   align-items: center;
   justify-content: center;
