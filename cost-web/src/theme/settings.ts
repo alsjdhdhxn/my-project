@@ -52,7 +52,7 @@ export const themeSettings: App.Theme.ThemeSetting = {
     autoSelectFirstMenu: false
   },
   footer: {
-    visible: true,
+    visible: false,
     fixed: false,
     height: 48,
     right: true

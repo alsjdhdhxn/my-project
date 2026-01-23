@@ -46,8 +46,9 @@ onMounted(async () => {
 
 <style scoped>
 .master-detail-page-v3 {
-  width: 100%;
-  height: 100%;
+  width: calc(100% + 32px);
+  height: calc(100% + 32px);
+  margin: -16px;
   display: flex;
   flex-direction: column;
   background: #f5f7fb;
