@@ -47,9 +47,13 @@ export type GridOptionsRule = {
   sideBar?: boolean | Record<string, any>;
   enableSidebar?: boolean;
   cellSelection?: boolean | Record<string, any>;
-  rowModelType?: 'clientSide' | 'infinite';
+  rowModelType?: 'clientSide' | 'infinite' | 'serverSide';
   cacheBlockSize?: number;
   maxBlocksInCache?: number;
+  /** SSRM: 最大并发请求数 */
+  maxConcurrentDatasourceRequests?: number;
+  /** SSRM: 请求防抖毫秒数 */
+  blockLoadDebounceMillis?: number;
   groupBy?: string[];
   groupColumnName?: string;
   groupDefaultExpanded?: number;
@@ -80,7 +84,7 @@ export type ContextMenuRule = {
   items: ContextMenuItemRule[];
 };
 
-/** 行级可编辑规�?*/
+/** 行级可编辑规�?*/
 export type RowEditableRule = {
   field: string;
   operator: 'notNull' | 'eq' | 'ne' | 'in' | 'notIn';

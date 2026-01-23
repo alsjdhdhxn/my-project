@@ -243,7 +243,7 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
   async function loadComponents() {
     const pageRes = await fetchPageComponents(pageCode);
     if (pageRes.error || !pageRes.data) {
-      notifyError('¼ÓÔØÒ³ÃæÅäÖÃÊ§°Ü');
+      notifyError('ï¿½ï¿½ï¿½ï¿½Ò³ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê§ï¿½ï¿½');
       return false;
     }
 
@@ -271,7 +271,7 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
   function parseConfig() {
     const components = pageComponents.value || [];
     if (components.length === 0) {
-      notifyError('½âÎöÒ³ÃæÅäÖÃÊ§°Ü');
+      notifyError('ï¿½ï¿½ï¿½ï¿½Ò³ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê§ï¿½ï¿½');
       return false;
     }
 
@@ -282,7 +282,7 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
       detailTabsKey: resolvedDetailTabsKey
     });
     if (!config) {
-      notifyError('½âÎöÒ³ÃæÅäÖÃÊ§°Ü');
+      notifyError('ï¿½ï¿½ï¿½ï¿½Ò³ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê§ï¿½ï¿½');
       return false;
     }
 
@@ -319,7 +319,18 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
     const masterRules = collectRulesByKeys(rulesMap, masterRuleKeys);
     const masterRuleLabel = resolvedMasterGridKey || 'master';
     const masterGridRuleOptions = normalizeGridOptions(parseGridOptionsRule(masterRuleLabel, masterRules));
-    masterGridOptions.value = mergeGridOptions(enterpriseOptions, masterGridRuleOptions);
+    // V3 é»˜è®¤ä½¿ç”¨ SSRMï¼Œå¦‚æœæ²¡æœ‰é…ç½® rowModelType åˆ™å¼ºåˆ¶è®¾ä¸º serverSide
+    const mergedMasterOptions = mergeGridOptions(enterpriseOptions, masterGridRuleOptions);
+    if (!mergedMasterOptions.rowModelType) {
+      mergedMasterOptions.rowModelType = 'serverSide';
+    }
+    // SSRM é»˜è®¤é…ç½®
+    if (mergedMasterOptions.rowModelType === 'serverSide') {
+      if (!mergedMasterOptions.cacheBlockSize) {
+        mergedMasterOptions.cacheBlockSize = 100;
+      }
+    }
+    masterGridOptions.value = mergedMasterOptions;
 
     const detailBaseRuleOptions = normalizeGridOptions(parseGridOptionsRule(detailTabsRuleLabel, detailTabsRules));
     const detailBaseOptions = mergeGridOptions(
@@ -344,7 +355,7 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
     const resolvedMasterGridKey = masterGridKey.value ?? undefined;
     const masterMeta = await loadTableMeta(config.masterTableCode, pageCode, resolvedMasterGridKey ?? 'masterGrid');
     if (!masterMeta) {
-      notifyError('¼ÓÔØÖ÷±íÔªÊı¾İÊ§°Ü');
+      notifyError('ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ôªï¿½ï¿½ï¿½ï¿½Ê§ï¿½ï¿½');
       return false;
     }
 

@@ -1,5 +1,5 @@
 ﻿import { ref, type Ref, type ShallowRef } from 'vue';
-import type { GridApi } from 'ag-grid-community';
+import type { GridApi, IServerSideGetRowsParams } from 'ag-grid-community';
 import { searchDynamicData } from '@/service/api';
 import { debugLog } from '@/v3/composables/meta-v3/debug';
 import { generateTempId, initRowData, type ParsedPageConfig, type RowData } from '@/v3/logic/calc-engine';
@@ -358,6 +358,7 @@ export function useMasterDetailData(params: {
     deleteDetailRow,
     copyMasterRow,
     copyDetailRow,
+    /** Infinite Row Model 数据源（兼容旧版） */
     createMasterDataSource: (options?: { tableCode?: string; pageSize?: number }) => {
       const tableCode = options?.tableCode || pageConfig.value?.masterTableCode;
       const pageSizeFallback = options?.pageSize || 200;
@@ -401,6 +402,73 @@ export function useMasterDetailData(params: {
           const synced = mergeMasterCache(rows);
           const total = data?.total ?? synced.length;
           params.successCallback?.(synced, total);
+        }
+      };
+    },
+    /** Server-Side Row Model 数据源（AG Grid v35 SSRM） */
+    createServerSideDataSource: (options?: { tableCode?: string; pageSize?: number }) => {
+      const tableCode = options?.tableCode || pageConfig.value?.masterTableCode;
+      const pageSizeFallback = options?.pageSize || 100;
+      if (!tableCode) return null;
+      let lastQueryKey = '';
+
+      return {
+        getRows: async (params: IServerSideGetRowsParams) => {
+          const request = params.request;
+          const startRow = request.startRow ?? 0;
+          const endRow = request.endRow ?? startRow + pageSizeFallback;
+          const pageSize = Math.max(endRow - startRow, 1);
+          const page = Math.floor(startRow / pageSize) + 1;
+
+          // 排序
+          const sortModel = request.sortModel ?? [];
+          const sortField = sortModel[0]?.colId;
+          const sortOrder = sortModel[0]?.sort;
+
+          // 过滤
+          const filterModel = request.filterModel;
+          const conditions = buildConditionsFromFilterModel(filterModel);
+
+          // 查询键变化时重置缓存
+          const queryKey = JSON.stringify({ filterModel, sortModel });
+          if (startRow === 0 && queryKey !== lastQueryKey) {
+            resetMasterCache([]);
+            lastQueryKey = queryKey;
+          }
+
+          debugLog('ssrm request', { page, pageSize, sortField, sortOrder, conditions });
+
+          try {
+            const { data, error } = await searchDynamicData(tableCode, {
+              pageCode,
+              page,
+              pageSize,
+              sortField,
+              sortOrder,
+              conditions: conditions.length > 0 ? conditions : undefined
+            });
+
+            if (error) {
+              params.fail();
+              notifyError('加载主表数据失败');
+              return;
+            }
+
+            const rows = (data?.list || []).map((row: any) => initRowData(row));
+            const synced = mergeMasterCache(rows);
+            const total = data?.total ?? synced.length;
+
+            debugLog('ssrm response', { rowCount: synced.length, total });
+
+            // SSRM 成功回调
+            params.success({
+              rowData: synced,
+              rowCount: total
+            });
+          } catch (e) {
+            params.fail();
+            notifyError('加载主表数据失败');
+          }
         }
       };
     }

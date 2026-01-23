@@ -83,8 +83,14 @@ const detailTabs = computed(() => pageConfig.value?.tabs || []);
 
 const masterGridOptionsValue = computed(() => masterGridOptions?.value || null);
 const dataSource = computed(() => {
-  if (masterGridOptionsValue.value?.rowModelType !== 'infinite') return null;
-  return runtime?.createMasterDataSource?.({ pageSize: masterGridOptionsValue.value?.cacheBlockSize });
+  const rowModelType = masterGridOptionsValue.value?.rowModelType;
+  if (rowModelType === 'serverSide') {
+    return runtime?.createServerSideDataSource?.({ pageSize: masterGridOptionsValue.value?.cacheBlockSize });
+  }
+  if (rowModelType === 'infinite') {
+    return runtime?.createMasterDataSource?.({ pageSize: masterGridOptionsValue.value?.cacheBlockSize });
+  }
+  return null;
 });
 
 const {

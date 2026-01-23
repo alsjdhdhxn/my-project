@@ -350,7 +350,7 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     const components = meta.pageComponents.value || [];
     const nextStates: Record<string, ComponentState> = {};
     const masterGridOptions = meta.masterGridOptions?.value;
-    const isInfinite = masterGridOptions?.rowModelType === 'infinite';
+    const isServerSide = masterGridOptions?.rowModelType === 'serverSide' || masterGridOptions?.rowModelType === 'infinite';
 
     for (const component of components) {
       nextStates[component.componentKey] = {
@@ -372,7 +372,7 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
         componentType: 'GRID',
         status: gridError ? 'error' : 'ready',
         error: gridError,
-        rowData: isInfinite ? [] : (data.masterRows.value || []),
+        rowData: isServerSide ? [] : (data.masterRows.value || []),
         columnDefs: meta.masterColumnDefs.value || []
       };
       nextStates[masterKey] = gridState;
@@ -382,7 +382,8 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
 
     if (!watchersAttached && masterKey) {
       watchersAttached = true;
-      if (!isInfinite) {
+      const isServerSide = meta.masterGridOptions?.value?.rowModelType === 'serverSide' || meta.masterGridOptions?.value?.rowModelType === 'infinite';
+      if (!isServerSide) {
         watch(data.masterRows, (rows) => {
           const state = componentStateByKey.value[masterKey] as GridState | undefined;
           if (state) state.rowData = rows || [];
@@ -404,9 +405,13 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     if (!gridState) return;
 
     const masterGridOptions = meta.masterGridOptions?.value;
-    const dataSource = masterGridOptions?.rowModelType === 'infinite'
-      ? (runtimeApi as any).createMasterDataSource?.({ pageSize: masterGridOptions.cacheBlockSize })
-      : null;
+    // 根据 rowModelType 选择数据源
+    let dataSource = null;
+    if (masterGridOptions?.rowModelType === 'serverSide') {
+      dataSource = (runtimeApi as any).createServerSideDataSource?.({ pageSize: masterGridOptions.cacheBlockSize });
+    } else if (masterGridOptions?.rowModelType === 'infinite') {
+      dataSource = (runtimeApi as any).createMasterDataSource?.({ pageSize: masterGridOptions.cacheBlockSize });
+    }
 
     const bindings = useMasterGridBindings({
       runtime: runtimeApi,
@@ -456,7 +461,9 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     runtimeStatus.value = runtimeError.value ? 'error' : 'ready';
     isReady.value = true;
     const masterGridOptions = meta.masterGridOptions?.value;
-    if (masterGridOptions?.rowModelType !== 'infinite') {
+    // SSRM 和 Infinite 模式不需要预加载数据，由 Grid 自动触发
+    const isServerSide = masterGridOptions?.rowModelType === 'serverSide' || masterGridOptions?.rowModelType === 'infinite';
+    if (!isServerSide) {
       await data.loadMasterData();
     }
   }

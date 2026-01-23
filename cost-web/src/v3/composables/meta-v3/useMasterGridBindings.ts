@@ -139,8 +139,12 @@ export function useMasterGridBindings(params: {
 
   function onGridReady(params: GridReadyEvent) {
     if (runtime.masterGridApi) runtime.masterGridApi.value = params.api;
-    if (gridOptions?.rowModelType === 'infinite' && dataSource) {
-      // AG Grid v35: 浣跨敤 setGridOption 璁剧疆 datasource
+    // 根据 rowModelType 注册不同的数据源
+    if (gridOptions?.rowModelType === 'serverSide' && dataSource) {
+      // AG Grid v35: SSRM 使用 serverSideDatasource
+      params.api.setGridOption('serverSideDatasource', dataSource);
+    } else if (gridOptions?.rowModelType === 'infinite' && dataSource) {
+      // AG Grid v35: Infinite Row Model 使用 datasource
       params.api.setGridOption('datasource', dataSource);
     }
     const currentDefs = (params.api.getColumnDefs?.() as ColDef[] | undefined) ?? [];
@@ -191,8 +195,14 @@ export function useMasterGridBindings(params: {
   function onFilterChanged() {
     const api = runtime.masterGridApi?.value;
     if (!api) return;
-    // 娓呴櫎缂撳瓨锛屽己鍒朵粠 startRow=0 閲嶆柊璇锋眰
-    api.purgeInfiniteCache?.();
+    // 根据 rowModelType 选择刷新方式
+    if (gridOptions?.rowModelType === 'serverSide') {
+      // SSRM: 清除缓存并重新请求
+      api.refreshServerSide?.({ purge: true });
+    } else if (gridOptions?.rowModelType === 'infinite') {
+      // Infinite: 清除缓存
+      api.purgeInfiniteCache?.();
+    }
   }
 
   return {

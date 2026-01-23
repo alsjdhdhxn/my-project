@@ -4,9 +4,13 @@ import type { GridOptionsRule } from '@/v3/composables/meta-v3/types';
 export type ResolvedGridOptions = {
   sideBar?: boolean | Record<string, any>;
   cellSelection?: boolean | Record<string, any>;
-  rowModelType?: 'clientSide' | 'infinite';
+  rowModelType?: 'clientSide' | 'infinite' | 'serverSide';
   cacheBlockSize?: number;
   maxBlocksInCache?: number;
+  /** SSRM: 最大并发请求数 */
+  maxConcurrentDatasourceRequests?: number;
+  /** SSRM: 请求防抖毫秒数 */
+  blockLoadDebounceMillis?: number;
   groupBy?: string[];
   groupColumnName?: string;
   groupDefaultExpanded?: number;
@@ -69,6 +73,8 @@ export function normalizeGridOptions(rule?: GridOptionsRule | null): ResolvedGri
     rowModelType: rule.rowModelType,
     cacheBlockSize: rule.cacheBlockSize,
     maxBlocksInCache: rule.maxBlocksInCache,
+    maxConcurrentDatasourceRequests: rule.maxConcurrentDatasourceRequests,
+    blockLoadDebounceMillis: rule.blockLoadDebounceMillis,
     groupBy: Array.isArray(rule.groupBy) ? rule.groupBy : undefined,
     groupColumnName: rule.groupColumnName,
     groupDefaultExpanded: rule.groupDefaultExpanded,
@@ -93,6 +99,8 @@ export function mergeGridOptions(
   assign('rowModelType');
   assign('cacheBlockSize');
   assign('maxBlocksInCache');
+  assign('maxConcurrentDatasourceRequests');
+  assign('blockLoadDebounceMillis');
   assign('groupBy');
   assign('groupColumnName');
   assign('groupDefaultExpanded');
@@ -122,6 +130,15 @@ export function buildGridRuntimeOptions(options?: ResolvedGridOptions | null) {
   if (options.rowModelType) runtimeOptions.rowModelType = options.rowModelType;
   if (options.cacheBlockSize) runtimeOptions.cacheBlockSize = options.cacheBlockSize;
   if (options.maxBlocksInCache != null) runtimeOptions.maxBlocksInCache = options.maxBlocksInCache;
+  // SSRM 专用配置
+  if (options.rowModelType === 'serverSide') {
+    if (options.maxConcurrentDatasourceRequests != null) {
+      runtimeOptions.maxConcurrentDatasourceRequests = options.maxConcurrentDatasourceRequests;
+    }
+    if (options.blockLoadDebounceMillis != null) {
+      runtimeOptions.blockLoadDebounceMillis = options.blockLoadDebounceMillis;
+    }
+  }
   if (options.groupBy && options.groupBy.length > 0) {
     runtimeOptions.autoGroupColumnDef = {
       headerName: options.groupColumnName || '分组',
