@@ -43,7 +43,7 @@
           :onCellEditingStopped="onCellEditingStopped"
         />
 
-        <div v-else class="detail-stack">
+        <div v-else class="detail-stack" :style="{ '--tab-count': tabs.length }">
           <DetailGridV3
             v-for="(tab, index) in tabs"
             :key="tab.key"
@@ -319,7 +319,7 @@ function refreshLayout() {
 }
 
 .detail-stack :deep(.detail-grid-wrap) {
-  height: 200px;
+  height: calc((100vh - 200px) / var(--tab-count, 2));
 }
 
 .detail-empty {
