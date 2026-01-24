@@ -1,4 +1,4 @@
-import type { Ref, ShallowRef } from 'vue';
+import { ref, type Ref, type ShallowRef } from 'vue';
 import type { GridApi } from 'ag-grid-community';
 import { saveDynamicData } from '@/service/api';
 import {
@@ -49,6 +49,9 @@ export function useSave(params: {
     notifyError,
     notifySuccess
   } = params;
+
+  // 保存状态锁，防止重复提交
+  const isSaving = ref(false);
 
   function normalizeIdMapping(raw?: Record<string, number> | null) {
     const mapping = new Map<number, number>();
@@ -144,231 +147,221 @@ export function useSave(params: {
   }
 
   async function save() {
-    const dirtyMaster: RowData[] = [];
-    const dirtyDetailByTab: Record<string, RowData[]> = {};
-
-    for (const row of masterRows.value) {
-      if (row._isNew || row._isDeleted || row._dirtyFields) dirtyMaster.push(row);
-    }
-
-    for (const [, tabData] of detailCache.entries()) {
-      for (const [tabKey, rows] of Object.entries(tabData)) {
-        for (const row of rows) {
-          if (row._isNew || row._isDeleted || row._dirtyFields) {
-            if (!dirtyDetailByTab[tabKey]) dirtyDetailByTab[tabKey] = [];
-            dirtyDetailByTab[tabKey].push(row);
-          }
-        }
-      }
-    }
-
-    const saveStats = { successCount: 0, errors: [] as string[] };
-    const hookContext = {
-      pageCode,
-      pageConfig: pageConfig.value,
-      masterRows: masterRows.value,
-      detailCache,
-      dirtyMaster,
-      dirtyDetailByTab,
-      masterValidationRules: masterValidationRules.value,
-      detailValidationRulesByTab: detailValidationRulesByTab.value,
-      masterColumnMeta: masterColumnMeta.value,
-      detailColumnMetaByTab: detailColumnMetaByTab.value,
-      saveStats,
-      addError: (message: string) => saveStats.errors.push(message)
-    };
-
-    if (dirtyMaster.length === 0 && !Object.values(dirtyDetailByTab).some(arr => arr.length > 0)) {
-      notifyInfo('没有需要保存的数据');
+    // 防止重复提交
+    if (isSaving.value) {
+      notifyInfo('正在保存中，请稍候...');
       return;
     }
 
-    const masterToValidate = dirtyMaster.filter(r => !r._isDeleted);
-    if (masterToValidate.length > 0) {
-      const masterResult = validateRows(masterToValidate, masterValidationRules.value, masterColumnMeta.value);
-      if (!masterResult.valid) {
-        notifyError('主表验证失败:\n' + formatValidationErrors(masterResult.errors));
-        return;
-      }
-    }
+    isSaving.value = true;
 
-    for (const [tabKey, rows] of Object.entries(dirtyDetailByTab)) {
-      const rowsToValidate = rows.filter(r => !r._isDeleted);
-      if (rowsToValidate.length === 0) continue;
-      const rules = detailValidationRulesByTab.value[tabKey] || [];
-      const meta = detailColumnMetaByTab.value[tabKey] || [];
-      const result = validateRows(rowsToValidate, rules, meta);
-      if (!result.valid) {
-        const tabTitle = pageConfig.value?.tabs?.find(t => t.key === tabKey)?.title || tabKey;
-        notifyError(`${tabTitle} 验证失败:\n` + formatValidationErrors(result.errors));
-        return;
-      }
-    }
+    try {
+      const dirtyMaster: RowData[] = [];
+      const dirtyDetailByTab: Record<string, RowData[]> = {};
 
-    const masterIdsToSave = new Set<number>();
-    for (const row of dirtyMaster) {
-      if (row.id != null) masterIdsToSave.add(row.id);
-    }
-
-    for (const [masterId, tabData] of detailCache.entries()) {
-      for (const rows of Object.values(tabData)) {
-        if (rows.some(r => r._isNew || r._isDeleted || r._dirtyFields)) {
-          masterIdsToSave.add(masterId);
-          break;
-        }
-      }
-    }
-
-    const savedMasterIds: number[] = [];
-    let hasMasterIdMapping = false;  // 只追踪主表 ID 映射
-    for (const masterId of masterIdsToSave) {
-      const masterRow = masterRows.value.find(r => r.id === masterId);
-      if (!masterRow) continue;
-      const isMasterNew = masterRow._isNew;  // 记录主表是否是新增
-
-      const detailsMap: Record<string, any[]> = {};
-      const cached = detailCache.get(masterId);
-      if (cached) {
-        for (const tab of pageConfig.value?.tabs || []) {
-          const tableCode = tab.tableCode || pageConfig.value?.detailTableCode;
-          if (!tableCode) continue;
-          const rows = cached[tab.key] || [];
-          const dirtyRows = rows.filter(r => r._isNew || r._isDeleted || r._dirtyFields);
-          if (dirtyRows.length > 0) {
-            const fkField = detailFkColumnByTab.value[tab.key] || 'masterId';
-            detailsMap[tableCode] = dirtyRows.map(r => buildRecordItem(r, tableCode, [fkField]));
-          }
-        }
+      for (const row of masterRows.value) {
+        if (row._isNew || row._isDeleted || row._dirtyFields) dirtyMaster.push(row);
       }
 
-      const paramsToSave = {
-        pageCode,
-        master: buildRecordItem(masterRow, pageConfig.value?.masterTableCode || ''),
-        details: Object.keys(detailsMap).length > 0 ? detailsMap : undefined
-      };
-
-      const { error, data } = await saveDynamicData(paramsToSave);
-      if (error) {
-        const errorMessage = (error as any)?.response?.data?.msg || (error as any)?.msg || error.message || '保存失败';
-        saveStats.errors.push(`主表 ${masterId}: ${errorMessage}`);
-      } else {
-        const mapping = normalizeIdMapping((data as any)?.idMapping);
-        if (mapping.size > 0) {
-          // 只有主表是新增时，才标记需要刷新主表
-          if (isMasterNew && mapping.has(masterId)) {
-            hasMasterIdMapping = true;
-          }
-          applyIdMapping(mapping);
-        }
-        const resolvedMasterId = Number((data as any)?.masterId ?? mapping.get(masterId) ?? masterId);
-        saveStats.successCount++;
-        savedMasterIds.push(resolvedMasterId);
-      }
-    }
-
-    // 清除变更标记，收集需要从 Grid 移除的行
-    let hasDeletedRows = false;
-    const deletedDetailRowsByMasterId = new Map<number, RowData[]>();
-
-    for (const masterId of savedMasterIds) {
-      const masterRow = masterRows.value.find(r => r.id === masterId);
-      if (masterRow) {
-        if (masterRow._isDeleted) {
-          const idx = masterRows.value.findIndex(r => r.id === masterId);
-          if (idx >= 0) {
-            masterRows.value.splice(idx, 1);
-            hasDeletedRows = true;
-          }
-        } else {
-          clearRowFlags(masterRow);
-        }
-      }
-
-      const cached = detailCache.get(masterId);
-      if (cached) {
-        const deletedRows: RowData[] = [];
-        for (const [tabKey, rows] of Object.entries(cached)) {
-          const remaining: RowData[] = [];
-          for (const r of rows) {
-            if (r._isDeleted) {
-              deletedRows.push(r);
-            } else {
-              clearRowFlags(r);
-              remaining.push(r);
+      for (const [, tabData] of detailCache.entries()) {
+        for (const [tabKey, rows] of Object.entries(tabData)) {
+          for (const row of rows) {
+            if (row._isNew || row._isDeleted || row._dirtyFields) {
+              if (!dirtyDetailByTab[tabKey]) dirtyDetailByTab[tabKey] = [];
+              dirtyDetailByTab[tabKey].push(row);
             }
           }
-          cached[tabKey] = remaining;
-        }
-        if (deletedRows.length > 0) {
-          deletedDetailRowsByMasterId.set(masterId, deletedRows);
         }
       }
-    }
 
-    // 有删除行或主表新增（ID 映射）时，需要重新设置主表数据
-    if (hasMasterIdMapping || hasDeletedRows) {
-      const api = masterGridApi.value as any;
-      const rowModelType = api?.getGridOption?.('rowModelType');
-      
-      if (rowModelType === 'serverSide') {
-        // SSRM 模式：使用事务 API 删除行
-        const deletedIds = savedMasterIds.filter(id => 
-          !masterRows.value.some(r => r.id === id)
-        );
-        if (deletedIds.length > 0) {
-          api.applyServerSideTransaction({
-            route: [],
-            remove: deletedIds.map(id => ({ id }))
+      const saveStats = { successCount: 0, errors: [] as string[] };
+
+      if (dirtyMaster.length === 0 && !Object.values(dirtyDetailByTab).some(arr => arr.length > 0)) {
+        notifyInfo('没有需要保存的数据');
+        return;
+      }
+
+      const masterToValidate = dirtyMaster.filter(r => !r._isDeleted);
+      if (masterToValidate.length > 0) {
+        const masterResult = validateRows(masterToValidate, masterValidationRules.value, masterColumnMeta.value);
+        if (!masterResult.valid) {
+          notifyError('主表验证失败:\n' + formatValidationErrors(masterResult.errors));
+          return;
+        }
+      }
+
+      for (const [tabKey, rows] of Object.entries(dirtyDetailByTab)) {
+        const rowsToValidate = rows.filter(r => !r._isDeleted);
+        if (rowsToValidate.length === 0) continue;
+        const rules = detailValidationRulesByTab.value[tabKey] || [];
+        const meta = detailColumnMetaByTab.value[tabKey] || [];
+        const result = validateRows(rowsToValidate, rules, meta);
+        if (!result.valid) {
+          const tabTitle = pageConfig.value?.tabs?.find(t => t.key === tabKey)?.title || tabKey;
+          notifyError(`${tabTitle} 验证失败:\n` + formatValidationErrors(result.errors));
+          return;
+        }
+      }
+
+      const masterIdsToSave = new Set<number>();
+      for (const row of dirtyMaster) {
+        if (row.id != null) masterIdsToSave.add(row.id);
+      }
+
+      for (const [masterId, tabData] of detailCache.entries()) {
+        for (const rows of Object.values(tabData)) {
+          if (rows.some(r => r._isNew || r._isDeleted || r._dirtyFields)) {
+            masterIdsToSave.add(masterId);
+            break;
+          }
+        }
+      }
+
+      const savedMasterIds: number[] = [];
+      let hasMasterIdMapping = false;
+      for (const masterId of masterIdsToSave) {
+        const masterRow = masterRows.value.find(r => r.id === masterId);
+        if (!masterRow) continue;
+        const isMasterNew = masterRow._isNew;
+
+        const detailsMap: Record<string, any[]> = {};
+        const cached = detailCache.get(masterId);
+        if (cached) {
+          for (const tab of pageConfig.value?.tabs || []) {
+            const tableCode = tab.tableCode || pageConfig.value?.detailTableCode;
+            if (!tableCode) continue;
+            const rows = cached[tab.key] || [];
+            const dirtyRows = rows.filter(r => r._isNew || r._isDeleted || r._dirtyFields);
+            if (dirtyRows.length > 0) {
+              const fkField = detailFkColumnByTab.value[tab.key] || 'masterId';
+              detailsMap[tableCode] = dirtyRows.map(r => buildRecordItem(r, tableCode, [fkField]));
+            }
+          }
+        }
+
+        const paramsToSave = {
+          pageCode,
+          master: buildRecordItem(masterRow, pageConfig.value?.masterTableCode || ''),
+          details: Object.keys(detailsMap).length > 0 ? detailsMap : undefined
+        };
+
+        const { error, data } = await saveDynamicData(paramsToSave);
+        if (error) {
+          const errorMessage = (error as any)?.response?.data?.msg || (error as any)?.msg || error.message || '保存失败';
+          saveStats.errors.push(`主表 ${masterId}: ${errorMessage}`);
+        } else {
+          const mapping = normalizeIdMapping((data as any)?.idMapping);
+          if (mapping.size > 0) {
+            if (isMasterNew && mapping.has(masterId)) {
+              hasMasterIdMapping = true;
+            }
+            applyIdMapping(mapping);
+          }
+          const resolvedMasterId = Number((data as any)?.masterId ?? mapping.get(masterId) ?? masterId);
+          saveStats.successCount++;
+          savedMasterIds.push(resolvedMasterId);
+        }
+      }
+
+      // 清除变更标记，收集需要从 Grid 移除的行
+      let hasDeletedRows = false;
+      const deletedDetailRowsByMasterId = new Map<number, RowData[]>();
+
+      for (const masterId of savedMasterIds) {
+        const masterRow = masterRows.value.find(r => r.id === masterId);
+        if (masterRow) {
+          if (masterRow._isDeleted) {
+            const idx = masterRows.value.findIndex(r => r.id === masterId);
+            if (idx >= 0) {
+              masterRows.value.splice(idx, 1);
+              hasDeletedRows = true;
+            }
+          } else {
+            clearRowFlags(masterRow);
+          }
+        }
+
+        const cached = detailCache.get(masterId);
+        if (cached) {
+          const deletedRows: RowData[] = [];
+          for (const [tabKey, rows] of Object.entries(cached)) {
+            const remaining: RowData[] = [];
+            for (const r of rows) {
+              if (r._isDeleted) {
+                deletedRows.push(r);
+              } else {
+                clearRowFlags(r);
+                remaining.push(r);
+              }
+            }
+            cached[tabKey] = remaining;
+          }
+          if (deletedRows.length > 0) {
+            deletedDetailRowsByMasterId.set(masterId, deletedRows);
+          }
+        }
+      }
+
+      // 有删除行或主表新增（ID 映射）时，需要重新设置主表数据
+      if (hasMasterIdMapping || hasDeletedRows) {
+        const api = masterGridApi.value as any;
+        const rowModelType = api?.getGridOption?.('rowModelType');
+
+        if (rowModelType === 'serverSide') {
+          const deletedIds = savedMasterIds.filter(id => !masterRows.value.some(r => r.id === id));
+          if (deletedIds.length > 0) {
+            api.applyServerSideTransaction({
+              route: [],
+              remove: deletedIds.map(id => ({ id }))
+            });
+          }
+          if (hasMasterIdMapping) {
+            api.refreshServerSide({ purge: true });
+          }
+        } else if (rowModelType === 'infinite') {
+          api?.refreshInfiniteCache?.();
+        } else {
+          if (api?.setGridOption) {
+            api.setGridOption('rowData', masterRows.value);
+          } else if (api?.setRowData) {
+            api.setRowData(masterRows.value);
+          }
+        }
+      }
+
+      // 使用事务 API 从明细 Grid 移除已删除的行
+      for (const [masterId, deletedRows] of deletedDetailRowsByMasterId.entries()) {
+        if (deletedRows.length === 0) continue;
+
+        const secondLevelInfo = masterGridApi.value?.getDetailGridInfo(`detail_${masterId}`);
+        if (secondLevelInfo?.api) {
+          secondLevelInfo.api.forEachDetailGridInfo((detailInfo: any) => {
+            if (detailInfo.api?.applyTransaction) {
+              detailInfo.api.applyTransaction({ remove: deletedRows });
+            }
           });
         }
-        if (hasMasterIdMapping) {
-          api.refreshServerSide({ purge: true });
+
+        if (detailGridApisByTab?.value) {
+          for (const api of Object.values(detailGridApisByTab.value)) {
+            if (api?.applyTransaction) {
+              api.applyTransaction({ remove: deletedRows });
+            }
+          }
         }
-      } else if (rowModelType === 'infinite') {
-        // Infinite 模式：刷新缓存
-        api?.refreshInfiniteCache?.();
+      }
+
+      masterGridApi.value?.refreshCells({ force: true });
+
+      if (saveStats.errors.length > 0) {
+        notifyError(`成功 ${saveStats.successCount} 条，失败 ${saveStats.errors.length} 条\n${saveStats.errors.join('\n')}`);
       } else {
-        // Client-Side 模式：重新设置数据
-        if (api?.setGridOption) {
-          api.setGridOption('rowData', masterRows.value);
-        } else if (api?.setRowData) {
-          api.setRowData(masterRows.value);
-        }
+        notifySuccess('保存成功');
       }
-    }
-
-    // 使用事务 API 从明细 Grid 移除已删除的行（不刷新整个页面）
-    for (const [masterId, deletedRows] of deletedDetailRowsByMasterId.entries()) {
-      if (deletedRows.length === 0) continue;
-
-      // 嵌套模式：通过 masterGridApi.getDetailGridInfo 获取明细 Grid
-      const secondLevelInfo = masterGridApi.value?.getDetailGridInfo(`detail_${masterId}`);
-      if (secondLevelInfo?.api) {
-        secondLevelInfo.api.forEachDetailGridInfo((detailInfo: any) => {
-          if (detailInfo.api?.applyTransaction) {
-            detailInfo.api.applyTransaction({ remove: deletedRows });
-          }
-        });
-      }
-
-      // Split 模式：通过 detailGridApisByTab 获取明细 Grid
-      if (detailGridApisByTab?.value) {
-        for (const api of Object.values(detailGridApisByTab.value)) {
-          if (api?.applyTransaction) {
-            api.applyTransaction({ remove: deletedRows });
-          }
-        }
-      }
-    }
-
-    masterGridApi.value?.refreshCells({ force: true });
-
-    if (saveStats.errors.length > 0) {
-      notifyError(`成功 ${saveStats.successCount} 条，失败 ${saveStats.errors.length} 条\n${saveStats.errors.join('\n')}`);
-    } else {
-      notifySuccess('保存成功');
+    } finally {
+      isSaving.value = false;
     }
   }
 
-  return { save };
+  return { save, isSaving };
 }

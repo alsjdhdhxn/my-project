@@ -183,7 +183,7 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     detailGridApisByTab
   });
 
-  const { save } = useSave({
+  const { save, isSaving } = useSave({
     pageCode,
     pageConfig: meta.pageConfig,
     masterRows: data.masterRows,
@@ -291,6 +291,7 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     registerActionHandler,
     resolveActionHandler,
     save,
+    isSaving,
     applyGridConfig: gridConfig.applyGridConfig,
     saveGridConfig: gridConfig.saveGridConfig
   };
