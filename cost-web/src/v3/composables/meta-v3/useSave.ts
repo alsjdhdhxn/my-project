@@ -261,12 +261,16 @@ export function useSave(params: {
     }
 
     // 清除变更标记并刷新 Grid
+    let hasDeletedRows = false;
     for (const masterId of savedMasterIds) {
       const masterRow = masterRows.value.find(r => r.id === masterId);
       if (masterRow) {
         if (masterRow._isDeleted) {
           const idx = masterRows.value.findIndex(r => r.id === masterId);
-          if (idx >= 0) masterRows.value.splice(idx, 1);
+          if (idx >= 0) {
+            masterRows.value.splice(idx, 1);
+            hasDeletedRows = true;
+          }
         } else {
           clearRowFlags(masterRow);
         }
@@ -284,13 +288,35 @@ export function useSave(params: {
       }
     }
 
-    // ID 映射后需要重新设置数据，此时重新设置整个数据
-    if (hasIdMapping) {
+    // 有 ID 映射或有删除行时，需要重新设置数据
+    if (hasIdMapping || hasDeletedRows) {
       const api = masterGridApi.value as any;
-      if (api?.setGridOption) {
-        api.setGridOption('rowData', masterRows.value);
-      } else if (api?.setRowData) {
-        api.setRowData(masterRows.value);
+      const rowModelType = api?.getGridOption?.('rowModelType');
+      
+      if (rowModelType === 'serverSide') {
+        // SSRM 模式：使用事务 API 删除行
+        const deletedIds = savedMasterIds.filter(id => 
+          !masterRows.value.some(r => r.id === id)
+        );
+        if (deletedIds.length > 0) {
+          api.applyServerSideTransaction({
+            route: [],
+            remove: deletedIds.map(id => ({ id }))
+          });
+        }
+        if (hasIdMapping) {
+          api.refreshServerSide({ purge: true });
+        }
+      } else if (rowModelType === 'infinite') {
+        // Infinite 模式：刷新缓存
+        api?.refreshInfiniteCache?.();
+      } else {
+        // Client-Side 模式：重新设置数据
+        if (api?.setGridOption) {
+          api.setGridOption('rowData', masterRows.value);
+        } else if (api?.setRowData) {
+          api.setRowData(masterRows.value);
+        }
       }
     }
 
