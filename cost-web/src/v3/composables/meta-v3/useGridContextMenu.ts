@@ -274,7 +274,12 @@ export function useGridContextMenu(params: {
       if (!actionKey || actionKey === 'separator') continue;
       const resolved = resolveAction(actionKey, ctx);
       if (!resolved) {
-        console.warn('[ContextMenu] unknown action', actionKey);
+        // 可选 action（如 openHeaderConfig）在函数未传入时静默跳过，不打印警告
+        // 只对真正未知的 action 打印警告
+        const optionalActions = ['openHeaderConfig', 'exportSelected', 'exportCurrent', 'exportAll', 'resetExportConfig', 'saveGridConfig'];
+        if (!optionalActions.includes(actionKey)) {
+          console.warn('[ContextMenu] unknown action', actionKey);
+        }
         continue;
       }
 
