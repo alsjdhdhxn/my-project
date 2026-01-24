@@ -1,6 +1,73 @@
 ﻿<template>
   <div class="master-detail-layout-v3">
-    <div class="master-panel">
+    <NSplit
+      v-if="isSplitMode && hasDetailTabs"
+      direction="vertical"
+      :default-size="splitConfig.defaultSize"
+      :min="splitConfig.min"
+      :max="splitConfig.max"
+      class="split-container"
+    >
+      <template #1>
+        <div class="master-panel">
+          <AgGridVue
+            class="ag-theme-quartz master-grid"
+            :rowData="masterRowData"
+            :columnDefs="masterColumnDefs"
+            :defaultColDef="defaultColDef"
+            :getRowId="getMasterRowId"
+            :getRowClass="getRowClass"
+            :rowSelection="rowSelection"
+            :autoSizeStrategy="autoSizeStrategy"
+            :getContextMenuItems="getMasterContextMenuItems"
+            :masterDetail="false"
+            :detailRowAutoHeight="false"
+            :getRowHeight="getRowHeight"
+            :keepDetailRows="false"
+            :detailCellRenderer="undefined"
+            :context="gridContext"
+            :rowHeight="rowHeight"
+            :headerHeight="headerHeight"
+            :undoRedoCellEditing="true"
+            :undoRedoCellEditingLimit="20"
+            v-bind="masterGridRuntimeOptions"
+            @grid-ready="handleMasterGridReady"
+            @selection-changed="onSelectionChanged"
+            @row-group-opened="onDetailRowOpened"
+            @cell-editing-started="onCellEditingStarted"
+            @cell-editing-stopped="onCellEditingStopped"
+            @cell-value-changed="onMasterCellValueChanged"
+            @cell-clicked="onMasterCellClicked"
+            @filter-changed="onFilterChanged"
+          />
+        </div>
+      </template>
+      <template #2>
+        <DetailPanelV3
+          :tabs="detailTabs"
+          :activeMasterId="activeMasterId"
+          :detailCache="detailCache"
+          :detailColumnsByTab="detailColumnsByTab"
+          :detailRowClassByTab="detailRowClassGetterByTab"
+          :detailGridOptionsByTab="detailGridOptionsByTab"
+          :cellClassRules="cellClassRules"
+          :applyGridConfig="applyGridConfig"
+          :onDetailCellValueChanged="onDetailCellValueChanged"
+          :onDetailCellClicked="onDetailCellClicked"
+          :onCellEditingStarted="onCellEditingStarted"
+          :onCellEditingStopped="onCellEditingStopped"
+          :loadDetailData="loadDetailData"
+          :registerDetailGridApi="registerDetailGridApi"
+          :unregisterDetailGridApi="unregisterDetailGridApi"
+          :getDetailContextMenuItems="getDetailContextMenuItems"
+          :refreshDetailRowHeight="refreshDetailRowHeight"
+          :defaultViewMode="'stack'"
+          :viewMode="detailViewMode"
+        />
+      </template>
+    </NSplit>
+
+    <div v-else class="master-panel">
       <AgGridVue
         class="ag-theme-quartz master-grid"
         :rowData="masterRowData"
@@ -35,10 +102,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { AgGridVue } from 'ag-grid-vue3';
-import { useDialog } from 'naive-ui';
+import { NSplit, useDialog } from 'naive-ui';
 import DetailRowRendererV3 from '@/v3/components/detail/DetailRowRendererV3.vue';
+import DetailPanelV3 from '@/v3/components/detail/DetailPanelV3.vue';
 import { useMasterGridBindings } from '@/v3/composables/meta-v3/useMasterGridBindings';
 import { useGridContextMenu } from '@/v3/composables/meta-v3/useGridContextMenu';
 import { useThemeStore } from '@/store/modules/theme';
@@ -88,6 +156,17 @@ const detailViewMode = computed(() => themeStore.detailViewMode);
 const detailFeatureEnabled = computed(() => runtime?.features?.detailTabs !== false);
 const hasDetailTabs = computed(() => detailFeatureEnabled.value && (pageConfig.value?.tabs?.length || 0) > 0);
 const detailTabs = computed(() => pageConfig.value?.tabs || []);
+const detailLayoutMode = computed(() => runtime?.detailLayoutMode?.value ?? runtime?.detailLayoutMode ?? 'nested');
+const splitConfig = computed(() => {
+  const config = runtime?.detailSplitConfig?.value ?? runtime?.detailSplitConfig ?? {};
+  return {
+    defaultSize: config?.defaultSize ?? 0.5,
+    min: config?.min ?? 0.2,
+    max: config?.max ?? 0.8
+  };
+});
+const isSplitMode = computed(() => detailLayoutMode.value === 'split');
+const activeMasterId = ref<number | null>(null);
 
 const masterGridOptionsValue = computed(() => masterGridOptions?.value || null);
 
@@ -127,7 +206,8 @@ const {
   onCellEditingStopped,
   onCellValueChanged: onMasterCellValueChanged,
   onCellClicked: onMasterCellClicked,
-  onFilterChanged
+  onFilterChanged,
+  onSelectionChanged
 } = useMasterGridBindings({
   runtime,
   isUserEditing: editingState,
@@ -136,7 +216,17 @@ const {
   contextMenuConfig: masterContextMenu,
   rowEditableRules: masterRowEditableRules?.value,
   rowClassRules: masterRowClassRules?.value,
-  dataSource: dataSource.value
+  dataSource: dataSource.value,
+  onSelectionChanged: async (rows) => {
+    if (!isSplitMode.value || !hasDetailTabs.value) return;
+    const selected = rows?.[0];
+    const nextId = selected?.id ?? null;
+    activeMasterId.value = typeof nextId === 'number' ? nextId : (nextId != null ? Number(nextId) : null);
+    if (activeMasterId.value == null) return;
+    if (!detailCache.get(activeMasterId.value)) {
+      await loadDetailData(activeMasterId.value);
+    }
+  }
 });
 
 const masterGridKey = computed(() => {
@@ -293,6 +383,7 @@ function getExpandedMasterId(api: any): number | null {
 }
 
 function onDetailRowOpened(event: any) {
+  if (isSplitMode.value) return;
   if (!event?.node?.master) return;
   
   const masterIdRaw = event.node?.data?.id;
@@ -391,6 +482,10 @@ onUnmounted(() => {
   flex-direction: column;
 }
 
+.split-container {
+  height: 100%;
+}
+
 .master-panel {
   flex: 1;
   min-height: 0;
@@ -401,4 +496,3 @@ onUnmounted(() => {
   height: 100%;
 }
 </style>
-

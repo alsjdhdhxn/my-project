@@ -54,6 +54,7 @@ export type GridState = ComponentStateBase & {
   columnDefs: ColDef[];
   defaultColDef?: ColDef;
   gridOptions?: Record<string, any>;
+  dataSource?: any;
   rowSelection?: Record<string, any>;
   autoSizeStrategy?: any;
   getRowId?: (params: any) => string;

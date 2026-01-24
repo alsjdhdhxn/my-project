@@ -8,9 +8,10 @@ import { useSave } from '@/v3/composables/meta-v3/useSave';
 import { useUserGridConfig } from '@/v3/composables/meta-v3/useUserGridConfig';
 import { useCustomExport } from '@/v3/composables/meta-v3/useCustomExport';
 import { useMasterGridBindings } from '@/v3/composables/meta-v3/useMasterGridBindings';
+import { resolveFormRenderer } from '@/v3/composables/meta-v3/form-renderer-registry';
 import { executeAction as executeActionApi } from '@/service/api/dynamic';
 import { createRuntimeLogger } from './logger';
-import type { ComponentState, GridState, MetaError, RuntimeFeatures, RuntimeStage } from './types';
+import type { ComponentState, FormState, GridState, MetaError, RuntimeFeatures, RuntimeStage } from './types';
 
 type NotifyFn = (message: string) => void;
 
@@ -65,6 +66,38 @@ function findFirstGridKey(components: any[]): string | null {
   };
   return visit(components || []);
 }
+
+function flattenComponents(components: any[]): any[] {
+  const result: any[] = [];
+  const visit = (items: any[]) => {
+    for (const item of items || []) {
+      result.push(item);
+      if (Array.isArray(item.children)) visit(item.children);
+    }
+  };
+  visit(components);
+  return result;
+}
+
+function findComponentByKey(components: any[], key: string): any | null {
+  const visit = (items: any[]): any | null => {
+    for (const item of items) {
+      if (item.componentKey === key) return item;
+      if (Array.isArray(item.children)) {
+        const found = visit(item.children);
+        if (found) return found;
+      }
+    }
+    return null;
+  };
+  return visit(components || []);
+}
+
+type ActionHandler = (context: {
+  actionCode: string;
+  runtime: any;
+  options?: { tableCode?: string; data?: Record<string, any> };
+}) => Promise<void> | void;
 
 export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFeatures) {
   const { pageCode, notifyInfo, notifyError, notifySuccess } = options;
@@ -174,8 +207,28 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     notifySuccess
   });
 
+  const actionHandlers = new Map<string, ActionHandler>();
+
+  function registerActionHandler(actionCode: string, handler: ActionHandler) {
+    if (!actionCode || typeof handler !== 'function') return;
+    actionHandlers.set(actionCode, handler);
+  }
+
+  function resolveActionHandler(actionCode: string): ActionHandler | null {
+    return actionHandlers.get(actionCode) || null;
+  }
+
   async function executeAction(actionCode: string, options?: { tableCode?: string; data?: Record<string, any> }) {
     if (!actionCode) return;
+    const handler = resolveActionHandler(actionCode);
+    if (handler) {
+      try {
+        await handler({ actionCode, runtime: runtimeApi, options });
+      } catch (error: any) {
+        notifyError(error?.message || 'Action failed');
+      }
+      return;
+    }
     const tableCode = options?.tableCode || meta.pageConfig.value?.masterTableCode;
     if (!tableCode) {
       notifyError('Action tableCode missing');
@@ -234,6 +287,8 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
       lookup.onLookupCancel();
     },
     executeAction,
+    registerActionHandler,
+    resolveActionHandler,
     save,
     applyGridConfig: gridConfig.applyGridConfig,
     saveGridConfig: gridConfig.saveGridConfig
@@ -244,7 +299,7 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
 
   function resolveComponentType(componentKey: string) {
     const components = meta.pageComponents.value || [];
-    const match = components.find(item => item.componentKey === componentKey);
+    const match = findComponentByKey(components, componentKey);
     return match?.componentType || 'UNKNOWN';
   }
 
@@ -348,11 +403,12 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
   function buildStates() {
     logger.log('buildStates', 'start');
     const components = meta.pageComponents.value || [];
+    const flatComponents = flattenComponents(components);
     const nextStates: Record<string, ComponentState> = {};
     const masterGridOptions = meta.masterGridOptions?.value;
     const isServerSide = masterGridOptions?.rowModelType === 'serverSide' || masterGridOptions?.rowModelType === 'infinite';
 
-    for (const component of components) {
+    for (const component of flatComponents) {
       nextStates[component.componentKey] = {
         componentKey: component.componentKey,
         componentType: component.componentType,
@@ -399,10 +455,9 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
   function applyExtensions() {
     logger.log('applyExtensions', 'start');
     const components = meta.pageComponents.value || [];
+    const flatComponents = flattenComponents(components);
     const masterKey = meta.masterGridKey.value || findFirstGridKey(components);
-    if (!masterKey) return;
-    const gridState = componentStateByKey.value[masterKey] as GridState | undefined;
-    if (!gridState) return;
+    const gridState = masterKey ? (componentStateByKey.value[masterKey] as GridState | undefined) : undefined;
 
     const masterGridOptions = meta.masterGridOptions?.value;
     // 根据 rowModelType 选择数据源
@@ -413,32 +468,52 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
       dataSource = (runtimeApi as any).createMasterDataSource?.({ pageSize: masterGridOptions.cacheBlockSize });
     }
 
-    const bindings = useMasterGridBindings({
-      runtime: runtimeApi,
-      metaRowClassGetter: meta.masterRowClassGetter?.value,
-      gridOptions: masterGridOptions,
-      columnDefs: meta.masterColumnDefs,
-      gridKey: masterKey,
-      contextMenuConfig: meta.masterContextMenu,
-      rowEditableRules: meta.masterRowEditableRules?.value,
-      dataSource
-    });
+    if (masterKey && gridState) {
+      const bindings = useMasterGridBindings({
+        runtime: runtimeApi,
+        metaRowClassGetter: meta.masterRowClassGetter?.value,
+        gridOptions: masterGridOptions,
+        columnDefs: meta.masterColumnDefs,
+        gridKey: masterKey,
+        contextMenuConfig: meta.masterContextMenu,
+        rowEditableRules: meta.masterRowEditableRules?.value,
+        dataSource
+      });
 
-    gridState.defaultColDef = bindings.defaultColDef;
-    gridState.rowSelection = bindings.rowSelection;
-    gridState.autoSizeStrategy = bindings.autoSizeStrategy;
-    gridState.getRowId = bindings.getRowId;
-    gridState.getRowClass = bindings.getRowClass;
-    gridState.getContextMenuItems = resolvedFeatures.value.contextMenu ? bindings.getContextMenuItems : undefined;
-    gridState.gridOptions = bindings.gridOptions;
-    gridState.rowHeight = bindings.rowHeight;
-    gridState.headerHeight = bindings.headerHeight;
-    gridState.onGridReady = bindings.onGridReady;
-    gridState.onCellEditingStarted = bindings.onCellEditingStarted;
-    gridState.onCellEditingStopped = bindings.onCellEditingStopped;
-    gridState.onCellValueChanged = bindings.onCellValueChanged;
-    gridState.onCellClicked = bindings.onCellClicked;
-    gridState.onFilterChanged = bindings.onFilterChanged;
+      gridState.defaultColDef = bindings.defaultColDef;
+      gridState.rowSelection = bindings.rowSelection;
+      gridState.autoSizeStrategy = bindings.autoSizeStrategy;
+      gridState.getRowId = bindings.getRowId;
+      gridState.getRowClass = bindings.getRowClass;
+      gridState.getContextMenuItems = resolvedFeatures.value.contextMenu ? bindings.getContextMenuItems : undefined;
+      gridState.gridOptions = bindings.gridOptions;
+      gridState.dataSource = dataSource;
+      gridState.rowHeight = bindings.rowHeight;
+      gridState.headerHeight = bindings.headerHeight;
+      gridState.onGridReady = bindings.onGridReady;
+      gridState.onCellEditingStarted = bindings.onCellEditingStarted;
+      gridState.onCellEditingStopped = bindings.onCellEditingStopped;
+      gridState.onCellValueChanged = bindings.onCellValueChanged;
+      gridState.onCellClicked = bindings.onCellClicked;
+      gridState.onFilterChanged = bindings.onFilterChanged;
+    }
+
+    for (const component of flatComponents) {
+      if (component.componentType !== 'FORM') continue;
+      const state = componentStateByKey.value[component.componentKey] as FormState | undefined;
+      if (!state) continue;
+      let config: { rendererKey?: string; variantKey?: string; placeholder?: string } = {};
+      try {
+        config = component.componentConfig ? JSON.parse(component.componentConfig) : {};
+      } catch (error) {
+        console.warn('[MetaV3] form config parse failed', error);
+      }
+      const rendererKey = config.rendererKey || config.variantKey;
+      if (rendererKey) {
+        state.renderer = resolveFormRenderer(rendererKey) || state.renderer;
+      }
+      if (config.placeholder) state.placeholder = config.placeholder;
+    }
   }
 
   async function init() {
@@ -514,4 +589,3 @@ export function useMasterDetailRuntime(options: BaseRuntimeOptions) {
     mode: 'masterDetail' as const
   };
 }
-

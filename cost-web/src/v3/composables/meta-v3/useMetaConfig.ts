@@ -66,6 +66,33 @@ function buildComponentTree(components: PageComponentWithRules[]): PageComponent
   return roots;
 }
 
+function hasComponentType(components: PageComponentWithRules[], type: string): boolean {
+  const visit = (items: PageComponentWithRules[]): boolean => {
+    for (const item of items) {
+      if (item.componentType === type) return true;
+      if (Array.isArray(item.children) && visit(item.children)) return true;
+    }
+    return false;
+  };
+  return visit(components || []);
+}
+
+function injectMasterDetailRoot(components: PageComponentWithRules[]): PageComponentWithRules[] {
+  if (hasComponentType(components, 'MASTER_DETAIL')) return components;
+  const hasGrid = hasComponentType(components, 'GRID');
+  const hasTabs = hasComponentType(components, 'TABS');
+  if (!hasGrid || !hasTabs) return components;
+  const pageCode = components[0]?.pageCode || '';
+  return [{
+    id: -1,
+    pageCode,
+    componentKey: '__v3_master_detail__',
+    componentType: 'MASTER_DETAIL',
+    sortOrder: -1,
+    children: components
+  } as PageComponentWithRules];
+}
+
 function normalizeRole(role?: string): string | null {
   if (!role) return null;
   const normalized = role.trim().toUpperCase();
@@ -243,13 +270,13 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
   async function loadComponents() {
     const pageRes = await fetchPageComponents(pageCode);
     if (pageRes.error || !pageRes.data) {
-      notifyError('����ҳ������ʧ��');
+      notifyError('????????');
       return false;
     }
 
     const pageComponentsData = pageRes.data as PageComponentWithRules[];
     const pageComponentTree = buildComponentTree(pageComponentsData);
-    pageComponents.value = pageComponentTree;
+    pageComponents.value = injectMasterDetailRoot(pageComponentTree);
 
     const rulesMap = groupRulesByComponent(collectPageRules(pageComponentTree));
     rulesByComponent.value = rulesMap;
@@ -271,7 +298,7 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
   function parseConfig() {
     const components = pageComponents.value || [];
     if (components.length === 0) {
-      notifyError('����ҳ������ʧ��');
+      notifyError('????????');
       return false;
     }
 
@@ -282,7 +309,7 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
       detailTabsKey: resolvedDetailTabsKey
     });
     if (!config) {
-      notifyError('����ҳ������ʧ��');
+      notifyError('????????');
       return false;
     }
 
@@ -355,7 +382,7 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
     const resolvedMasterGridKey = masterGridKey.value ?? undefined;
     const masterMeta = await loadTableMeta(config.masterTableCode, pageCode, resolvedMasterGridKey ?? 'masterGrid');
     if (!masterMeta) {
-      notifyError('��������Ԫ����ʧ��');
+      notifyError('?????????');
       return false;
     }
 
@@ -537,4 +564,3 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
     loadMetadata
   };
 }
-
