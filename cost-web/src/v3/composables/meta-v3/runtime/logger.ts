@@ -3,7 +3,7 @@ import type { MetaError, RuntimeLogger, RuntimeStage } from './types';
 function formatPrefix(pageCode: string, componentKey?: string, stage?: RuntimeStage) {
   const key = componentKey || '-';
   const st = stage || 'render';
-  return `[MetaV2][${pageCode}][${key}][${st}]`;
+  return `[MetaV3][${pageCode}][${key}][${st}]`;
 }
 
 export function createRuntimeLogger(
