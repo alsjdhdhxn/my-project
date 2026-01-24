@@ -231,8 +231,14 @@ export function useMasterDetailData(params: {
     const rowModelType = (api as any)?.getGridOption?.('rowModelType');
     const isServerSide = rowModelType === 'serverSide' || rowModelType === 'infinite';
 
+    // 无论什么模式，都要将新行加入 masterRows（用于保存时检测）
+    masterRows.value.splice(insertIndex, 0, newRow);
+    if (typeof newRow.id === 'number') {
+      masterRowMap.set(newRow.id, newRow);
+    }
+
     if (isServerSide && api) {
-      // SSRM 模式：使用事务 API 插入行
+      // SSRM 模式：使用事务 API 插入行到 Grid
       if (rowModelType === 'serverSide') {
         api.applyServerSideTransaction({
           route: [],
@@ -241,18 +247,7 @@ export function useMasterDetailData(params: {
         });
       } else {
         // Infinite 模式不支持事务，刷新数据源
-        // 先将新行加入缓存，然后刷新
-        masterRows.value.splice(insertIndex, 0, newRow);
-        if (typeof newRow.id === 'number') {
-          masterRowMap.set(newRow.id, newRow);
-        }
         api.refreshInfiniteCache();
-      }
-    } else {
-      // Client-Side 模式：直接操作数组
-      masterRows.value.splice(insertIndex, 0, newRow);
-      if (typeof newRow.id === 'number') {
-        masterRowMap.set(newRow.id, newRow);
       }
     }
 
