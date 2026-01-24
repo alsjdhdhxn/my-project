@@ -9,7 +9,7 @@ export type SummaryConfig = {
 };
 
 const DEFAULT_GROUP_LABEL_FIELD = 'groupLabel';
-const DEFAULT_GROUP_LABEL_HEADER = '\u5206\u7c7b';
+const DEFAULT_GROUP_LABEL_HEADER = '分类';
 const EMPTY_SUMMARY_COLUMNS: SummaryColumnConfig[] = [];
 const EMPTY_SUMMARY_AGGS: SummaryAggConfig[] = [];
 

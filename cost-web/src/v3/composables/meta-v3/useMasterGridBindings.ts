@@ -109,10 +109,10 @@ export function useMasterGridBindings(params: {
     const classes: string[] = [];
     if (isFlagTrue(params.data?._isDeleted)) classes.push('row-deleted');
     if (isFlagTrue(params.data?._isNew)) classes.push('row-new');
-    // 搴旂敤 ROW_CLASS 瑙勫垯
+    // 应用 ROW_CLASS 规则
     const ruleClass = rowClassCallback?.(params);
     if (ruleClass) classes.push(ruleClass);
-    // 搴旂敤鍏冩暟鎹鏍峰紡
+    // 应用元数据样式
     const metaClass = metaRowClassGetter?.(params);
     if (metaClass) classes.push(metaClass);
     return classes.length > 0 ? classes.join(' ') : undefined;
@@ -226,4 +226,3 @@ export function useMasterGridBindings(params: {
     onFilterChanged
   };
 }
-

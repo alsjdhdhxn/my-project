@@ -13,8 +13,8 @@ type NotifyFn = (message: string) => void;
 
 type SortModelItem = { colId?: string; sort?: 'asc' | 'desc' };
 
-const LABEL_EXPORT_OK = '\u5bfc\u51fa\u5df2\u5f00\u59cb';
-const LABEL_EXPORT_FAIL = '\u5bfc\u51fa\u5931\u8d25';
+const LABEL_EXPORT_OK = '导出已开始';
+const LABEL_EXPORT_FAIL = '导出失败';
 
 function toTextCondition(field: string, type: string, value: any): QueryCondition | null {
   if (value == null || value === '') return null;

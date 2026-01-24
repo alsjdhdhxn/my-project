@@ -1,17 +1,17 @@
 import type { ContextMenuItemRule, ContextMenuRule } from '@/composables/meta-v2/types';
 import type { CustomExportConfig } from '@/service/api/export-config';
 
-const LABEL_ADD = '\u65b0\u589e';
-const LABEL_COPY = '\u590d\u5236';
-const LABEL_DELETE = '\u5220\u9664';
-const LABEL_SAVE = '\u4fdd\u5b58';
-const LABEL_SAVE_GRID = '\u4fdd\u5b58\u5217\u914d\u7f6e';
-const LABEL_EXPORT_SELECTED = '\u5bfc\u51fa\u9009\u4e2d';
-const LABEL_EXPORT_CURRENT = '\u5bfc\u51fa\u5f53\u524d';
-const LABEL_EXPORT_ALL = '\u5bfc\u51fa\u5168\u90e8';
-const LABEL_RESET_EXPORT = '\u91cd\u7f6e\u5bfc\u51fa\u914d\u7f6e';
-const LABEL_HEADER_CONFIG = '\u8868\u5934\u914d\u7f6e';
-const LABEL_CUSTOM_EXPORT = '\u81ea\u5b9a\u4e49\u5bfc\u51fa';
+const LABEL_ADD = '新增';
+const LABEL_COPY = '复制';
+const LABEL_DELETE = '删除';
+const LABEL_SAVE = '保存';
+const LABEL_SAVE_GRID = '保存列配置';
+const LABEL_EXPORT_SELECTED = '导出选中';
+const LABEL_EXPORT_CURRENT = '导出当前';
+const LABEL_EXPORT_ALL = '导出全部';
+const LABEL_RESET_EXPORT = '重置导出配置';
+const LABEL_HEADER_CONFIG = '表头配置';
+const LABEL_CUSTOM_EXPORT = '自定义导出';
 
 type MenuConfigInput = ContextMenuRule | { value?: ContextMenuRule | null } | null | undefined;
 
@@ -304,11 +304,11 @@ export function useGridContextMenu(params: {
     for (const config of configs) {
       // 每个配置提供两个选项：导出当前、导出所有
       subMenuItems.push({
-        name: `${config.exportName} - \u5bfc\u51fa\u5f53\u524d`,
+        name: `${config.exportName} - 导出当前`,
         action: () => executeCustomExport(config.exportCode, 'current')
       });
       subMenuItems.push({
-        name: `${config.exportName} - \u5bfc\u51fa\u6240\u6709`,
+        name: `${config.exportName} - 导出所有`,
         action: () => executeCustomExport(config.exportCode, 'all')
       });
     }
