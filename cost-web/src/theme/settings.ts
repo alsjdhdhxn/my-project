@@ -60,7 +60,7 @@ export const themeSettings: App.Theme.ThemeSetting = {
   detailViewMode: 'stack',
   watermark: {
     visible: false,
-    text: 'SoybeanAdmin',
+    text: '华益低代码平台',
     enableUserName: false,
     enableTime: false,
     timeFormat: 'YYYY-MM-DD HH:mm'
