@@ -326,19 +326,31 @@ export function useMasterDetailData(params: {
     if (!cached || !cached[tabKey]) return;
 
     if (row._isNew) {
+      // 新增行直接从数组中移除
       const idx = cached[tabKey].findIndex(r => r.id === row.id);
       if (idx >= 0) cached[tabKey].splice(idx, 1);
-    } else {
-      row._isDeleted = true;
-    }
 
-    const secondLevelInfo = masterGridApi.value?.getDetailGridInfo(`detail_${masterId}`);
-    if (secondLevelInfo?.api) {
-      secondLevelInfo.api.forEachDetailGridInfo((detailInfo: any) => {
-        if (detailInfo.id?.includes(tabKey)) detailInfo.api.refreshCells();
-      });
+      // 刷新 Grid 的 rowData，让行从视觉上消失
+      const secondLevelInfo = masterGridApi.value?.getDetailGridInfo(`detail_${masterId}`);
+      if (secondLevelInfo?.api) {
+        secondLevelInfo.api.forEachDetailGridInfo((detailInfo: any) => {
+          if (detailInfo.id?.includes(tabKey)) {
+            detailInfo.api.setGridOption('rowData', cached[tabKey]);
+          }
+        });
+      }
+      detailGridApisByTab?.value?.[tabKey]?.setGridOption?.('rowData', cached[tabKey]);
+    } else {
+      // 已有行标记删除，刷新样式
+      row._isDeleted = true;
+      const secondLevelInfo = masterGridApi.value?.getDetailGridInfo(`detail_${masterId}`);
+      if (secondLevelInfo?.api) {
+        secondLevelInfo.api.forEachDetailGridInfo((detailInfo: any) => {
+          if (detailInfo.id?.includes(tabKey)) detailInfo.api.refreshCells();
+        });
+      }
+      detailGridApisByTab?.value?.[tabKey]?.refreshCells?.({ force: true });
     }
-    detailGridApisByTab?.value?.[tabKey]?.refreshCells?.({ force: true });
 
     recalcAggregates(masterId);
   }
