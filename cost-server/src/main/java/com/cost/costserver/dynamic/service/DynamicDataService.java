@@ -786,7 +786,20 @@ public class DynamicDataService {
 
                     TableMetadataDTO detailMeta = metadataService.getTableMetadata(detailTableCode);
                     String fkColumn = detailMeta.parentFkColumn();
-                    String fkFieldName = StrUtil.isNotBlank(fkColumn) ? underscoreToCamel(fkColumn) : null;
+                    // 根据 TARGET_COLUMN 查找对应的 FIELD_NAME
+                    String fkFieldName = null;
+                    if (StrUtil.isNotBlank(fkColumn)) {
+                        for (ColumnMetadataDTO col : detailMeta.columns()) {
+                            if (fkColumn.equalsIgnoreCase(col.targetColumn())) {
+                                fkFieldName = col.fieldName();
+                                break;
+                            }
+                        }
+                        // 如果没找到，回退到驼峰转换
+                        if (fkFieldName == null) {
+                            fkFieldName = underscoreToCamel(fkColumn);
+                        }
+                    }
 
                     for (var item : items) {
                         if (item == null || "unchanged".equals(item.getStatus()))
