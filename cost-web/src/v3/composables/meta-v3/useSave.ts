@@ -218,10 +218,11 @@ export function useSave(params: {
     }
 
     const savedMasterIds: number[] = [];
-    let hasIdMapping = false;
+    let hasMasterIdMapping = false;  // 只追踪主表 ID 映射
     for (const masterId of masterIdsToSave) {
       const masterRow = masterRows.value.find(r => r.id === masterId);
       if (!masterRow) continue;
+      const isMasterNew = masterRow._isNew;  // 记录主表是否是新增
 
       const detailsMap: Record<string, any[]> = {};
       const cached = detailCache.get(masterId);
@@ -251,8 +252,11 @@ export function useSave(params: {
       } else {
         const mapping = normalizeIdMapping((data as any)?.idMapping);
         if (mapping.size > 0) {
+          // 只有主表是新增时，才标记需要刷新主表
+          if (isMasterNew && mapping.has(masterId)) {
+            hasMasterIdMapping = true;
+          }
           applyIdMapping(mapping);
-          hasIdMapping = true;
         }
         const resolvedMasterId = Number((data as any)?.masterId ?? mapping.get(masterId) ?? masterId);
         saveStats.successCount++;
@@ -288,8 +292,8 @@ export function useSave(params: {
       }
     }
 
-    // 有 ID 映射或有删除行时，需要重新设置数据
-    if (hasIdMapping || hasDeletedRows) {
+    // 有删除行或主表新增（ID 映射）时，需要重新设置主表数据
+    if (hasMasterIdMapping || hasDeletedRows) {
       const api = masterGridApi.value as any;
       const rowModelType = api?.getGridOption?.('rowModelType');
       
@@ -304,7 +308,7 @@ export function useSave(params: {
             remove: deletedIds.map(id => ({ id }))
           });
         }
-        if (hasIdMapping) {
+        if (hasMasterIdMapping) {
           api.refreshServerSide({ purge: true });
         }
       } else if (rowModelType === 'infinite') {
