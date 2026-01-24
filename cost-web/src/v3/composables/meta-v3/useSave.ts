@@ -324,14 +324,18 @@ export function useSave(params: {
       }
     }
 
-    // 刷新从表 Grid
+    // 刷新从表 Grid（如果有删除，需要重新设置数据）
     for (const masterId of savedMasterIds) {
       const cached = detailCache.get(masterId);
       if (cached) {
         const secondLevelInfo = masterGridApi.value?.getDetailGridInfo(`detail_${masterId}`);
         if (secondLevelInfo?.api) {
           secondLevelInfo.api.forEachDetailGridInfo((detailInfo: any) => {
-            detailInfo.api?.refreshCells({ force: true });
+            // 获取 tabKey 并重新设置数据
+            const tabKey = detailInfo.id?.split('_').pop();
+            if (tabKey && cached[tabKey]) {
+              detailInfo.api?.setGridOption?.('rowData', cached[tabKey]);
+            }
           });
         }
       }
