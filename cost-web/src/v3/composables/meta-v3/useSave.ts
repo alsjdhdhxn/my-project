@@ -28,6 +28,7 @@ export function useSave(params: {
   detailColumnMetaByTab: Ref<ColumnMetaByTab>;
   detailFkColumnByTab: Ref<Record<string, string>>;
   masterGridApi: ShallowRef<GridApi | null>;
+  detailGridApisByTab?: Ref<Record<string, any>>;
   notifyInfo: NotifyFn;
   notifyError: NotifyFn;
   notifySuccess: NotifyFn;
@@ -43,6 +44,7 @@ export function useSave(params: {
     detailColumnMetaByTab,
     detailFkColumnByTab,
     masterGridApi,
+    detailGridApisByTab,
     notifyInfo,
     notifyError,
     notifySuccess
@@ -264,8 +266,10 @@ export function useSave(params: {
       }
     }
 
-    // 清除变更标记并刷新 Grid
+    // 清除变更标记，收集需要从 Grid 移除的行
     let hasDeletedRows = false;
+    const deletedDetailRowsByMasterId = new Map<number, RowData[]>();
+
     for (const masterId of savedMasterIds) {
       const masterRow = masterRows.value.find(r => r.id === masterId);
       if (masterRow) {
@@ -282,12 +286,21 @@ export function useSave(params: {
 
       const cached = detailCache.get(masterId);
       if (cached) {
+        const deletedRows: RowData[] = [];
         for (const [tabKey, rows] of Object.entries(cached)) {
-          cached[tabKey] = rows.filter(r => {
-            if (r._isDeleted) return false;
-            clearRowFlags(r);
-            return true;
-          });
+          const remaining: RowData[] = [];
+          for (const r of rows) {
+            if (r._isDeleted) {
+              deletedRows.push(r);
+            } else {
+              clearRowFlags(r);
+              remaining.push(r);
+            }
+          }
+          cached[tabKey] = remaining;
+        }
+        if (deletedRows.length > 0) {
+          deletedDetailRowsByMasterId.set(masterId, deletedRows);
         }
       }
     }
@@ -324,19 +337,26 @@ export function useSave(params: {
       }
     }
 
-    // 刷新从表 Grid（如果有删除，需要重新设置数据）
-    for (const masterId of savedMasterIds) {
-      const cached = detailCache.get(masterId);
-      if (cached) {
-        const secondLevelInfo = masterGridApi.value?.getDetailGridInfo(`detail_${masterId}`);
-        if (secondLevelInfo?.api) {
-          secondLevelInfo.api.forEachDetailGridInfo((detailInfo: any) => {
-            // 获取 tabKey 并重新设置数据
-            const tabKey = detailInfo.id?.split('_').pop();
-            if (tabKey && cached[tabKey]) {
-              detailInfo.api?.setGridOption?.('rowData', cached[tabKey]);
-            }
-          });
+    // 使用事务 API 从明细 Grid 移除已删除的行（不刷新整个页面）
+    for (const [masterId, deletedRows] of deletedDetailRowsByMasterId.entries()) {
+      if (deletedRows.length === 0) continue;
+
+      // 嵌套模式：通过 masterGridApi.getDetailGridInfo 获取明细 Grid
+      const secondLevelInfo = masterGridApi.value?.getDetailGridInfo(`detail_${masterId}`);
+      if (secondLevelInfo?.api) {
+        secondLevelInfo.api.forEachDetailGridInfo((detailInfo: any) => {
+          if (detailInfo.api?.applyTransaction) {
+            detailInfo.api.applyTransaction({ remove: deletedRows });
+          }
+        });
+      }
+
+      // Split 模式：通过 detailGridApisByTab 获取明细 Grid
+      if (detailGridApisByTab?.value) {
+        for (const api of Object.values(detailGridApisByTab.value)) {
+          if (api?.applyTransaction) {
+            api.applyTransaction({ remove: deletedRows });
+          }
         }
       }
     }

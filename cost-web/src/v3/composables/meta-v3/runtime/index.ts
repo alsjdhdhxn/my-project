@@ -194,6 +194,7 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     detailColumnMetaByTab: meta.detailColumnMetaByTab,
     detailFkColumnByTab: meta.detailFkColumnByTab,
     masterGridApi,
+    detailGridApisByTab,
     notifyInfo,
     notifyError,
     notifySuccess
