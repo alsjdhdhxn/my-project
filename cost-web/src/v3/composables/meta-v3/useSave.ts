@@ -218,11 +218,9 @@ export function useSave(params: {
       }
 
       const savedMasterIds: number[] = [];
-      let hasMasterIdMapping = false;
       for (const masterId of masterIdsToSave) {
         const masterRow = masterRows.value.find(r => r.id === masterId);
         if (!masterRow) continue;
-        const isMasterNew = masterRow._isNew;
 
         const detailsMap: Record<string, any[]> = {};
         const cached = detailCache.get(masterId);
@@ -252,9 +250,6 @@ export function useSave(params: {
         } else {
           const mapping = normalizeIdMapping((data as any)?.idMapping);
           if (mapping.size > 0) {
-            if (isMasterNew && mapping.has(masterId)) {
-              hasMasterIdMapping = true;
-            }
             applyIdMapping(mapping);
           }
           const resolvedMasterId = Number((data as any)?.masterId ?? mapping.get(masterId) ?? masterId);
@@ -263,8 +258,9 @@ export function useSave(params: {
         }
       }
 
-      // 清除变更标记，收集需要从 Grid 移除的行
-      let hasDeletedRows = false;
+      // 清除变更标记，收集需要更新/删除的行
+      const rowsToUpdate: RowData[] = [];
+      const rowsToRemove: RowData[] = [];
       const deletedDetailRowsByMasterId = new Map<number, RowData[]>();
 
       for (const masterId of savedMasterIds) {
@@ -274,10 +270,11 @@ export function useSave(params: {
             const idx = masterRows.value.findIndex(r => r.id === masterId);
             if (idx >= 0) {
               masterRows.value.splice(idx, 1);
-              hasDeletedRows = true;
+              rowsToRemove.push(masterRow);
             }
           } else {
             clearRowFlags(masterRow);
+            rowsToUpdate.push(masterRow);
           }
         }
 
@@ -302,30 +299,16 @@ export function useSave(params: {
         }
       }
 
-      // 有删除行或主表新增（ID 映射）时，需要重新设置主表数据
-      if (hasMasterIdMapping || hasDeletedRows) {
-        const api = masterGridApi.value as any;
-        const rowModelType = api?.getGridOption?.('rowModelType');
-
-        if (rowModelType === 'serverSide') {
-          const deletedIds = savedMasterIds.filter(id => !masterRows.value.some(r => r.id === id));
-          if (deletedIds.length > 0) {
-            api.applyServerSideTransaction({
-              route: [],
-              remove: deletedIds.map(id => ({ id }))
-            });
-          }
-          if (hasMasterIdMapping) {
-            api.refreshServerSide({ purge: true });
-          }
-        } else if (rowModelType === 'infinite') {
-          api?.refreshInfiniteCache?.();
-        } else {
-          if (api?.setGridOption) {
-            api.setGridOption('rowData', masterRows.value);
-          } else if (api?.setRowData) {
-            api.setRowData(masterRows.value);
-          }
+      // 统一使用事务 API 更新主表 Grid
+      const api = masterGridApi.value as any;
+      if (api?.applyTransaction) {
+        // 有更新的行（新增/复制保存成功后 ID 变化，或普通修改）
+        if (rowsToUpdate.length > 0) {
+          api.applyTransaction({ update: rowsToUpdate });
+        }
+        // 有删除的行
+        if (rowsToRemove.length > 0) {
+          api.applyTransaction({ remove: rowsToRemove });
         }
       }
 
