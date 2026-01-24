@@ -218,24 +218,86 @@ export function useMasterDetailData(params: {
   }
 
   function addMasterRow() {
+    const api = masterGridApi.value;
     const newRow = initRowData({ id: generateTempId() }, true);
-    masterRows.value.push(newRow);
-    if (typeof newRow.id === 'number') {
-      masterRowMap.set(newRow.id, newRow);
+
+    // 获取当前选中行的索引，用于在其下方插入
+    const selectedNodes = api?.getSelectedNodes() || [];
+    const insertIndex = selectedNodes.length > 0 && selectedNodes[0].rowIndex != null
+      ? selectedNodes[0].rowIndex + 1
+      : 0;
+
+    // 判断是否为 SSRM/Infinite 模式
+    const rowModelType = (api as any)?.getGridOption?.('rowModelType');
+    const isServerSide = rowModelType === 'serverSide' || rowModelType === 'infinite';
+
+    if (isServerSide && api) {
+      // SSRM 模式：使用事务 API 插入行
+      if (rowModelType === 'serverSide') {
+        api.applyServerSideTransaction({
+          route: [],
+          add: [newRow],
+          addIndex: insertIndex
+        });
+      } else {
+        // Infinite 模式不支持事务，刷新数据源
+        // 先将新行加入缓存，然后刷新
+        masterRows.value.splice(insertIndex, 0, newRow);
+        if (typeof newRow.id === 'number') {
+          masterRowMap.set(newRow.id, newRow);
+        }
+        api.refreshInfiniteCache();
+      }
+    } else {
+      // Client-Side 模式：直接操作数组
+      masterRows.value.splice(insertIndex, 0, newRow);
+      if (typeof newRow.id === 'number') {
+        masterRowMap.set(newRow.id, newRow);
+      }
     }
+
     afterAddMasterRow?.(newRow);
-    setTimeout(() => masterGridApi.value?.ensureIndexVisible(masterRows.value.length - 1), 100);
+
+    // 滚动到新行位置
+    setTimeout(() => {
+      api?.ensureIndexVisible(insertIndex, 'middle');
+      // 选中新行
+      const newNode = api?.getRowNode(String(newRow.id));
+      if (newNode) {
+        newNode.setSelected(true, true);
+      }
+    }, 100);
   }
 
   function deleteMasterRow(row: RowData) {
     if (!row) return;
+    const api = masterGridApi.value;
+    const rowModelType = (api as any)?.getGridOption?.('rowModelType');
+    const isServerSide = rowModelType === 'serverSide' || rowModelType === 'infinite';
+
     if (row._isNew) {
+      // 新增行直接删除
       const idx = masterRows.value.findIndex(r => r.id === row.id);
       if (idx >= 0) masterRows.value.splice(idx, 1);
+      if (typeof row.id === 'number') {
+        masterRowMap.delete(row.id);
+      }
+
+      if (isServerSide && api) {
+        if (rowModelType === 'serverSide') {
+          api.applyServerSideTransaction({
+            route: [],
+            remove: [row]
+          });
+        } else {
+          api.refreshInfiniteCache();
+        }
+      }
     } else {
+      // 已有行标记删除
       row._isDeleted = true;
-      const node = masterGridApi.value?.getRowNode(String(row.id));
-      if (node) masterGridApi.value?.refreshCells({ rowNodes: [node] });
+      const node = api?.getRowNode(String(row.id));
+      if (node) api?.refreshCells({ rowNodes: [node] });
     }
   }
 
@@ -283,6 +345,7 @@ export function useMasterDetailData(params: {
 
   async function copyMasterRow(sourceRow: RowData) {
     if (!sourceRow) return;
+    const api = masterGridApi.value;
     const sourceMasterId = sourceRow.id;
     const newMasterId = generateTempId();
     const newRow = initRowData({ id: newMasterId }, true);
@@ -290,38 +353,68 @@ export function useMasterDetailData(params: {
     for (const [key, value] of Object.entries(sourceRow)) {
       if (!key.startsWith('_') && key !== 'id') newRow[key] = value;
     }
-    masterRows.value.push(newRow);
-    if (typeof newRow.id === 'number') {
-      masterRowMap.set(newRow.id, newRow);
-    }
 
-    if (sourceMasterId == null) {
-      setTimeout(() => masterGridApi.value?.ensureIndexVisible(masterRows.value.length - 1), 100);
-      return;
-    }
+    // 获取源行的索引，在其下方插入
+    const sourceNode = api?.getRowNode(String(sourceMasterId));
+    const insertIndex = sourceNode?.rowIndex != null ? sourceNode.rowIndex + 1 : masterRows.value.length;
 
-    let sourceCached = detailCache.get(sourceMasterId);
-    if (!sourceCached) {
-      await loadDetailData(sourceMasterId);
-      sourceCached = detailCache.get(sourceMasterId);
-    }
+    // 判断是否为 SSRM/Infinite 模式
+    const rowModelType = (api as any)?.getGridOption?.('rowModelType');
+    const isServerSide = rowModelType === 'serverSide' || rowModelType === 'infinite';
 
-    if (sourceCached) {
-      const newCached: Record<string, RowData[]> = {};
-      for (const [tabKey, rows] of Object.entries(sourceCached)) {
-        const fkColumn = detailFkColumnByTab.value[tabKey] || 'masterId';
-        newCached[tabKey] = rows.filter(r => !r._isDeleted).map(r => {
-          const newDetailRow = initRowData({ id: generateTempId(), [fkColumn]: newMasterId }, true);
-          for (const [key, value] of Object.entries(r)) {
-            if (!key.startsWith('_') && key !== 'id' && key !== fkColumn) newDetailRow[key] = value;
-          }
-          return newDetailRow;
+    if (isServerSide && api) {
+      if (rowModelType === 'serverSide') {
+        api.applyServerSideTransaction({
+          route: [],
+          add: [newRow],
+          addIndex: insertIndex
         });
+      } else {
+        masterRows.value.splice(insertIndex, 0, newRow);
+        if (typeof newRow.id === 'number') {
+          masterRowMap.set(newRow.id, newRow);
+        }
+        api.refreshInfiniteCache();
       }
-      detailCache.set(newMasterId, newCached);
+    } else {
+      masterRows.value.splice(insertIndex, 0, newRow);
+      if (typeof newRow.id === 'number') {
+        masterRowMap.set(newRow.id, newRow);
+      }
     }
 
-    setTimeout(() => masterGridApi.value?.ensureIndexVisible(masterRows.value.length - 1), 100);
+    // 复制子表数据
+    if (sourceMasterId != null) {
+      let sourceCached = detailCache.get(sourceMasterId);
+      if (!sourceCached) {
+        await loadDetailData(sourceMasterId);
+        sourceCached = detailCache.get(sourceMasterId);
+      }
+
+      if (sourceCached) {
+        const newCached: Record<string, RowData[]> = {};
+        for (const [tabKey, rows] of Object.entries(sourceCached)) {
+          const fkColumn = detailFkColumnByTab.value[tabKey] || 'masterId';
+          newCached[tabKey] = rows.filter(r => !r._isDeleted).map(r => {
+            const newDetailRow = initRowData({ id: generateTempId(), [fkColumn]: newMasterId }, true);
+            for (const [key, value] of Object.entries(r)) {
+              if (!key.startsWith('_') && key !== 'id' && key !== fkColumn) newDetailRow[key] = value;
+            }
+            return newDetailRow;
+          });
+        }
+        detailCache.set(newMasterId, newCached);
+      }
+    }
+
+    // 滚动到新行位置并选中
+    setTimeout(() => {
+      api?.ensureIndexVisible(insertIndex, 'middle');
+      const newNode = api?.getRowNode(String(newRow.id));
+      if (newNode) {
+        newNode.setSelected(true, true);
+      }
+    }, 100);
   }
 
   function copyDetailRow(masterId: number, tabKey: string, sourceRow: RowData) {
