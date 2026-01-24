@@ -177,7 +177,7 @@ export function useSave(params: {
     };
 
     if (dirtyMaster.length === 0 && !Object.values(dirtyDetailByTab).some(arr => arr.length > 0)) {
-      notifyInfo('Ã»ÓĞĞèÒª±£´æµÄÊı¾İ');
+      notifyInfo('æ²¡æœ‰éœ€è¦ä¿å­˜çš„æ•°æ®');
       return;
     }
 
@@ -185,7 +185,7 @@ export function useSave(params: {
     if (masterToValidate.length > 0) {
       const masterResult = validateRows(masterToValidate, masterValidationRules.value, masterColumnMeta.value);
       if (!masterResult.valid) {
-        notifyError('Ö÷±íÑéÖ¤Ê§°Ü:\n' + formatValidationErrors(masterResult.errors));
+        notifyError('ä¸»è¡¨éªŒè¯å¤±è´¥:\n' + formatValidationErrors(masterResult.errors));
         return;
       }
     }
@@ -198,7 +198,7 @@ export function useSave(params: {
       const result = validateRows(rowsToValidate, rules, meta);
       if (!result.valid) {
         const tabTitle = pageConfig.value?.tabs?.find(t => t.key === tabKey)?.title || tabKey;
-        notifyError(`${tabTitle} ÑéÖ¤Ê§°Ü:\n` + formatValidationErrors(result.errors));
+        notifyError(`${tabTitle} éªŒè¯å¤±è´¥:\n` + formatValidationErrors(result.errors));
         return;
       }
     }
@@ -246,8 +246,8 @@ export function useSave(params: {
 
       const { error, data } = await saveDynamicData(paramsToSave);
       if (error) {
-        const errorMessage = (error as any)?.response?.data?.msg || (error as any)?.msg || error.message || '±£´æÊ§°Ü';
-        saveStats.errors.push(`Ö÷±í ${masterId}: ${errorMessage}`);
+        const errorMessage = (error as any)?.response?.data?.msg || (error as any)?.msg || error.message || 'ä¿å­˜å¤±è´¥';
+        saveStats.errors.push(`ä¸»è¡¨ ${masterId}: ${errorMessage}`);
       } else {
         const mapping = normalizeIdMapping((data as any)?.idMapping);
         if (mapping.size > 0) {
@@ -260,7 +260,7 @@ export function useSave(params: {
       }
     }
 
-    // ÏÈÇå³ıÔà±ê¼Ç£¬ÔÙË¢ĞÂ Grid
+    // æ¸…é™¤å˜æ›´æ ‡è®°å¹¶åˆ·æ–° Grid
     for (const masterId of savedMasterIds) {
       const masterRow = masterRows.value.find(r => r.id === masterId);
       if (masterRow) {
@@ -284,7 +284,7 @@ export function useSave(params: {
       }
     }
 
-    // ID Ó³ÉäºóĞèÒªÖØĞÂÉèÖÃÊı¾İ£¨´ËÊ±Ôà±ê¼ÇÒÑÇå³ı£©
+    // ID æ˜ å°„åéœ€è¦é‡æ–°è®¾ç½®æ•°æ®ï¼Œæ­¤æ—¶é‡æ–°è®¾ç½®æ•´ä¸ªæ•°æ®
     if (hasIdMapping) {
       const api = masterGridApi.value as any;
       if (api?.setGridOption) {
@@ -294,7 +294,7 @@ export function useSave(params: {
       }
     }
 
-    // Ë¢ĞÂ´Ó±í Grid
+    // åˆ·æ–°ä»è¡¨ Grid
     for (const masterId of savedMasterIds) {
       const cached = detailCache.get(masterId);
       if (cached) {
@@ -310,12 +310,11 @@ export function useSave(params: {
     masterGridApi.value?.refreshCells({ force: true });
 
     if (saveStats.errors.length > 0) {
-      notifyError(`³É¹¦ ${saveStats.successCount} Ìõ£¬Ê§°Ü ${saveStats.errors.length} Ìõ\n${saveStats.errors.join('\n')}`);
+      notifyError(`æˆåŠŸ ${saveStats.successCount} æ¡ï¼Œå¤±è´¥ ${saveStats.errors.length} æ¡\n${saveStats.errors.join('\n')}`);
     } else {
-      notifySuccess('±£´æ³É¹¦');
+      notifySuccess('ä¿å­˜æˆåŠŸ');
     }
   }
 
   return { save };
 }
-
