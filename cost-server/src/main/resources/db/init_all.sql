@@ -2540,24 +2540,6 @@ VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'masterGrid', 'VALIDATION',
 
 INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
 
-VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'masterGrid', 'AGGREGATE',
-
-'[
-
-  {"sourceField":"costBatch","targetField":"totalYl","algorithm":"SUM","sourceTab":"material","filter":"dtlUseflag === ''原料''"},
-
-  {"sourceField":"costBatch","targetField":"totalFl","algorithm":"SUM","sourceTab":"material","filter":"dtlUseflag === ''辅料''"},
-
-  {"sourceField":"costBatch","targetField":"totalBc","algorithm":"SUM","sourceTab":"package"},
-
-  {"targetField":"totalCost","expression":"totalYl + totalFl + totalBc"}
-
-]', 'system');
-
-
-
-INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
-
 VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'material', 'COLUMN_OVERRIDE',
 
 '[

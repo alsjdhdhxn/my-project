@@ -346,16 +346,15 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
     const masterRules = collectRulesByKeys(rulesMap, masterRuleKeys);
     const masterRuleLabel = resolvedMasterGridKey || 'master';
     const masterGridRuleOptions = normalizeGridOptions(parseGridOptionsRule(masterRuleLabel, masterRules));
-    // V3 默认使用 SSRM，如果没有配置 rowModelType 则强制设为 serverSide
     const mergedMasterOptions = mergeGridOptions(enterpriseOptions, masterGridRuleOptions);
-    if (!mergedMasterOptions.rowModelType) {
-      mergedMasterOptions.rowModelType = 'serverSide';
+    // V3 强制主表使用 SSRM，无论元数据怎么配置
+    if (mergedMasterOptions.rowModelType && mergedMasterOptions.rowModelType !== 'serverSide') {
+      console.warn(`[V3] 主表 rowModelType 配置为 "${mergedMasterOptions.rowModelType}"，已强制覆盖为 "serverSide"`);
     }
+    mergedMasterOptions.rowModelType = 'serverSide';
     // SSRM 默认配置
-    if (mergedMasterOptions.rowModelType === 'serverSide') {
-      if (!mergedMasterOptions.cacheBlockSize) {
-        mergedMasterOptions.cacheBlockSize = 100;
-      }
+    if (!mergedMasterOptions.cacheBlockSize) {
+      mergedMasterOptions.cacheBlockSize = 100;
     }
     masterGridOptions.value = mergedMasterOptions;
 
@@ -369,7 +368,13 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
     for (const tab of config.tabs || []) {
       const tabRules = getComponentRules(rulesMap, [tab.key]);
       const tabGridRuleOptions = normalizeGridOptions(parseGridOptionsRule(tab.key, tabRules));
-      detailGridOptionsByTab.value[tab.key] = mergeGridOptions(detailBaseOptions, tabGridRuleOptions);
+      const mergedTabOptions = mergeGridOptions(detailBaseOptions, tabGridRuleOptions);
+      // V3 强制明细表使用 Client-Side，无论元数据怎么配置
+      if (mergedTabOptions.rowModelType && mergedTabOptions.rowModelType !== 'clientSide') {
+        console.warn(`[V3] 明细表 ${tab.key} rowModelType 配置为 "${mergedTabOptions.rowModelType}"，已强制覆盖为 "clientSide"`);
+      }
+      delete mergedTabOptions.rowModelType; // 删除 rowModelType，默认就是 clientSide
+      detailGridOptionsByTab.value[tab.key] = mergedTabOptions;
     }
 
     return true;

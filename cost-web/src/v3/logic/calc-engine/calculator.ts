@@ -310,21 +310,35 @@ export function calcAggregates(
 ): Record<string, number> {
   const results: Record<string, number> = {};
 
+  console.log('[calcAggregates] rules:', rules.map(r => ({
+    targetField: r.targetField,
+    algorithm: r.algorithm,
+    expression: r.expression,
+    hasCompiledExpr: !!r.compiledExpr
+  })));
+
   // 第一轮：执行 SUM/AVG/COUNT 等聚合
   for (const rule of rules) {
     if (rule.algorithm && rule.sourceField) {
       const filteredRows = rule.filter ? filterRows(rows, rule.filter) : rows;
       const value = aggregate(filteredRows, rule.sourceField, rule.algorithm);
       results[rule.targetField] = normalizeNumber(value);
+      console.log('[calcAggregates] Round 1:', rule.targetField, '=', value);
     }
   }
 
   // 第二轮：执行表达式计算（依赖第一轮结果）
   for (const rule of rules) {
+    console.log('[calcAggregates] Round 2 check:', rule.targetField, 
+      'compiledExpr:', !!rule.compiledExpr, 
+      'algorithm:', rule.algorithm,
+      'expression:', rule.expression);
     if (rule.compiledExpr && !rule.algorithm) {
       const context = { ...currentMaster, ...results };
+      console.log('[calcAggregates] Round 2 context:', context);
       try {
         const value = rule.compiledExpr.evaluate(context);
+        console.log('[calcAggregates] Round 2 result:', rule.targetField, '=', value);
         results[rule.targetField] = normalizeNumber(Number(value) || 0);
       } catch (e) {
         console.warn('[Calculator] 聚合表达式计算失败:', rule.expression, e);

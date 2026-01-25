@@ -227,28 +227,19 @@ export function useMasterDetailData(params: {
       ? selectedNodes[0].rowIndex + 1
       : 0;
 
-    // 判断是否为 SSRM/Infinite 模式
-    const rowModelType = (api as any)?.getGridOption?.('rowModelType');
-    const isServerSide = rowModelType === 'serverSide' || rowModelType === 'infinite';
-
-    // 无论什么模式，都要将新行加入 masterRows（用于保存时检测）
+    // 更新本地缓存
     masterRows.value.splice(insertIndex, 0, newRow);
     if (typeof newRow.id === 'number') {
       masterRowMap.set(newRow.id, newRow);
     }
 
-    if (isServerSide && api) {
-      // SSRM 模式：使用事务 API 插入行到 Grid
-      if (rowModelType === 'serverSide') {
-        api.applyServerSideTransaction({
-          route: [],
-          add: [newRow],
-          addIndex: insertIndex
-        });
-      } else {
-        // Infinite 模式不支持事务，刷新数据源
-        api.refreshInfiniteCache();
-      }
+    // V3 强制使用 SSRM：使用事务 API 插入行到 Grid
+    if (api) {
+      api.applyServerSideTransaction({
+        route: [],
+        add: [newRow],
+        addIndex: insertIndex
+      });
     }
 
     afterAddMasterRow?.(newRow);
@@ -267,8 +258,6 @@ export function useMasterDetailData(params: {
   function deleteMasterRow(row: RowData) {
     if (!row) return;
     const api = masterGridApi.value;
-    const rowModelType = (api as any)?.getGridOption?.('rowModelType');
-    const isServerSide = rowModelType === 'serverSide' || rowModelType === 'infinite';
 
     if (row._isNew) {
       // 新增行直接删除
@@ -278,15 +267,12 @@ export function useMasterDetailData(params: {
         masterRowMap.delete(row.id);
       }
 
-      if (isServerSide && api) {
-        if (rowModelType === 'serverSide') {
-          api.applyServerSideTransaction({
-            route: [],
-            remove: [row]
-          });
-        } else {
-          api.refreshInfiniteCache();
-        }
+      // V3 强制使用 SSRM：使用事务 API 删除行
+      if (api) {
+        api.applyServerSideTransaction({
+          route: [],
+          remove: [row]
+        });
       }
     } else {
       // 已有行标记删除
@@ -365,29 +351,19 @@ export function useMasterDetailData(params: {
     const sourceNode = api?.getRowNode(String(sourceMasterId));
     const insertIndex = sourceNode?.rowIndex != null ? sourceNode.rowIndex + 1 : masterRows.value.length;
 
-    // 判断是否为 SSRM/Infinite 模式
-    const rowModelType = (api as any)?.getGridOption?.('rowModelType');
-    const isServerSide = rowModelType === 'serverSide' || rowModelType === 'infinite';
+    // 更新本地缓存
+    masterRows.value.splice(insertIndex, 0, newRow);
+    if (typeof newRow.id === 'number') {
+      masterRowMap.set(newRow.id, newRow);
+    }
 
-    if (isServerSide && api) {
-      if (rowModelType === 'serverSide') {
-        api.applyServerSideTransaction({
-          route: [],
-          add: [newRow],
-          addIndex: insertIndex
-        });
-      } else {
-        masterRows.value.splice(insertIndex, 0, newRow);
-        if (typeof newRow.id === 'number') {
-          masterRowMap.set(newRow.id, newRow);
-        }
-        api.refreshInfiniteCache();
-      }
-    } else {
-      masterRows.value.splice(insertIndex, 0, newRow);
-      if (typeof newRow.id === 'number') {
-        masterRowMap.set(newRow.id, newRow);
-      }
+    // V3 强制使用 SSRM：使用事务 API 插入行到 Grid
+    if (api) {
+      api.applyServerSideTransaction({
+        route: [],
+        add: [newRow],
+        addIndex: insertIndex
+      });
     }
 
     // 复制子表数据
@@ -458,54 +434,7 @@ export function useMasterDetailData(params: {
     deleteDetailRow,
     copyMasterRow,
     copyDetailRow,
-    /** Infinite Row Model 数据源（兼容旧版） */
-    createMasterDataSource: (options?: { tableCode?: string; pageSize?: number }) => {
-      const tableCode = options?.tableCode || pageConfig.value?.masterTableCode;
-      const pageSizeFallback = options?.pageSize || 200;
-      if (!tableCode) return null;
-      let lastQueryKey = '';
-      return {
-        getRows: async (params: any) => {
-          const startRow = params.request?.startRow ?? params.startRow ?? 0;
-          const endRow = params.request?.endRow ?? params.endRow ?? startRow + pageSizeFallback;
-          const pageSize = Math.max(endRow - startRow, 1);
-          const page = Math.floor(startRow / pageSize) + 1;
-
-          const sortModel = params.request?.sortModel ?? params.sortModel ?? [];
-          const sortField = sortModel[0]?.colId;
-          const sortOrder = sortModel[0]?.sort;
-
-          const filterModel = params.request?.filterModel ?? params.filterModel;
-          const conditions = buildConditionsFromFilterModel(filterModel);
-          const queryKey = JSON.stringify({ filterModel, sortModel });
-          if (startRow === 0 && queryKey !== lastQueryKey) {
-            resetMasterCache([]);
-            lastQueryKey = queryKey;
-          }
-
-          const { data, error } = await searchDynamicData(tableCode, {
-            pageCode,
-            page,
-            pageSize,
-            sortField,
-            sortOrder,
-            conditions: conditions.length > 0 ? conditions : undefined
-          });
-
-          if (error) {
-            params.failCallback?.();
-            notifyError('加载主表数据失败');
-            return;
-          }
-
-          const rows = (data?.list || []).map((row: any) => initRowData(row));
-          const synced = mergeMasterCache(rows);
-          const total = data?.total ?? synced.length;
-          params.successCallback?.(synced, total);
-        }
-      };
-    },
-    /** Server-Side Row Model 数据源（AG Grid v35 SSRM） */
+    /** Server-Side Row Model 数据源（V3 强制使用 SSRM） */
     createServerSideDataSource: (options?: { tableCode?: string; pageSize?: number }) => {
       const tableCode = options?.tableCode || pageConfig.value?.masterTableCode;
       const pageSizeFallback = options?.pageSize || 100;
