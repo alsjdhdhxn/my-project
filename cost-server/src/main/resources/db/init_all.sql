@@ -4,7 +4,7 @@
 
 -- 用途：一次执行完成所有建表、初始化与配置
 
--- 页面：成本评估V2 + 系统管理（人员/角色）
+-- 页面：成本评估 + 系统管理（人员/角色）
 
 -- =====================================================
 
@@ -2080,11 +2080,11 @@ BEGIN
 
     
 
-    -- 成本评估V2
+    -- 成本评估
 
     INSERT INTO T_COST_RESOURCE (ID, RESOURCE_CODE, RESOURCE_NAME, RESOURCE_TYPE, PAGE_CODE, ICON, ROUTE, PARENT_ID, SORT_ORDER, CREATE_BY)
 
-    VALUES (SEQ_COST_RESOURCE.NEXTVAL, 'cost-pinggu-v2', '成本评估', 'PAGE', 'cost-pinggu-v2', 'mdi:calculator-variant', '/cost/cost-pinggu-v2', v_cost_id, 1, 'system');
+    VALUES (SEQ_COST_RESOURCE.NEXTVAL, 'cost-pinggu', '成本评估', 'PAGE', 'cost-pinggu', 'mdi:calculator-variant', '/cost/cost-pinggu', v_cost_id, 1, 'system');
 
 
     -- 成本管理 - 外币管理
@@ -2440,11 +2440,11 @@ END;
 
 
 
--- D4. 页面规则配置 (cost-pinggu-v2)
+-- D4. 页面规则配置 (cost-pinggu)
 
 INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
 
-VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'masterGrid', 'COLUMN_OVERRIDE',
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'masterGrid', 'COLUMN_OVERRIDE',
 
 '[
 
@@ -2508,7 +2508,7 @@ VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'masterGrid', 'COLUMN_OVER
 
 INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
 
-VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'masterGrid', 'CALC',
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'masterGrid', 'CALC',
 
 '[
 
@@ -2532,7 +2532,7 @@ VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'masterGrid', 'CALC',
 
 INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
 
-VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'masterGrid', 'VALIDATION',
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'masterGrid', 'VALIDATION',
 
 '[]', 'system');
 
@@ -2540,7 +2540,7 @@ VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'masterGrid', 'VALIDATION'
 
 INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
 
-VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'masterGrid', 'AGGREGATE',
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'masterGrid', 'AGGREGATE',
 
 '[
 
@@ -2558,7 +2558,7 @@ VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'masterGrid', 'AGGREGATE',
 
 INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
 
-VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'material', 'COLUMN_OVERRIDE',
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'material', 'COLUMN_OVERRIDE',
 
 '[
 
@@ -2592,7 +2592,7 @@ VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'material', 'COLUMN_OVERRI
 
 INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
 
-VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'material', 'CALC',
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'material', 'CALC',
 
 '[
 
@@ -2606,7 +2606,7 @@ VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'material', 'CALC',
 
 INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
 
-VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'material', 'VALIDATION',
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'material', 'VALIDATION',
 
 '[
 
@@ -2620,7 +2620,7 @@ VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'material', 'VALIDATION',
 
 INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
 
-VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'material', 'LOOKUP',
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'material', 'LOOKUP',
 
 '[
 
@@ -2632,7 +2632,7 @@ VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'material', 'LOOKUP',
 
 INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
 
-VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'package', 'COLUMN_OVERRIDE',
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'package', 'COLUMN_OVERRIDE',
 
 '[
 
@@ -2664,7 +2664,7 @@ VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'package', 'COLUMN_OVERRID
 
 INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
 
-VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'package', 'CALC',
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'package', 'CALC',
 
 '[
 
@@ -2678,7 +2678,7 @@ VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'package', 'CALC',
 
 INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
 
-VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'package', 'VALIDATION',
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'package', 'VALIDATION',
 
 '[
 
@@ -2690,7 +2690,7 @@ VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'package', 'VALIDATION',
 
 INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
 
-VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'package', 'LOOKUP',
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'package', 'LOOKUP',
 
 '[
 
@@ -2702,7 +2702,7 @@ VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'package', 'LOOKUP',
 
 INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
 
-VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'masterGrid', 'ROLE_BINDING',
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'masterGrid', 'ROLE_BINDING',
 
 '{"role":"MASTER_GRID"}', 'system');
 
@@ -2710,7 +2710,7 @@ VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'masterGrid', 'ROLE_BINDIN
 
 INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
 
-VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'masterGrid', 'GRID_OPTIONS',
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'masterGrid', 'GRID_OPTIONS',
 
 '{"cellSelection":true}', 'system');
 
@@ -2718,7 +2718,7 @@ VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'masterGrid', 'GRID_OPTION
 
 INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
 
-VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'detailTabs', 'ROLE_BINDING',
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'detailTabs', 'ROLE_BINDING',
 
 '{"role":"DETAIL_TABS"}', 'system');
 
@@ -2726,7 +2726,7 @@ VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'detailTabs', 'ROLE_BINDIN
 
 INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
 
-VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'detailTabs', 'RELATION',
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'detailTabs', 'RELATION',
 
 '{"masterKey":"masterGrid","detailKey":"detailTabs"}', 'system');
 
@@ -2734,7 +2734,7 @@ VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'detailTabs', 'RELATION',
 
 INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
 
-VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'detailTabs', 'BROADCAST',
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'detailTabs', 'BROADCAST',
 
 '["apexPl","pPerpack","sPerback","xPerback"]', 'system');
 
@@ -2742,13 +2742,13 @@ VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'detailTabs', 'BROADCAST',
 
 INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
 
-VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'detailTabs', 'SUMMARY_CONFIG',
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'detailTabs', 'SUMMARY_CONFIG',
 
 '{"enabled":true,"groupLabelField":"groupLabel","groupLabelHeader":"分类","summaryColumns":[{"field":"totalAmount","headerName":"汇总金额","width":null},{"field":"rowCount","headerName":"行数","width":null}],"summaryAggregates":[{"sourceField":"costBatch","targetField":"totalAmount","algorithm":"SUM"},{"sourceField":"costBatch","targetField":"rowCount","algorithm":"COUNT"}]}', 'system');
 
 INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
 
-VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'masterGrid', 'CONTEXT_MENU',
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'masterGrid', 'CONTEXT_MENU',
 
 '{"items":[{"action":"addRow"},{"action":"copyRow","requiresRow":true},{"action":"deleteRow","requiresRow":true},{"type":"separator"},{"action":"saveGridConfig"},{"type":"separator"},{"label":"\u5bfc\u51fa","items":[{"action":"exportSelected","requiresSelection":true},{"action":"exportCurrent"},{"action":"exportAll"},{"type":"separator"},{"action":"resetExportConfig"},{"action":"openHeaderConfig"}]},{"type":"separator"},{"action":"save"},{"type":"separator"},{"action":"clipboard.copy"},{"action":"clipboard.paste"}]}', 'system');
 
@@ -2756,7 +2756,7 @@ VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'masterGrid', 'CONTEXT_MEN
 
 INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
 
-VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'material', 'CONTEXT_MENU',
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'material', 'CONTEXT_MENU',
 
 '{"items":[{"action":"addRow"},{"action":"copyRow","requiresRow":true},{"action":"deleteRow","requiresRow":true},{"type":"separator"},{"action":"saveGridConfig"},{"type":"separator"},{"action":"clipboard.copy"},{"action":"clipboard.paste"}]}', 'system');
 
@@ -2764,13 +2764,13 @@ VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'material', 'CONTEXT_MENU'
 
 INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
 
-VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'package', 'CONTEXT_MENU',
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'package', 'CONTEXT_MENU',
 
 '{"items":[{"action":"addRow"},{"action":"copyRow","requiresRow":true},{"action":"deleteRow","requiresRow":true},{"type":"separator"},{"action":"saveGridConfig"},{"type":"separator"},{"action":"clipboard.copy"},{"action":"clipboard.paste"}]}', 'system');
 
 INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
 
-VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'detailTabs', 'CONTEXT_MENU',
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'detailTabs', 'CONTEXT_MENU',
 
 '{"items":[{"action":"addRow"},{"action":"copyRow","requiresRow":true},{"action":"deleteRow","requiresRow":true},{"type":"separator"},{"action":"saveGridConfig"},{"type":"separator"},{"action":"clipboard.copy"},{"action":"clipboard.paste"}]}', 'system');
 
@@ -4180,23 +4180,23 @@ END;
 
 
 
--- E1. 成本评估V2 页面
+-- E1. 成本评估 页面
 
 INSERT INTO T_COST_PAGE_COMPONENT (ID, PAGE_CODE, COMPONENT_KEY, COMPONENT_TYPE, PARENT_KEY, SORT_ORDER, COMPONENT_CONFIG, CREATE_BY)
 
-VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'cost-pinggu-v2', 'root', 'LAYOUT', NULL, 0, '{"direction":"vertical","gap":8}', 'system');
+VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'cost-pinggu', 'root', 'LAYOUT', NULL, 0, '{"direction":"vertical","gap":8}', 'system');
 
 
 
 INSERT INTO T_COST_PAGE_COMPONENT (ID, PAGE_CODE, COMPONENT_KEY, COMPONENT_TYPE, PARENT_KEY, SORT_ORDER, REF_TABLE_CODE, COMPONENT_CONFIG, CREATE_BY)
 
-VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'cost-pinggu-v2', 'masterGrid', 'GRID', 'root', 1, 'CostPinggu', '{"height":"50%","selectionMode":"single"}', 'system');
+VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'cost-pinggu', 'masterGrid', 'GRID', 'root', 1, 'CostPinggu', '{"height":"50%","selectionMode":"single"}', 'system');
 
 
 
 INSERT INTO T_COST_PAGE_COMPONENT (ID, PAGE_CODE, COMPONENT_KEY, COMPONENT_TYPE, PARENT_KEY, SORT_ORDER, COMPONENT_CONFIG, CREATE_BY)
 
-VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'cost-pinggu-v2', 'detailTabs', 'TABS', 'root', 2,
+VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'cost-pinggu', 'detailTabs', 'TABS', 'root', 2,
 
 '{
 
@@ -4380,7 +4380,7 @@ COMMIT;
 
 INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
 
-VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'material', 'CALC',
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'material', 'CALC',
 
 q'~[
 
@@ -4402,7 +4402,7 @@ q'~[
 
 INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
 
-VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'package', 'CALC',
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'package', 'CALC',
 
 q'~[
 
@@ -4428,7 +4428,7 @@ q'~[
 
 INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
 
-VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu-v2', 'masterGrid', 'AGGREGATE',
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'masterGrid', 'AGGREGATE',
 
 q'~[
 
@@ -4573,7 +4573,7 @@ COMMIT;
 
 INSERT INTO T_COST_ROLE_PAGE (ID, ROLE_ID, PAGE_CODE, BUTTON_POLICY, COLUMN_POLICY, CREATE_BY)
 
-VALUES (SEQ_COST_ROLE_PAGE.NEXTVAL, 1, 'cost-pinggu-v2', '["*"]', NULL, 'system');
+VALUES (SEQ_COST_ROLE_PAGE.NEXTVAL, 1, 'cost-pinggu', '["*"]', NULL, 'system');
 
 INSERT INTO T_COST_ROLE_PAGE (ID, ROLE_ID, PAGE_CODE, BUTTON_POLICY, COLUMN_POLICY, CREATE_BY)
 
