@@ -4,7 +4,7 @@
 -- =====================================================
 
 -- =====================================================
--- A. 删除视图和表
+-- A. 删除视图
 -- =====================================================
 BEGIN EXECUTE IMMEDIATE 'DROP VIEW V_COST_GOODS_LOOKUP'; EXCEPTION WHEN OTHERS THEN NULL; END;
 /
@@ -13,14 +13,6 @@ BEGIN EXECUTE IMMEDIATE 'DROP VIEW V_COST_CUSTOMER_LOOKUP'; EXCEPTION WHEN OTHER
 BEGIN EXECUTE IMMEDIATE 'DROP VIEW V_COST_PINGGU_MATERIAL'; EXCEPTION WHEN OTHERS THEN NULL; END;
 /
 BEGIN EXECUTE IMMEDIATE 'DROP VIEW V_COST_PINGGU_PACKAGE'; EXCEPTION WHEN OTHERS THEN NULL; END;
-/
-BEGIN EXECUTE IMMEDIATE 'DROP TABLE T_COST_PINGGU_DTL CASCADE CONSTRAINTS'; EXCEPTION WHEN OTHERS THEN NULL; END;
-/
-BEGIN EXECUTE IMMEDIATE 'DROP TABLE T_COST_PINGGU CASCADE CONSTRAINTS'; EXCEPTION WHEN OTHERS THEN NULL; END;
-/
-BEGIN EXECUTE IMMEDIATE 'DROP SEQUENCE SEQ_COST_PINGGU'; EXCEPTION WHEN OTHERS THEN NULL; END;
-/
-BEGIN EXECUTE IMMEDIATE 'DROP SEQUENCE SEQ_COST_PINGGU_DTL'; EXCEPTION WHEN OTHERS THEN NULL; END;
 /
 
 -- =====================================================
@@ -287,6 +279,30 @@ INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CR
 
 INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY) VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'masterGrid', 'VALIDATION', '[]', 'system');
 
+-- 主表计算规则
+INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY) VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'masterGrid', 'CALC',
+'[
+  {"field":"salemoney","expression":"outPriceRmb / pPerpack * apexPl * (yield / 100)","triggerFields":["outPriceRmb","pPerpack","apexPl","yield"]},
+  {"field":"jgfBatch","expression":"salemoney - totalCost","triggerFields":["salemoney","totalCost"]},
+  {"field":"jgfPerqp","expression":"jgfBatch / apexPl * 1000","triggerFields":["jgfBatch","apexPl"]},
+  {"field":"mlPerqp","expression":"jgfPerqp - costPerqp","triggerFields":["jgfPerqp","costPerqp"]},
+  {"field":"yJgRe","expression":"jgfPerqp / 1000 * annualQty","triggerFields":["jgfPerqp","annualQty"]},
+  {"field":"yMl","expression":"mlPerqp / 1000 * annualQty","triggerFields":["mlPerqp","annualQty"]},
+  {"field":"ySale","expression":"salemoney / apexPl * annualQty","triggerFields":["salemoney","apexPl","annualQty"]}
+]', 'system');
+
+-- 主表汇总规则（从明细汇总到主表，含1.13去税逻辑）
+INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY) VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'masterGrid', 'AGGREGATE',
+q'~[
+  {"sourceField":"costBatch","targetField":"totalYl","algorithm":"SUM","sourceTab":"material","filter":"dtlUseflag === '原料'"},
+  {"sourceField":"costBatch","targetField":"totalFl","algorithm":"SUM","sourceTab":"material","filter":"dtlUseflag === '辅料'"},
+  {"sourceField":"costBatch","targetField":"totalBc","algorithm":"SUM","sourceTab":"package","filter":"dtlUseflag === '非印字包材' || dtlUseflag === '印字包材'"},
+  {"targetField":"totalYl","expression":"totalYl > 0 ? totalYl / 1.13 : totalYl"},
+  {"targetField":"totalFl","expression":"totalYl > 0 ? totalFl / 1.13 : totalFl"},
+  {"targetField":"totalBc","expression":"totalYl > 0 ? totalBc / 1.13 : totalBc"},
+  {"targetField":"totalCost","expression":"totalYl + totalFl + totalBc"}
+]~', 'system');
+
 -- 产品选择弹窗（从产品信息维护中选择产成品回填）
 -- 币种选择弹窗（从外币管理中选择币种回填）
 -- 客户选择弹窗（从客户信息中选择客户回填）
@@ -296,11 +312,35 @@ INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CR
 
 INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY) VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'material', 'VALIDATION', '[{"field":"perHl","required":true,"min":0.001,"message":"每片含量必填且必须大于0"},{"field":"price","required":true,"min":0,"message":"单价必填且不能为负数"}]', 'system');
 
+-- 原辅料计算规则
+-- formulaType: B=辅料+胶囊, C=原料/辅料
+INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY) VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'material', 'CALC',
+'[
+  {"field":"batchQty","formulaField":"formulaType","formulas":{
+    "B":{"expression":"apexPl / 10000","triggerFields":["apexPl"]},
+    "C":{"expression":"perHl * apexPl * (1 + exaddMater / 100) / 1000000","triggerFields":["perHl","apexPl","exaddMater"]}
+  }},
+  {"field":"costBatch","expression":"batchQty * price","triggerFields":["batchQty","price"]}
+]', 'system');
+
 INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY) VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'material', 'LOOKUP', '[{"field":"apexGoodsname","lookupCode":"costMaterial","mapping":{"apexGoodsid":"goodsid","apexGoodsname":"goodsname","spec":"goodstype","price":"price","apexFactoryname":"factoryname","goodstype":"goodstype","basePrice":"price"}}]', 'system');
 
 INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY) VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'package', 'COLUMN_OVERRIDE', '[{"field":"id","visible":true,"editable":false},{"field":"masterId","visible":false,"editable":false},{"field":"dtlUseflag","width":null,"editable":false},{"field":"apexGoodsname","width":null,"editable":true},{"field":"spec","width":null,"editable":true},{"field":"suqty","width":null,"editable":true},{"field":"price","width":null,"editable":true},{"field":"batchQty","width":null,"editable":false},{"field":"costBatch","width":null,"editable":false},{"field":"apexFactoryname","width":null,"editable":true},{"field":"formulaType","visible":false,"editable":false}]', 'system');
 
 INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY) VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'package', 'VALIDATION', '[{"field":"price","min":0,"message":"包材单价不能为负数"}]', 'system');
+
+-- 包材计算规则
+-- formulaType: A=桶/瓶/盖/说明书/小盒/标签, D=硬片/铝箔/复合膜, E=大纸箱, F=托盘
+INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY) VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'package', 'CALC',
+'[
+  {"field":"batchQty","formulaField":"formulaType","formulas":{
+    "A":{"expression":"apexPl / pPerpack * (1 + exaddMater)","triggerFields":["apexPl","pPerpack","exaddMater"]},
+    "D":{"expression":"perHl * apexPl * (1 + exaddMater / 100) / 1000000","triggerFields":["perHl","apexPl","exaddMater"]},
+    "E":{"expression":"ceil(apexPl / (pPerpack * sPerback))","triggerFields":["apexPl","pPerpack","sPerback"]},
+    "F":{"expression":"ceil(apexPl / (pPerpack * sPerback * xPerback))","triggerFields":["apexPl","pPerpack","sPerback","xPerback"]}
+  }},
+  {"field":"costBatch","expression":"batchQty * price","triggerFields":["batchQty","price"]}
+]', 'system');
 
 INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY) VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'package', 'LOOKUP', '[{"field":"apexGoodsname","lookupCode":"costMaterial","mapping":{"apexGoodsid":"goodsid","apexGoodsname":"goodsname","spec":"goodstype","price":"price","apexFactoryname":"factoryname","suqty":"lastsuqty"}}]', 'system');
 

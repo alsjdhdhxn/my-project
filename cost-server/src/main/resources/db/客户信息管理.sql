@@ -5,20 +5,34 @@
 -- =====================================================
 
 -- =====================================================
--- 0. 清理旧数据
+-- A. 删除视图和表
 -- =====================================================
+BEGIN EXECUTE IMMEDIATE 'DROP VIEW T_COST_CUSTOMER_V'; EXCEPTION WHEN OTHERS THEN NULL; END;
+/
+BEGIN EXECUTE IMMEDIATE 'DROP VIEW T_COST_TRANPOSER_V'; EXCEPTION WHEN OTHERS THEN NULL; END;
+/
+BEGIN EXECUTE IMMEDIATE 'DROP TABLE T_COST_TRANPOSER CASCADE CONSTRAINTS'; EXCEPTION WHEN OTHERS THEN NULL; END;
+/
+BEGIN EXECUTE IMMEDIATE 'DROP TABLE T_COST_CUSTOMER CASCADE CONSTRAINTS'; EXCEPTION WHEN OTHERS THEN NULL; END;
+/
+BEGIN EXECUTE IMMEDIATE 'DROP SEQUENCE SEQ_COST_CUSTOMER'; EXCEPTION WHEN OTHERS THEN NULL; END;
+/
+BEGIN EXECUTE IMMEDIATE 'DROP SEQUENCE SEQ_COST_TRANPOSER'; EXCEPTION WHEN OTHERS THEN NULL; END;
+/
 
+-- =====================================================
+-- B. 删除元数据
+-- =====================================================
 DELETE FROM T_COST_ROLE_PAGE WHERE PAGE_CODE = 'customer-manage';
 DELETE FROM T_COST_PAGE_RULE WHERE PAGE_CODE = 'customer-manage';
 DELETE FROM T_COST_PAGE_COMPONENT WHERE PAGE_CODE = 'customer-manage';
 DELETE FROM T_COST_COLUMN_METADATA WHERE TABLE_METADATA_ID IN (SELECT ID FROM T_COST_TABLE_METADATA WHERE TABLE_CODE IN ('CostCustomer', 'CostTranposer'));
 DELETE FROM T_COST_TABLE_METADATA WHERE TABLE_CODE IN ('CostCustomer', 'CostTranposer');
 DELETE FROM T_COST_RESOURCE WHERE RESOURCE_CODE = 'customer';
-
 COMMIT;
 
 -- =====================================================
--- 1. 表结构
+-- C. 创建表结构
 -- =====================================================
 
 -- 客户信息
