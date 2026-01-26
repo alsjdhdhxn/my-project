@@ -4,7 +4,7 @@
 -- =====================================================
 
 -- =====================================================
--- A. 删除视图
+-- A. 删除视图和表
 -- =====================================================
 BEGIN EXECUTE IMMEDIATE 'DROP VIEW V_COST_GOODS_LOOKUP'; EXCEPTION WHEN OTHERS THEN NULL; END;
 /
@@ -13,6 +13,14 @@ BEGIN EXECUTE IMMEDIATE 'DROP VIEW V_COST_CUSTOMER_LOOKUP'; EXCEPTION WHEN OTHER
 BEGIN EXECUTE IMMEDIATE 'DROP VIEW V_COST_PINGGU_MATERIAL'; EXCEPTION WHEN OTHERS THEN NULL; END;
 /
 BEGIN EXECUTE IMMEDIATE 'DROP VIEW V_COST_PINGGU_PACKAGE'; EXCEPTION WHEN OTHERS THEN NULL; END;
+/
+BEGIN EXECUTE IMMEDIATE 'DROP TABLE T_COST_PINGGU_DTL CASCADE CONSTRAINTS'; EXCEPTION WHEN OTHERS THEN NULL; END;
+/
+BEGIN EXECUTE IMMEDIATE 'DROP TABLE T_COST_PINGGU CASCADE CONSTRAINTS'; EXCEPTION WHEN OTHERS THEN NULL; END;
+/
+BEGIN EXECUTE IMMEDIATE 'DROP SEQUENCE SEQ_COST_PINGGU'; EXCEPTION WHEN OTHERS THEN NULL; END;
+/
+BEGIN EXECUTE IMMEDIATE 'DROP SEQUENCE SEQ_COST_PINGGU_DTL'; EXCEPTION WHEN OTHERS THEN NULL; END;
 /
 
 -- =====================================================
@@ -164,6 +172,8 @@ BEGIN
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY) VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'yJgRe', 'Y_JG_RE', '年加工费', 'number', 30, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY) VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'yMl', 'Y_ML', '年毛利', 'number', 31, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY) VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'ySale', 'Y_SALE', '年销售额', 'number', 32, 'system');
+    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY) VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'fmname', 'FMNAME', '币种', 'text', 33, 'system');
+    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY) VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'fmrate', 'FMRATE', '汇率', 'number', 34, 'system');
 
     -- 原辅料从表元数据
     SELECT SEQ_COST_TABLE_METADATA.NEXTVAL INTO v_material_id FROM DUAL;
@@ -275,7 +285,7 @@ COMMIT;
 -- =====================================================
 -- G. 插入页面规则
 -- =====================================================
-INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY) VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'masterGrid', 'COLUMN_OVERRIDE', '[{"field":"id","visible":false,"editable":false},{"field":"goodsname","width":null,"editable":true,"searchable":true},{"field":"goodsnameEn","width":null,"editable":true},{"field":"strength","width":null,"editable":true},{"field":"customname","width":null,"editable":true,"searchable":true},{"field":"country","width":null,"editable":true},{"field":"projectno","width":null,"editable":true},{"field":"apexPl","width":null,"editable":true},{"field":"annualQty","width":null,"editable":true},{"field":"yield","width":null,"editable":true},{"field":"pPerpack","width":null,"editable":true},{"field":"sPerback","width":null,"editable":true},{"field":"xPerback","width":null,"editable":true},{"field":"packtype","width":null,"editable":true},{"field":"totalYl","width":null,"editable":false},{"field":"totalFl","width":null,"editable":false},{"field":"totalBc","width":null,"editable":false},{"field":"totalCost","width":null,"editable":false},{"field":"outPriceRmb","width":null,"editable":true},{"field":"salemoney","width":null,"editable":false},{"field":"jgfBatch","width":null,"editable":false},{"field":"costPerqp","width":null,"editable":true},{"field":"jgfPerqp","width":null,"editable":false},{"field":"mlPerqp","width":null,"editable":false},{"field":"yJgRe","width":null,"editable":false},{"field":"yMl","width":null,"editable":false},{"field":"ySale","width":null,"editable":false}]', 'system');
+INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY) VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'masterGrid', 'COLUMN_OVERRIDE', '[{"field":"id","visible":false,"editable":false},{"field":"goodsname","width":null,"editable":true,"searchable":true},{"field":"goodsnameEn","width":null,"editable":true},{"field":"strength","width":null,"editable":true},{"field":"customname","width":null,"editable":true,"searchable":true},{"field":"country","width":null,"editable":true},{"field":"projectno","width":null,"editable":true},{"field":"apexPl","width":null,"editable":true},{"field":"annualQty","width":null,"editable":true},{"field":"yield","width":null,"editable":true},{"field":"pPerpack","width":null,"editable":true},{"field":"sPerback","width":null,"editable":true},{"field":"xPerback","width":null,"editable":true},{"field":"packtype","width":null,"editable":true},{"field":"totalYl","width":null,"editable":false},{"field":"totalFl","width":null,"editable":false},{"field":"totalBc","width":null,"editable":false},{"field":"totalCost","width":null,"editable":false},{"field":"outPriceRmb","width":null,"editable":true},{"field":"salemoney","width":null,"editable":false},{"field":"jgfBatch","width":null,"editable":false},{"field":"costPerqp","width":null,"editable":true},{"field":"jgfPerqp","width":null,"editable":false},{"field":"mlPerqp","width":null,"editable":false},{"field":"yJgRe","width":null,"editable":false},{"field":"yMl","width":null,"editable":false},{"field":"ySale","width":null,"editable":false},{"field":"fmname","width":null,"editable":true},{"field":"fmrate","width":null,"editable":true}]', 'system');
 
 INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY) VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'masterGrid', 'VALIDATION', '[]', 'system');
 
@@ -308,7 +318,7 @@ q'~[
 -- 客户选择弹窗（从客户信息中选择客户回填）
 INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY) VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'masterGrid', 'LOOKUP', '[{"field":"goodsname","lookupCode":"costGoods","mapping":{"goodsid":"goodsid","goodsname":"goodsname","maNo":"maNo","apexPl":"apexPl","mah":"mah","pPerpack":"pPerpack","sPerback":"sPerback","customid":"customid","customname":"customname","memo":"memo","strength":"strength","livery":"livery"}},{"field":"fmname","lookupCode":"formoney","mapping":{"fmname":"fmname","fmrate":"fmrate"}},{"field":"customname","lookupCode":"costCustomer","mapping":{"customid":"customid","customname":"customname","country":"country","livery":"livery"}}]', 'system');
 
-INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY) VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'material', 'COLUMN_OVERRIDE', '[{"field":"id","visible":false,"editable":false},{"field":"masterId","visible":false,"editable":false},{"field":"dtlUseflag","width":null,"editable":false},{"field":"apexGoodsname","width":null,"editable":true},{"field":"spec","width":null,"editable":true},{"field":"perHl","width":null,"editable":true},{"field":"exaddMater","width":null,"editable":true},{"field":"price","width":null,"editable":true},{"field":"batchQty","width":null,"editable":false},{"field":"costBatch","width":null,"editable":false},{"field":"apexFactoryname","width":null,"editable":true},{"field":"formulaType","visible":false,"editable":false}]', 'system');
+INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY) VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'material', 'COLUMN_OVERRIDE', '[{"field":"id","visible":false,"editable":false},{"field":"masterId","visible":false,"editable":false},{"field":"dtlUseflag","width":null,"editable":true,"cellEditor":"agSelectCellEditor","cellEditorParams":{"values":["原料","辅料"]}},{"field":"apexGoodsname","width":null,"editable":true},{"field":"spec","width":null,"editable":true},{"field":"perHl","width":null,"editable":true},{"field":"exaddMater","width":null,"editable":true},{"field":"price","width":null,"editable":true},{"field":"batchQty","width":null,"editable":false},{"field":"costBatch","width":null,"editable":false},{"field":"apexFactoryname","width":null,"editable":true},{"field":"formulaType","visible":false,"editable":false}]', 'system');
 
 INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY) VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'material', 'VALIDATION', '[{"field":"perHl","required":true,"min":0.001,"message":"每片含量必填且必须大于0"},{"field":"price","required":true,"min":0,"message":"单价必填且不能为负数"}]', 'system');
 
@@ -325,7 +335,7 @@ INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CR
 
 INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY) VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'material', 'LOOKUP', '[{"field":"apexGoodsname","lookupCode":"costMaterial","mapping":{"apexGoodsid":"goodsid","apexGoodsname":"goodsname","spec":"goodstype","price":"price","apexFactoryname":"factoryname","goodstype":"goodstype","basePrice":"price"}}]', 'system');
 
-INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY) VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'package', 'COLUMN_OVERRIDE', '[{"field":"id","visible":true,"editable":false},{"field":"masterId","visible":false,"editable":false},{"field":"dtlUseflag","width":null,"editable":false},{"field":"apexGoodsname","width":null,"editable":true},{"field":"spec","width":null,"editable":true},{"field":"suqty","width":null,"editable":true},{"field":"price","width":null,"editable":true},{"field":"batchQty","width":null,"editable":false},{"field":"costBatch","width":null,"editable":false},{"field":"apexFactoryname","width":null,"editable":true},{"field":"formulaType","visible":false,"editable":false}]', 'system');
+INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY) VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'package', 'COLUMN_OVERRIDE', '[{"field":"id","visible":true,"editable":false},{"field":"masterId","visible":false,"editable":false},{"field":"dtlUseflag","width":null,"editable":true,"cellEditor":"agSelectCellEditor","cellEditorParams":{"values":["印字包材","非印字包材"]}},{"field":"apexGoodsname","width":null,"editable":true},{"field":"spec","width":null,"editable":true},{"field":"suqty","width":null,"editable":true},{"field":"price","width":null,"editable":true},{"field":"batchQty","width":null,"editable":false},{"field":"costBatch","width":null,"editable":false},{"field":"apexFactoryname","width":null,"editable":true},{"field":"formulaType","visible":false,"editable":false}]', 'system');
 
 INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY) VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'package', 'VALIDATION', '[{"field":"price","min":0,"message":"包材单价不能为负数"}]', 'system');
 
