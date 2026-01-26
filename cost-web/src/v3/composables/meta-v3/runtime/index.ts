@@ -508,7 +508,7 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
         gridOptions: masterGridOptions,
         columnDefs: meta.masterColumnDefs,
         gridKey: masterKey,
-        contextMenuConfig: meta.masterContextMenu,
+        contextMenuConfig: meta.masterContextMenu?.value,
         rowEditableRules: meta.masterRowEditableRules?.value,
         dataSource
       });
