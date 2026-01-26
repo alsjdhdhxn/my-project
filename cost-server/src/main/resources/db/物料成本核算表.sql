@@ -1,11 +1,15 @@
 -- =====================================================
--- 成本评估模块数据库脚本
+-- 物料成本核算表 数据库脚本
 -- 执行顺序：删除表 -> 删除元数据 -> 建表 -> 插入元数据
 -- =====================================================
 
 -- =====================================================
 -- A. 删除视图和表
 -- =====================================================
+BEGIN EXECUTE IMMEDIATE 'DROP VIEW V_COST_GOODS_LOOKUP'; EXCEPTION WHEN OTHERS THEN NULL; END;
+/
+BEGIN EXECUTE IMMEDIATE 'DROP VIEW V_COST_CUSTOMER_LOOKUP'; EXCEPTION WHEN OTHERS THEN NULL; END;
+/
 BEGIN EXECUTE IMMEDIATE 'DROP VIEW V_COST_PINGGU_MATERIAL'; EXCEPTION WHEN OTHERS THEN NULL; END;
 /
 BEGIN EXECUTE IMMEDIATE 'DROP VIEW V_COST_PINGGU_PACKAGE'; EXCEPTION WHEN OTHERS THEN NULL; END;
@@ -24,10 +28,11 @@ BEGIN EXECUTE IMMEDIATE 'DROP SEQUENCE SEQ_COST_PINGGU_DTL'; EXCEPTION WHEN OTHE
 -- =====================================================
 DELETE FROM T_COST_PAGE_COMPONENT WHERE PAGE_CODE = 'cost-pinggu';
 DELETE FROM T_COST_PAGE_RULE WHERE PAGE_CODE = 'cost-pinggu';
+DELETE FROM T_COST_LOOKUP_CONFIG WHERE LOOKUP_CODE IN ('costGoods', 'costMaterial', 'formoney', 'costCustomer');
 DELETE FROM T_COST_COLUMN_METADATA WHERE TABLE_METADATA_ID IN (
-  SELECT ID FROM T_COST_TABLE_METADATA WHERE TABLE_CODE IN ('CostPinggu', 'CostMaterial', 'CostPackage')
+  SELECT ID FROM T_COST_TABLE_METADATA WHERE TABLE_CODE IN ('CostPinggu', 'CostMaterial', 'CostPackage', 'CostGoodsLookup', 'CostCustomerLookup')
 );
-DELETE FROM T_COST_TABLE_METADATA WHERE TABLE_CODE IN ('CostPinggu', 'CostMaterial', 'CostPackage');
+DELETE FROM T_COST_TABLE_METADATA WHERE TABLE_CODE IN ('CostPinggu', 'CostMaterial', 'CostPackage', 'CostGoodsLookup', 'CostCustomerLookup');
 DELETE FROM T_COST_RESOURCE WHERE RESOURCE_CODE = 'cost-pinggu';
 COMMIT;
 
@@ -94,6 +99,37 @@ SELECT d.DTLID AS ID, d.DOCID AS MASTER_ID, d.APEX_GOODSID, d.APEX_GOODSNAME, d.
          WHEN REGEXP_LIKE(d.APEX_GOODSNAME, '托盘') THEN 'F' ELSE NULL END AS FORMULA_TYPE
 FROM T_COST_PINGGU_DTL d
 WHERE d.DTL_USEFLAG IN ('非印字包材', '印字包材') AND (d.DELETED = 0 OR d.DELETED IS NULL);
+
+-- 产品选择弹窗视图（用于回填到物料成本核算表主表）
+CREATE OR REPLACE VIEW V_COST_GOODS_LOOKUP AS
+SELECT a.GOODSID,
+       a.GOODSNAME,
+       a.APPROVEDOCNO AS MA_NO,
+       a.ZX_PL AS APEX_PL,
+       a.HOLDERSNAME AS MAH,
+       a.ZX_MINIMUM AS P_PERPACK,
+       a.BASEUNITQTY AS S_PERBACK,
+       a.ZX_CUSTOMERID AS CUSTOMID,
+       a.CUSTOMNAME,
+       CASE WHEN a.ISERP = 0 AND b.PGOODSID IS NULL THEN 'ERP未搭建BOM'
+            ELSE 'ERP已搭建BOM' END AS MEMO,
+       a.GOODSTYPE AS STRENGTH,
+       a.TRANPOSNAME AS LIVERY,
+       a.DELETED
+  FROM T_COST_GOODS a
+  LEFT JOIN mpcs_pr_bom_doc@hyerp b ON a.GOODSID = b.PGOODSID AND b.USESTATUS = 1 AND a.ISERP = 1
+ WHERE a.USEFLAG = '产成品'
+   AND (a.DELETED = 0 OR a.DELETED IS NULL);
+
+-- 客户选择弹窗视图（用于回填到物料成本核算表主表）
+CREATE OR REPLACE VIEW V_COST_CUSTOMER_LOOKUP AS
+SELECT a.CUSTOMID,
+       a.CUSTOMNAME,
+       a.ZONE AS COUNTRY,
+       b.TRANPOSNAME AS LIVERY,
+       0 AS DELETED
+  FROM T_COST_CUSTOMER_V a, T_COST_TRANPOSER_V b
+ WHERE a.CUSTOMID = b.CUSTOMID;
 COMMIT;
 
 -- =====================================================
@@ -107,7 +143,7 @@ BEGIN
     -- 主表元数据
     SELECT SEQ_COST_TABLE_METADATA.NEXTVAL INTO v_master_id FROM DUAL;
     INSERT INTO T_COST_TABLE_METADATA (ID, TABLE_CODE, TABLE_NAME, QUERY_VIEW, TARGET_TABLE, SEQUENCE_NAME, PK_COLUMN, CREATE_BY)
-    VALUES (v_master_id, 'CostPinggu', '成本评估', 'T_COST_PINGGU', 'T_COST_PINGGU', 'SEQ_COST_PINGGU', 'DOCID', 'system');
+    VALUES (v_master_id, 'CostPinggu', '物料成本核算表', 'T_COST_PINGGU', 'T_COST_PINGGU', 'SEQ_COST_PINGGU', 'DOCID', 'system');
     
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY) VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'id', 'DOCID', 'ID', 'number', 0, 'system');
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY) VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_master_id, 'goodsname', 'GOODSNAME', '产品名称', 'text', 1, 'system');
@@ -175,30 +211,98 @@ BEGIN
 END;
 /
 
+-- 产品选择弹窗元数据
+DECLARE
+    v_lookup_id NUMBER;
+BEGIN
+    SELECT SEQ_COST_TABLE_METADATA.NEXTVAL INTO v_lookup_id FROM DUAL;
+    INSERT INTO T_COST_TABLE_METADATA (ID, TABLE_CODE, TABLE_NAME, QUERY_VIEW, TARGET_TABLE, PK_COLUMN, CREATE_BY)
+    VALUES (v_lookup_id, 'CostGoodsLookup', '产品选择', 'V_COST_GOODS_LOOKUP', 'T_COST_GOODS', 'GOODSID', 'system');
+
+    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY) VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_lookup_id, 'goodsid', 'GOODSID', '产品ID', 'number', 0, 'system');
+    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY) VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_lookup_id, 'goodsname', 'GOODSNAME', '产品名称', 'text', 1, 'system');
+    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY) VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_lookup_id, 'maNo', 'MA_NO', '批准文号', 'text', 2, 'system');
+    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY) VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_lookup_id, 'apexPl', 'APEX_PL', '批量', 'number', 3, 'system');
+    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY) VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_lookup_id, 'mah', 'MAH', '持证商', 'text', 4, 'system');
+    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY) VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_lookup_id, 'pPerpack', 'P_PERPACK', '每盒片数', 'number', 5, 'system');
+    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY) VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_lookup_id, 'sPerback', 'S_PERBACK', '每箱装盒数', 'number', 6, 'system');
+    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY) VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_lookup_id, 'customid', 'CUSTOMID', '客户ID', 'number', 7, 'system');
+    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY) VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_lookup_id, 'customname', 'CUSTOMNAME', '客户名称', 'text', 8, 'system');
+    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY) VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_lookup_id, 'memo', 'MEMO', 'BOM状态', 'text', 9, 'system');
+    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY) VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_lookup_id, 'strength', 'STRENGTH', '剂量', 'text', 10, 'system');
+    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY) VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_lookup_id, 'livery', 'LIVERY', '分销商', 'text', 11, 'system');
+    COMMIT;
+END;
+/
+
+-- 客户选择弹窗元数据
+DECLARE
+    v_lookup_id NUMBER;
+BEGIN
+    SELECT SEQ_COST_TABLE_METADATA.NEXTVAL INTO v_lookup_id FROM DUAL;
+    INSERT INTO T_COST_TABLE_METADATA (ID, TABLE_CODE, TABLE_NAME, QUERY_VIEW, TARGET_TABLE, PK_COLUMN, CREATE_BY)
+    VALUES (v_lookup_id, 'CostCustomerLookup', '客户选择', 'V_COST_CUSTOMER_LOOKUP', 'T_COST_CUSTOMER_V', 'CUSTOMID', 'system');
+
+    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY) VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_lookup_id, 'customid', 'CUSTOMID', '客户ID', 'number', 0, 'system');
+    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY) VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_lookup_id, 'customname', 'CUSTOMNAME', '客户名称', 'text', 1, 'system');
+    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY) VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_lookup_id, 'country', 'COUNTRY', '国家', 'text', 2, 'system');
+    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY) VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_lookup_id, 'livery', 'LIVERY', '分销商', 'text', 3, 'system');
+    COMMIT;
+END;
+/
+
 -- =====================================================
--- F. 插入页面规则
+-- F. 插入Lookup配置
+-- =====================================================
+-- 产品选择（使用专用Lookup视图，显示全部12列）
+INSERT INTO T_COST_LOOKUP_CONFIG (ID, LOOKUP_CODE, LOOKUP_NAME, DATA_SOURCE, DISPLAY_COLUMNS, SEARCH_COLUMNS, VALUE_FIELD, LABEL_FIELD, CREATE_BY)
+VALUES (SEQ_COST_LOOKUP_CONFIG.NEXTVAL, 'costGoods', '产品选择', 'CostGoodsLookup',
+  '[{"field":"goodsid","header":"产品ID","width":80},{"field":"goodsname","header":"产品名称","width":200},{"field":"maNo","header":"批准文号","width":150},{"field":"apexPl","header":"批量","width":80},{"field":"mah","header":"持证商","width":150},{"field":"pPerpack","header":"每盒片数","width":100},{"field":"sPerback","header":"每箱装盒数","width":100},{"field":"customid","header":"客户ID","width":80},{"field":"customname","header":"客户名称","width":150},{"field":"memo","header":"BOM状态","width":120},{"field":"strength","header":"剂量","width":100},{"field":"livery","header":"分销商","width":150}]',
+  '["goodsname","customname","maNo"]', 'goodsid', 'goodsname', 'system');
+
+-- 物料选择（从物料清单及成本中选择）
+INSERT INTO T_COST_LOOKUP_CONFIG (ID, LOOKUP_CODE, LOOKUP_NAME, DATA_SOURCE, DISPLAY_COLUMNS, SEARCH_COLUMNS, VALUE_FIELD, LABEL_FIELD, CREATE_BY)
+VALUES (SEQ_COST_LOOKUP_CONFIG.NEXTVAL, 'costMaterial', '物料选择', 'CostGoodsPrice',
+  '[{"field":"goodsname","header":"物料名称","width":200},{"field":"useflag","header":"用途","width":80},{"field":"goodstype","header":"规格","width":150},{"field":"price","header":"单价","width":100},{"field":"factoryname","header":"供应商","width":150}]',
+  '["goodsname","factoryname"]', 'goodsid', 'goodsname', 'system');
+
+-- 币种选择（从外币管理中选择）
+INSERT INTO T_COST_LOOKUP_CONFIG (ID, LOOKUP_CODE, LOOKUP_NAME, DATA_SOURCE, DISPLAY_COLUMNS, SEARCH_COLUMNS, VALUE_FIELD, LABEL_FIELD, CREATE_BY)
+VALUES (SEQ_COST_LOOKUP_CONFIG.NEXTVAL, 'formoney', '币种选择', 'CostFormoney',
+  '[{"field":"fmname","header":"币种名称","width":150},{"field":"fmrate","header":"汇率","width":100},{"field":"fmsign","header":"符号","width":80}]',
+  '["fmname"]', 'fmid', 'fmname', 'system');
+
+-- 客户选择（从客户信息中选择）
+INSERT INTO T_COST_LOOKUP_CONFIG (ID, LOOKUP_CODE, LOOKUP_NAME, DATA_SOURCE, DISPLAY_COLUMNS, SEARCH_COLUMNS, VALUE_FIELD, LABEL_FIELD, CREATE_BY)
+VALUES (SEQ_COST_LOOKUP_CONFIG.NEXTVAL, 'costCustomer', '客户选择', 'CostCustomerLookup',
+  '[{"field":"customid","header":"客户ID","width":80},{"field":"customname","header":"客户名称","width":200},{"field":"country","header":"国家","width":100},{"field":"livery","header":"分销商","width":150}]',
+  '["customname"]', 'customid', 'customname', 'system');
+
+COMMIT;
+
+-- =====================================================
+-- G. 插入页面规则
 -- =====================================================
 INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY) VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'masterGrid', 'COLUMN_OVERRIDE', '[{"field":"id","visible":false,"editable":false},{"field":"goodsname","width":null,"editable":true,"searchable":true},{"field":"goodsnameEn","width":null,"editable":true},{"field":"strength","width":null,"editable":true},{"field":"customname","width":null,"editable":true,"searchable":true},{"field":"country","width":null,"editable":true},{"field":"projectno","width":null,"editable":true},{"field":"apexPl","width":null,"editable":true},{"field":"annualQty","width":null,"editable":true},{"field":"yield","width":null,"editable":true},{"field":"pPerpack","width":null,"editable":true},{"field":"sPerback","width":null,"editable":true},{"field":"xPerback","width":null,"editable":true},{"field":"packtype","width":null,"editable":true},{"field":"totalYl","width":null,"editable":false},{"field":"totalFl","width":null,"editable":false},{"field":"totalBc","width":null,"editable":false},{"field":"totalCost","width":null,"editable":false},{"field":"outPriceRmb","width":null,"editable":true},{"field":"salemoney","width":null,"editable":false},{"field":"jgfBatch","width":null,"editable":false},{"field":"costPerqp","width":null,"editable":true},{"field":"jgfPerqp","width":null,"editable":false},{"field":"mlPerqp","width":null,"editable":false},{"field":"yJgRe","width":null,"editable":false},{"field":"yMl","width":null,"editable":false},{"field":"ySale","width":null,"editable":false}]', 'system');
 
-INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY) VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'masterGrid', 'CALC', '[{"field":"salemoney","expression":"outPriceRmb / pPerpack * apexPl * (yield / 100)","triggerFields":["outPriceRmb","pPerpack","apexPl","yield","totalCost"]},{"field":"jgfBatch","expression":"salemoney - totalCost","triggerFields":["salemoney","totalCost"]},{"field":"jgfPerqp","expression":"jgfBatch / apexPl * 1000","triggerFields":["jgfBatch","apexPl"]},{"field":"mlPerqp","expression":"jgfPerqp - costPerqp","triggerFields":["jgfPerqp","costPerqp"]},{"field":"yJgRe","expression":"jgfPerqp / 1000 * annualQty","triggerFields":["jgfPerqp","annualQty"]},{"field":"yMl","expression":"mlPerqp / 1000 * annualQty","triggerFields":["mlPerqp","annualQty"]},{"field":"ySale","expression":"salemoney / apexPl * annualQty","triggerFields":["salemoney","apexPl","annualQty"]}]', 'system');
-
 INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY) VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'masterGrid', 'VALIDATION', '[]', 'system');
+
+-- 产品选择弹窗（从产品信息维护中选择产成品回填）
+-- 币种选择弹窗（从外币管理中选择币种回填）
+-- 客户选择弹窗（从客户信息中选择客户回填）
+INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY) VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'masterGrid', 'LOOKUP', '[{"field":"goodsname","lookupCode":"costGoods","mapping":{"goodsid":"goodsid","goodsname":"goodsname","maNo":"maNo","apexPl":"apexPl","mah":"mah","pPerpack":"pPerpack","sPerback":"sPerback","customid":"customid","customname":"customname","memo":"memo","strength":"strength","livery":"livery"}},{"field":"fmname","lookupCode":"formoney","mapping":{"fmname":"fmname","fmrate":"fmrate"}},{"field":"customname","lookupCode":"costCustomer","mapping":{"customid":"customid","customname":"customname","country":"country","livery":"livery"}}]', 'system');
 
 INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY) VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'material', 'COLUMN_OVERRIDE', '[{"field":"id","visible":false,"editable":false},{"field":"masterId","visible":false,"editable":false},{"field":"dtlUseflag","width":null,"editable":false},{"field":"apexGoodsname","width":null,"editable":true},{"field":"spec","width":null,"editable":true},{"field":"perHl","width":null,"editable":true},{"field":"exaddMater","width":null,"editable":true},{"field":"price","width":null,"editable":true},{"field":"batchQty","width":null,"editable":false},{"field":"costBatch","width":null,"editable":false},{"field":"apexFactoryname","width":null,"editable":true},{"field":"formulaType","visible":false,"editable":false}]', 'system');
 
-INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY) VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'material', 'CALC', '[{"field":"batchQty","formulaField":"formulaType","formulas":{"C":{"expression":"perHl * apexPl * (1 + exaddMater / 100) / 1000000","triggerFields":["perHl","apexPl","exaddMater"]},"D":{"expression":"perHl * apexPl * (1 + exaddMater / 100) / 1000000","triggerFields":["perHl","apexPl","exaddMater"]}}},{"field":"costBatch","expression":"batchQty * price","triggerFields":["batchQty","price"]}]', 'system');
-
 INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY) VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'material', 'VALIDATION', '[{"field":"perHl","required":true,"min":0.001,"message":"每片含量必填且必须大于0"},{"field":"price","required":true,"min":0,"message":"单价必填且不能为负数"}]', 'system');
 
-INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY) VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'material', 'LOOKUP', '[{"field":"apexGoodsname","lookupCode":"material","mapping":{"apexGoodsname":"materialName","spec":"spec","price":"price"}}]', 'system');
+INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY) VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'material', 'LOOKUP', '[{"field":"apexGoodsname","lookupCode":"costMaterial","mapping":{"apexGoodsid":"goodsid","apexGoodsname":"goodsname","spec":"goodstype","price":"price","apexFactoryname":"factoryname","goodstype":"goodstype","basePrice":"price"}}]', 'system');
 
 INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY) VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'package', 'COLUMN_OVERRIDE', '[{"field":"id","visible":true,"editable":false},{"field":"masterId","visible":false,"editable":false},{"field":"dtlUseflag","width":null,"editable":false},{"field":"apexGoodsname","width":null,"editable":true},{"field":"spec","width":null,"editable":true},{"field":"suqty","width":null,"editable":true},{"field":"price","width":null,"editable":true},{"field":"batchQty","width":null,"editable":false},{"field":"costBatch","width":null,"editable":false},{"field":"apexFactoryname","width":null,"editable":true},{"field":"formulaType","visible":false,"editable":false}]', 'system');
 
-INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY) VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'package', 'CALC', '[{"field":"batchQty","formulaField":"formulaType","formulas":{"A":{"expression":"apexPl / pPerpack","triggerFields":["apexPl","pPerpack"]},"E":{"expression":"ceil(apexPl / (pPerpack * sPerback))","triggerFields":["apexPl","pPerpack","sPerback"]},"F":{"expression":"ceil(apexPl / (pPerpack * sPerback * xPerback))","triggerFields":["apexPl","pPerpack","sPerback","xPerback"]}}},{"field":"costBatch","expression":"batchQty * price","triggerFields":["batchQty","price"]}]', 'system');
-
 INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY) VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'package', 'VALIDATION', '[{"field":"price","min":0,"message":"包材单价不能为负数"}]', 'system');
 
-INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY) VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'package', 'LOOKUP', '[{"field":"apexGoodsname","lookupCode":"package","mapping":{"apexGoodsname":"materialName","spec":"spec","price":"price"}}]', 'system');
+INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY) VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'package', 'LOOKUP', '[{"field":"apexGoodsname","lookupCode":"costMaterial","mapping":{"apexGoodsid":"goodsid","apexGoodsname":"goodsname","spec":"goodstype","price":"price","apexFactoryname":"factoryname","suqty":"lastsuqty"}}]', 'system');
 
 INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY) VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'masterGrid', 'ROLE_BINDING', '{"role":"MASTER_GRID"}', 'system');
 INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY) VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'masterGrid', 'GRID_OPTIONS', '{"cellSelection":true}', 'system');
@@ -215,23 +319,10 @@ INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CR
 
 INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY) VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'detailTabs', 'CONTEXT_MENU', '{"items":[{"action":"addRow"},{"action":"copyRow","requiresRow":true},{"action":"deleteRow","requiresRow":true},{"type":"separator"},{"action":"saveGridConfig"},{"type":"separator"},{"action":"clipboard.copy"},{"action":"clipboard.paste"}]}', 'system');
 
--- E9.3 汇总：原料金额>0 时三类都 /1.13（严格按存储过程）
-INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
-VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'cost-pinggu', 'masterGrid', 'AGGREGATE',
-q'~[
-  {"sourceField":"costBatch","targetField":"totalYl","algorithm":"SUM","sourceTab":"material","filter":"dtlUseflag === '原料'"},
-  {"sourceField":"costBatch","targetField":"totalFl","algorithm":"SUM","sourceTab":"material","filter":"dtlUseflag === '辅料'"},
-  {"sourceField":"costBatch","targetField":"totalBc","algorithm":"SUM","sourceTab":"package","filter":"dtlUseflag === '非印字包材' || dtlUseflag === '印字包材'"},
-  {"targetField":"totalYl","expression":"totalYl > 0 ? totalYl / 1.13 : totalYl"},
-  {"targetField":"totalFl","expression":"totalFl > 0 ? totalFl / 1.13 : totalFl"},
-  {"targetField":"totalBc","expression":"totalBc > 0 ? totalBc / 1.13 : totalBc"},
-  {"targetField":"totalCost","expression":"totalYl + totalFl + totalBc"}
-]~', 'system');
-
 COMMIT;
 
 -- =====================================================
--- G. 插入页面组件
+-- H. 插入页面组件
 -- =====================================================
 INSERT INTO T_COST_PAGE_COMPONENT (ID, PAGE_CODE, COMPONENT_KEY, COMPONENT_TYPE, PARENT_KEY, SORT_ORDER, COMPONENT_CONFIG, CREATE_BY)
 VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'cost-pinggu', 'root', 'LAYOUT', NULL, 0, '{"direction":"vertical","gap":8}', 'system');
@@ -245,25 +336,25 @@ VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'cost-pinggu', 'detailTabs', 'TABS', 'r
 COMMIT;
 
 -- =====================================================
--- H. 插入菜单资源
+-- I. 插入菜单资源
 -- =====================================================
 DECLARE
     v_cost_id NUMBER;
 BEGIN
     SELECT ID INTO v_cost_id FROM T_COST_RESOURCE WHERE RESOURCE_CODE = 'cost-manage' AND ROWNUM = 1;
     INSERT INTO T_COST_RESOURCE (ID, RESOURCE_CODE, RESOURCE_NAME, RESOURCE_TYPE, PAGE_CODE, ICON, ROUTE, PARENT_ID, SORT_ORDER, CREATE_BY)
-    VALUES (SEQ_COST_RESOURCE.NEXTVAL, 'cost-pinggu', '成本评估', 'PAGE', 'cost-pinggu', 'mdi:calculator-variant', '/cost/cost-pinggu', v_cost_id, 1, 'system');
+    VALUES (SEQ_COST_RESOURCE.NEXTVAL, 'cost-pinggu', '物料成本核算表', 'PAGE', 'cost-pinggu', 'mdi:calculator-variant', '/cost/cost-pinggu', v_cost_id, 1, 'system');
     COMMIT;
 EXCEPTION
     WHEN NO_DATA_FOUND THEN
         INSERT INTO T_COST_RESOURCE (ID, RESOURCE_CODE, RESOURCE_NAME, RESOURCE_TYPE, PAGE_CODE, ICON, ROUTE, PARENT_ID, SORT_ORDER, CREATE_BY)
-        VALUES (SEQ_COST_RESOURCE.NEXTVAL, 'cost-pinggu', '成本评估', 'PAGE', 'cost-pinggu', 'mdi:calculator-variant', '/cost/cost-pinggu', NULL, 1, 'system');
+        VALUES (SEQ_COST_RESOURCE.NEXTVAL, 'cost-pinggu', '物料成本核算表', 'PAGE', 'cost-pinggu', 'mdi:calculator-variant', '/cost/cost-pinggu', NULL, 1, 'system');
         COMMIT;
 END;
 /
 
 -- =====================================================
--- I. 导入业务数据（从ERP同步）
+-- J. 导入业务数据（从ERP同步）
 -- =====================================================
 
 -- 导入主表数据
