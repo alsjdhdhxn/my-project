@@ -219,7 +219,12 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     return actionHandlers.get(actionCode) || null;
   }
 
-  async function executeAction(actionCode: string, options?: { tableCode?: string; data?: Record<string, any> }) {
+  async function executeAction(actionCode: string, options?: { 
+    tableCode?: string; 
+    data?: Record<string, any>;
+    selectedRow?: Record<string, any> | null;
+    refreshMode?: 'all' | 'row' | 'none';
+  }) {
     if (!actionCode) return;
     const handler = resolveActionHandler(actionCode);
     if (handler) {
@@ -244,7 +249,44 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
       return;
     }
     notifySuccess('Action executed');
-    await data.loadMasterData();
+    
+    // 根据 refreshMode 决定刷新方式
+    const refreshMode = options?.refreshMode ?? 'all';
+    if (refreshMode === 'none') {
+      return;
+    }
+    
+    // 判断是否 SSRM 模式
+    const api = masterGridApi.value as any;
+    const rowModelType = api?.getGridOption?.('rowModelType');
+    
+    if (rowModelType === 'serverSide') {
+      // SSRM 模式：先清空缓存，再刷新
+      data.clearMasterCache();
+      if (refreshMode === 'row' && options?.selectedRow) {
+        // 刷新单行：先刷新再重新选中
+        const rowId = options.selectedRow.id;
+        api?.refreshServerSide?.({ purge: false });
+        // 等待刷新完成后尝试重新选中
+        setTimeout(() => {
+          api?.forEachNode?.((node: any) => {
+            if (node.data?.id === rowId) {
+              node.setSelected(true);
+            }
+          });
+        }, 100);
+      } else {
+        // 刷新全部
+        api?.refreshServerSide?.({ purge: true });
+      }
+    } else {
+      // 客户端模式
+      if (refreshMode === 'row' && options?.selectedRow) {
+        await data.refreshMasterRow(options.selectedRow);
+      } else {
+        await data.loadMasterData();
+      }
+    }
   }
 
   const runtimeApi = {

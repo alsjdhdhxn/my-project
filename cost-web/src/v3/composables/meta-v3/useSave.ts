@@ -159,8 +159,23 @@ export function useSave(params: {
       const dirtyMaster: RowData[] = [];
       const dirtyDetailByTab: Record<string, RowData[]> = {};
 
-      for (const row of masterRows.value) {
-        if (row._isNew || row._isDeleted || row._dirtyFields) dirtyMaster.push(row);
+      // 判断是否 SSRM 模式
+      const api = masterGridApi.value as any;
+      const rowModelType = api?.getGridOption?.('rowModelType');
+      
+      if (rowModelType === 'serverSide') {
+        // SSRM 模式：从 AG Grid 行节点获取脏数据
+        api?.forEachNode?.((node: any) => {
+          const row = node.data;
+          if (row && (row._isNew || row._isDeleted || row._dirtyFields)) {
+            dirtyMaster.push(row);
+          }
+        });
+      } else {
+        // 客户端模式：从 masterRows 获取
+        for (const row of masterRows.value) {
+          if (row._isNew || row._isDeleted || row._dirtyFields) dirtyMaster.push(row);
+        }
       }
 
       for (const [, tabData] of detailCache.entries()) {
@@ -299,36 +314,42 @@ export function useSave(params: {
         }
       }
 
-      // 统一使用事务 API 更新主表 Grid
-      const api = masterGridApi.value as any;
-      if (api?.applyTransaction) {
-        // 有更新的行（新增/复制保存成功后 ID 变化，或普通修改）
+      // 更新主表 Grid
+      const gridApi = masterGridApi.value as any;
+      const gridRowModelType = gridApi?.getGridOption?.('rowModelType');
+      
+      if (gridRowModelType === 'serverSide') {
+        // SSRM 模式：刷新服务端数据
+        gridApi?.refreshServerSide?.({ purge: false });
+      } else if (gridApi?.applyTransaction) {
+        // 客户端模式：使用事务 API
         if (rowsToUpdate.length > 0) {
-          api.applyTransaction({ update: rowsToUpdate });
+          gridApi.applyTransaction({ update: rowsToUpdate });
         }
-        // 有删除的行
         if (rowsToRemove.length > 0) {
-          api.applyTransaction({ remove: rowsToRemove });
+          gridApi.applyTransaction({ remove: rowsToRemove });
         }
       }
 
-      // 使用事务 API 从明细 Grid 移除已删除的行
-      for (const [masterId, deletedRows] of deletedDetailRowsByMasterId.entries()) {
-        if (deletedRows.length === 0) continue;
+      // 更新明细 Grid（仅客户端模式）
+      if (gridRowModelType !== 'serverSide') {
+        for (const [masterId, deletedRows] of deletedDetailRowsByMasterId.entries()) {
+          if (deletedRows.length === 0) continue;
 
-        const secondLevelInfo = masterGridApi.value?.getDetailGridInfo(`detail_${masterId}`);
-        if (secondLevelInfo?.api) {
-          secondLevelInfo.api.forEachDetailGridInfo((detailInfo: any) => {
-            if (detailInfo.api?.applyTransaction) {
-              detailInfo.api.applyTransaction({ remove: deletedRows });
-            }
-          });
-        }
+          const secondLevelInfo = masterGridApi.value?.getDetailGridInfo(`detail_${masterId}`);
+          if (secondLevelInfo?.api) {
+            secondLevelInfo.api.forEachDetailGridInfo((detailInfo: any) => {
+              if (detailInfo.api?.applyTransaction) {
+                detailInfo.api.applyTransaction({ remove: deletedRows });
+              }
+            });
+          }
 
-        if (detailGridApisByTab?.value) {
-          for (const api of Object.values(detailGridApisByTab.value)) {
-            if (api?.applyTransaction) {
-              api.applyTransaction({ remove: deletedRows });
+          if (detailGridApisByTab?.value) {
+            for (const detailApi of Object.values(detailGridApisByTab.value)) {
+              if (detailApi?.applyTransaction) {
+                detailApi.applyTransaction({ remove: deletedRows });
+              }
             }
           }
         }

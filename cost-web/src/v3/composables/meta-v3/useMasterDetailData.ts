@@ -172,6 +172,35 @@ export function useMasterDetailData(params: {
     resetMasterCache(rows);
   }
 
+  /** 刷新单行数据 */
+  async function refreshMasterRow(row: Record<string, any>) {
+    const tableCode = pageConfig.value?.masterTableCode;
+    // 默认使用 id 作为主键
+    const pkValue = row.id;
+    if (!tableCode || pkValue === undefined) return;
+    
+    const { data, error } = await searchDynamicData(tableCode, {
+      pageCode,
+      conditions: [{ field: 'id', operator: 'eq', value: pkValue }]
+    });
+    if (error) {
+      notifyError('刷新行数据失败');
+      return;
+    }
+    const newRow = data?.list?.[0];
+    if (!newRow) return;
+    
+    // 更新缓存中的行数据
+    const id = newRow.id;
+    if (typeof id === 'number' && masterRowMap.has(id)) {
+      const existingRow = masterRowMap.get(id)!;
+      Object.assign(existingRow, initRowData(newRow));
+    }
+    
+    // 刷新表格显示
+    masterGridApi.value?.refreshCells({ force: true });
+  }
+
   async function loadDetailData(masterId: number) {
     const tabs = pageConfig.value?.tabs || [];
     const grouped: Record<string, RowData[]> = {};
@@ -427,6 +456,11 @@ export function useMasterDetailData(params: {
     masterRows,
     detailCache,
     loadMasterData,
+    refreshMasterRow,
+    clearMasterCache: () => {
+      masterRowMap.clear();
+      masterRows.value = [];
+    },
     loadDetailData,
     addMasterRow,
     deleteMasterRow,

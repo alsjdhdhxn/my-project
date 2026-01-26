@@ -25,6 +25,10 @@ type ButtonConfig = {
   action?: string;
   tableCode?: string;
   actionData?: Record<string, any>;
+  /** 是否需要选中行才能执行 */
+  requiresRow?: boolean;
+  /** 执行后刷新模式: 'all' 刷新全部, 'row' 刷新选中行, 'none' 不刷新 */
+  refreshMode?: 'all' | 'row' | 'none';
 };
 
 const props = defineProps<{
@@ -56,7 +60,24 @@ const label = computed(() => config.value.label || config.value.text || props.co
 const buttonType = computed<ButtonProps['type']>(() => (config.value.type as ButtonProps['type']) || 'default');
 const buttonSize = computed<ButtonProps['size']>(() => (config.value.size as ButtonProps['size']) || 'medium');
 const status = computed(() => state.value.status || 'ready');
-const isDisabled = computed(() => Boolean(config.value.disabled || unref(state.value.disabled) || status.value === 'error'));
+
+// 获取选中行
+function getSelectedRow(): Record<string, any> | null {
+  const runtime = props.runtime as Record<string, any>;
+  const gridApi = runtime.masterGridApi?.value;
+  if (!gridApi) return null;
+  const selectedNodes = gridApi.getSelectedNodes();
+  return selectedNodes?.[0]?.data || null;
+}
+
+// 需要选中行但没有选中时禁用按钮
+const requiresRow = computed(() => config.value.requiresRow === true);
+const hasSelectedRow = computed(() => getSelectedRow() !== null);
+const isDisabled = computed(() => {
+  if (config.value.disabled || unref(state.value.disabled) || status.value === 'error') return true;
+  if (requiresRow.value && !hasSelectedRow.value) return true;
+  return false;
+});
 const errorMessage = computed(() => state.value.error?.message || 'Button render failed');
 
 function handleClick() {
@@ -73,9 +94,16 @@ function handleClick() {
     return;
   }
   if (typeof runtime.executeAction === 'function') {
+    const selectedRow = getSelectedRow();
+    // 默认刷新模式：需要选中行时刷新行，否则刷新全部
+    const defaultRefreshMode = requiresRow.value ? 'row' : 'all';
+    const refreshMode = config.value.refreshMode ?? defaultRefreshMode;
+    
     runtime.executeAction(action, {
       tableCode: config.value.tableCode,
-      data: config.value.actionData
+      data: config.value.actionData,
+      selectedRow,
+      refreshMode
     });
   }
 }
