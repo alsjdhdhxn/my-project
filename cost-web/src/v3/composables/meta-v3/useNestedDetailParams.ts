@@ -12,14 +12,14 @@ import { buildGridRuntimeOptions, autoSizeColumnsOnReady, type ResolvedGridOptio
 export function useNestedDetailParams(params: {
   pageConfig: Ref<ParsedPageConfig | null>;
   detailColumnsByTab: Ref<Record<string, ColDef[]>>;
-  detailCache: Map<number, Record<string, RowData[]>>;
-  loadDetailData: (masterId: number) => Promise<void>;
+  detailCache: Map<string, Record<string, RowData[]>>;
+  loadDetailData: (masterId: number, masterRowKey?: string) => Promise<void>;
   cellClassRules: ColDef['cellClassRules'];
   getRowClass: (params: any) => string | undefined;
   detailRowClassByTab?: Ref<Record<string, ((params: any) => string | undefined) | undefined>>;
   detailGridOptionsByTab?: Ref<Record<string, ResolvedGridOptions>>;
   applyGridConfig?: (gridKey: string, api: any, columnApi: any) => void;
-  getDetailContextMenuItems: (masterId: number, tabKey: string) => (params: any) => any[];
+  getDetailContextMenuItems: (masterId: number, masterRowKey: string, tabKey: string) => (params: any) => any[];
   onCellEditingStarted: () => void;
   onCellEditingStopped: () => void;
   onDetailCellValueChanged: (event: any, masterId: number, tabKey: string) => void;
@@ -61,23 +61,24 @@ export function useNestedDetailParams(params: {
       keepDetailRows: true,
       detailRowAutoHeight: true,
       getRowId: (rowParams: any) => {
-        const masterId = rowParams.data?._masterId;
+        const masterRowKey = rowParams.data?._masterRowKey;
         const tabKey = rowParams.data?._tabKey;
-        if (masterId == null || !tabKey) return String(rowParams.data?.id ?? '');
-        return getSummaryRowId(masterId, tabKey);
+        if (!masterRowKey || !tabKey) return String(rowParams.data?.id ?? '');
+        return getSummaryRowId(String(masterRowKey), tabKey);
       },
       detailCellRendererParams: null as any
     },
     getDetailRowData: async (params: any) => {
       const masterId = params.data?.id;
-      if (masterId == null) {
+      const masterRowKey = params.data?._rowKey;
+      if (masterId == null || !masterRowKey) {
         params.successCallback([]);
         return;
       }
-      let cached = detailCache.get(masterId);
+      let cached = detailCache.get(masterRowKey);
       if (!cached) {
-        await loadDetailData(masterId);
-        cached = detailCache.get(masterId);
+        await loadDetailData(masterId, masterRowKey);
+        cached = detailCache.get(masterRowKey);
       }
       if (!cached) {
         params.successCallback([]);
@@ -85,6 +86,7 @@ export function useNestedDetailParams(params: {
       }
       const summaryRows = buildSummaryRows({
         masterId,
+        masterRowKey,
         pageConfig: pageConfig.value,
         detailCache,
         summaryConfig: summaryConfig.value
@@ -101,6 +103,7 @@ export function useNestedDetailParams(params: {
     summaryDetailParams.detailGridOptions.detailCellRendererParams = (params: any) => {
       const tabKey = params.data?._tabKey;
       const masterId = params.data?._masterId;
+      const masterRowKey = params.data?._masterRowKey;
       const columns = detailColumnsByTab.value[tabKey] || [];
       const metaRowClass = detailRowClassByTab?.value?.[tabKey];
       const gridOptions = detailGridOptionsByTab?.value?.[tabKey];
@@ -131,10 +134,10 @@ export function useNestedDetailParams(params: {
           rowHeight: 28,
           getRowId: (rowParams: any) => String(rowParams.data?.id),
           getRowClass: mergedRowClass,
-          getContextMenuItems: getDetailContextMenuItems(masterId, tabKey),
+          getContextMenuItems: getDetailContextMenuItems(masterId, masterRowKey, tabKey),
           onCellEditingStarted,
           onCellEditingStopped,
-          onCellValueChanged: (event: any) => onDetailCellValueChanged(event, masterId, tabKey),
+          onCellValueChanged: (event: any) => onDetailCellValueChanged(event, masterId, tabKey, masterRowKey),
           onCellClicked: (event: any) => onDetailCellClicked(event, masterId, tabKey),
           onGridReady: (event: any) => {
             if (gridOptions?.autoSizeColumns) {
@@ -157,4 +160,3 @@ export function useNestedDetailParams(params: {
     summaryDetailParams
   };
 }
-

@@ -3,6 +3,7 @@
     <DetailPanelV3
       :tabs="tabs"
       :activeMasterId="masterId"
+      :activeMasterRowKey="masterRowKey"
       :detailCache="detailCache"
       :detailColumnsByTab="detailColumnsByTab"
       :detailRowClassByTab="detailRowClassByTab"
@@ -37,6 +38,10 @@ const masterId = computed<number | null>(() => {
   if (raw == null) return null;
   const value = Number(raw);
   return Number.isNaN(value) ? null : value;
+});
+const masterRowKey = computed<string | null>(() => {
+  const raw = props.params?.data?._rowKey;
+  return raw ? String(raw) : null;
 });
 
 const tabs = computed(() => unref(panelContext.value.tabs) || []);

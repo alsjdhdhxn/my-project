@@ -4,7 +4,7 @@ import type { GridOptionsRule } from '@/v3/composables/meta-v3/types';
 export type ResolvedGridOptions = {
   sideBar?: boolean | Record<string, any>;
   cellSelection?: boolean | Record<string, any>;
-  rowModelType?: 'clientSide' | 'infinite' | 'serverSide';
+  rowModelType?: 'clientSide' | 'serverSide';
   cacheBlockSize?: number;
   maxBlocksInCache?: number;
   /** SSRM: 最大并发请求数 */
@@ -177,4 +177,3 @@ export function autoSizeColumnsOnReady(
     api.autoSizeColumns(colsToAutoSize);
   }
 }
-

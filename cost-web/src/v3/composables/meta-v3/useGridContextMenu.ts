@@ -19,6 +19,7 @@ type MenuScope = {
   type: 'master' | 'detail';
   params: any;
   masterId?: number;
+  masterRowKey?: string;
   tabKey?: string;
 };
 
@@ -26,9 +27,9 @@ export function useGridContextMenu(params: {
   addMasterRow: () => void;
   deleteMasterRow: (row: any) => void;
   copyMasterRow: (row: any) => void;
-  addDetailRow: (masterId: number, tabKey: string) => void;
-  deleteDetailRow: (masterId: number, tabKey: string, row: any) => void;
-  copyDetailRow: (masterId: number, tabKey: string, row: any) => void;
+  addDetailRow: (masterId: number, tabKey: string, masterRowKey?: string) => void;
+  deleteDetailRow: (masterId: number, tabKey: string, row: any, masterRowKey?: string) => void;
+  copyDetailRow: (masterId: number, tabKey: string, row: any, masterRowKey?: string) => void;
   save: () => void;
   saveGridConfig?: (gridKey: string, api: any, columnApi: any) => void;
   exportSelected?: () => void;
@@ -158,7 +159,7 @@ export function useGridContextMenu(params: {
           label: LABEL_ADD,
           handler: () => {
             if (ctx.type === 'master') addMasterRow();
-            else if (ctx.masterId != null && ctx.tabKey) addDetailRow(ctx.masterId, ctx.tabKey);
+            else if (ctx.masterId != null && ctx.tabKey) addDetailRow(ctx.masterId, ctx.tabKey, ctx.masterRowKey);
           }
         };
       case 'copyRow':
@@ -174,14 +175,14 @@ export function useGridContextMenu(params: {
               if (ctx.type === 'master') {
                 selectedRows.forEach((row: any) => copyMasterRow(row));
               } else if (ctx.masterId != null && ctx.tabKey) {
-                selectedRows.forEach((row: any) => copyDetailRow(ctx.masterId!, ctx.tabKey!, row));
+                selectedRows.forEach((row: any) => copyDetailRow(ctx.masterId!, ctx.tabKey!, row, ctx.masterRowKey));
               }
             } else {
               // 单行复制
               const row = resolveRow(ctx.params);
               if (!row) return;
               if (ctx.type === 'master') copyMasterRow(row);
-              else if (ctx.masterId != null && ctx.tabKey) copyDetailRow(ctx.masterId, ctx.tabKey, row);
+              else if (ctx.masterId != null && ctx.tabKey) copyDetailRow(ctx.masterId, ctx.tabKey, row, ctx.masterRowKey);
             }
           }
         };
@@ -198,14 +199,14 @@ export function useGridContextMenu(params: {
               if (ctx.type === 'master') {
                 selectedRows.forEach((row: any) => deleteMasterRow(row));
               } else if (ctx.masterId != null && ctx.tabKey) {
-                selectedRows.forEach((row: any) => deleteDetailRow(ctx.masterId!, ctx.tabKey!, row));
+                selectedRows.forEach((row: any) => deleteDetailRow(ctx.masterId!, ctx.tabKey!, row, ctx.masterRowKey));
               }
             } else {
               // 单行删除
               const row = resolveRow(ctx.params);
               if (!row) return;
               if (ctx.type === 'master') deleteMasterRow(row);
-              else if (ctx.masterId != null && ctx.tabKey) deleteDetailRow(ctx.masterId, ctx.tabKey, row);
+              else if (ctx.masterId != null && ctx.tabKey) deleteDetailRow(ctx.masterId, ctx.tabKey, row, ctx.masterRowKey);
             }
           }
         };
@@ -359,11 +360,11 @@ export function useGridContextMenu(params: {
     return normalizeSeparators(items);
   }
 
-  function getDetailContextMenuItems(masterId: number, tabKey: string) {
+  function getDetailContextMenuItems(masterId: number, masterRowKey: string, tabKey: string) {
     return (params: any) => {
       const config = resolveMenuByTab(tabKey);
       if (!config) return [];
-      return buildMenuItems(config.items || [], { type: 'detail', params, masterId, tabKey });
+      return buildMenuItems(config.items || [], { type: 'detail', params, masterId, masterRowKey, tabKey });
     };
   }
 
@@ -372,4 +373,3 @@ export function useGridContextMenu(params: {
     getDetailContextMenuItems
   };
 }
-

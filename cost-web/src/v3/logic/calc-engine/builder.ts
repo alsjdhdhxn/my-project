@@ -8,6 +8,7 @@
 /** 行数据（含内部状态） */
 export interface RowData {
   id: number | null;
+  _rowKey?: string;
   _isNew?: boolean;
   _isDeleted?: boolean;
   _changeType?: Record<string, 'user' | 'cascade'>;
@@ -192,6 +193,20 @@ export function generateTempId(): number {
   return -(Date.now() * 1000 + tempIdCounter++);
 }
 
+export function ensureRowKey(row: RowData): string {
+  if (!row._rowKey) {
+    if (row.id != null && row.id > 0) {
+      row._rowKey = `db_${row.id}`;
+    } else {
+      const uuid = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : Math.random().toString(36).slice(2);
+      row._rowKey = `tmp_${uuid}`;
+    }
+  }
+  return row._rowKey;
+}
+
 /**
  * 初始化行数据（添加内部状态字段）
  */
@@ -204,7 +219,7 @@ export function initRowData(row: Record<string, any>, isNew = false): RowData {
     }
   }
 
-  return {
+  const nextRow: RowData = {
     ...row,
     id: row.id ?? null,
     _isNew: isNew,
@@ -212,6 +227,8 @@ export function initRowData(row: Record<string, any>, isNew = false): RowData {
     _changeType: {},
     _originalValues: isNew ? {} : originalValues
   };
+  ensureRowKey(nextRow);
+  return nextRow;
 }
 
 /**

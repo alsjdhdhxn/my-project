@@ -33,7 +33,7 @@
           :registerDetailGridApi="handleRegister"
           :unregisterDetailGridApi="handleUnregister"
           :applyGridConfig="applyGridConfig"
-          :onCellValueChanged="(event) => onDetailCellValueChanged(event, activeMasterId!, activeTabConfig.key)"
+          :onCellValueChanged="(event) => onDetailCellValueChanged(event, activeMasterId!, activeTabConfig.key, activeMasterRowKey || undefined)"
           :onCellClicked="(event) => onDetailCellClicked(event, activeMasterId!, activeTabConfig.key)"
           :onCellEditingStarted="onCellEditingStarted"
           :onCellEditingStopped="onCellEditingStopped"
@@ -56,7 +56,7 @@
             :registerDetailGridApi="handleRegister"
             :unregisterDetailGridApi="handleUnregister"
             :applyGridConfig="applyGridConfig"
-            :onCellValueChanged="(event) => onDetailCellValueChanged(event, activeMasterId!, tab.key)"
+            :onCellValueChanged="(event) => onDetailCellValueChanged(event, activeMasterId!, tab.key, activeMasterRowKey || undefined)"
             :onCellClicked="(event) => onDetailCellClicked(event, activeMasterId!, tab.key)"
             :onCellEditingStarted="onCellEditingStarted"
             :onCellEditingStopped="onCellEditingStopped"
@@ -77,7 +77,8 @@ import type { ResolvedGridOptions } from '@/v3/composables/meta-v3/grid-options'
 const props = defineProps<{
   tabs: TabConfig[];
   activeMasterId: number | null;
-  detailCache: Map<number, Record<string, RowData[]>>;
+  activeMasterRowKey: string | null;
+  detailCache: Map<string, Record<string, RowData[]>>;
   detailColumnsByTab: Record<string, ColDef[]>;
   detailRowClassByTab?: Record<string, ((params: any) => string | undefined) | undefined>;
   detailGridOptionsByTab?: Record<string, ResolvedGridOptions>;
@@ -85,14 +86,14 @@ const props = defineProps<{
   defaultViewMode?: 'tab' | 'stack';
   viewMode?: 'tab' | 'stack';
   applyGridConfig?: (gridKey: string, api: any, columnApi: any) => void;
-  onDetailCellValueChanged: (event: any, masterId: number, tabKey: string) => void;
+  onDetailCellValueChanged: (event: any, masterId: number, tabKey: string, masterRowKey?: string) => void;
   onDetailCellClicked: (event: any, masterId: number, tabKey: string) => void;
   onCellEditingStarted: () => void;
   onCellEditingStopped: () => void;
-  loadDetailData: (masterId: number) => Promise<void>;
+  loadDetailData: (masterId: number, masterRowKey?: string) => Promise<void>;
   registerDetailGridApi: (tabKey: string, api: any) => void;
   unregisterDetailGridApi?: (tabKey: string, api: any) => void;
-  getDetailContextMenuItems: (masterId: number, tabKey: string) => (params: any) => any[];
+  getDetailContextMenuItems: (masterId: number, masterRowKey: string, tabKey: string) => (params: any) => any[];
   refreshDetailRowHeight?: () => void;
 }>();
 
@@ -126,18 +127,19 @@ watch(
 watch(
   () => props.activeMasterId,
   async (masterId) => {
-    if (masterId == null) return;
-    if (!props.detailCache.get(masterId)) {
-      await props.loadDetailData(masterId);
+    const masterRowKey = props.activeMasterRowKey;
+    if (masterId == null || !masterRowKey) return;
+    if (!props.detailCache.get(masterRowKey)) {
+      await props.loadDetailData(masterId, masterRowKey);
     }
-    updateGridRows(masterId);
+    updateGridRows(masterRowKey);
   },
   { immediate: true }
 );
 
 watch(activeTab, () => {
-  if (props.activeMasterId == null) return;
-  updateGridRows(props.activeMasterId, activeTab.value);
+  if (props.activeMasterRowKey == null) return;
+  updateGridRows(props.activeMasterRowKey, activeTab.value);
   nextTick(() => refreshLayout());
 });
 
@@ -149,8 +151,8 @@ watch(currentViewMode, async () => {
 function handleRegister(tabKey: string, api: any) {
   gridApis.value[tabKey] = api;
   props.registerDetailGridApi(tabKey, api);
-  if (props.activeMasterId != null) {
-    const rows = props.detailCache.get(props.activeMasterId)?.[tabKey] || [];
+  if (props.activeMasterRowKey != null) {
+    const rows = props.detailCache.get(props.activeMasterRowKey)?.[tabKey] || [];
     api?.setGridOption?.('rowData', rows);
   }
 }
@@ -163,12 +165,12 @@ function handleUnregister(tabKey: string, api: any) {
 }
 
 function resolveRows(tabKey: string): RowData[] {
-  if (props.activeMasterId == null) return [];
-  return props.detailCache.get(props.activeMasterId)?.[tabKey] || [];
+  if (props.activeMasterRowKey == null) return [];
+  return props.detailCache.get(props.activeMasterRowKey)?.[tabKey] || [];
 }
 
-function updateGridRows(masterId: number, tabKey?: string) {
-  const cached = props.detailCache.get(masterId);
+function updateGridRows(masterRowKey: string, tabKey?: string) {
+  const cached = props.detailCache.get(masterRowKey);
   if (!cached) return;
   if (tabKey) {
     gridApis.value[tabKey]?.setGridOption('rowData', cached[tabKey] || []);
@@ -180,8 +182,8 @@ function updateGridRows(masterId: number, tabKey?: string) {
 }
 
 function getDetailContextMenuItemsFor(tabKey: string) {
-  if (props.activeMasterId == null) return () => [];
-  return props.getDetailContextMenuItems(props.activeMasterId, tabKey);
+  if (props.activeMasterId == null || props.activeMasterRowKey == null) return () => [];
+  return props.getDetailContextMenuItems(props.activeMasterId, props.activeMasterRowKey, tabKey);
 }
 
 function refreshLayout() {
@@ -271,4 +273,3 @@ function refreshLayout() {
   font-size: 13px;
 }
 </style>
-

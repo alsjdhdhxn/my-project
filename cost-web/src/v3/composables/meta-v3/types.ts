@@ -47,7 +47,7 @@ export type GridOptionsRule = {
   sideBar?: boolean | Record<string, any>;
   enableSidebar?: boolean;
   cellSelection?: boolean | Record<string, any>;
-  rowModelType?: 'clientSide' | 'infinite' | 'serverSide';
+  rowModelType?: 'clientSide' | 'serverSide';
   cacheBlockSize?: number;
   maxBlocksInCache?: number;
   /** SSRM: 最大并发请求数 */
@@ -98,4 +98,3 @@ export type RowClassRule = {
   value?: any;
   className: string;
 };
-

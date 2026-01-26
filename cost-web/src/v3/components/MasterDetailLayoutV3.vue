@@ -46,6 +46,7 @@
         <DetailPanelV3
           :tabs="detailTabs"
           :activeMasterId="activeMasterId"
+          :activeMasterRowKey="activeMasterRowKey"
           :detailCache="detailCache"
           :detailColumnsByTab="detailColumnsByTab"
           :detailRowClassByTab="detailRowClassGetterByTab"
@@ -110,6 +111,7 @@ import DetailPanelV3 from '@/v3/components/detail/DetailPanelV3.vue';
 import { useMasterGridBindings } from '@/v3/composables/meta-v3/useMasterGridBindings';
 import { useGridContextMenu } from '@/v3/composables/meta-v3/useGridContextMenu';
 import { useThemeStore } from '@/store/modules/theme';
+import { ensureRowKey } from '@/v3/logic/calc-engine';
 
 const props = defineProps<{ runtime: any }>();
 
@@ -122,6 +124,7 @@ const {
   masterColumnDefs,
   detailColumnsByTab,
   detailCache,
+  getMasterRowById,
   pageConfig,
   masterRowClassGetter,
   detailRowClassGetterByTab,
@@ -167,13 +170,14 @@ const splitConfig = computed(() => {
 });
 const isSplitMode = computed(() => detailLayoutMode.value === 'split');
 const activeMasterId = ref<number | null>(null);
+const activeMasterRowKey = ref<string | null>(null);
 
 const masterGridOptionsValue = computed(() => masterGridOptions?.value || null);
 
 // 判断是否服务端模式
 const isServerSideMode = computed(() => {
   const type = masterGridOptionsValue.value?.rowModelType;
-  return type === 'serverSide' || type === 'infinite';
+  return type === 'serverSide';
 });
 
 // 只有客户端模式才传 rowData
@@ -183,9 +187,6 @@ const dataSource = computed(() => {
   const rowModelType = masterGridOptionsValue.value?.rowModelType;
   if (rowModelType === 'serverSide') {
     return runtime?.createServerSideDataSource?.({ pageSize: masterGridOptionsValue.value?.cacheBlockSize });
-  }
-  if (rowModelType === 'infinite') {
-    return runtime?.createMasterDataSource?.({ pageSize: masterGridOptionsValue.value?.cacheBlockSize });
   }
   return null;
 });
@@ -221,10 +222,13 @@ const {
     if (!isSplitMode.value || !hasDetailTabs.value) return;
     const selected = rows?.[0];
     const nextId = selected?.id ?? null;
+    const nextRowKey = selected ? ensureRowKey(selected) : null;
     activeMasterId.value = typeof nextId === 'number' ? nextId : (nextId != null ? Number(nextId) : null);
+    activeMasterRowKey.value = nextRowKey ? String(nextRowKey) : null;
     if (activeMasterId.value == null) return;
-    if (!detailCache.get(activeMasterId.value)) {
-      await loadDetailData(activeMasterId.value);
+    if (!activeMasterRowKey.value) return;
+    if (!detailCache.get(activeMasterRowKey.value)) {
+      await loadDetailData(activeMasterId.value, activeMasterRowKey.value);
     }
   }
 });
@@ -259,7 +263,7 @@ function refreshDetailRowHeight() {
   masterGridApi.value?.resetRowHeights();
 }
 
-function onDetailCellValueChanged(event: any, masterId: number, tabKey: string) {
+function onDetailCellValueChanged(event: any, masterId: number, tabKey: string, masterRowKey?: string) {
   const field = event.colDef?.field;
   const row = event.data;
   if (!field || !masterId) return;
@@ -269,8 +273,9 @@ function onDetailCellValueChanged(event: any, masterId: number, tabKey: string) 
   event.api?.refreshCells({ rowNodes: [event.node], columns: [field], force: true });
 
   if (editingState.value) {
-    runDetailCalc(event.node, event.api, row, masterId, tabKey);
-    recalcAggregates(masterId);
+    const resolvedRowKey = masterRowKey ?? activeMasterRowKey.value ?? undefined;
+    runDetailCalc(event.node, event.api, row, masterId, tabKey, resolvedRowKey);
+    recalcAggregates(masterId, resolvedRowKey);
   }
 }
 
@@ -312,7 +317,7 @@ const gridContext = {
 function getRowHeight(params: any): number | undefined {
   if (!params.node?.detail) return undefined;
   
-  const masterId = params.node?.data?.id;
+  const masterRowKey = params.node?.data?._rowKey ? String(params.node?.data?._rowKey) : null;
   const tabs = detailTabs.value || [];
   const tabCount = tabs.length || 1;
   const rowHeight = 28;
@@ -329,7 +334,7 @@ function getRowHeight(params: any): number | undefined {
   const minGridHeight = headerHeight + rowHeight * minRows;
   
   // 计算所有子表的总高度
-  const cached = detailCache.get(masterId);
+  const cached = masterRowKey ? detailCache.get(masterRowKey) : undefined;
   let totalHeight = padding;
   
   for (let i = 0; i < tabs.length; i++) {
@@ -351,13 +356,14 @@ function getRowHeight(params: any): number | undefined {
 // 检测指定主表行及其子表是否有未保存的修改
 function hasUnsavedChanges(masterId: number): boolean {
   // 检查主表行
-  const masterRow = masterRows.value.find((r: any) => r.id === masterId);
+  const masterRow = getMasterRowById?.(masterId);
   if (masterRow && (masterRow._isNew || masterRow._isDeleted || masterRow._dirtyFields)) {
     return true;
   }
   
   // 检查子表
-  const cached = detailCache.get(masterId);
+  const masterRowKey = masterRow ? ensureRowKey(masterRow) : null;
+  const cached = masterRowKey ? detailCache.get(masterRowKey) : undefined;
   if (cached) {
     for (const rows of Object.values(cached)) {
       for (const row of rows as any[]) {
@@ -449,8 +455,9 @@ function onDetailRowOpened(event: any) {
   }
   
   // 加载数据，完成后刷新行高
-  if (!Number.isNaN(masterId) && !detailCache.get(masterId)) {
-    loadDetailData(masterId).then(() => {
+  const masterRowKey = currentNode?.data ? String(ensureRowKey(currentNode.data)) : null;
+  if (!Number.isNaN(masterId) && masterRowKey && !detailCache.get(masterRowKey)) {
+    loadDetailData(masterId, masterRowKey).then(() => {
       // 数据加载完成后重新计算行高
       api?.resetRowHeights();
     });

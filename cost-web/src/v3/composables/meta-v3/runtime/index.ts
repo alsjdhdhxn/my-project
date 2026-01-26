@@ -148,7 +148,9 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
 
   const calc = useCalcBroadcast({
     masterGridApi,
-    masterRows: data.masterRows,
+    getMasterRowById: data.getMasterRowById,
+    getMasterRowByRowKey: data.getMasterRowByRowKey,
+    resolveMasterRowKey: data.resolveMasterRowKey,
     detailCache: data.detailCache,
     broadcastFields: meta.broadcastFields,
     detailCalcRulesByTab: meta.detailCalcRulesByTab,
@@ -171,7 +173,8 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
   recalcAggregatesRef.current = calc.recalcAggregates;
 
   const lookup = useLookupDialog({
-    masterRows: data.masterRows,
+    getMasterRowById: data.getMasterRowById,
+    getMasterRowByRowKey: data.getMasterRowByRowKey,
     detailCache: data.detailCache,
     masterGridApi,
     masterLookupRules: meta.masterLookupRules,
@@ -188,6 +191,9 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     pageConfig: meta.pageConfig,
     masterRows: data.masterRows,
     detailCache: data.detailCache,
+    getMasterRowById: data.getMasterRowById,
+    getMasterRowByRowKey: data.getMasterRowByRowKey,
+    resolveMasterRowKey: data.resolveMasterRowKey,
     masterValidationRules: meta.masterValidationRules,
     detailValidationRulesByTab: meta.detailValidationRulesByTab,
     masterColumnMeta: meta.masterColumnMeta,
@@ -298,9 +304,9 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     ...data,
     markFieldChange: calc.markFieldChange,
     runMasterCalc: calc.runMasterCalc,
-    runDetailCalc: (node: any, api: any, row: any, masterId: number, tabKey: string) => {
+    runDetailCalc: (node: any, api: any, row: any, masterId: number, tabKey: string, masterRowKey?: string) => {
       if (!resolvedFeatures.value.detailTabs) return;
-      return calc.runDetailCalc(node, api, row, masterId, tabKey);
+      return calc.runDetailCalc(node, api, row, masterId, tabKey, masterRowKey);
     },
     recalcAggregates: (masterId: number) => {
       if (!resolvedFeatures.value.aggregates) return;

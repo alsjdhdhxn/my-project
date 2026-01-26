@@ -96,7 +96,7 @@ const gridOptions = computed(() => unwrap(state.value.gridOptions) ?? {});
 const rowModelType = computed(() => gridOptions.value?.rowModelType);
 const dataSource = computed(() => unwrap(state.value.dataSource));
 const rowData = computed(() => {
-  if (rowModelType.value === 'infinite' || rowModelType.value === 'serverSide') return undefined;
+  if (rowModelType.value === 'serverSide') return undefined;
   return unwrap(state.value.rowData) ?? [];
 });
 const rowSelection = computed(() => unwrap(state.value.rowSelection));
@@ -112,8 +112,6 @@ function handleGridReady(params: GridReadyEvent) {
   const ds = dataSource.value;
   if (rowModelType.value === 'serverSide' && ds) {
     params.api.setGridOption('serverSideDatasource', ds);
-  } else if (rowModelType.value === 'infinite' && ds) {
-    params.api.setGridOption('datasource', ds);
   }
 }
 

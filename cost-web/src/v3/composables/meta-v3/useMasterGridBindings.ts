@@ -10,6 +10,7 @@ import {
 } from '@/v3/composables/meta-v3/grid-options';
 import { DIRTY_CELL_CLASS_RULES, isFlagTrue } from '@/v3/composables/meta-v3/cell-style';
 import type { CustomExportConfig } from '@/service/api/export-config';
+import { ensureRowKey } from '@/v3/logic/calc-engine';
 
 type RuntimeApi = {
   masterGridApi?: Ref<any>;
@@ -18,9 +19,9 @@ type RuntimeApi = {
   addMasterRow?: () => void;
   deleteMasterRow?: (row: any) => void;
   copyMasterRow?: (row: any) => void;
-  addDetailRow?: (masterId: number, tabKey: string) => void;
-  deleteDetailRow?: (masterId: number, tabKey: string, row: any) => void;
-  copyDetailRow?: (masterId: number, tabKey: string, row: any) => void;
+  addDetailRow?: (masterId: number, tabKey: string, masterRowKey?: string) => void;
+  deleteDetailRow?: (masterId: number, tabKey: string, row: any, masterRowKey?: string) => void;
+  copyDetailRow?: (masterId: number, tabKey: string, row: any, masterRowKey?: string) => void;
   save?: () => void;
   saveGridConfig?: (gridKey: string, api: any, columnApi: any) => void;
   applyGridConfig?: (gridKey: string, api: any, columnApi: any) => void;
@@ -98,7 +99,12 @@ export function useMasterGridBindings(params: {
   const rowHeight = 28;
   const headerHeight = 28;
 
-  const getRowId = (params: any) => String(params.data?.id);
+  const getRowId = (params: any) => {
+    const row = params.data;
+    if (!row) return '';
+    ensureRowKey(row);
+    return String(row._rowKey ?? '');
+  };
 
   // Row class rules (from ROW_CLASS config).
   const rowClassRules = params.rowClassRules ?? (runtime as any).masterRowClassRules?.value ?? [];

@@ -62,18 +62,20 @@ function calcAggregateValue(agg: SummaryAggConfig, rows: RowData[]): number {
 
 export function buildSummaryRows(params: {
   masterId: number;
+  masterRowKey: string;
   pageConfig: ParsedPageConfig | null;
-  detailCache: Map<number, Record<string, RowData[]>>;
+  detailCache: Map<string, Record<string, RowData[]>>;
   summaryConfig?: SummaryConfig;
 }): RowData[] {
-  const { masterId, pageConfig, detailCache } = params;
+  const { masterId, masterRowKey, pageConfig, detailCache } = params;
   const summaryConfig = params.summaryConfig || resolveSummaryConfig(pageConfig);
-  const cached = detailCache.get(masterId);
+  const cached = detailCache.get(masterRowKey);
   if (!pageConfig || !cached) return [];
 
   return (pageConfig.tabs || []).map(tab =>
     buildSummaryRow({
       masterId,
+      masterRowKey,
       tab,
       rows: cached[tab.key] || [],
       summaryConfig
@@ -83,11 +85,12 @@ export function buildSummaryRows(params: {
 
 export function buildSummaryRow(params: {
   masterId: number;
+  masterRowKey: string;
   tab: TabConfig;
   rows: RowData[];
   summaryConfig: SummaryConfig;
 }): RowData {
-  const { masterId, tab, rows, summaryConfig } = params;
+  const { masterId, masterRowKey, tab, rows, summaryConfig } = params;
   const activeRows = rows.filter(row => !row._isDeleted);
   const aggregates: Record<string, number> = {};
   for (const agg of summaryConfig.summaryAggregates) {
@@ -98,14 +101,15 @@ export function buildSummaryRow(params: {
     id: null,
     _tabKey: tab.key,
     _masterId: masterId,
+    _masterRowKey: masterRowKey,
     _detailRows: rows,
     [summaryConfig.groupLabelField]: tab.title,
     ...aggregates
   };
 }
 
-export function getSummaryRowId(masterId: number, tabKey: string): string {
-  return `${masterId}_${tabKey}`;
+export function getSummaryRowId(masterRowKey: string, tabKey: string): string {
+  return `${masterRowKey}_${tabKey}`;
 }
 
 export function applySummaryRowValues(rowNode: any, summaryRow: RowData, summaryConfig: SummaryConfig): void {
@@ -125,4 +129,3 @@ export function applySummaryRowValues(rowNode: any, summaryRow: RowData, summary
     rowNode.data._detailRows = summaryRow._detailRows;
   }
 }
-

@@ -1,21 +1,22 @@
 import { ref, type Ref, type ShallowRef } from 'vue';
 import type { GridApi } from 'ag-grid-community';
 import type { LookupRule } from '@/composables/useMetaColumns';
-import type { RowData } from '@/v3/logic/calc-engine';
+import { ensureRowKey, type RowData } from '@/v3/logic/calc-engine';
 
 type MarkFieldChange = (row: RowData, field: string, oldValue: any, newValue: any, type: 'user' | 'calc') => void;
 
 type RunMasterCalc = (node: any, row: RowData) => void;
 
-type RunDetailCalc = (node: any, api: any, row: RowData, masterId: number, tabKey: string) => void;
+type RunDetailCalc = (node: any, api: any, row: RowData, masterId: number, tabKey: string, masterRowKey?: string) => void;
 
-type RecalcAggregates = (masterId: number) => void;
+type RecalcAggregates = (masterId: number, masterRowKey?: string) => void;
 
 type LookupDialogExpose = { open: () => void };
 
 export function useLookupDialog(params: {
-  masterRows: Ref<RowData[]>;
-  detailCache: Map<number, Record<string, RowData[]>>;
+  getMasterRowById: (masterId: number) => RowData | null;
+  getMasterRowByRowKey: (rowKey: string) => RowData | null;
+  detailCache: Map<string, Record<string, RowData[]>>;
   masterGridApi: ShallowRef<GridApi | null>;
   masterLookupRules: Ref<LookupRule[]>;
   detailLookupRulesByTab: Ref<Record<string, LookupRule[]>>;
@@ -26,7 +27,8 @@ export function useLookupDialog(params: {
   detailGridApisByTab?: Ref<Record<string, any>>;
 }) {
   const {
-    masterRows,
+    getMasterRowById,
+    getMasterRowByRowKey,
     detailCache,
     masterGridApi,
     masterLookupRules,
@@ -75,9 +77,10 @@ export function useLookupDialog(params: {
     const rowId = currentLookupRowId.value;
 
     if (currentLookupIsMaster.value) {
-      const row = masterRows.value.find(r => r.id === rowId);
+      const row = getMasterRowById(rowId);
       if (row) {
-        const node = masterGridApi.value?.getRowNode(String(rowId));
+        const rowKey = ensureRowKey(row);
+        const node = masterGridApi.value?.getRowNode(String(rowKey));
         for (const [field, value] of Object.entries(fillData)) {
           if (row[field] !== value) {
             const oldValue = row[field];
@@ -92,11 +95,14 @@ export function useLookupDialog(params: {
       }
     } else {
       const tabKey = currentLookupTabKey.value;
-      for (const [masterId, tabData] of detailCache.entries()) {
+      for (const [masterRowKey, tabData] of detailCache.entries()) {
         const rows = tabData[tabKey];
         if (!rows) continue;
         const row = rows.find(r => r.id === rowId);
         if (row) {
+          const masterRow = getMasterRowByRowKey(masterRowKey);
+          const masterId = masterRow?.id;
+          if (masterId == null) break;
           for (const [field, value] of Object.entries(fillData)) {
             if (row[field] !== value) {
               const oldValue = row[field];
@@ -108,17 +114,17 @@ export function useLookupDialog(params: {
           if (splitDetailApi) {
             const node = splitDetailApi.getRowNode?.(String(rowId));
             if (node) {
-              runDetailCalc(node, splitDetailApi, row, masterId, tabKey);
+              runDetailCalc(node, splitDetailApi, row, masterId, tabKey, masterRowKey);
             }
             splitDetailApi.refreshCells?.({ force: true });
           } else {
-            const secondLevelInfo = masterGridApi.value?.getDetailGridInfo(`detail_${masterId}`);
+            const secondLevelInfo = masterGridApi.value?.getDetailGridInfo(`detail_${masterRowKey}`);
             if (secondLevelInfo?.api) {
               secondLevelInfo.api.forEachDetailGridInfo((detailInfo: any) => {
                 if (detailInfo.id?.includes(tabKey)) {
                   detailInfo.api.forEachNode((node: any) => {
                     if (node.data?.id === rowId) {
-                      runDetailCalc(node, detailInfo.api, row, masterId, tabKey);
+                      runDetailCalc(node, detailInfo.api, row, masterId, tabKey, masterRowKey);
                     }
                   });
                   detailInfo.api.refreshCells({ force: true });
@@ -126,7 +132,7 @@ export function useLookupDialog(params: {
               });
             }
           }
-          recalcAggregates(masterId);
+          recalcAggregates(masterId, masterRowKey);
           break;
         }
       }
@@ -153,4 +159,3 @@ export function useLookupDialog(params: {
     onLookupCancel
   };
 }
-

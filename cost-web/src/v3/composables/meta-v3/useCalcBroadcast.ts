@@ -5,6 +5,7 @@ import {
   calcAggregates,
   compileCalcRules,
   compileAggRules,
+  ensureRowKey,
   type ParsedPageConfig,
   type RowData
 } from '@/v3/logic/calc-engine';
@@ -22,19 +23,23 @@ type CompiledAggRules = ReturnType<typeof compileAggRules>;
 
 export function useCalcBroadcast(params: {
   masterGridApi: ShallowRef<GridApi | null>;
-  masterRows: Ref<RowData[]>;
-  detailCache: Map<number, Record<string, RowData[]>>;
+  getMasterRowById: (masterId: number) => RowData | null;
+  getMasterRowByRowKey: (rowKey: string) => RowData | null;
+  resolveMasterRowKey: (masterId: number) => string | null;
+  detailCache: Map<string, Record<string, RowData[]>>;
   broadcastFields: Ref<string[]>;
   detailCalcRulesByTab: Ref<Record<string, CompiledCalcRules>>;
   compiledAggRules: Ref<CompiledAggRules>;
   compiledMasterCalcRules: Ref<CompiledCalcRules>;
   pageConfig: Ref<ParsedPageConfig | null>;
-  loadDetailData?: (masterId: number) => Promise<void>;
+  loadDetailData?: (masterId: number, masterRowKey?: string) => Promise<void>;
   detailGridApisByTab?: Ref<Record<string, any>>;
 }) {
   const {
     masterGridApi,
-    masterRows,
+    getMasterRowById,
+    getMasterRowByRowKey,
+    resolveMasterRowKey,
     detailCache,
     broadcastFields,
     detailCalcRulesByTab,
@@ -60,8 +65,8 @@ export function useCalcBroadcast(params: {
     console.log('[markFieldChange]', field, type, row._dirtyFields);
   }
 
-  function runDetailCalc(node: any, api: any, row: RowData, masterId: number, tabKey: string) {
-    const masterRow = masterRows.value.find(r => r.id === masterId);
+  function runDetailCalc(node: any, api: any, row: RowData, masterId: number, tabKey: string, masterRowKey?: string) {
+    const masterRow = getMasterRowById(masterId) || (masterRowKey ? getMasterRowByRowKey(masterRowKey) : null);
     if (!masterRow) return;
     const calcRules = detailCalcRulesByTab.value[tabKey] || [];
     if (calcRules.length === 0) return;
@@ -125,10 +130,11 @@ export function useCalcBroadcast(params: {
   }
 
   async function broadcastToDetail(masterId: number, masterRow: RowData) {
-    let cached = detailCache.get(masterId);
+    const masterRowKey = ensureRowKey(masterRow);
+    let cached = detailCache.get(masterRowKey);
     if (!cached && loadDetailData) {
-      await loadDetailData(masterId);
-      cached = detailCache.get(masterId);
+      await loadDetailData(masterId, masterRowKey);
+      cached = detailCache.get(masterRowKey);
     }
     if (!cached) return;
 
@@ -160,12 +166,12 @@ export function useCalcBroadcast(params: {
       }
     }
 
-    refreshAllDetailGrids(masterId);
-    recalcAggregates(masterId);
+    refreshAllDetailGrids(masterRowKey);
+    recalcAggregates(masterId, masterRowKey);
     console.log('[broadcast done]', masterId);
   }
 
-  function refreshAllDetailGrids(masterId: number) {
+  function refreshAllDetailGrids(masterRowKey: string) {
     const detailApis = detailGridApisByTab?.value;
     if (detailApis && Object.keys(detailApis).length > 0) {
       Object.values(detailApis).forEach(api => api?.refreshCells?.({ force: true }));
@@ -173,12 +179,12 @@ export function useCalcBroadcast(params: {
     }
     const api = masterGridApi.value;
     if (!api) return;
-    const secondLevelInfo = api.getDetailGridInfo(`detail_${masterId}`);
+    const secondLevelInfo = api.getDetailGridInfo(`detail_${masterRowKey}`);
     if (!secondLevelInfo?.api) {
       console.log('[refresh third level] second level not expanded');
       return;
     }
-    const cached = detailCache.get(masterId);
+    const cached = detailCache.get(masterRowKey);
     if (!cached) return;
     const tabs = pageConfig.value?.tabs || [];
 
@@ -197,12 +203,15 @@ export function useCalcBroadcast(params: {
     });
   }
 
-  function recalcAggregates(masterId: number) {
-    const cached = detailCache.get(masterId);
+  function recalcAggregates(masterId: number, masterRowKey?: string) {
+    const resolvedRowKey = masterRowKey ?? resolveMasterRowKey(masterId);
+    if (!resolvedRowKey) return;
+    const cached = detailCache.get(resolvedRowKey);
     if (!cached) return;
-    const masterNode = masterGridApi.value?.getRowNode(String(masterId));
+    const masterNode = masterGridApi.value?.getRowNode(String(resolvedRowKey));
     if (!masterNode) return;
     const masterRow = masterNode.data;
+    const effectiveMasterId = masterRow?.id ?? masterId;
 
     const allRows: RowData[] = [];
     for (const rows of Object.values(cached)) {
@@ -243,24 +252,27 @@ export function useCalcBroadcast(params: {
       masterGridApi.value?.refreshCells({ rowNodes: [masterNode], columns: changedFields, force: true });
     }
 
-    refreshSummaryRow(masterId);
+    refreshSummaryRow(effectiveMasterId, resolvedRowKey);
     if (isDebugEnabled()) {
-      debugLog('aggregate', { masterId, results });
+      debugLog('aggregate', { masterId: effectiveMasterId, results });
     }
     console.log('[aggregate calc]', results);
   }
 
-  function refreshSummaryRow(masterId: number) {
+  function refreshSummaryRow(masterId: number, masterRowKey?: string) {
     const api = masterGridApi.value;
     if (!api) return;
-    const secondLevelInfo = api.getDetailGridInfo(`detail_${masterId}`);
+    const resolvedRowKey = masterRowKey ?? resolveMasterRowKey(masterId);
+    if (!resolvedRowKey) return;
+    const secondLevelInfo = api.getDetailGridInfo(`detail_${resolvedRowKey}`);
     if (!secondLevelInfo?.api) return;
-    const cached = detailCache.get(masterId);
+    const cached = detailCache.get(resolvedRowKey);
     if (!cached || !pageConfig.value) return;
 
     const summaryConfig = resolveSummaryConfig(pageConfig.value);
     const summaryRows = buildSummaryRows({
       masterId,
+      masterRowKey: resolvedRowKey,
       pageConfig: pageConfig.value,
       detailCache,
       summaryConfig
@@ -269,7 +281,7 @@ export function useCalcBroadcast(params: {
     for (const summaryRow of summaryRows) {
       const tabKey = summaryRow._tabKey;
       if (!tabKey) continue;
-      const summaryNode = secondLevelInfo.api.getRowNode(getSummaryRowId(masterId, String(tabKey)));
+      const summaryNode = secondLevelInfo.api.getRowNode(getSummaryRowId(resolvedRowKey, String(tabKey)));
       if (summaryNode) {
         applySummaryRowValues(summaryNode, summaryRow, summaryConfig);
       }
@@ -286,4 +298,3 @@ export function useCalcBroadcast(params: {
     refreshSummaryRow
   };
 }
-

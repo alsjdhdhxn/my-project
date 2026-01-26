@@ -45,6 +45,7 @@ export {
   buildRecordItem,
   isRowChanged,
   generateTempId,
+  ensureRowKey,
   initRowData,
   clearRowChanges
 } from './builder';
