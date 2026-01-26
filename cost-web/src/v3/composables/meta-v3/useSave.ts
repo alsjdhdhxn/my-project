@@ -21,7 +21,6 @@ type DetailCache = Map<string, Record<string, RowData[]>>;
 export function useSave(params: {
   pageCode: string;
   pageConfig: Ref<ParsedPageConfig | null>;
-  masterRows: Ref<RowData[]>;
   detailCache: DetailCache;
   getMasterRowById: (masterId: number) => RowData | null;
   getMasterRowByRowKey: (rowKey: string) => RowData | null;
@@ -33,6 +32,7 @@ export function useSave(params: {
   detailFkColumnByTab: Ref<Record<string, string>>;
   masterGridApi: ShallowRef<GridApi | null>;
   detailGridApisByTab?: Ref<Record<string, any>>;
+  activeMasterRowKey?: Ref<string | null>;
   notifyInfo: NotifyFn;
   notifyError: NotifyFn;
   notifySuccess: NotifyFn;
@@ -40,7 +40,6 @@ export function useSave(params: {
   const {
     pageCode,
     pageConfig,
-    masterRows,
     detailCache,
     getMasterRowById,
     getMasterRowByRowKey,
@@ -52,6 +51,7 @@ export function useSave(params: {
     detailFkColumnByTab,
     masterGridApi,
     detailGridApisByTab,
+    activeMasterRowKey,
     notifyInfo,
     notifyError,
     notifySuccess
@@ -88,12 +88,6 @@ export function useSave(params: {
       const mapped = idMapping.get(Number(row.id));
       if (mapped) row.id = mapped;
     });
-
-    // 更新主表行 ID（客户端缓存）
-    for (const master of masterRows.value) {
-      const mapped = idMapping.get(Number(master.id));
-      if (mapped) master.id = mapped;
-    }
 
     if (detailCache.size === 0) return;
 
@@ -164,24 +158,13 @@ export function useSave(params: {
       const dirtyMaster: RowData[] = [];
       const dirtyDetailByTab: Record<string, RowData[]> = {};
 
-      // 判断是否 SSRM 模式
       const api = masterGridApi.value as any;
-      const rowModelType = api?.getGridOption?.('rowModelType');
-      
-      if (rowModelType === 'serverSide') {
-        // SSRM 模式：从 AG Grid 行节点获取脏数据
-        api?.forEachNode?.((node: any) => {
-          const row = node.data;
-          if (row && (row._isNew || row._isDeleted || row._dirtyFields)) {
-            dirtyMaster.push(row);
-          }
-        });
-      } else {
-        // 客户端模式：从 masterRows 获取
-        for (const row of masterRows.value) {
-          if (row._isNew || row._isDeleted || row._dirtyFields) dirtyMaster.push(row);
+      api?.forEachNode?.((node: any) => {
+        const row = node.data;
+        if (row && (row._isNew || row._isDeleted || row._dirtyFields)) {
+          dirtyMaster.push(row);
         }
-      }
+      });
 
       for (const [, tabData] of detailCache.entries()) {
         for (const [tabKey, rows] of Object.entries(tabData)) {
@@ -285,18 +268,13 @@ export function useSave(params: {
       // 清除变更标记，收集需要更新/删除的行
       const rowsToUpdate: RowData[] = [];
       const rowsToRemove: RowData[] = [];
-      const deletedDetailRowsByMasterKey = new Map<string, RowData[]>();
+      const touchedDetailKeys = new Set<string>();
 
       for (const masterId of savedMasterIds) {
         const masterRow = getMasterRowById(masterId);
         if (masterRow) {
           if (masterRow._isDeleted) {
-            // 从 masterRows 数组移除（客户端模式）
-            const idx = masterRows.value.findIndex(r => r.id === masterId);
-            if (idx >= 0) {
-              masterRows.value.splice(idx, 1);
-            }
-            // 无论是否在 masterRows 中，都需要加入 rowsToRemove 以触发 Grid 删除
+            // 无论是否已在表格中，都需要加入 rowsToRemove 以触发 Grid 删除
             rowsToRemove.push(masterRow);
           } else {
             clearRowFlags(masterRow);
@@ -306,68 +284,55 @@ export function useSave(params: {
 
         const masterRowKey = masterRow ? ensureRowKey(masterRow) : resolveMasterRowKey(masterId);
         const cached = masterRowKey ? detailCache.get(masterRowKey) : undefined;
-        if (cached) {
-          const deletedRows: RowData[] = [];
+        if (cached && masterRowKey) {
           for (const [tabKey, rows] of Object.entries(cached)) {
             const remaining: RowData[] = [];
             for (const r of rows) {
               if (r._isDeleted) {
-                deletedRows.push(r);
-              } else {
-                clearRowFlags(r);
-                remaining.push(r);
+                continue;
               }
+              clearRowFlags(r);
+              remaining.push(r);
             }
             cached[tabKey] = remaining;
           }
-          if (deletedRows.length > 0 && masterRowKey) {
-            deletedDetailRowsByMasterKey.set(masterRowKey, deletedRows);
-          }
+          touchedDetailKeys.add(masterRowKey);
         }
       }
 
       // 更新主表 Grid
       const gridApi = masterGridApi.value as any;
-      const gridRowModelType = gridApi?.getGridOption?.('rowModelType');
-      
-      if (gridRowModelType === 'serverSide') {
-        // SSRM 模式：刷新服务端数据
-        if (rowsToUpdate.length > 0) {
-          gridApi?.applyServerSideTransaction?.({ route: [], update: rowsToUpdate });
-        }
-        if (rowsToRemove.length > 0) {
-          gridApi?.applyServerSideTransaction?.({ route: [], remove: rowsToRemove });
-        }
-      } else if (gridApi?.applyTransaction) {
-        // 客户端模式：使用事务 API
-        if (rowsToUpdate.length > 0) {
-          gridApi.applyTransaction({ update: rowsToUpdate });
-        }
-        if (rowsToRemove.length > 0) {
-          gridApi.applyTransaction({ remove: rowsToRemove });
-        }
+      if (rowsToUpdate.length > 0) {
+        gridApi?.applyServerSideTransaction?.({ route: [], update: rowsToUpdate });
+      }
+      if (rowsToRemove.length > 0) {
+        gridApi?.applyServerSideTransaction?.({ route: [], remove: rowsToRemove });
       }
 
-      // 更新明细 Grid（仅客户端模式）
-      if (gridRowModelType !== 'serverSide') {
-        for (const [masterRowKey, deletedRows] of deletedDetailRowsByMasterKey.entries()) {
-          if (deletedRows.length === 0) continue;
+      // 更新明细 Grid（分割/嵌套视图）
+      for (const masterRowKey of touchedDetailKeys) {
+        const cached = detailCache.get(masterRowKey);
+        if (!cached) continue;
 
-          const secondLevelInfo = masterGridApi.value?.getDetailGridInfo(`detail_${masterRowKey}`);
-          if (secondLevelInfo?.api) {
-            secondLevelInfo.api.forEachDetailGridInfo((detailInfo: any) => {
-              if (detailInfo.api?.applyTransaction) {
-                detailInfo.api.applyTransaction({ remove: deletedRows });
-              }
-            });
-          }
-
-          if (detailGridApisByTab?.value) {
-            for (const detailApi of Object.values(detailGridApisByTab.value)) {
-              if (detailApi?.applyTransaction) {
-                detailApi.applyTransaction({ remove: deletedRows });
+        const secondLevelInfo = masterGridApi.value?.getDetailGridInfo(`detail_${masterRowKey}`);
+        if (secondLevelInfo?.api) {
+          secondLevelInfo.api.forEachDetailGridInfo((detailInfo: any) => {
+            if (!detailInfo?.api) return;
+            let tabKey: string | undefined;
+            for (const key of Object.keys(cached)) {
+              if (detailInfo.id?.includes(key)) {
+                tabKey = key;
+                break;
               }
             }
+            if (!tabKey) return;
+            detailInfo.api.setGridOption?.('rowData', cached[tabKey]);
+          });
+        }
+
+        if (detailGridApisByTab?.value && activeMasterRowKey?.value === masterRowKey) {
+          for (const [tabKey, rows] of Object.entries(cached)) {
+            detailGridApisByTab.value[tabKey]?.setGridOption?.('rowData', rows);
           }
         }
       }

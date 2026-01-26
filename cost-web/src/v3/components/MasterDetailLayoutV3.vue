@@ -12,7 +12,6 @@
         <div class="master-panel">
           <AgGridVue
             class="ag-theme-quartz master-grid"
-            :rowData="masterRowData"
             :columnDefs="masterColumnDefs"
             :defaultColDef="defaultColDef"
             :getRowId="getMasterRowId"
@@ -71,7 +70,6 @@
     <div v-else class="master-panel">
       <AgGridVue
         class="ag-theme-quartz master-grid"
-        :rowData="masterRowData"
         :columnDefs="masterColumnDefs"
         :defaultColDef="defaultColDef"
         :getRowId="getMasterRowId"
@@ -120,7 +118,6 @@ const dialog = useDialog();
 const themeStore = useThemeStore();
 const runtime = props.runtime;
 const {
-  masterRows,
   masterColumnDefs,
   detailColumnsByTab,
   detailCache,
@@ -148,7 +145,8 @@ const {
   recalcAggregates,
   onDetailCellClicked,
   save,
-  saveGridConfig
+  saveGridConfig,
+  activeMasterRowKey: runtimeActiveMasterRowKey
 } = runtime;
 
 const editingState = ref(false);
@@ -174,21 +172,8 @@ const activeMasterRowKey = ref<string | null>(null);
 
 const masterGridOptionsValue = computed(() => masterGridOptions?.value || null);
 
-// 判断是否服务端模式
-const isServerSideMode = computed(() => {
-  const type = masterGridOptionsValue.value?.rowModelType;
-  return type === 'serverSide';
-});
-
-// 只有客户端模式才传 rowData
-const masterRowData = computed(() => isServerSideMode.value ? undefined : masterRows.value);
-
 const dataSource = computed(() => {
-  const rowModelType = masterGridOptionsValue.value?.rowModelType;
-  if (rowModelType === 'serverSide') {
-    return runtime?.createServerSideDataSource?.({ pageSize: masterGridOptionsValue.value?.cacheBlockSize });
-  }
-  return null;
+  return runtime?.createServerSideDataSource?.({ pageSize: masterGridOptionsValue.value?.cacheBlockSize });
 });
 
 const {
@@ -225,6 +210,9 @@ const {
     const nextRowKey = selected ? ensureRowKey(selected) : null;
     activeMasterId.value = typeof nextId === 'number' ? nextId : (nextId != null ? Number(nextId) : null);
     activeMasterRowKey.value = nextRowKey ? String(nextRowKey) : null;
+    if (runtimeActiveMasterRowKey) {
+      runtimeActiveMasterRowKey.value = activeMasterRowKey.value;
+    }
     if (activeMasterId.value == null) return;
     if (!activeMasterRowKey.value) return;
     if (!detailCache.get(activeMasterRowKey.value)) {

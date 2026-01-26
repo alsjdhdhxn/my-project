@@ -111,6 +111,7 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
 
   const masterGridApi = shallowRef<GridApi | null>(null);
   const detailGridApisByTab = ref<Record<string, any>>({});
+  const activeMasterRowKey = ref<string | null>(null);
 
 
   const meta = useMetaConfig(pageCode, notifyError);
@@ -189,7 +190,6 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
   const { save, isSaving } = useSave({
     pageCode,
     pageConfig: meta.pageConfig,
-    masterRows: data.masterRows,
     detailCache: data.detailCache,
     getMasterRowById: data.getMasterRowById,
     getMasterRowByRowKey: data.getMasterRowByRowKey,
@@ -201,6 +201,7 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     detailFkColumnByTab: meta.detailFkColumnByTab,
     masterGridApi,
     detailGridApisByTab,
+    activeMasterRowKey,
     notifyInfo,
     notifyError,
     notifySuccess
@@ -262,43 +263,27 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
       return;
     }
     
-    // 判断是否 SSRM 模式
     const api = masterGridApi.value as any;
-    const rowModelType = api?.getGridOption?.('rowModelType');
-    
-    if (rowModelType === 'serverSide') {
-      // SSRM 模式：先清空缓存，再刷新
-      data.clearMasterCache();
-      if (refreshMode === 'row' && options?.selectedRow) {
-        // 刷新单行：先刷新再重新选中
-        const rowId = options.selectedRow.id;
-        api?.refreshServerSide?.({ purge: false });
-        // 等待刷新完成后尝试重新选中
-        setTimeout(() => {
-          api?.forEachNode?.((node: any) => {
-            if (node.data?.id === rowId) {
-              node.setSelected(true);
-            }
-          });
-        }, 100);
-      } else {
-        // 刷新全部
-        api?.refreshServerSide?.({ purge: true });
-      }
-    } else {
-      // 客户端模式
-      if (refreshMode === 'row' && options?.selectedRow) {
-        await data.refreshMasterRow(options.selectedRow);
-      } else {
-        await data.loadMasterData();
-      }
+    if (refreshMode === 'row' && options?.selectedRow) {
+      const rowId = options.selectedRow.id;
+      api?.refreshServerSide?.({ purge: false });
+      setTimeout(() => {
+        api?.forEachNode?.((node: any) => {
+          if (node.data?.id === rowId) {
+            node.setSelected(true);
+          }
+        });
+      }, 100);
+      return;
     }
+    api?.refreshServerSide?.({ purge: true });
   }
 
   const runtimeApi = {
     pageCode,
     masterGridApi,
     detailGridApisByTab,
+    activeMasterRowKey,
     ...metaApi,
     componentStateByKey,
     ...data,
@@ -455,8 +440,6 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     const components = meta.pageComponents.value || [];
     const flatComponents = flattenComponents(components);
     const nextStates: Record<string, ComponentState> = {};
-    // V3 强制使用 SSRM
-    const isServerSide = true;
 
     for (const component of flatComponents) {
       nextStates[component.componentKey] = {
@@ -478,7 +461,7 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
         componentType: 'GRID',
         status: gridError ? 'error' : 'ready',
         error: gridError,
-        rowData: isServerSide ? [] : (data.masterRows.value || []),
+        rowData: [],
         columnDefs: meta.masterColumnDefs.value || []
       };
       nextStates[masterKey] = gridState;
@@ -488,7 +471,7 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
 
     if (!watchersAttached && masterKey) {
       watchersAttached = true;
-      // V3 强制使用 SSRM，不需要 watch masterRows 来更新 Grid
+      // V3 强制使用 SSRM，不需要 watch rowData 来更新 Grid
       watch(meta.masterColumnDefs, (defs) => {
         const state = componentStateByKey.value[masterKey] as GridState | undefined;
         if (state) state.columnDefs = defs || [];

@@ -1,4 +1,4 @@
-﻿import { ref, type Ref, type ShallowRef } from 'vue';
+﻿import type { Ref, ShallowRef } from 'vue';
 import type { GridApi, IServerSideGetRowsParams } from 'ag-grid-community';
 import { searchDynamicData } from '@/service/api';
 import { debugLog } from '@/v3/composables/meta-v3/debug';
@@ -30,20 +30,15 @@ export function useMasterDetailData(params: {
     afterAddDetailRow
   } = params;
 
-  const masterRows = ref<RowData[]>([]);
   const detailCache = new Map<string, Record<string, RowData[]>>();
 
-  function isServerSideMode() {
-    const type = masterGridApi.value?.getGridOption?.('rowModelType');
-    return type === 'serverSide' || !type;
-  }
 
   function getMasterRowByRowKey(rowKey: string): RowData | null {
     if (!rowKey) return null;
     const api = masterGridApi.value as any;
     const node = api?.getRowNode?.(String(rowKey));
     if (node?.data) return node.data as RowData;
-    return masterRows.value.find(r => r._rowKey === rowKey) || null;
+    return null;
   }
 
   function getMasterRowById(id: number): RowData | null {
@@ -56,7 +51,7 @@ export function useMasterDetailData(params: {
       }
     });
     if (found) return found;
-    return masterRows.value.find(r => r.id === id) || null;
+    return null;
   }
 
   function resolveMasterRowKey(masterId: number): string | null {
@@ -163,50 +158,6 @@ export function useMasterDetailData(params: {
     return conditions;
   }
 
-  async function loadMasterData() {
-    const tableCode = pageConfig.value?.masterTableCode;
-    if (!tableCode) return;
-    const { data, error } = await searchDynamicData(tableCode, { pageCode });
-    if (error) {
-      notifyError('加载主表数据失败');
-      return;
-    }
-    const rows = (data?.list || []).map((row: any) => initRowData(row));
-    if (!isServerSideMode()) {
-      masterRows.value = rows;
-      masterGridApi.value?.setGridOption?.('rowData', rows);
-    }
-  }
-
-  /** 刷新单行数据 */
-  async function refreshMasterRow(row: Record<string, any>) {
-    const tableCode = pageConfig.value?.masterTableCode;
-    // 默认使用 id 作为主键
-    const pkValue = row.id;
-    if (!tableCode || pkValue === undefined) return;
-    
-    const { data, error } = await searchDynamicData(tableCode, {
-      pageCode,
-      conditions: [{ field: 'id', operator: 'eq', value: pkValue }]
-    });
-    if (error) {
-      notifyError('刷新行数据失败');
-      return;
-    }
-    const newRow = data?.list?.[0];
-    if (!newRow) return;
-    
-    // 更新缓存中的行数据
-    const id = newRow.id;
-    if (typeof id === 'number') {
-      const existingRow = getMasterRowById(id);
-      if (existingRow) Object.assign(existingRow, initRowData(newRow));
-    }
-    
-    // 刷新表格显示
-    masterGridApi.value?.refreshCells({ force: true });
-  }
-
   async function loadDetailData(masterId: number, masterRowKey?: string) {
     const resolvedRowKey = masterRowKey ?? resolveMasterRowKey(masterId);
     if (!resolvedRowKey) {
@@ -272,9 +223,6 @@ export function useMasterDetailData(params: {
       : 0;
 
     // 更新本地缓存（仅客户端模式）
-    if (!isServerSideMode()) {
-      masterRows.value.splice(insertIndex, 0, newRow);
-    }
 
     // V3 强制使用 SSRM：使用事务 API 插入行到 Grid
     if (api) {
@@ -304,10 +252,6 @@ export function useMasterDetailData(params: {
 
     if (row._isNew) {
       // 新增行直接删除
-      if (!isServerSideMode()) {
-        const idx = masterRows.value.findIndex(r => r.id === row.id);
-        if (idx >= 0) masterRows.value.splice(idx, 1);
-      }
 
       // V3 强制使用 SSRM：使用事务 API 删除行
       if (api) {
@@ -400,12 +344,7 @@ export function useMasterDetailData(params: {
     const sourceNode = api?.getRowNode(String(sourceRowKey));
     const insertIndex = sourceNode?.rowIndex != null
       ? sourceNode.rowIndex + 1
-      : (isServerSideMode() ? 0 : masterRows.value.length);
-
-    // 更新本地缓存（仅客户端模式）
-    if (!isServerSideMode()) {
-      masterRows.value.splice(insertIndex, 0, newRow);
-    }
+      : 0;
 
     // V3 强制使用 SSRM：使用事务 API 插入行到 Grid
     if (api) {
@@ -476,13 +415,7 @@ export function useMasterDetailData(params: {
   }
 
   return {
-    masterRows,
     detailCache,
-    loadMasterData,
-    refreshMasterRow,
-    clearMasterCache: () => {
-      masterRows.value = [];
-    },
     getMasterRowByRowKey,
     getMasterRowById,
     resolveMasterRowKey,
@@ -517,10 +450,9 @@ export function useMasterDetailData(params: {
           const filterModel = request.filterModel;
           const conditions = buildConditionsFromFilterModel(filterModel);
 
-          // 查询键变化时重置缓存
+          // 查询键变化时更新标记
           const queryKey = JSON.stringify({ filterModel, sortModel });
           if (startRow === 0 && queryKey !== lastQueryKey) {
-            masterRows.value = [];
             lastQueryKey = queryKey;
           }
 
