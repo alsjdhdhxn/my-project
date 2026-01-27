@@ -117,7 +117,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { AgGridVue } from 'ag-grid-vue3';
 import { NSplit, NSpace, NButton, useDialog } from 'naive-ui';
 import DetailRowRendererV3 from '@/v3/components/detail/DetailRowRendererV3.vue';
@@ -133,6 +133,14 @@ const dialog = useDialog();
 
 const themeStore = useThemeStore();
 const runtime = props.runtime;
+
+// 🔍 调试：监控可能导致 Grid 重置的属性变化
+watch(() => runtime.masterColumnDefs?.value, (newVal, oldVal) => {
+  if (newVal !== oldVal) {
+    console.warn('[DEBUG] masterColumnDefs changed!', { newLength: newVal?.length, oldLength: oldVal?.length });
+  }
+}, { deep: false });
+
 const {
   masterColumnDefs,
   detailColumnsByTab,
@@ -217,8 +225,12 @@ const activeMasterRowKey = ref<string | null>(null);
 
 const masterGridOptionsValue = computed(() => masterGridOptions?.value || null);
 
+// 确保 dataSource 只创建一次，避免因响应式重新计算导致 AG Grid 重置
+let cachedDataSource: any = null;
 const dataSource = computed(() => {
-  return runtime?.createServerSideDataSource?.({ pageSize: masterGridOptionsValue.value?.cacheBlockSize });
+  if (cachedDataSource) return cachedDataSource;
+  cachedDataSource = runtime?.createServerSideDataSource?.({ pageSize: masterGridOptionsValue.value?.cacheBlockSize });
+  return cachedDataSource;
 });
 
 const {

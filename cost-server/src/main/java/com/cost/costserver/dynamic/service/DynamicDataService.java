@@ -76,7 +76,8 @@ public class DynamicDataService {
         String orderClause = buildOrderClause(
                 param != null ? param.getSortField() : null,
                 param != null ? param.getSortOrder() : null,
-                columnMap);
+                columnMap,
+                metadata.pkColumn());
 
         String countSql = String.format("SELECT COUNT(*) FROM %s WHERE DELETED = 0 %s", queryView, whereClause);
         Long total = dynamicMapper.selectCount(countSql);
@@ -133,7 +134,8 @@ public class DynamicDataService {
         String orderClause = buildOrderClause(
                 param != null ? param.getSortField() : null,
                 param != null ? param.getSortOrder() : null,
-                columnMap);
+                columnMap,
+                metadata.pkColumn());
 
         String sql = String.format("SELECT * FROM %s WHERE DELETED = 0 %s %s", metadata.queryView(), whereClause,
                 orderClause);
@@ -221,7 +223,7 @@ public class DynamicDataService {
         TableMetadataDTO metadata = metadataService.getTableMetadata(tableCode);
         Map<String, ColumnMetadataDTO> columnMap = buildColumnMap(metadata);
 
-        String orderClause = buildOrderClause(sortField, sortOrder, columnMap);
+        String orderClause = buildOrderClause(sortField, sortOrder, columnMap, metadata.pkColumn());
         String sql = String.format("SELECT * FROM %s WHERE DELETED = 0 %s", metadata.queryView(), orderClause);
 
         List<Map<String, Object>> list = dynamicMapper.selectList(sql);
@@ -520,16 +522,35 @@ public class DynamicDataService {
         return String.join(", ", parts);
     }
 
-    private String buildOrderClause(String sortField, String sortOrder, Map<String, ColumnMetadataDTO> columnMap) {
+    private String buildOrderClause(String sortField, String sortOrder, Map<String, ColumnMetadataDTO> columnMap, String pkColumn) {
+        // 查找主键字段在视图中的列名
+        // 优先从列元数据中查找 targetColumn 匹配 pkColumn 的列，取其 columnName
+        String pkViewColumn = null;
+        for (ColumnMetadataDTO col : columnMap.values()) {
+            String target = StrUtil.isNotBlank(col.targetColumn()) ? col.targetColumn() : col.columnName();
+            if (target != null && target.equalsIgnoreCase(pkColumn)) {
+                pkViewColumn = col.columnName();
+                break;
+            }
+        }
+        // 如果没找到，回退到 pkColumn
+        String pk = StrUtil.isNotBlank(pkViewColumn) ? pkViewColumn : pkColumn;
+        if (StrUtil.isBlank(pk)) {
+            pk = "ID"; // 最终兜底
+        }
+        
         if (StrUtil.isBlank(sortField)) {
-            return "";
+            // 没有排序字段时，默认按主键排序以确保分页稳定性
+            return " ORDER BY " + pk + " ASC";
         }
         ColumnMetadataDTO col = columnMap.get(sortField);
         if (col == null || !Boolean.TRUE.equals(col.sortable())) {
-            return "";
+            // 排序字段无效时，默认按主键排序
+            return " ORDER BY " + pk + " ASC";
         }
         String order = "desc".equalsIgnoreCase(sortOrder) ? "DESC" : "ASC";
-        return " ORDER BY " + col.columnName() + " " + order;
+        // 添加主键作为二级排序，确保分页结果稳定（避免排序字段值重复时返回不确定的结果）
+        return " ORDER BY " + col.columnName() + " " + order + ", " + pk + " " + order;
     }
 
     private String formatValue(Object value, ColumnMetadataDTO col, String fieldName) {

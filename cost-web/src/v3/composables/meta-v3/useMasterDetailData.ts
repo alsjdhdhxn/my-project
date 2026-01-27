@@ -432,9 +432,23 @@ export function useMasterDetailData(params: {
       const pageSizeFallback = options?.pageSize || 100;
       if (!tableCode) return null;
       let lastQueryKey = '';
+      // 防抖：避免短时间内重复请求
+      let pendingRequest: Promise<void> | null = null;
+      let lastRequestTime = 0;
+      const REQUEST_DEBOUNCE_MS = 50;
+      // 缓存总行数，避免每次都传导致 Grid 重置
+      let cachedRowCount: number | undefined = undefined;
+      let lastSortFilterKey = '';
 
       return {
         getRows: async (params: IServerSideGetRowsParams) => {
+          const now = Date.now();
+          // 如果距离上次请求时间太短，跳过（AG Grid 内部可能触发多次）
+          if (now - lastRequestTime < REQUEST_DEBOUNCE_MS && pendingRequest) {
+            debugLog('ssrm debounce skip', { timeSinceLastRequest: now - lastRequestTime });
+            return;
+          }
+          lastRequestTime = now;
           const request = params.request;
           const startRow = request.startRow ?? 0;
           const endRow = request.endRow ?? startRow + pageSizeFallback;
@@ -450,6 +464,13 @@ export function useMasterDetailData(params: {
           const filterModel = request.filterModel;
           const conditions = buildConditionsFromFilterModel(filterModel);
 
+          // 检查排序/过滤是否变化，如果变化则清除缓存的 rowCount
+          const sortFilterKey = JSON.stringify({ filterModel, sortModel });
+          if (sortFilterKey !== lastSortFilterKey) {
+            lastSortFilterKey = sortFilterKey;
+            cachedRowCount = undefined; // 排序/过滤变化时重置
+          }
+
           // 查询键变化时更新标记
           const queryKey = JSON.stringify({ filterModel, sortModel });
           if (startRow === 0 && queryKey !== lastQueryKey) {
@@ -459,7 +480,7 @@ export function useMasterDetailData(params: {
           debugLog('ssrm request', { page, pageSize, sortField, sortOrder, conditions });
 
           try {
-            const { data, error } = await searchDynamicData(tableCode, {
+            const requestPromise = searchDynamicData(tableCode, {
               pageCode,
               page,
               pageSize,
@@ -467,6 +488,9 @@ export function useMasterDetailData(params: {
               sortOrder,
               conditions: conditions.length > 0 ? conditions : undefined
             });
+            pendingRequest = requestPromise.then(() => { pendingRequest = null; });
+
+            const { data, error } = await requestPromise;
 
             if (error) {
               params.fail();
@@ -475,15 +499,23 @@ export function useMasterDetailData(params: {
             }
 
             const rows = (data?.list || []).map((row: any) => initRowData(row));
-            const total = data?.total ?? rows.length;
+            const total = data?.total;
+
+            // 缓存 rowCount，只在第一次请求或排序/过滤变化时更新
+            if (total != null && cachedRowCount === undefined) {
+              cachedRowCount = total;
+            }
 
             debugLog('ssrm response', { rowCount: rows.length, total });
 
             // SSRM 成功回调
-            params.success({
-              rowData: rows,
-              rowCount: total
-            });
+            // 只在第一次请求时传 rowCount，后续请求不传（避免 Grid 重置）
+            const successParams: any = { rowData: rows };
+            if (startRow === 0 && cachedRowCount != null) {
+              successParams.rowCount = cachedRowCount;
+            }
+
+            params.success(successParams);
           } catch (e) {
             params.fail();
             notifyError('加载主表数据失败');

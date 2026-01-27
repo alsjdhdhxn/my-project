@@ -106,7 +106,8 @@ export function useMasterGridBindings(params: {
     const row = params.data;
     if (!row) return '';
     ensureRowKey(row);
-    return String(row._rowKey ?? '');
+    const rowKey = String(row._rowKey ?? '');
+    return rowKey;
   };
 
   // Row class rules (from ROW_CLASS config).
@@ -146,11 +147,15 @@ export function useMasterGridBindings(params: {
     masterMenuConfig: params.contextMenuConfig
   });
 
+  // 防止重复设置 datasource
+  let datasourceSet = false;
+
   function onGridReady(params: GridReadyEvent) {
     if (runtime.masterGridApi) runtime.masterGridApi.value = params.api;
-    // V3 强制使用 SSRM
-    if (dataSource) {
+    // V3 强制使用 SSRM - 只设置一次
+    if (dataSource && !datasourceSet) {
       params.api.setGridOption('serverSideDatasource', dataSource);
+      datasourceSet = true;
     }
     const currentDefs = (params.api.getColumnDefs?.() as ColDef[] | undefined) ?? [];
     const hasExplicitWidth = currentDefs.some(def => typeof def.width === 'number' && def.width > 0);
@@ -198,10 +203,8 @@ export function useMasterGridBindings(params: {
   }
 
   function onFilterChanged() {
-    const api = runtime.masterGridApi?.value;
-    if (!api) return;
-    // V3 强制使用 SSRM: 清除缓存并重新请求
-    api.refreshServerSide?.({ purge: true });
+    // V3 SSRM: AG Grid 会自动感知 filterModel 变化并触发 getRows
+    // 无需手动调用 refreshServerSide，否则会导致双重请求
   }
 
   return {
