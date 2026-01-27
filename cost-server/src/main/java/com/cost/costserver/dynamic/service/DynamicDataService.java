@@ -36,7 +36,6 @@ public class DynamicDataService {
     private final DynamicMapper dynamicMapper;
     private final MetadataService metadataService;
     private final ValidationService validationService;
-    private final ActionService actionService;
     private final OperationLogService operationLogService;
     private final AuditLogService auditLogService;
     private final PermissionService permissionService;
@@ -767,14 +766,6 @@ public class DynamicDataService {
             // 设置记录信息
             OperationLogContext.setRecordInfo(masterId, masterTableCode + "#" + masterId);
 
-            if ("added".equals(master.getStatus()) || "modified".equals(master.getStatus())) {
-                Map<String, Object> actionData = new HashMap<>(master.getData());
-                if (masterId != null) {
-                    actionData.put("id", masterId);
-                }
-                actionService.execute(masterTableCode, "after_save", null, actionData, masterValidationReport);
-            }
-
             // 3. 处理从表
             if (param.getDetails() != null && !param.getDetails().isEmpty()) {
                 for (var entry : param.getDetails().entrySet()) {
@@ -828,20 +819,12 @@ public class DynamicDataService {
                                 if (tempId != null && !tempId.equals(detailId)) {
                                     idMapping.put(tempId, detailId);
                                 }
-                                Map<String, Object> actionData = new HashMap<>(item.getData());
-                                actionData.put("id", detailId);
-                                actionService.execute(detailTableCode, "after_save", null, actionData,
-                                        detailValidationReport);
                                 // 审计日志 - 从表新增
                                 auditLogService.logInsert(userName, param.getPageCode(), detailTableCode,
                                         detailMeta.tableName(), detailId, item.getData());
                             }
                             case "modified" -> {
                                 update(detailTableCode, item.getId(), item.getData());
-                                Map<String, Object> actionData = new HashMap<>(item.getData());
-                                actionData.put("id", item.getId());
-                                actionService.execute(detailTableCode, "after_save", null, actionData,
-                                        detailValidationReport);
                                 // 审计日志 - 从表修改
                                 auditLogService.logAsync(userName, param.getPageCode(), detailTableCode,
                                         detailMeta.tableName(), item.getId(), "UPDATE", item.getChanges());
