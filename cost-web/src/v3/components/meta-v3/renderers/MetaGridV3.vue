@@ -48,7 +48,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, unref } from 'vue';
+import { computed, unref, onMounted, onUnmounted } from 'vue';
 import { AgGridVue } from 'ag-grid-vue3';
 import { NSpace, NButton, useDialog } from 'naive-ui';
 import type { ColDef, GridReadyEvent } from 'ag-grid-community';
@@ -190,6 +190,25 @@ function handleCellEditingStopped(event: any) {
 function handleFilterChanged() {
   state.value.onFilterChanged?.();
 }
+
+// Ctrl+S 保存
+function onKeyDown(event: KeyboardEvent) {
+  if (event.ctrlKey && event.key === 's') {
+    event.preventDefault();
+    const save = (props.runtime as any)?.save;
+    if (save) {
+      save();
+    }
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('keydown', onKeyDown);
+});
+
+onUnmounted(() => {
+  document.removeEventListener('keydown', onKeyDown);
+});
 </script>
 
 <style scoped>
