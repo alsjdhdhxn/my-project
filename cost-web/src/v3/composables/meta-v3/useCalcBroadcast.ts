@@ -152,18 +152,18 @@ export function useCalcBroadcast(params: {
 
     const header = `[MetaV3][CALC] masterId=${masterId}`;
     console.groupCollapsed(header);
-    console.log('trigger:');
-    console.log(`  - broadcastFields: [${triggerFields.map(f => `"${f}"`).join(', ')}]`);
+    console.info('trigger:');
+    console.info(`  - broadcastFields: [${triggerFields.map(f => `"${f}"`).join(', ')}]`);
 
     for (const group of detailLogs) {
       if (group.changes.length === 0) continue;
-      console.log(`detail rules (${group.tabKey}):`);
+      console.info(`detail rules (${group.tabKey}):`);
       for (const rule of group.rules) {
         const ruleMeta = group.ruleIndexMap.get(rule.field);
         const prefix = ruleMeta ? `(#${ruleMeta.index}) ` : '';
-        console.log(`  - ${prefix}${formatCalcRule(rule)}`);
+        console.info(`  - ${prefix}${formatCalcRule(rule)}`);
       }
-      console.log('detail changes:');
+      console.info('detail changes:');
       console.table(group.changes.map(change => ({
         rowId: change.rowId ?? '-',
         field: change.field,
@@ -177,22 +177,22 @@ export function useCalcBroadcast(params: {
       const aggIndexMap = buildRuleIndexMap(aggregateLog.aggregateRules);
       const calcIndexMap = buildRuleIndexMap(aggregateLog.masterCalcRules);
 
-      console.log('master rules (aggregate):');
+      console.info('master rules (aggregate):');
       for (const rule of aggregateLog.aggregateRules) {
         const ruleMeta = aggIndexMap.get(rule.targetField);
         const prefix = ruleMeta ? `(#${ruleMeta.index}) ` : '';
-        console.log(`  - ${prefix}${formatAggRule(rule)}`);
+        console.info(`  - ${prefix}${formatAggRule(rule)}`);
       }
       if (aggregateLog.masterCalcRules.length > 0) {
-        console.log('master rules (calc):');
+        console.info('master rules (calc):');
         for (const rule of aggregateLog.masterCalcRules) {
           const ruleMeta = calcIndexMap.get(rule.field);
           const prefix = ruleMeta ? `(#${ruleMeta.index}) ` : '';
-          console.log(`  - ${prefix}${formatCalcRule(rule)}`);
+          console.info(`  - ${prefix}${formatCalcRule(rule)}`);
         }
       }
 
-      console.log('master changes:');
+      console.info('master changes:');
       console.table(aggregateLog.changes.map(change => ({
         field: change.field,
         from: formatValue(change.oldValue),

@@ -17,6 +17,5 @@ export function isDebugEnabled(): boolean {
 export function debugLog(...args: any[]) {
   if (!isDebugEnabled()) return;
   // Prefix for filtering in console
-  console.log('[MetaV3][Debug]', ...args);
 }
 

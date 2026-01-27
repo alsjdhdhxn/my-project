@@ -12,7 +12,6 @@ export function createRuntimeLogger(
 ): RuntimeLogger {
   return {
     log: (stage, message, componentKey) => {
-      console.log(`${formatPrefix(pageCode, componentKey, stage)} ${message}`);
     },
     error: (err: MetaError) => {
       const prefix = formatPrefix(err.pageCode, err.componentKey, err.stage);

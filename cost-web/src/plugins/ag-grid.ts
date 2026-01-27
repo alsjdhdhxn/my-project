@@ -29,7 +29,6 @@ export async function setupAgGrid() {
     ModuleRegistry.registerModules([AllEnterpriseModule]);
     window.__AG_GRID_ENTERPRISE__ = true;
     
-    console.log('✅ AG Grid 企业版已启用');
   } catch (e) {
     console.warn('⚠️ AG Grid 企业版未安装，使用社区版功能');
   }
