@@ -225,6 +225,9 @@ export function applyColumnOverrides(columns: ColDef[], overrides: ColumnOverrid
     if (override.editable != null) updated.editable = override.editable;
     if (override.searchable === false) updated.filter = false;
     if (override.searchable === true && updated.filter === false) updated.filter = true;
+    // 支持下拉框编辑器
+    if (override.cellEditor) updated.cellEditor = override.cellEditor;
+    if (override.cellEditorParams) updated.cellEditorParams = override.cellEditorParams;
     return updated;
   });
 }

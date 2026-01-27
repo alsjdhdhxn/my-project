@@ -470,8 +470,8 @@ onUnmounted(() => {
 
 <style scoped>
 .master-detail-layout-v3 {
+  width: 100%;
   height: 100%;
-  padding: 12px;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;

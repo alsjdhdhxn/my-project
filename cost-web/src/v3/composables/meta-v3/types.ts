@@ -22,6 +22,8 @@ export type ColumnOverrideRule = {
   editable?: boolean;
   searchable?: boolean;
   required?: boolean;
+  cellEditor?: string;
+  cellEditorParams?: Record<string, any>;
 };
 
 export type LookupRuleConfig = {

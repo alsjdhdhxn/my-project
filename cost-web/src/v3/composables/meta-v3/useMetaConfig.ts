@@ -28,7 +28,9 @@ import {
   parseContextMenuRule,
   parseRowEditableRule,
   parseRowClassRule,
-  attachGroupCellRenderer
+  attachGroupCellRenderer,
+  parseColumnOverrideConfig,
+  applyColumnOverrides
 } from '@/v3/composables/meta-v3/usePageRules';
 import {
   normalizeGridOptions,
@@ -385,17 +387,28 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
 
     const config = pageConfig.value;
     const resolvedMasterGridKey = masterGridKey.value ?? undefined;
+    const rulesMap = rulesByComponent.value;
+    
     const masterMeta = await loadTableMeta(config.masterTableCode, pageCode, resolvedMasterGridKey ?? 'masterGrid');
     if (!masterMeta) {
       notifyError('?????????');
       return false;
     }
 
+    // 解析主表 COLUMN_OVERRIDE 规则
+    const masterRuleKeys = uniqueKeys([resolvedMasterGridKey, 'master', 'masterGrid']);
+    const masterRules = collectRulesByKeys(rulesMap, masterRuleKeys);
+    const masterRuleLabel = resolvedMasterGridKey || 'master';
+    const masterColumnOverrides = parseColumnOverrideConfig(masterRuleLabel, masterRules);
+
     const masterColumns = mergeCellClassRules(
       attachGroupCellRenderer(
-        applyGroupByColumns(
-          masterMeta.columns,
-          masterGridOptions.value?.groupBy
+        applyColumnOverrides(
+          applyGroupByColumns(
+            masterMeta.columns,
+            masterGridOptions.value?.groupBy
+          ),
+          masterColumnOverrides
         )
       ),
       DIRTY_CELL_CLASS_RULES
@@ -419,15 +432,22 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
         continue;
       }
 
+      // 解析明细表 COLUMN_OVERRIDE 规则
+      const tabRules = getComponentRules(rulesMap, [tab.key]);
+      const tabColumnOverrides = parseColumnOverrideConfig(tab.key, tabRules);
+
       const tabGridOptions = detailGridOptionsByTab.value[tab.key];
       detailColumnsByTab.value[tab.key] = mergeCellClassRules(
-        applyGroupByColumns(
-          filterColumnsByVariant(
-            detailMeta.columns,
-            tab.variantKey,
-            detailMeta.rawColumns || []
+        applyColumnOverrides(
+          applyGroupByColumns(
+            filterColumnsByVariant(
+              detailMeta.columns,
+              tab.variantKey,
+              detailMeta.rawColumns || []
+            ),
+            tabGridOptions?.groupBy
           ),
-          tabGridOptions?.groupBy
+          tabColumnOverrides
         ),
         DIRTY_CELL_CLASS_RULES
       );
