@@ -12,6 +12,9 @@ import { DIRTY_CELL_CLASS_RULES, isFlagTrue } from '@/v3/composables/meta-v3/cel
 import type { CustomExportConfig } from '@/service/api/export-config';
 import { ensureRowKey } from '@/v3/logic/calc-engine';
 
+// 用于追踪已包装 editable 的列定义
+const wrappedEditableColumns = new WeakSet<ColDef>();
+
 type RuntimeApi = {
   masterGridApi?: Ref<any>;
   masterGridKey?: Ref<string | null> | string | null;
@@ -69,13 +72,13 @@ export function useMasterGridBindings(params: {
   };
 
   function wrapColumnEditable(def: ColDef, callback: (params: any) => boolean) {
-    if (!def || (def as any).__rowEditableWrapped) return;
+    if (!def || wrappedEditableColumns.has(def)) return;
     const existing = def.editable;
     def.editable = (params: any) => {
       const base = typeof existing === 'function' ? existing(params) : existing === false ? false : true;
       return base && callback(params);
     };
-    (def as any).__rowEditableWrapped = true;
+    wrappedEditableColumns.add(def);
   }
 
   if (rowEditableCallback && params.columnDefs) {

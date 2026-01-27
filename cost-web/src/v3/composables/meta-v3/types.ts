@@ -100,3 +100,20 @@ export type RowClassRule = {
   value?: any;
   className: string;
 };
+
+/** 工具栏按钮规则 */
+export type ToolbarItemRule = {
+  action: string;
+  label: string;
+  type?: 'default' | 'primary' | 'info' | 'success' | 'warning' | 'error';
+  sql?: string;
+  script?: string;
+  disabled?: boolean;
+  visible?: boolean;
+  requiresRow?: boolean;
+  confirm?: string;
+};
+
+export type ToolbarRule = {
+  items: ToolbarItemRule[];
+};

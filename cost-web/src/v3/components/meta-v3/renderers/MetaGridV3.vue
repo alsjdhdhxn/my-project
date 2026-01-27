@@ -1,5 +1,21 @@
 <template>
   <div class="meta-grid" :class="gridClass" :style="containerStyle">
+    <!-- 工具栏 -->
+    <div v-if="toolbarItems.length > 0" class="toolbar-container">
+      <NSpace>
+        <NButton
+          v-for="item in toolbarItems"
+          :key="item.action"
+          :type="item.type || 'default'"
+          :disabled="item.disabled"
+          size="small"
+          @click="handleToolbarClick(item)"
+        >
+          {{ item.label }}
+        </NButton>
+      </NSpace>
+    </div>
+
     <div v-if="status === 'loading'" class="meta-grid-placeholder">
       <span>加载中...</span>
     </div>
@@ -9,8 +25,7 @@
     </div>
     <AgGridVue
       v-else
-      class="ag-theme-quartz"
-      style="width: 100%; height: 100%"
+      class="ag-theme-quartz grid-content"
       :rowData="rowData"
       :columnDefs="columnDefs"
       :defaultColDef="defaultColDef"
@@ -35,8 +50,9 @@
 <script setup lang="ts">
 import { computed, unref } from 'vue';
 import { AgGridVue } from 'ag-grid-vue3';
+import { NSpace, NButton, useDialog } from 'naive-ui';
 import type { ColDef, GridReadyEvent } from 'ag-grid-community';
-import type { PageComponentWithRules } from '@/v3/composables/meta-v3/types';
+import type { PageComponentWithRules, ToolbarRule } from '@/v3/composables/meta-v3/types';
 import type { ComponentStateByKey, MetaRuntime } from '@/v3/composables/meta-v3/runtime/types';
 
 type GridConfig = {
@@ -49,6 +65,8 @@ const props = defineProps<{
   component: PageComponentWithRules;
   runtime: MetaRuntime;
 }>();
+
+const dialog = useDialog();
 
 function parseGridConfig(config?: string): GridConfig {
   if (!config) return {};
@@ -69,6 +87,44 @@ function resolveComponentState(): Record<string, any> {
 
 const state = computed(() => resolveComponentState());
 const gridConfig = computed(() => parseGridConfig(props.component.componentConfig));
+
+// 工具栏
+const masterToolbar = computed<ToolbarRule | null>(() => {
+  const source = (props.runtime as any)?.masterToolbar;
+  return source?.value ?? source ?? null;
+});
+
+const toolbarItems = computed(() => {
+  const toolbar = masterToolbar.value;
+  if (!toolbar?.items) return [];
+  return toolbar.items.filter((item: any) => item.visible !== false);
+});
+
+async function handleToolbarClick(item: any) {
+  if (!item.action) return;
+  
+  const executeAction = (props.runtime as any)?.executeAction;
+  if (!executeAction) {
+    console.warn('[MetaGridV3] executeAction not found in runtime');
+    return;
+  }
+  
+  // 如果有确认提示
+  if (item.confirm) {
+    dialog.warning({
+      title: '确认',
+      content: item.confirm,
+      positiveText: '确定',
+      negativeText: '取消',
+      onPositiveClick: async () => {
+        await executeAction(item.action);
+      }
+    });
+    return;
+  }
+  
+  await executeAction(item.action);
+}
 
 function toCssSize(value: string | number | undefined) {
   if (value == null) return undefined;
@@ -140,6 +196,19 @@ function handleFilterChanged() {
 .meta-grid {
   width: 100%;
   height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.toolbar-container {
+  padding: 8px 0;
+  flex-shrink: 0;
+}
+
+.grid-content {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
 }
 
 .meta-grid-placeholder,

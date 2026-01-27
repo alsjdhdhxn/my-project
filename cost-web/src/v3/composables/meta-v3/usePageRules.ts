@@ -11,7 +11,8 @@ import type {
   RelationRule,
   ContextMenuRule,
   RowEditableRule,
-  RowClassRule
+  RowClassRule,
+  ToolbarRule
 } from '@/v3/composables/meta-v3/types';
 
 export function collectPageRules(components: PageComponentWithRules[]): PageRule[] {
@@ -336,5 +337,28 @@ export function buildRowClassCallback(rules: RowClassRule[]): ((params: any) => 
     }
     return classes.length > 0 ? classes.join(' ') : undefined;
   };
+}
+
+/** 解析 TOOLBAR 规则 */
+export function parseToolbarRule(componentKey: string, rules: PageRule[]): ToolbarRule | null {
+  const rule = rules.find(r => r.ruleType === 'TOOLBAR');
+  if (!rule?.rules) return null;
+  try {
+    const raw = typeof rule.rules === 'string' ? JSON.parse(rule.rules) : rule.rules;
+    if (Array.isArray(raw)) {
+      return { items: raw };
+    }
+    if (raw && typeof raw === 'object') {
+      const obj = raw as { items?: unknown };
+      if (Array.isArray(obj.items)) {
+        return { items: obj.items };
+      }
+    }
+    console.warn(`[PageRule] ${componentKey}.TOOLBAR is not a valid object`);
+    return null;
+  } catch (error) {
+    console.warn(`[PageRule] Failed to parse ${componentKey}.TOOLBAR`, error);
+    return null;
+  }
 }
 

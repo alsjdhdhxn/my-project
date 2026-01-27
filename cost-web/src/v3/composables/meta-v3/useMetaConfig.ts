@@ -2,7 +2,7 @@ import { shallowRef } from 'vue';
 import type { ColDef } from 'ag-grid-community';
 import { fetchPageComponents } from '@/service/api';
 import { loadTableMeta, extractCalcRules, extractLookupRules, filterColumnsByVariant, type LookupRule } from '@/composables/useMetaColumns';
-import type { PageComponentWithRules, RelationRule, PageRule, GridOptionsRule, SplitLayoutConfig, ContextMenuRule } from '@/v3/composables/meta-v3/types';
+import type { PageComponentWithRules, RelationRule, PageRule, GridOptionsRule, SplitLayoutConfig, ContextMenuRule, ToolbarRule } from '@/v3/composables/meta-v3/types';
 import {
   parsePageComponents,
   compileCalcRules,
@@ -28,6 +28,7 @@ import {
   parseContextMenuRule,
   parseRowEditableRule,
   parseRowClassRule,
+  parseToolbarRule,
   attachGroupCellRenderer,
   parseColumnOverrideConfig,
   applyColumnOverrides
@@ -268,6 +269,7 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
   const layoutSplitConfigRef = shallowRef<SplitLayoutConfig | null>(null);
   const masterRowEditableRules = shallowRef<import('@/v3/composables/meta-v3/types').RowEditableRule[]>([]);
   const masterRowClassRules = shallowRef<import('@/v3/composables/meta-v3/types').RowClassRule[]>([]);
+  const masterToolbar = shallowRef<ToolbarRule | null>(null);
 
   async function loadComponents() {
     const pageRes = await fetchPageComponents(pageCode);
@@ -507,6 +509,7 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
     masterContextMenu.value = parseContextMenuRule(masterRuleLabel, masterRules);
     masterRowEditableRules.value = parseRowEditableRule(masterRuleLabel, masterRules);
     masterRowClassRules.value = parseRowClassRule(masterRuleLabel, masterRules);
+    masterToolbar.value = parseToolbarRule(masterRuleLabel, masterRules);
     detailContextMenuDefault.value = null;
 
     const tabsComponentKeys = collectComponentKeysByType(pageComponents.value || [], 'TABS');
@@ -541,6 +544,83 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
 
       detailContextMenuByTab.value[tab.key] = parseContextMenuRule(tab.key, tabRules) || detailContextMenuDefault.value;
     }
+
+    // ========== 调试日志 ==========
+    console.group(`[MetaV3][${pageCode}] 元数据加载完成`);
+    
+    // 规则汇总 - 按组件分组，展开每个规则的详细内容
+    console.group('📋 页面规则');
+    for (const [componentKey, rules] of rulesByComponent.value.entries()) {
+      const ruleTypes = rules.map(r => r.ruleType).join(', ');
+      console.group(`${componentKey}: ${ruleTypes}`);
+      for (const rule of rules) {
+        let parsedRules: any;
+        try {
+          parsedRules = typeof rule.rules === 'string' ? JSON.parse(rule.rules) : rule.rules;
+        } catch {
+          parsedRules = rule.rules;
+        }
+        console.group(`[${rule.ruleType}]`);
+        if (rule.ruleType === 'TOOLBAR' && parsedRules?.items) {
+          console.log('items:');
+          parsedRules.items.forEach((item: any, idx: number) => {
+            console.log(`  ${idx + 1}. action="${item.action}", label="${item.label}", type="${item.type || 'default'}"${item.sql ? ', sql="' + item.sql.substring(0, 50) + '..."' : ''}${item.script ? ', script=...' : ''}`);
+          });
+        } else if (rule.ruleType === 'CONTEXT_MENU' && parsedRules?.items) {
+          console.log('items:');
+          parsedRules.items.forEach((item: any, idx: number) => {
+            console.log(`  ${idx + 1}. action="${item.action}", label="${item.label}"${item.sql ? ', sql=...' : ''}${item.script ? ', script=...' : ''}`);
+          });
+        } else if (rule.ruleType === 'COLUMN_OVERRIDE' && parsedRules?.columns) {
+          console.log('columns:');
+          parsedRules.columns.forEach((col: any) => {
+            const props = Object.keys(col).filter(k => k !== 'field').map(k => `${k}=${JSON.stringify(col[k])}`).join(', ');
+            console.log(`  ${col.field}: ${props}`);
+          });
+        } else {
+          console.log(parsedRules);
+        }
+        console.groupEnd();
+      }
+      console.groupEnd();
+    }
+    console.groupEnd();
+    
+    // 工具栏按钮（解析后的结果）
+    console.group('🔘 工具栏按钮 (masterToolbar)');
+    if (masterToolbar.value?.items?.length) {
+      masterToolbar.value.items.forEach((item: any, idx: number) => {
+        console.log(`${idx + 1}. [${item.action}] "${item.label}" (type: ${item.type || 'default'})${item.sql ? ' [SQL]' : ''}${item.script ? ' [JS]' : ''}`);
+      });
+    } else {
+      console.log('(无工具栏按钮)');
+    }
+    console.groupEnd();
+    
+    // 右键菜单（解析后的结果）
+    console.group('📌 右键菜单 (masterContextMenu)');
+    if (masterContextMenu.value?.items?.length) {
+      masterContextMenu.value.items.forEach((item: any, idx: number) => {
+        console.log(`${idx + 1}. [${item.action}] "${item.label}"${item.sql ? ' [SQL]' : ''}${item.script ? ' [JS]' : ''}`);
+      });
+    } else {
+      console.log('(无右键菜单)');
+    }
+    console.groupEnd();
+    
+    // 表格列配置
+    console.group('📊 表格列配置');
+    console.table(masterColumnDefs.value.map(col => ({
+      字段: col.field,
+      标题: col.headerName,
+      隐藏: col.hide ? '是' : '否',
+      可编辑: typeof col.editable === 'function' ? '条件' : (col.editable ? '是' : '否'),
+      宽度: col.width || 'auto'
+    })));
+    console.groupEnd();
+    
+    console.groupEnd();
+    // ========== 调试日志结束 ==========
 
     return true;
   }
@@ -582,6 +662,7 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
     detailLookupRulesByTab,
     masterRowEditableRules,
     masterRowClassRules,
+    masterToolbar,
     loadComponents,
     parseConfig,
     loadMeta,

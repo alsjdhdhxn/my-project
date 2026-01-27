@@ -3,14 +3,13 @@ package com.cost.costserver.dynamic.controller;
 import com.cost.costserver.common.PageResult;
 import com.cost.costserver.common.Result;
 import com.cost.costserver.dynamic.action.ActionExecutionReport;
-import com.cost.costserver.dynamic.dto.ActionExecuteRequest;
 import com.cost.costserver.dynamic.dto.MasterDetailSaveParam;
 import com.cost.costserver.dynamic.dto.QueryParam;
 import com.cost.costserver.dynamic.dto.SaveParam;
 import com.cost.costserver.dynamic.dto.SaveResult;
 import com.cost.costserver.dynamic.dto.ValidationRequest;
-import com.cost.costserver.dynamic.service.ActionFlowService;
 import com.cost.costserver.dynamic.service.DynamicDataService;
+import com.cost.costserver.dynamic.service.PageRuleActionService;
 import com.cost.costserver.dynamic.service.ValidationService;
 import com.cost.costserver.dynamic.validation.ValidationReport;
 import io.swagger.v3.oas.annotations.Operation;
@@ -30,7 +29,7 @@ import java.util.Map;
 public class DynamicDataController {
 
     private final DynamicDataService dynamicDataService;
-    private final ActionFlowService actionFlowService;
+    private final PageRuleActionService pageRuleActionService;
     private final ValidationService validationService;
 
     @Operation(summary = "分页查询")
@@ -156,12 +155,17 @@ public class DynamicDataController {
         return Result.ok(validationService.validate(tableCode, group, data));
     }
 
-    @Operation(summary = "执行执行器（可选先验证）")
-    @PostMapping("/{tableCode}/execute")
-    public Result<ActionExecutionReport> executeAction(
-            @PathVariable String tableCode,
-            @RequestBody ActionExecuteRequest request) {
-        return Result.ok(actionFlowService.execute(tableCode, request));
+    @Operation(summary = "执行页面规则中的Action（TOOLBAR/CONTEXT_MENU）")
+    @PostMapping("/page/{pageCode}/execute")
+    public Result<ActionExecutionReport> executePageRuleAction(
+            @PathVariable String pageCode,
+            @RequestBody com.cost.costserver.dynamic.dto.PageRuleActionRequest request) {
+        return Result.ok(pageRuleActionService.execute(
+            pageCode,
+            request.getComponentKey(),
+            request.getActionCode(),
+            request.getData()
+        ));
     }
 
     private String underscoreToCamel(String name) {

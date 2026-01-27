@@ -27,9 +27,6 @@ public class TableMetadata {
     /** 后端验证规则 JSON */
     private String validationRules;
 
-    /** 后端执行器规则 JSON */
-    private String actionRules;
-
     @TableLogic
     private Integer deleted;
 

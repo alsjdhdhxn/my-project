@@ -18,7 +18,6 @@ public record TableMetadataDTO(
     String parentTableCode,
     String parentFkColumn,
     String validationRules,
-    String actionRules,
     List<ColumnMetadataDTO> columns
 ) {
     public static TableMetadataDTO from(TableMetadata table, List<ColumnMetadata> columns) {
@@ -37,7 +36,6 @@ public record TableMetadataDTO(
             table.getParentTableCode(),
             table.getParentFkColumn(),
             table.getValidationRules(),
-            table.getActionRules(),
             columnDTOs
         );
     }
@@ -49,7 +47,7 @@ public record TableMetadataDTO(
         return new TableMetadataDTO(
             this.id, this.tableCode, this.tableName, this.queryView, this.targetTable,
             this.sequenceName, this.pkColumn, this.parentTableCode, this.parentFkColumn,
-            this.validationRules, this.actionRules, newColumns
+            this.validationRules, newColumns
         );
     }
 }

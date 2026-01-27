@@ -69,15 +69,14 @@ export function saveDynamicData(param: {
   });
 }
 
-/** 执行执行器 */
-export function executeAction(tableCode: string, params: {
-  group?: string;
-  actionCodes?: string[];
+/** 执行页面规则中的 Action（TOOLBAR/CONTEXT_MENU） */
+export function executePageRuleAction(pageCode: string, params: {
+  componentKey?: string;
+  actionCode: string;
   data?: Record<string, any>;
-  validateGroup?: string;
 }) {
   return request<any>({
-    url: `/api/data/${tableCode}/execute`,
+    url: `/api/data/page/${pageCode}/execute`,
     method: 'POST',
     data: params
   });

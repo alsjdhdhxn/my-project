@@ -49,13 +49,24 @@ COMMIT;
 -- =====================================================
 -- D. 创建视图
 -- =====================================================
+Kiro
 CREATE OR REPLACE VIEW T_COST_FORMONEY_V AS
-SELECT FMID, FMOPCODE, FMNAME, FMSIGN, FMUNIT, FMRATE, USESTATUS,
-       DELETED, CREATE_TIME, UPDATE_TIME, CREATE_BY, UPDATE_BY
-  FROM T_COST_FORMONEY
- WHERE DELETED = 0 OR DELETED IS NULL;
-COMMIT;
-
+SELECT 
+    a.FMID,
+    NVL(a.FMOPCODE, b.FMOPCODE) AS FMOPCODE,
+    NVL(a.FMNAME, b.FMNAME) AS FMNAME,
+    NVL(a.FMSIGN, b.FMSIGN) AS FMSIGN,
+    NVL(a.FMUNIT, b.FMUNIT) AS FMUNIT,
+    NVL(a.FMRATE, b.FMRATE) AS FMRATE,
+    a.USESTATUS,
+    a.DELETED,
+    a.CREATE_TIME,
+    a.UPDATE_TIME,
+    a.CREATE_BY,
+    a.UPDATE_BY
+FROM T_COST_FORMONEY a
+LEFT JOIN pub_formoney_v@hyerp b ON a.FMID = b.FMID
+WHERE a.DELETED = 0 OR a.DELETED IS NULL;
 
 -- =====================================================
 -- E. 插入表元数据
@@ -65,10 +76,8 @@ DECLARE
 BEGIN
     SELECT SEQ_COST_TABLE_METADATA.NEXTVAL INTO v_formoney_id FROM DUAL;
 
-    INSERT INTO T_COST_TABLE_METADATA (ID, TABLE_CODE, TABLE_NAME, QUERY_VIEW, TARGET_TABLE, SEQUENCE_NAME, PK_COLUMN, ACTION_RULES, CREATE_BY)
-    VALUES (v_formoney_id, 'CostFormoney', '外币管理', 'T_COST_FORMONEY_V', 'T_COST_FORMONEY', 'SEQ_COST_FORMONEY', 'FMID', 
-    '[{"order":1,"code":"SYNC_ERP_RATE","name":"同步ERP汇率","group":"toolbar","enabled":true,"type":"sql","sql":"UPDATE T_COST_FORMONEY SET FMRATE = NULL, CREATE_TIME = NULL, UPDATE_TIME = NULL WHERE CREATE_BY = ''system''"}]',
-    'system');
+    INSERT INTO T_COST_TABLE_METADATA (ID, TABLE_CODE, TABLE_NAME, QUERY_VIEW, TARGET_TABLE, SEQUENCE_NAME, PK_COLUMN, CREATE_BY)
+    VALUES (v_formoney_id, 'CostFormoney', '外币管理', 'T_COST_FORMONEY_V', 'T_COST_FORMONEY', 'SEQ_COST_FORMONEY', 'FMID', 'system');
 
     INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY)
     VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_formoney_id, 'id', 'FMID', '外币ID', 'number', 0, 'system');
@@ -106,6 +115,10 @@ INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CR
 VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'formoney-manage', 'grid', 'CONTEXT_MENU',
 '{"items":[{"action":"addRow"},{"action":"copyRow","requiresRow":true},{"action":"deleteRow","requiresRow":true},{"type":"separator"},{"action":"saveGridConfig"},{"type":"separator"},{"label":"导出","items":[{"action":"exportSelected","requiresSelection":true},{"action":"exportCurrent"},{"action":"exportAll"},{"type":"separator"},{"action":"resetExportConfig"},{"action":"openHeaderConfig"}]},{"type":"separator"},{"action":"save"},{"type":"separator"},{"action":"clipboard.copy"},{"action":"clipboard.paste"}]}', 'system');
 
+INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'formoney-manage', 'grid', 'TOOLBAR',
+'{"items":[{"action":"SYNC_ERP_RATE","label":"同步ERP汇率","type":"primary","sql":"UPDATE T_COST_FORMONEY SET FMRATE = NULL, CREATE_TIME = NULL, UPDATE_TIME = NULL WHERE CREATE_BY = ''system''"}]}', 'system');
+
 COMMIT;
 
 -- =====================================================
@@ -113,12 +126,6 @@ COMMIT;
 -- =====================================================
 INSERT INTO T_COST_PAGE_COMPONENT (ID, PAGE_CODE, COMPONENT_KEY, COMPONENT_TYPE, PARENT_KEY, SORT_ORDER, COMPONENT_CONFIG, CREATE_BY)
 VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'formoney-manage', 'root', 'LAYOUT', NULL, 0, '{"direction":"vertical","gap":8}', 'system');
-
-INSERT INTO T_COST_PAGE_COMPONENT (ID, PAGE_CODE, COMPONENT_KEY, COMPONENT_TYPE, PARENT_KEY, SORT_ORDER, REF_TABLE_CODE, COMPONENT_CONFIG, CREATE_BY)
-VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'formoney-manage', 'toolbar', 'LAYOUT', 'root', 0, '{"direction":"horizontal","gap":8}', 'system');
-
-INSERT INTO T_COST_PAGE_COMPONENT (ID, PAGE_CODE, COMPONENT_KEY, COMPONENT_TYPE, PARENT_KEY, SORT_ORDER, REF_TABLE_CODE, COMPONENT_CONFIG, CREATE_BY)
-VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'formoney-manage', 'syncBtn', 'BUTTON', 'toolbar', 1, 'CostFormoney', '{"label":"同步ERP汇率","type":"primary","action":"SYNC_ERP_RATE"}', 'system');
 
 INSERT INTO T_COST_PAGE_COMPONENT (ID, PAGE_CODE, COMPONENT_KEY, COMPONENT_TYPE, PARENT_KEY, SORT_ORDER, REF_TABLE_CODE, COMPONENT_CONFIG, CREATE_BY)
 VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'formoney-manage', 'grid', 'GRID', 'root', 1, 'CostFormoney', '{"height":"100%","selectionMode":"single"}', 'system');

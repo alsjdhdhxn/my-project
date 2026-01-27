@@ -9,7 +9,7 @@ import { useUserGridConfig } from '@/v3/composables/meta-v3/useUserGridConfig';
 import { useCustomExport } from '@/v3/composables/meta-v3/useCustomExport';
 import { useMasterGridBindings } from '@/v3/composables/meta-v3/useMasterGridBindings';
 import { resolveFormRenderer } from '@/v3/composables/meta-v3/form-renderer-registry';
-import { executeAction as executeActionApi } from '@/service/api/dynamic';
+import { executePageRuleAction } from '@/service/api/dynamic';
 import { createRuntimeLogger } from './logger';
 import type { ComponentState, FormState, GridState, MetaError, RuntimeFeatures, RuntimeStage } from './types';
 
@@ -227,10 +227,10 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
   }
 
   async function executeAction(actionCode: string, options?: { 
-    tableCode?: string; 
     data?: Record<string, any>;
     selectedRow?: Record<string, any> | null;
     refreshMode?: 'all' | 'row' | 'none';
+    componentKey?: string;
   }) {
     if (!actionCode) return;
     const handler = resolveActionHandler(actionCode);
@@ -242,20 +242,19 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
       }
       return;
     }
-    const tableCode = options?.tableCode || meta.pageConfig.value?.masterTableCode;
-    if (!tableCode) {
-      notifyError('Action tableCode missing');
-      return;
-    }
-    const { error } = await executeActionApi(tableCode, {
-      actionCodes: [actionCode],
+
+    // 从 T_COST_PAGE_RULE 执行
+    const { error } = await executePageRuleAction(pageCode, {
+      componentKey: options?.componentKey,
+      actionCode,
       data: options?.data
     });
     if (error) {
       notifyError('Action failed');
       return;
     }
-    notifySuccess('Action executed');
+    
+    notifySuccess('执行成功');
     
     // 根据 refreshMode 决定刷新方式
     const refreshMode = options?.refreshMode ?? 'all';

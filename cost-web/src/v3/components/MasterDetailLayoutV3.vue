@@ -1,5 +1,21 @@
 ﻿<template>
   <div class="master-detail-layout-v3">
+    <!-- 工具栏 -->
+    <div v-if="toolbarItems.length > 0" class="toolbar-container">
+      <NSpace>
+        <NButton
+          v-for="item in toolbarItems"
+          :key="item.action"
+          :type="item.type || 'default'"
+          :disabled="item.disabled"
+          size="small"
+          @click="handleToolbarClick(item)"
+        >
+          {{ item.label }}
+        </NButton>
+      </NSpace>
+    </div>
+
     <NSplit
       v-if="isSplitMode && hasDetailTabs"
       direction="vertical"
@@ -103,7 +119,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { AgGridVue } from 'ag-grid-vue3';
-import { NSplit, useDialog } from 'naive-ui';
+import { NSplit, NSpace, NButton, useDialog } from 'naive-ui';
 import DetailRowRendererV3 from '@/v3/components/detail/DetailRowRendererV3.vue';
 import DetailPanelV3 from '@/v3/components/detail/DetailPanelV3.vue';
 import { useMasterGridBindings } from '@/v3/composables/meta-v3/useMasterGridBindings';
@@ -132,6 +148,7 @@ const {
   detailContextMenuByTab,
   masterRowEditableRules,
   masterRowClassRules,
+  masterToolbar,
   applyGridConfig,
   loadDetailData,
   addMasterRow,
@@ -146,10 +163,38 @@ const {
   onDetailCellClicked,
   save,
   saveGridConfig,
+  executeAction,
   activeMasterRowKey: runtimeActiveMasterRowKey
 } = runtime;
 
 const editingState = ref(false);
+
+// 工具栏
+const toolbarItems = computed(() => {
+  const toolbar = masterToolbar?.value;
+  if (!toolbar?.items) return [];
+  return toolbar.items.filter((item: any) => item.visible !== false);
+});
+
+async function handleToolbarClick(item: any) {
+  if (!item.action) return;
+  
+  // 如果有确认提示
+  if (item.confirm) {
+    dialog.warning({
+      title: '确认',
+      content: item.confirm,
+      positiveText: '确定',
+      negativeText: '取消',
+      onPositiveClick: async () => {
+        await executeAction(item.action);
+      }
+    });
+    return;
+  }
+  
+  await executeAction(item.action);
+}
 
 // 使用全局主题设置的detailViewMode
 const detailViewMode = computed(() => themeStore.detailViewMode);
@@ -477,8 +522,14 @@ onUnmounted(() => {
   flex-direction: column;
 }
 
+.toolbar-container {
+  padding: 8px 0;
+  flex-shrink: 0;
+}
+
 .split-container {
-  height: 100%;
+  flex: 1;
+  min-height: 0;
 }
 
 .master-panel {
