@@ -16,11 +16,35 @@ import {
   getSummaryRowId,
   resolveSummaryConfig
 } from '@/v3/composables/meta-v3/summary-config';
-import { debugLog, isDebugEnabled } from '@/v3/composables/meta-v3/debug';
 
 type CompiledCalcRules = ReturnType<typeof compileCalcRules>;
 
 type CompiledAggRules = ReturnType<typeof compileAggRules>;
+
+type CalcChange = {
+  rowId?: string | number;
+  field: string;
+  oldValue: any;
+  newValue: any;
+  reason?: string;
+};
+
+type DetailLogGroup = {
+  tabKey: string;
+  rules: any[];
+  ruleIndexMap: Map<string, { index: number; type: string }>;
+  changes: CalcChange[];
+};
+
+type AggregateLog = {
+  masterId: number;
+  rowCount: number;
+  aggregateRules: any[];
+  masterCalcRules: any[];
+  changes: CalcChange[];
+};
+
+const CALC_LOG_FLAG = '__META_V3_CALC_LOG__';
 
 export function useCalcBroadcast(params: {
   masterGridApi: ShallowRef<GridApi | null>;
@@ -63,7 +87,121 @@ export function useCalcBroadcast(params: {
       }
       if (type === 'user') row._dirtyFields[field].type = 'user';
     }
-    console.log('[markFieldChange]', field, type, row._dirtyFields);
+  }
+
+  function formatValue(value: any) {
+    if (typeof value === 'string') return `"${value}"`;
+    if (value == null) return String(value);
+    return String(value);
+  }
+
+  function formatCalcRule(rule: any) {
+    const base = rule.expression
+      ? `${rule.field} = ${rule.expression}`
+      : rule.formulaField
+        ? `${rule.field} = [formula by ${rule.formulaField}]`
+        : `${rule.field} = [rule]`;
+    return rule.condition ? `${base} | condition: ${rule.condition}` : base;
+  }
+
+  function formatAggRule(rule: any) {
+    if (rule.algorithm && rule.sourceField) {
+      const base = `${rule.targetField} = ${rule.algorithm}(${rule.sourceField})`;
+      return rule.filter ? `${base} | filter: ${rule.filter}` : base;
+    }
+    if (rule.expression) return `${rule.targetField} = ${rule.expression}`;
+    return `${rule.targetField} = [rule]`;
+  }
+
+  function buildRuleIndexMap(rules: any[]) {
+    const map = new Map<string, { index: number; type: string }>();
+    rules.forEach((rule, idx) => {
+      const reasonType = rule.expression ? 'expression' : rule.formulaField ? 'formula' : 'rule';
+      if (rule.field) {
+        map.set(rule.field, { index: idx + 1, type: reasonType });
+      } else if (rule.targetField) {
+        map.set(rule.targetField, { index: idx + 1, type: rule.expression ? 'expression' : 'aggregate' });
+      }
+    });
+    return map;
+  }
+
+  function isCalcLogEnabled(): boolean {
+    try {
+      const g = globalThis as any;
+      if (g && Object.prototype.hasOwnProperty.call(g, CALC_LOG_FLAG)) {
+        return Boolean(g[CALC_LOG_FLAG]);
+      }
+    } catch {
+      // ignore
+    }
+    return true;
+  }
+
+  function logCalcBroadcast(params: {
+    masterId: number;
+    triggerFields: string[];
+    detailLogs: DetailLogGroup[];
+    aggregateLog?: AggregateLog | null;
+  }) {
+    if (!isCalcLogEnabled()) return;
+    const { masterId, triggerFields, detailLogs, aggregateLog } = params;
+    const hasDetail = detailLogs.some(group => group.changes.length > 0);
+    const hasMaster = aggregateLog?.changes?.length;
+    if (!hasDetail && !hasMaster) return;
+
+    const header = `[MetaV3][CALC] masterId=${masterId}`;
+    console.groupCollapsed(header);
+    console.log('trigger:');
+    console.log(`  - broadcastFields: [${triggerFields.map(f => `"${f}"`).join(', ')}]`);
+
+    for (const group of detailLogs) {
+      if (group.changes.length === 0) continue;
+      console.log(`detail rules (${group.tabKey}):`);
+      for (const rule of group.rules) {
+        const ruleMeta = group.ruleIndexMap.get(rule.field);
+        const prefix = ruleMeta ? `(#${ruleMeta.index}) ` : '';
+        console.log(`  - ${prefix}${formatCalcRule(rule)}`);
+      }
+      console.log('detail changes:');
+      console.table(group.changes.map(change => ({
+        rowId: change.rowId ?? '-',
+        field: change.field,
+        from: formatValue(change.oldValue),
+        to: formatValue(change.newValue),
+        reason: change.reason ?? ''
+      })));
+    }
+
+    if (aggregateLog && aggregateLog.changes.length > 0) {
+      const aggIndexMap = buildRuleIndexMap(aggregateLog.aggregateRules);
+      const calcIndexMap = buildRuleIndexMap(aggregateLog.masterCalcRules);
+
+      console.log('master rules (aggregate):');
+      for (const rule of aggregateLog.aggregateRules) {
+        const ruleMeta = aggIndexMap.get(rule.targetField);
+        const prefix = ruleMeta ? `(#${ruleMeta.index}) ` : '';
+        console.log(`  - ${prefix}${formatAggRule(rule)}`);
+      }
+      if (aggregateLog.masterCalcRules.length > 0) {
+        console.log('master rules (calc):');
+        for (const rule of aggregateLog.masterCalcRules) {
+          const ruleMeta = calcIndexMap.get(rule.field);
+          const prefix = ruleMeta ? `(#${ruleMeta.index}) ` : '';
+          console.log(`  - ${prefix}${formatCalcRule(rule)}`);
+        }
+      }
+
+      console.log('master changes:');
+      console.table(aggregateLog.changes.map(change => ({
+        field: change.field,
+        from: formatValue(change.oldValue),
+        to: formatValue(change.newValue),
+        reason: change.reason ?? ''
+      })));
+    }
+
+    console.groupEnd();
   }
 
   function runDetailCalc(node: any, api: any, row: RowData, masterId: number, tabKey: string, masterRowKey?: string) {
@@ -91,15 +229,6 @@ export function useCalcBroadcast(params: {
       } else {
         api?.refreshCells({ force: true });
       }
-      if (isDebugEnabled()) {
-        debugLog('detail-calc', {
-          masterId,
-          tabKey,
-          rowId: row?.id,
-          changedFields,
-          context
-        });
-      }
     }
   }
 
@@ -120,12 +249,6 @@ export function useCalcBroadcast(params: {
         masterGridApi.value?.refreshCells({ rowNodes: [node], columns: changedFields, force: true });
       } else {
         masterGridApi.value?.refreshCells({ force: true });
-      }
-      if (isDebugEnabled()) {
-        debugLog('master-calc', {
-          masterId: row?.id,
-          changedFields
-        });
       }
     }
   }
@@ -159,12 +282,14 @@ export function useCalcBroadcast(params: {
         ? [changedFields]
         : [];
 
+    const detailLogs: DetailLogGroup[] = [];
     for (const [tabKey, rows] of Object.entries(cached)) {
       const calcRules = detailCalcRulesByTab.value[tabKey] || [];
       if (calcRules.length === 0) continue;
       const effectiveRules = resolveAffectedRules(calcRules, changedList);
       if (effectiveRules.length === 0) continue;
-      let changedCount = 0;
+      const ruleIndexMap = buildRuleIndexMap(calcRules);
+      const changes: CalcChange[] = [];
       for (const row of rows) {
         if (row._isDeleted) continue;
         const results = calcRowFields(row, context, effectiveRules);
@@ -173,22 +298,30 @@ export function useCalcBroadcast(params: {
             const oldValue = row[field];
             row[field] = value;
             markFieldChange(row, field, oldValue, value, 'calc');
-            changedCount += 1;
+            const reasonMeta = ruleIndexMap.get(field);
+            const reason = reasonMeta ? `rule#${reasonMeta.index} / ${reasonMeta.type}` : undefined;
+            changes.push({ rowId: row?.id ?? row?._rowKey, field, oldValue, newValue: value, reason });
           }
         }
       }
-      if (isDebugEnabled() && changedCount > 0) {
-        debugLog('broadcast-detail', {
-          masterId,
+      if (changes.length > 0) {
+        detailLogs.push({
           tabKey,
-          changedCount
+          rules: effectiveRules,
+          ruleIndexMap,
+          changes
         });
       }
     }
 
     refreshAllDetailGrids(masterRowKey);
-    recalcAggregates(masterId, masterRowKey);
-    console.log('[broadcast done]', masterId);
+    const aggregateLog = recalcAggregates(masterId, masterRowKey);
+    logCalcBroadcast({
+      masterId,
+      triggerFields: changedList,
+      detailLogs,
+      aggregateLog
+    });
   }
 
   function refreshAllDetailGrids(masterRowKey: string) {
@@ -201,7 +334,6 @@ export function useCalcBroadcast(params: {
     if (!api) return;
     const secondLevelInfo = api.getDetailGridInfo(`detail_${masterRowKey}`);
     if (!secondLevelInfo?.api) {
-      console.log('[refresh third level] second level not expanded');
       return;
     }
     const cached = detailCache.get(masterRowKey);
@@ -218,18 +350,17 @@ export function useCalcBroadcast(params: {
         }
       }
       if (!tabKey || !cached[tabKey]) return;
-      console.log('[refresh third level]', tabKey, cached[tabKey].length, 'rows');
       detailInfo.api.refreshCells({ force: true });
     });
   }
 
-  function recalcAggregates(masterId: number, masterRowKey?: string) {
+  function recalcAggregates(masterId: number, masterRowKey?: string): AggregateLog | null {
     const resolvedRowKey = masterRowKey ?? resolveMasterRowKey(masterId);
-    if (!resolvedRowKey) return;
+    if (!resolvedRowKey) return null;
     const cached = detailCache.get(resolvedRowKey);
-    if (!cached) return;
+    if (!cached) return null;
     const masterNode = masterGridApi.value?.getRowNode(String(resolvedRowKey));
-    if (!masterNode) return;
+    if (!masterNode) return null;
     const masterRow = masterNode.data;
     const effectiveMasterId = masterRow?.id ?? masterId;
 
@@ -247,16 +378,22 @@ export function useCalcBroadcast(params: {
     );
 
     const changedFields: string[] = [];
+    const changes: CalcChange[] = [];
+    const aggReasonMap = buildRuleIndexMap(compiledAggRules.value);
     for (const [field, value] of Object.entries(results)) {
       if (masterRow[field] !== value) {
         const oldValue = masterRow[field];
         masterRow[field] = value;
         markFieldChange(masterRow, field, oldValue, value, 'calc');
         changedFields.push(field);
+        const reasonMeta = aggReasonMap.get(field);
+        const reason = reasonMeta ? `rule#${reasonMeta.index} / aggregate` : undefined;
+        changes.push({ field, oldValue, newValue: value, reason });
       }
     }
 
     if (compiledMasterCalcRules.value.length > 0) {
+      const calcReasonMap = buildRuleIndexMap(compiledMasterCalcRules.value);
       const calcResults = calcRowFields(masterRow, {}, compiledMasterCalcRules.value);
       for (const [field, value] of Object.entries(calcResults)) {
         if (masterRow[field] !== value) {
@@ -264,6 +401,9 @@ export function useCalcBroadcast(params: {
           masterRow[field] = value;
           markFieldChange(masterRow, field, oldValue, value, 'calc');
           changedFields.push(field);
+          const reasonMeta = calcReasonMap.get(field);
+          const reason = reasonMeta ? `rule#${reasonMeta.index} / calc` : undefined;
+          changes.push({ field, oldValue, newValue: value, reason });
         }
       }
     }
@@ -273,10 +413,13 @@ export function useCalcBroadcast(params: {
     }
 
     refreshSummaryRow(effectiveMasterId, resolvedRowKey);
-    if (isDebugEnabled()) {
-      debugLog('aggregate', { masterId: effectiveMasterId, results });
-    }
-    console.log('[aggregate calc]', results);
+    return {
+      masterId: effectiveMasterId,
+      rowCount: allRows.length,
+      aggregateRules: compiledAggRules.value,
+      masterCalcRules: compiledMasterCalcRules.value,
+      changes
+    };
   }
 
   function refreshSummaryRow(masterId: number, masterRowKey?: string) {
