@@ -5,6 +5,7 @@ import {
   calcAggregates,
   compileCalcRules,
   compileAggRules,
+  getAffectedRules,
   ensureRowKey,
   type ParsedPageConfig,
   type RowData
@@ -129,7 +130,19 @@ export function useCalcBroadcast(params: {
     }
   }
 
-  async function broadcastToDetail(masterId: number, masterRow: RowData) {
+  function resolveAffectedRules(calcRules: CompiledCalcRules, changedFields: string[]) {
+    if (changedFields.length === 0) return calcRules;
+    const affectedFields = new Set<string>();
+    for (const field of changedFields) {
+      for (const rule of getAffectedRules(field, calcRules, true)) {
+        affectedFields.add(rule.field);
+      }
+    }
+    if (affectedFields.size === 0) return [];
+    return calcRules.filter(rule => affectedFields.has(rule.field));
+  }
+
+  async function broadcastToDetail(masterId: number, masterRow: RowData, changedFields?: string | string[]) {
     const masterRowKey = ensureRowKey(masterRow);
     let cached = detailCache.get(masterRowKey);
     if (!cached && loadDetailData) {
@@ -140,14 +153,21 @@ export function useCalcBroadcast(params: {
 
     const context: Record<string, any> = {};
     for (const field of broadcastFields.value) context[field] = masterRow[field];
+    const changedList = Array.isArray(changedFields)
+      ? changedFields.filter(Boolean)
+      : changedFields
+        ? [changedFields]
+        : [];
 
     for (const [tabKey, rows] of Object.entries(cached)) {
       const calcRules = detailCalcRulesByTab.value[tabKey] || [];
       if (calcRules.length === 0) continue;
+      const effectiveRules = resolveAffectedRules(calcRules, changedList);
+      if (effectiveRules.length === 0) continue;
       let changedCount = 0;
       for (const row of rows) {
         if (row._isDeleted) continue;
-        const results = calcRowFields(row, context, calcRules);
+        const results = calcRowFields(row, context, effectiveRules);
         for (const [field, value] of Object.entries(results)) {
           if (row[field] !== value) {
             const oldValue = row[field];

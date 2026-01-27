@@ -32,7 +32,7 @@ type RuntimeApi = {
   executeCustomExport?: (exportCode: string, mode: 'all' | 'current') => void;
   markFieldChange?: (row: any, field: string, oldValue: any, newValue: any, type: 'user' | 'calc') => void;
   runMasterCalc?: (node: any, row: any) => void;
-  broadcastToDetail?: (masterId: number, row: any) => Promise<void> | void;
+  broadcastToDetail?: (masterId: number, row: any, changedFields?: string | string[]) => Promise<void> | void;
   onMasterCellClicked?: (event: any) => void;
 };
 
@@ -188,7 +188,7 @@ export function useMasterGridBindings(params: {
       runtime.runMasterCalc?.(event.node, row);
       const broadcastList = runtime.broadcastFields?.value || [];
       if (broadcastList.includes(field)) {
-        await runtime.broadcastToDetail?.(masterId, row);
+        await runtime.broadcastToDetail?.(masterId, row, field);
       }
     }
   }

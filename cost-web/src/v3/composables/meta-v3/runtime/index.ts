@@ -296,9 +296,9 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
       if (!resolvedFeatures.value.aggregates) return;
       return calc.recalcAggregates(masterId);
     },
-    broadcastToDetail: async (masterId: number, row: any) => {
+    broadcastToDetail: async (masterId: number, row: any, changedFields?: string | string[]) => {
       if (!resolvedFeatures.value.broadcast) return;
-      return calc.broadcastToDetail(masterId, row);
+      return calc.broadcastToDetail(masterId, row, changedFields);
     },
     ...lookup,
     customExportConfigs: customExport.customExportConfigs,
