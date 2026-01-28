@@ -32,8 +32,10 @@ import org.apache.poi.common.usermodel.HyperlinkType;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.CellStyle;
 import org.apache.poi.ss.usermodel.Font;
+import org.apache.poi.ss.usermodel.HorizontalAlignment;
 import org.apache.poi.ss.usermodel.Hyperlink;
 import org.apache.poi.ss.usermodel.IndexedColors;
+import org.apache.poi.ss.usermodel.VerticalAlignment;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.springframework.stereotype.Service;
 
@@ -123,6 +125,7 @@ public class CustomExportService {
         try (ServletOutputStream outputStream = response.getOutputStream();
                 ExcelWriter writer = EasyExcel.write(outputStream)
                         .registerWriteHandler(new LongestMatchColumnWidthStyleStrategy())
+                        .registerWriteHandler(new SimpleHeadStyleHandler())
                         .build()) {
 
             String masterSheetName = StrUtil.isNotBlank(config.getMasterSheetName())
@@ -690,6 +693,20 @@ public class CustomExportService {
                         .map(h -> (Object) (h.isEmpty() ? "" : h.get(0)))
                         .collect(Collectors.toList());
                 writer.write(Collections.singletonList(headerRow), sheet);
+                
+                // 设置表头样式（灰色底色）
+                org.apache.poi.ss.usermodel.Sheet poiSheet = writer.writeContext().writeSheetHolder().getSheet();
+                org.apache.poi.ss.usermodel.Row headerPoiRow = poiSheet.getRow(currentRow);
+                if (headerPoiRow != null) {
+                    CellStyle headerStyle = createDetailHeaderStyle(poiSheet.getWorkbook());
+                    for (int col = 0; col < headerRow.size(); col++) {
+                        Cell headerCell = headerPoiRow.getCell(col);
+                        if (headerCell != null) {
+                            headerCell.setCellStyle(headerStyle);
+                        }
+                    }
+                }
+                
                 currentRow++;
                 if (linkHandler != null) {
                     linkHandler.skipRows(1);
@@ -1330,5 +1347,47 @@ public class CustomExportService {
         }
         usedNames.add(candidate);
         return candidate;
+    }
+
+    /**
+     * 简化表头样式处理器，使表头字体大小与数据行一致
+     */
+    private static class SimpleHeadStyleHandler extends AbstractCellWriteHandler {
+        private CellStyle headStyle;
+
+        @Override
+        public void afterCellDispose(WriteSheetHolder writeSheetHolder, WriteTableHolder writeTableHolder,
+                List<WriteCellData<?>> cellDataList, Cell cell, Head head, Integer relativeRowIndex, Boolean isHead) {
+            if (!Boolean.TRUE.equals(isHead) || cell == null) {
+                return;
+            }
+            Workbook workbook = writeSheetHolder.getSheet().getWorkbook();
+            if (headStyle == null) {
+                headStyle = workbook.createCellStyle();
+                Font font = workbook.createFont();
+                font.setFontHeightInPoints((short) 11);
+                font.setBold(false);
+                headStyle.setFont(font);
+                headStyle.setAlignment(HorizontalAlignment.LEFT);
+                headStyle.setVerticalAlignment(VerticalAlignment.CENTER);
+            }
+            cell.setCellStyle(headStyle);
+        }
+    }
+
+    /**
+     * 创建从表表头样式（灰色底色，与主表表头一致）
+     */
+    private CellStyle createDetailHeaderStyle(Workbook workbook) {
+        CellStyle style = workbook.createCellStyle();
+        Font font = workbook.createFont();
+        font.setFontHeightInPoints((short) 11);
+        font.setBold(false);
+        style.setFont(font);
+        style.setAlignment(HorizontalAlignment.LEFT);
+        style.setVerticalAlignment(VerticalAlignment.CENTER);
+        style.setFillForegroundColor(IndexedColors.GREY_25_PERCENT.getIndex());
+        style.setFillPattern(org.apache.poi.ss.usermodel.FillPatternType.SOLID_FOREGROUND);
+        return style;
     }
 }
