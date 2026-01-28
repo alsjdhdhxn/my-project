@@ -137,6 +137,23 @@ public class CustomExportService {
             for (DetailSheetInfo detailSheet : detailSheets) {
                 String detailLinkColumn = resolveDetailLinkColumn(config, detailSheet.detail);
                 detailSheet.linkColumn = detailLinkColumn;
+                
+                // 合并Sheet模式：从mergedBlocks获取列信息
+                if (detailSheet.mergedBlocks != null && !detailSheet.mergedBlocks.isEmpty()) {
+                    MergedDataBlock firstBlock = detailSheet.mergedBlocks.get(0);
+                    detailSheet.linkColumnIndex = resolveLinkColumnIndex(firstBlock.columns, detailLinkColumn);
+                    detailSheet.headRowCount = 2; // 标题行 + 表头行
+                    
+                    // 使用linkKey作为关联键
+                    String key = detailSheet.linkKey;
+                    if (StrUtil.isNotBlank(key) && !detailTargetByKey.containsKey(key)) {
+                        detailTargetByKey.put(key,
+                                new SheetLinkTarget(detailSheet.sheetName, 0, detailSheet.headRowCount));
+                    }
+                    continue;
+                }
+                
+                // 普通Sheet模式
                 detailSheet.linkColumnIndex = resolveLinkColumnIndex(detailSheet.columns, detailLinkColumn);
                 detailSheet.headRowCount = resolveHeadRowCount(detailSheet.columns);
                 detailSheet.rowKeys = buildRowKeys(detailSheet.rows, detailLinkColumn);
@@ -167,6 +184,16 @@ public class CustomExportService {
             writeMasterSheet(writer, masterSheetName, masterColumns, masterRows, masterLinkHandler);
 
             for (DetailSheetInfo detailSheet : detailSheets) {
+                // 如果是合并Sheet，使用合并写入方法
+                if (detailSheet.mergedBlocks != null && !detailSheet.mergedBlocks.isEmpty()) {
+                    String detailLinkColumn = detailSheet.linkColumn;
+                    writeMergedDetailSheet(writer, detailSheet.sheetNo, detailSheet.sheetName,
+                            detailSheet.mergedBlocks, masterSheetName, masterRowIndexByKey,
+                            masterHeadRowCount, detailLinkColumn);
+                    continue;
+                }
+
+                // 普通Sheet写入
                 HyperlinkCellWriteHandler detailLinkHandler = null;
                 if (detailSheet.linkColumnIndex >= 0 && !masterRowIndexByKey.isEmpty()) {
                     detailLinkHandler = new HyperlinkCellWriteHandler(
@@ -472,16 +499,15 @@ public class CustomExportService {
             boolean exportAll, String pageView, TableMetadataDTO pageMeta,
             List<QueryParam.QueryCondition> conditions) {
         List<DetailSheetInfo> detailSheets = new ArrayList<>();
-        if (details == null || details.isEmpty()) {
+        if (details == null || details.isEmpty() || masterRows == null || masterRows.isEmpty()) {
             return detailSheets;
         }
 
-        boolean perRowDetail = StrUtil.isNotBlank(masterLinkColumn)
-                && masterRows != null
-                && !masterRows.isEmpty();
-        int detailSheetNo = 1;
         Set<String> usedNames = new HashSet<>();
+        int detailSheetNo = 1;
 
+        // 预先查询所有从表数据并按主表ID分组
+        List<DetailDataHolder> detailDataList = new ArrayList<>();
         for (ExportConfigDetail detail : details) {
             String detailSql = buildDetailSql(config, detail, exportAll, pageView, pageMeta, conditions);
             log.info("Custom export detail SQL [{}]: {}", detail.getTabKey(), detailSql);
@@ -490,32 +516,33 @@ public class CustomExportService {
                 continue;
             }
             List<CustomExportConfigDTO.ColumnConfig> detailColumns = resolveColumns(detail.getColumns(), detailRows);
-
-            if (!perRowDetail) {
-                String sheetName = resolveDetailSheetName(detail, detailSheetNo, usedNames);
-                detailSheets.add(new DetailSheetInfo(detail, detailSheetNo, sheetName, detailRows, detailColumns));
-                detailSheetNo++;
-                continue;
-            }
-
             String detailLinkColumn = resolveDetailLinkColumn(config, detail);
             Map<String, List<Map<String, Object>>> rowsByKey = groupRowsByKey(detailRows, detailLinkColumn);
-            if (rowsByKey.isEmpty()) {
+            String blockTitle = StrUtil.isNotBlank(detail.getSheetName()) ? detail.getSheetName() : detail.getTabKey();
+            detailDataList.add(new DetailDataHolder(detail, detailColumns, rowsByKey, blockTitle));
+        }
+
+        // 按主表记录生成Sheet，每个主表ID一个Sheet，包含该ID的所有从表数据
+        for (Map<String, Object> masterRow : masterRows) {
+            String key = normalizeLinkValue(resolveRowValue(masterRow, masterLinkColumn));
+            if (StrUtil.isBlank(key)) {
                 continue;
             }
 
-            for (Map<String, Object> masterRow : masterRows) {
-                String key = normalizeLinkValue(resolveRowValue(masterRow, masterLinkColumn));
-                if (StrUtil.isBlank(key)) {
-                    continue;
+            // 收集该主表ID的所有从表数据块
+            List<MergedDataBlock> dataBlocks = new ArrayList<>();
+            for (DetailDataHolder holder : detailDataList) {
+                List<Map<String, Object>> rowsForKey = holder.rowsByKey.get(key);
+                if (rowsForKey != null && !rowsForKey.isEmpty()) {
+                    dataBlocks.add(new MergedDataBlock(holder.detail, holder.blockTitle, rowsForKey, holder.columns));
                 }
-                List<Map<String, Object>> rowsForKey = rowsByKey.get(key);
-                if (rowsForKey == null || rowsForKey.isEmpty()) {
-                    continue;
-                }
-                String sheetName = resolveDetailSheetName(detail, key, detailSheetNo, usedNames);
-                DetailSheetInfo sheetInfo =
-                        new DetailSheetInfo(detail, detailSheetNo, sheetName, rowsForKey, detailColumns);
+            }
+
+            if (!dataBlocks.isEmpty()) {
+                String sheetName = ensureUniqueSheetName(sanitizeSheetName("明细_" + key), usedNames);
+                DetailSheetInfo sheetInfo = new DetailSheetInfo(details.get(0), detailSheetNo, sheetName,
+                        Collections.emptyList(), Collections.emptyList());
+                sheetInfo.mergedBlocks = dataBlocks;
                 sheetInfo.linkKey = key;
                 detailSheets.add(sheetInfo);
                 detailSheetNo++;
@@ -523,6 +550,24 @@ public class CustomExportService {
         }
 
         return detailSheets;
+    }
+
+    /**
+     * 从表数据持有类
+     */
+    private static class DetailDataHolder {
+        private final ExportConfigDetail detail;
+        private final List<CustomExportConfigDTO.ColumnConfig> columns;
+        private final Map<String, List<Map<String, Object>>> rowsByKey;
+        private final String blockTitle;
+
+        private DetailDataHolder(ExportConfigDetail detail, List<CustomExportConfigDTO.ColumnConfig> columns,
+                Map<String, List<Map<String, Object>>> rowsByKey, String blockTitle) {
+            this.detail = detail;
+            this.columns = columns;
+            this.rowsByKey = rowsByKey;
+            this.blockTitle = blockTitle;
+        }
     }
 
     private Map<String, List<Map<String, Object>>> groupRowsByKey(
@@ -590,6 +635,155 @@ public class CustomExportService {
         writer.write(data, sheet);
     }
 
+    /**
+     * 写入合并的从表 Sheet（多个数据块在同一个Sheet，支持超链接）
+     */
+    private void writeMergedDetailSheet(ExcelWriter writer, int sheetNo, String sheetName,
+            List<MergedDataBlock> dataBlocks, String masterSheetName,
+            Map<String, Integer> masterRowIndexByKey, int masterHeadRowCount, String detailLinkColumn) {
+        if (dataBlocks == null || dataBlocks.isEmpty()) {
+            return;
+        }
+
+        // 先收集所有数据块的列配置，找到关联列的索引
+        List<CustomExportConfigDTO.ColumnConfig> firstColumns = null;
+        for (MergedDataBlock block : dataBlocks) {
+            if (firstColumns == null && block.columns != null && !block.columns.isEmpty()) {
+                firstColumns = block.columns;
+                break;
+            }
+        }
+        int linkColumnIndex = resolveLinkColumnIndex(firstColumns, detailLinkColumn);
+
+        // 创建带超链接处理器的Sheet
+        MergedSheetLinkCellWriteHandler linkHandler = null;
+        if (linkColumnIndex >= 0 && masterRowIndexByKey != null && !masterRowIndexByKey.isEmpty()) {
+            linkHandler = new MergedSheetLinkCellWriteHandler(linkColumnIndex, masterRowIndexByKey,
+                    masterSheetName, masterHeadRowCount, detailLinkColumn);
+        }
+
+        WriteSheet sheet = EasyExcel.writerSheet(sheetNo, sheetName)
+                .registerWriteHandler(new LongestMatchColumnWidthStyleStrategy())
+                .registerWriteHandler(linkHandler != null ? linkHandler : new AbstractCellWriteHandler() {})
+                .needHead(false)
+                .build();
+
+        int currentRow = 0;
+        for (int i = 0; i < dataBlocks.size(); i++) {
+            MergedDataBlock block = dataBlocks.get(i);
+
+            // 写入标题行（如果有）
+            if (StrUtil.isNotBlank(block.title)) {
+                List<List<Object>> titleRow = Collections.singletonList(
+                        Collections.singletonList("【" + block.title + "】"));
+                writer.write(titleRow, sheet);
+                currentRow++;
+                if (linkHandler != null) {
+                    linkHandler.skipRows(1);
+                }
+            }
+
+            // 写入表头
+            List<List<String>> head = buildHead(block.columns);
+            if (!head.isEmpty()) {
+                List<Object> headerRow = head.stream()
+                        .map(h -> (Object) (h.isEmpty() ? "" : h.get(0)))
+                        .collect(Collectors.toList());
+                writer.write(Collections.singletonList(headerRow), sheet);
+                currentRow++;
+                if (linkHandler != null) {
+                    linkHandler.skipRows(1);
+                }
+            }
+
+            // 写入数据行
+            List<List<Object>> data = buildDataRows(block.rows, block.columns);
+            if (!data.isEmpty()) {
+                // 设置当前数据块的行键
+                if (linkHandler != null) {
+                    List<String> blockRowKeys = buildRowKeys(block.rows, detailLinkColumn);
+                    linkHandler.setCurrentBlockRowKeys(blockRowKeys);
+                }
+                writer.write(data, sheet);
+                currentRow += data.size();
+            }
+
+            // 数据块之间空一行
+            if (i < dataBlocks.size() - 1) {
+                writer.write(Collections.singletonList(Collections.singletonList("")), sheet);
+                currentRow++;
+                if (linkHandler != null) {
+                    linkHandler.skipRows(1);
+                }
+            }
+        }
+    }
+
+    /**
+     * 合并Sheet的超链接单元格处理器
+     */
+    private static class MergedSheetLinkCellWriteHandler extends AbstractCellWriteHandler {
+        private final int linkColumnIndex;
+        private final Map<String, Integer> targetRowIndexByKey;
+        private final String targetSheetName;
+        private final int targetHeadRowCount;
+        private final String linkColumn;
+        private final Map<Short, CellStyle> hyperlinkStyles = new HashMap<>();
+        
+        private List<String> currentBlockRowKeys = Collections.emptyList();
+        private int currentDataRowIndex = 0;
+        private int skippedRows = 0;
+
+        private MergedSheetLinkCellWriteHandler(int linkColumnIndex, Map<String, Integer> targetRowIndexByKey,
+                String targetSheetName, int targetHeadRowCount, String linkColumn) {
+            this.linkColumnIndex = linkColumnIndex;
+            this.targetRowIndexByKey = targetRowIndexByKey == null ? Collections.emptyMap() : targetRowIndexByKey;
+            this.targetSheetName = targetSheetName;
+            this.targetHeadRowCount = targetHeadRowCount;
+            this.linkColumn = linkColumn;
+        }
+
+        void setCurrentBlockRowKeys(List<String> rowKeys) {
+            this.currentBlockRowKeys = rowKeys == null ? Collections.emptyList() : rowKeys;
+            this.currentDataRowIndex = 0;
+        }
+
+        void skipRows(int count) {
+            this.skippedRows += count;
+        }
+
+        @Override
+        public void afterCellDispose(WriteSheetHolder writeSheetHolder, WriteTableHolder writeTableHolder,
+                List<WriteCellData<?>> cellDataList, Cell cell, Head head, Integer relativeRowIndex, Boolean isHead) {
+            if (cell == null || cell.getColumnIndex() != linkColumnIndex) {
+                return;
+            }
+            if (currentDataRowIndex < 0 || currentDataRowIndex >= currentBlockRowKeys.size()) {
+                currentDataRowIndex++;
+                return;
+            }
+            String key = currentBlockRowKeys.get(currentDataRowIndex);
+            currentDataRowIndex++;
+            
+            if (StrUtil.isBlank(key)) {
+                return;
+            }
+            Integer targetRowIndex = targetRowIndexByKey.get(key);
+            if (targetRowIndex == null) {
+                return;
+            }
+            int excelRow = targetRowIndex + targetHeadRowCount + 1;
+            Hyperlink link = writeSheetHolder.getSheet().getWorkbook().getCreationHelper()
+                    .createHyperlink(HyperlinkType.DOCUMENT);
+            link.setAddress("'" + escapeSheetName(targetSheetName) + "'!A" + excelRow);
+            cell.setHyperlink(link);
+            CellStyle style = resolveHyperlinkStyle(writeSheetHolder.getSheet().getWorkbook(),
+                    cell.getCellStyle(), hyperlinkStyles);
+            if (style != null) {
+                cell.setCellStyle(style);
+            }
+        }
+    }
     private WriteSheet buildSheet(int sheetNo, String sheetName, List<List<String>> head,
             AbstractCellWriteHandler linkHandler) {
         var builder = EasyExcel.writerSheet(sheetNo, sheetName).head(head);
@@ -923,11 +1117,32 @@ public class CustomExportService {
         private List<String> rowKeys = Collections.emptyList();
         private Map<String, Integer> rowIndexByKey = Collections.emptyMap();
 
+        // 合并Sheet时使用的数据块列表
+        private List<MergedDataBlock> mergedBlocks;
+
         private DetailSheetInfo(ExportConfigDetail detail, int sheetNo, String sheetName,
                 List<Map<String, Object>> rows, List<CustomExportConfigDTO.ColumnConfig> columns) {
             this.detail = detail;
             this.sheetNo = sheetNo;
             this.sheetName = sheetName;
+            this.rows = rows;
+            this.columns = columns;
+        }
+    }
+
+    /**
+     * 合并Sheet中的数据块
+     */
+    private static class MergedDataBlock {
+        private final ExportConfigDetail detail;
+        private final String title;
+        private final List<Map<String, Object>> rows;
+        private final List<CustomExportConfigDTO.ColumnConfig> columns;
+
+        private MergedDataBlock(ExportConfigDetail detail, String title,
+                List<Map<String, Object>> rows, List<CustomExportConfigDTO.ColumnConfig> columns) {
+            this.detail = detail;
+            this.title = title;
             this.rows = rows;
             this.columns = columns;
         }

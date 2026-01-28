@@ -436,3 +436,61 @@ SELECT
 FROM hy.apex_sa_pinggu_dtl d;
 
 COMMIT;
+
+-- =====================================================
+-- K. 自定义导出配置
+-- =====================================================
+DECLARE
+    v_config_id NUMBER;
+BEGIN
+    SELECT SEQ_COST_EXPORT_CONFIG.NEXTVAL INTO v_config_id FROM DUAL;
+    
+    -- 主表导出配置
+    INSERT INTO T_COST_EXPORT_CONFIG (
+        ID, EXPORT_CODE, EXPORT_NAME, PAGE_CODE,
+        MASTER_SQL, MASTER_TABLE_ALIAS, PK_COLUMN, PAGE_FK_COLUMN,
+        MASTER_SHEET_NAME, COLUMNS, DISPLAY_ORDER, CREATE_BY
+    ) VALUES (
+        v_config_id,
+        'cost-pinggu-export',
+        '物料成本核算表导出',
+        'cost-pinggu',
+        'SELECT DOCID, GOODSNAME, GOODSNAME_EN, STRENGTH, CUSTOMNAME, COUNTRY, PROJECTNO, APEX_PL, ANNUAL_QTY, YIELD, P_PERPACK, S_PERBACK, X_PERBACK, PACKTYPE, TOTAL_YL, TOTAL_FL, TOTAL_BC, TOTAL_COST, OUT_PRICE_RMB, SALEMONEY, JGF_BATCH, COST_PERQP, JGF_PERQP, ML_PERQP, Y_JG_RE, Y_ML, Y_SALE, FMNAME, FMRATE FROM T_COST_PINGGU WHERE DELETED = 0',
+        'm',
+        'DOCID',
+        'DOCID',
+        '物料成本核算',
+        '[{"field":"GOODSNAME","header":"产品名称"},{"field":"GOODSNAME_EN","header":"产品英文名"},{"field":"STRENGTH","header":"剂量"},{"field":"CUSTOMNAME","header":"客户名称"},{"field":"COUNTRY","header":"国家"},{"field":"PROJECTNO","header":"项目号"},{"field":"APEX_PL","header":"批量"},{"field":"ANNUAL_QTY","header":"年需求量"},{"field":"YIELD","header":"收率(%)"},{"field":"P_PERPACK","header":"每盒片数"},{"field":"S_PERBACK","header":"每箱装盒数"},{"field":"X_PERBACK","header":"每托盘箱数"},{"field":"PACKTYPE","header":"包装形式"},{"field":"TOTAL_YL","header":"原料合计"},{"field":"TOTAL_FL","header":"辅料合计"},{"field":"TOTAL_BC","header":"包材合计"},{"field":"TOTAL_COST","header":"总物料成本"},{"field":"OUT_PRICE_RMB","header":"出厂价(RMB)"},{"field":"SALEMONEY","header":"每批销售额"},{"field":"JGF_BATCH","header":"每批加工费"},{"field":"COST_PERQP","header":"千片成本"},{"field":"JGF_PERQP","header":"千片加工费"},{"field":"ML_PERQP","header":"千片毛利"},{"field":"Y_JG_RE","header":"年加工费"},{"field":"Y_ML","header":"年毛利"},{"field":"Y_SALE","header":"年销售额"},{"field":"FMNAME","header":"币种"},{"field":"FMRATE","header":"汇率"}]',
+        1,
+        'system'
+    );
+
+    -- 原辅料明细
+    INSERT INTO T_COST_EXPORT_CONFIG_DETAIL (
+        ID, EXPORT_CONFIG_ID, TAB_KEY, SHEET_NAME, DETAIL_SQL, DETAIL_LINK_COLUMN, DISPLAY_ORDER
+    ) VALUES (
+        SEQ_COST_EXPORT_CONFIG_DTL.NEXTVAL,
+        v_config_id,
+        'material',
+        '原辅料明细',
+        'SELECT * FROM V_COST_PINGGU_MATERIAL WHERE DELETED = 0',
+        'MASTER_ID',
+        1
+    );
+
+    -- 包材明细
+    INSERT INTO T_COST_EXPORT_CONFIG_DETAIL (
+        ID, EXPORT_CONFIG_ID, TAB_KEY, SHEET_NAME, DETAIL_SQL, DETAIL_LINK_COLUMN, DISPLAY_ORDER
+    ) VALUES (
+        SEQ_COST_EXPORT_CONFIG_DTL.NEXTVAL,
+        v_config_id,
+        'package',
+        '包材明细',
+        'SELECT * FROM V_COST_PINGGU_PACKAGE WHERE DELETED = 0',
+        'MASTER_ID',
+        2
+    );
+
+    COMMIT;
+END;
+/
