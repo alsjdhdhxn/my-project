@@ -148,6 +148,11 @@ VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'goods-price-manage', 'grid', 'ROW_CLASS',
   {"field":"rowClassFlag","operator":"eq","value":"erp-price-null","className":"row-iserp-price-null"}
 ]', 'system');
 
+-- 单元格编辑规则：ISERP=1时只允许编辑price字段
+INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'goods-price-manage', 'grid', 'CELL_EDITABLE',
+'[{"condition":{"field":"iserp","operator":"eq","value":1},"editableFields":["price"]}]', 'system');
+
 -- 右键菜单
 INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
 VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'goods-price-manage', 'grid', 'CONTEXT_MENU',

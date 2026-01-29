@@ -1,8 +1,8 @@
 ﻿import { ref, type Ref, watch } from 'vue';
 import type { ColDef, GridReadyEvent, CellValueChangedEvent } from 'ag-grid-community';
 import { useGridContextMenu } from '@/v3/composables/meta-v3/useGridContextMenu';
-import type { ContextMenuRule, RowEditableRule, RowClassRule } from '@/v3/composables/meta-v3/types';
-import { buildRowEditableCallback, buildRowClassCallback } from '@/v3/composables/meta-v3/usePageRules';
+import type { ContextMenuRule, RowEditableRule, RowClassRule, CellEditableRule } from '@/v3/composables/meta-v3/types';
+import { buildRowEditableCallback, buildRowClassCallback, buildCellEditableCallback } from '@/v3/composables/meta-v3/usePageRules';
 import {
   buildGridRuntimeOptions,
   autoSizeColumnsOnReady,
@@ -47,6 +47,7 @@ export function useMasterGridBindings(params: {
   gridKey?: string | null;
   contextMenuConfig?: ContextMenuRule | null;
   rowEditableRules?: RowEditableRule[];
+  cellEditableRules?: CellEditableRule[];
   rowClassRules?: RowClassRule[];
   dataSource?: any;
   notifyError?: (message: string) => void;
@@ -60,13 +61,20 @@ export function useMasterGridBindings(params: {
   const rowEditableRules = params.rowEditableRules
     ?? (runtime as any).masterRowEditableRules?.value
     ?? [];
-  const rowEditableCallback = buildRowEditableCallback(rowEditableRules);
+  const cellEditableRules = params.cellEditableRules
+    ?? (runtime as any).masterCellEditableRules?.value
+    ?? [];
+  
+  // 优先使用 CELL_EDITABLE 规则，否则使用 ROW_EDITABLE 规则
+  const editableCallback = cellEditableRules.length > 0
+    ? buildCellEditableCallback(cellEditableRules, rowEditableRules)
+    : buildRowEditableCallback(rowEditableRules);
 
   const defaultColDef: ColDef = {
     sortable: true,
     filter: 'agTextColumnFilter',
     resizable: true,
-    editable: rowEditableCallback ?? true,
+    editable: editableCallback ?? true,
     wrapHeaderText: true,
     autoHeaderHeight: true,
     cellClassRules,
@@ -83,12 +91,12 @@ export function useMasterGridBindings(params: {
     wrappedEditableColumns.add(def);
   }
 
-  if (rowEditableCallback && params.columnDefs) {
+  if (editableCallback && params.columnDefs) {
     watch(
       params.columnDefs,
       (defs) => {
         if (!Array.isArray(defs)) return;
-        defs.forEach(def => wrapColumnEditable(def, rowEditableCallback));
+        defs.forEach(def => wrapColumnEditable(def, editableCallback));
       },
       { immediate: true }
     );
@@ -148,7 +156,7 @@ export function useMasterGridBindings(params: {
     executeAction: runtime.executeAction,
     masterGridKey,
     masterMenuConfig: params.contextMenuConfig,
-    isRowEditable: rowEditableCallback ? (row: any) => rowEditableCallback({ data: row }) : undefined,
+    isRowEditable: editableCallback ? (row: any) => editableCallback({ data: row, colDef: {} }) : undefined,
     notifyError: params.notifyError
   });
 

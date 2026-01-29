@@ -67,8 +67,12 @@ export function metaToColDef(col: ColumnMetadata): ColDef {
     case 'number':
       colDef.type = 'numericColumn';
       colDef.valueParser = (params) => {
+        // 允许置空
+        if (params.newValue === '' || params.newValue === null || params.newValue === undefined) {
+          return null;
+        }
         const val = Number(params.newValue);
-        return isNaN(val) ? 0 : val;
+        return isNaN(val) ? null : val;
       };
       colDef.valueFormatter = (params) => formatNumberValue(params.value);
       break;

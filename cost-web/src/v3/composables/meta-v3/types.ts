@@ -86,11 +86,23 @@ export type ContextMenuRule = {
   items: ContextMenuItemRule[];
 };
 
-/** 行级可编辑规�?*/
+/** 行级可编辑规则 */
 export type RowEditableRule = {
   field: string;
   operator: 'notNull' | 'eq' | 'ne' | 'in' | 'notIn';
   value?: any;
+};
+
+/** 单元格级可编辑规则 - 条件匹配时只允许编辑指定字段 */
+export type CellEditableCondition = {
+  field: string;
+  operator: 'notNull' | 'eq' | 'ne' | 'in' | 'notIn';
+  value?: any;
+};
+
+export type CellEditableRule = {
+  condition: CellEditableCondition;
+  editableFields: string[];
 };
 
 /** 行级样式规则 */

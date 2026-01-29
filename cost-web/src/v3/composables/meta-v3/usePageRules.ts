@@ -12,7 +12,9 @@ import type {
   ContextMenuRule,
   RowEditableRule,
   RowClassRule,
-  ToolbarRule
+  ToolbarRule,
+  CellEditableRule,
+  CellEditableCondition
 } from '@/v3/composables/meta-v3/types';
 
 export function collectPageRules(components: PageComponentWithRules[]): PageRule[] {
@@ -285,6 +287,79 @@ export function buildRowEditableCallback(rules: RowEditableRule[]): ((params: an
       }
       if (!passed) return false;
     }
+    return true;
+  };
+}
+
+/** 解析 CELL_EDITABLE 规则 */
+export function parseCellEditableRule(componentKey: string, rules: PageRule[]): CellEditableRule[] {
+  const rule = rules.find(r => r.ruleType === 'CELL_EDITABLE');
+  if (!rule?.rules) return [];
+  try {
+    const raw = typeof rule.rules === 'string' ? JSON.parse(rule.rules) : rule.rules;
+    if (Array.isArray(raw)) return raw as CellEditableRule[];
+    if (raw && typeof raw === 'object') return [raw as CellEditableRule];
+    return [];
+  } catch (error) {
+    console.warn(`[PageRule] Failed to parse ${componentKey}.CELL_EDITABLE`, error);
+    return [];
+  }
+}
+
+/** 检查条件是否匹配 */
+function checkCondition(data: any, condition: CellEditableCondition): boolean {
+  const fieldValue = data[condition.field];
+  switch (condition.operator) {
+    case 'notNull':
+      return fieldValue != null;
+    case 'eq':
+      return fieldValue === condition.value;
+    case 'ne':
+      return fieldValue !== condition.value;
+    case 'in':
+      return Array.isArray(condition.value) && condition.value.includes(fieldValue);
+    case 'notIn':
+      return !Array.isArray(condition.value) || !condition.value.includes(fieldValue);
+    default:
+      return false;
+  }
+}
+
+/** 根据 CELL_EDITABLE 规则生成单元格级 editable 回调 */
+export function buildCellEditableCallback(
+  cellRules: CellEditableRule[],
+  rowRules?: RowEditableRule[]
+): ((params: any) => boolean) | undefined {
+  if ((!cellRules || cellRules.length === 0) && (!rowRules || rowRules.length === 0)) {
+    return undefined;
+  }
+  
+  const rowCallback = buildRowEditableCallback(rowRules || []);
+  
+  return (params: any) => {
+    const data = params.data;
+    const field = params.colDef?.field;
+    
+    if (!data) return true;
+    
+    // 新增行始终可编辑
+    if (data._isNew) return true;
+    
+    // 检查 CELL_EDITABLE 规则
+    if (cellRules && cellRules.length > 0) {
+      for (const rule of cellRules) {
+        if (checkCondition(data, rule.condition)) {
+          // 条件匹配，只有 editableFields 中的字段可编辑
+          return rule.editableFields.includes(field);
+        }
+      }
+    }
+    
+    // 没有匹配的 CELL_EDITABLE 规则，使用 ROW_EDITABLE 规则
+    if (rowCallback) {
+      return rowCallback(params);
+    }
+    
     return true;
   };
 }
