@@ -23,9 +23,7 @@ DELETE FROM T_COST_PAGE_RULE WHERE PAGE_CODE = 'goods-price-manage';
 DELETE FROM T_COST_PAGE_COMPONENT WHERE PAGE_CODE = 'goods-price-manage';
 DELETE FROM T_COST_COLUMN_METADATA WHERE TABLE_METADATA_ID IN (SELECT ID FROM T_COST_TABLE_METADATA WHERE TABLE_CODE = 'CostGoodsPrice');
 DELETE FROM T_COST_TABLE_METADATA WHERE TABLE_CODE = 'CostGoodsPrice';
-DELETE FROM T_COST_COLUMN_METADATA WHERE TABLE_METADATA_ID IN (SELECT ID FROM T_COST_TABLE_METADATA WHERE TABLE_CODE = 'CostGoodsByApex');
-DELETE FROM T_COST_TABLE_METADATA WHERE TABLE_CODE = 'CostGoodsByApex';
-DELETE FROM T_COST_LOOKUP_CONFIG WHERE LOOKUP_CODE = 'goodsByApex';
+DELETE FROM T_COST_LOOKUP_CONFIG WHERE LOOKUP_CODE = 'pgoodsByMgoods';
 DELETE FROM T_COST_RESOURCE WHERE RESOURCE_CODE = 'goods-price';
 COMMIT;
 
@@ -227,74 +225,32 @@ COMMIT;
 -- =====================================================
 
 -- 1. 创建产品弹窗视图
-CREATE OR REPLACE VIEW V_COST_GOODS_BY_APEX AS
-SELECT c.GOODSID AS P_GOODSID,
-       c.GOODSNAME,
-       c.GOODSTYPE,
-       c.PACKTYPE,
-       c.TRANPOSID,
-       c.TRANPOSNAME,
-       c.ZX_CUSTOMERID,
-       c.CUSTOMNAME,
-       c.ZONE,
-       a.APEX_GOODSID AS GOODSID,
-       0 AS DELETED
-  FROM T_COST_PINGGU_DTL a, T_COST_PINGGU b, T_COST_GOODS_V c
- WHERE a.DOCID = b.DOCID
-   AND b.GOODSID = c.GOODSID;
+CREATE OR REPLACE VIEW V_COST_PGOODS_BY_MGOODS AS
+SELECT a.apex_goodsid goodsid,
+       a.apex_goodsname,
+       a.dtl_useflag,
+       b.factoryname,
+       a.price,
+       b.goodsno,
+       d.goodsid pgoodsid,
+       d.goodsno pgoodsno,
+       d.goodsname,
+       c.apex_pl,
+       a.batch_qty
+  FROM T_COST_PINGGU_DTL a, t_cost_goods b, t_cost_pinggu c, t_cost_goods d
+ WHERE a.apex_goodsid = b.goodsid
+   AND a.docid = c.docid
+   AND c.goodsid = d.goodsid;
 
--- 2. 创建lookup配置（使用DATA_SOURCE指向表元数据的TABLE_CODE）
+-- 2. 创建lookup配置
 INSERT INTO T_COST_LOOKUP_CONFIG (ID, LOOKUP_CODE, LOOKUP_NAME, DATA_SOURCE, DISPLAY_COLUMNS, SEARCH_COLUMNS, VALUE_FIELD, LABEL_FIELD, CREATE_BY)
-VALUES (SEQ_COST_LOOKUP_CONFIG.NEXTVAL, 'goodsByApex', '产品选择(按物料)', 'V_COST_GOODS_BY_APEX',
-'[{"field":"pGoodsid","header":"产品ID","width":80},{"field":"goodsname","header":"产品名称","width":200},{"field":"goodstype","header":"规格","width":150},{"field":"packtype","header":"包装规格","width":120},{"field":"tranposname","header":"分销商","width":150},{"field":"customname","header":"客户名称","width":150},{"field":"zone","header":"国家","width":100}]',
-'["goodsname","customname"]', 'goodsid', 'goodsname', 'system');
+VALUES (SEQ_COST_LOOKUP_CONFIG.NEXTVAL, 'pgoodsByMgoods', '产品选择(按物料)', 'CostPgoodsByMgoods',
+'[{"field":"goodsid","header":"物料ID","width":80},{"field":"apexGoodsname","header":"物料名称","width":200},{"field":"dtlUseflag","header":"生产属性","width":100},{"field":"factoryname","header":"厂家","width":150},{"field":"price","header":"价格","width":100},{"field":"goodsno","header":"华益代码","width":120},{"field":"pgoodsid","header":"成品ID","width":80},{"field":"pgoodsno","header":"成品编码","width":120},{"field":"goodsname","header":"成品名称","width":200},{"field":"apexPl","header":"批量","width":100},{"field":"batchQty","header":"每批用量","width":100}]',
+'["apexGoodsname","goodsname","goodsno"]', 'goodsid', 'apexGoodsname', 'system');
 
--- 3. 创建视图的表元数据（供lookup使用）
-DECLARE
-    v_goods_apex_id NUMBER;
-BEGIN
-    SELECT SEQ_COST_TABLE_METADATA.NEXTVAL INTO v_goods_apex_id FROM DUAL;
-
-    INSERT INTO T_COST_TABLE_METADATA (ID, TABLE_CODE, TABLE_NAME, QUERY_VIEW, TARGET_TABLE, PK_COLUMN, CREATE_BY)
-    VALUES (v_goods_apex_id, 'CostGoodsByApex', '产品选择(按物料)', 'V_COST_GOODS_BY_APEX', 'V_COST_GOODS_BY_APEX', 'GOODSID', 'system');
-
-    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_goods_apex_id, 'pGoodsid', 'P_GOODSID', '产品ID', 'number', 0, 'system');
-
-    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_goods_apex_id, 'goodsname', 'GOODSNAME', '产品名称', 'text', 1, 'system');
-
-    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_goods_apex_id, 'goodstype', 'GOODSTYPE', '规格', 'text', 2, 'system');
-
-    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_goods_apex_id, 'packtype', 'PACKTYPE', '包装规格', 'text', 3, 'system');
-
-    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_goods_apex_id, 'tranposid', 'TRANPOSID', '分销商ID', 'number', 4, 'system');
-
-    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_goods_apex_id, 'tranposname', 'TRANPOSNAME', '分销商', 'text', 5, 'system');
-
-    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_goods_apex_id, 'zxCustomerid', 'ZX_CUSTOMERID', '客户ID', 'number', 6, 'system');
-
-    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_goods_apex_id, 'customname', 'CUSTOMNAME', '客户名称', 'text', 7, 'system');
-
-    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_goods_apex_id, 'zone', 'ZONE', '国家', 'text', 8, 'system');
-
-    INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, CREATE_BY)
-    VALUES (SEQ_COST_COLUMN_METADATA.NEXTVAL, v_goods_apex_id, 'goodsid', 'GOODSID', '物料ID', 'number', 9, 'system');
-
-    COMMIT;
-END;
-/
-
--- 4. 给物料清单及成本页面添加LOOKUP规则（无回填）
+-- 3. 给物料清单及成本页面添加LOOKUP规则（无回填）
 INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
 VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'goods-price-manage', 'grid', 'LOOKUP',
-'[{"field":"id","lookupCode":"goodsByApex","noFillback":true}]', 'system');
+'[{"field":"id","lookupCode":"pgoodsByMgoods","noFillback":true}]', 'system');
 
 COMMIT;
