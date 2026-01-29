@@ -243,9 +243,9 @@ SELECT c.GOODSID AS P_GOODSID,
  WHERE a.DOCID = b.DOCID
    AND b.GOODSID = c.GOODSID;
 
--- 2. 创建lookup配置（使用QUERY_VIEW直接查询视图，不依赖表元数据）
-INSERT INTO T_COST_LOOKUP_CONFIG (ID, LOOKUP_CODE, LOOKUP_NAME, QUERY_VIEW, DISPLAY_COLUMNS, SEARCH_COLUMNS, VALUE_FIELD, LABEL_FIELD, CREATE_BY)
-VALUES (SEQ_COST_LOOKUP_CONFIG.NEXTVAL, 'goodsByApex', '产品选择(按物料)', 'V_COST_GOODS_BY_APEX',
+-- 2. 创建lookup配置（使用DATA_SOURCE指向表元数据的TABLE_CODE）
+INSERT INTO T_COST_LOOKUP_CONFIG (ID, LOOKUP_CODE, LOOKUP_NAME, DATA_SOURCE, DISPLAY_COLUMNS, SEARCH_COLUMNS, VALUE_FIELD, LABEL_FIELD, CREATE_BY)
+VALUES (SEQ_COST_LOOKUP_CONFIG.NEXTVAL, 'goodsByApex', '产品选择(按物料)', 'CostGoodsByApex',
 '[{"field":"pGoodsid","header":"产品ID","width":80},{"field":"goodsname","header":"产品名称","width":200},{"field":"goodstype","header":"规格","width":150},{"field":"packtype","header":"包装规格","width":120},{"field":"tranposname","header":"分销商","width":150},{"field":"customname","header":"客户名称","width":150},{"field":"zone","header":"国家","width":100}]',
 '["goodsname","customname"]', 'goodsid', 'goodsname', 'system');
 
