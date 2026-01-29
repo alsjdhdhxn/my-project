@@ -2,9 +2,9 @@ package com.cost.costserver.config;
 
 import com.baomidou.mybatisplus.annotation.DbType;
 import com.baomidou.mybatisplus.autoconfigure.ConfigurationCustomizer;
+import com.baomidou.mybatisplus.autoconfigure.MybatisPlusProperties;
 import com.baomidou.mybatisplus.extension.plugins.MybatisPlusInterceptor;
 import com.baomidou.mybatisplus.extension.plugins.inner.PaginationInnerInterceptor;
-import org.apache.ibatis.logging.nologging.NoLoggingImpl;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
@@ -20,12 +20,17 @@ public class MyBatisPlusConfig {
     }
 
     /**
-     * 禁用 MyBatis 内置日志（==> Preparing, <== Row 等）
-     * 使用自定义 SqlLogInterceptor 输出简洁格式
+     * 强制应用 YAML 中的 log-impl 配置
+     * 解决 MyBatis-Plus 自动配置时序问题
      */
     @Bean
-    public ConfigurationCustomizer mybatisConfigurationCustomizer() {
-        return configuration -> configuration.setLogImpl(NoLoggingImpl.class);
+    public ConfigurationCustomizer mybatisConfigurationCustomizer(MybatisPlusProperties properties) {
+        return configuration -> {
+            if (properties.getConfiguration() != null 
+                && properties.getConfiguration().getLogImpl() != null) {
+                configuration.setLogImpl(properties.getConfiguration().getLogImpl());
+            }
+        };
     }
 
     /**
