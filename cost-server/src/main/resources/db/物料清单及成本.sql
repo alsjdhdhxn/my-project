@@ -124,7 +124,7 @@ END;
 INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
 VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'goods-price-manage', 'grid', 'COLUMN_OVERRIDE',
 '[
-  {"field":"id","visible":false,"editable":false},
+  {"field":"id","visible":true,"editable":false},
   {"field":"goodsname","width":null,"editable":true,"searchable":true},
   {"field":"price","width":null,"editable":true},
   {"field":"useflag","width":null,"editable":true},

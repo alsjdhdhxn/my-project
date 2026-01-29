@@ -36,8 +36,10 @@ export function useGridContextMenu(params: {
   executeCustomExport?: (exportCode: string, mode: 'all' | 'current') => void;
   /** 执行后端 action */
   executeAction?: (actionCode: string, options?: { data?: Record<string, any>; selectedRow?: Record<string, any> | null }) => Promise<void>;
-  /** 行是否可编辑的回调（用于控制删除权限） */
+  /** 主表行是否可编辑的回调（用于控制删除权限） */
   isRowEditable?: (row: any) => boolean;
+  /** 从表行是否可编辑的回调（按tabKey） */
+  isDetailRowEditableByTab?: Record<string, ((row: any) => boolean) | undefined> | { value?: Record<string, ((row: any) => boolean) | undefined> };
   /** 提示消息 */
   notifyError?: (message: string) => void;
 }) {
@@ -57,6 +59,7 @@ export function useGridContextMenu(params: {
     executeCustomExport,
     executeAction,
     isRowEditable,
+    isDetailRowEditableByTab,
     notifyError
   } = params;
 
@@ -165,15 +168,41 @@ export function useGridContextMenu(params: {
             const api = ctx.params?.api;
             const selectedRows = api?.getSelectedRows?.() || [];
             
+            // 解析响应式的 isDetailRowEditableByTab（支持 ref、computed 或普通对象）
+            let resolvedDetailEditable: Record<string, ((row: any) => boolean) | undefined> | undefined = undefined;
+            if (isDetailRowEditableByTab) {
+              if (typeof isDetailRowEditableByTab === 'object' && 'value' in isDetailRowEditableByTab) {
+                resolvedDetailEditable = (isDetailRowEditableByTab as any).value;
+              } else {
+                resolvedDetailEditable = isDetailRowEditableByTab as Record<string, ((row: any) => boolean) | undefined>;
+              }
+            }
+            console.log('[DEBUG] deleteRow - ctx.type:', ctx.type, 'ctx.tabKey:', ctx.tabKey);
+            console.log('[DEBUG] deleteRow - resolvedDetailEditable keys:', resolvedDetailEditable ? Object.keys(resolvedDetailEditable) : 'undefined');
+            
             // 检查行是否可编辑（不可编辑的行不允许删除）
-            const checkEditable = (row: any): boolean => {
+            const checkEditable = (row: any, tabKey?: string): boolean => {
               if (!row) return false;
               // 新增行始终可以删除
               if (row._isNew) return true;
-              // 如果有 isRowEditable 回调，使用它判断
-              if (isRowEditable && !isRowEditable(row)) {
-                notifyError?.('该行不允许删除');
-                return false;
+              // 主表检查
+              if (ctx.type === 'master') {
+                if (isRowEditable && !isRowEditable(row)) {
+                  notifyError?.('该行不允许删除');
+                  return false;
+                }
+              } else {
+                // 从表检查
+                const detailChecker = tabKey ? resolvedDetailEditable?.[tabKey] : undefined;
+                console.log('[DEBUG] checkEditable - tabKey:', tabKey, 'detailChecker:', detailChecker ? 'exists' : 'undefined');
+                if (detailChecker) {
+                  const isEditable = detailChecker(row);
+                  console.log('[DEBUG] checkEditable - row:', row, 'isEditable:', isEditable);
+                  if (!isEditable) {
+                    notifyError?.('该行不允许删除');
+                    return false;
+                  }
+                }
               }
               return true;
             };
@@ -183,7 +212,8 @@ export function useGridContextMenu(params: {
                 const editableRows = selectedRows.filter((row: any) => checkEditable(row));
                 editableRows.forEach((row: any) => deleteMasterRow(row));
               } else if (ctx.masterId != null && ctx.tabKey) {
-                selectedRows.forEach((row: any) => deleteDetailRow(ctx.masterId!, ctx.tabKey!, row, ctx.masterRowKey));
+                const editableRows = selectedRows.filter((row: any) => checkEditable(row, ctx.tabKey));
+                editableRows.forEach((row: any) => deleteDetailRow(ctx.masterId!, ctx.tabKey!, row, ctx.masterRowKey));
               }
             } else {
               const row = resolveRow(ctx.params);
@@ -192,6 +222,7 @@ export function useGridContextMenu(params: {
                 if (!checkEditable(row)) return;
                 deleteMasterRow(row);
               } else if (ctx.masterId != null && ctx.tabKey) {
+                if (!checkEditable(row, ctx.tabKey)) return;
                 deleteDetailRow(ctx.masterId, ctx.tabKey, row, ctx.masterRowKey);
               }
             }

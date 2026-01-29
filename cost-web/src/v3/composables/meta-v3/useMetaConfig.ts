@@ -269,6 +269,8 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
   const layoutSplitConfigRef = shallowRef<SplitLayoutConfig | null>(null);
   const masterRowEditableRules = shallowRef<import('@/v3/composables/meta-v3/types').RowEditableRule[]>([]);
   const masterRowClassRules = shallowRef<import('@/v3/composables/meta-v3/types').RowClassRule[]>([]);
+  const detailRowClassRulesByTab = shallowRef<Record<string, import('@/v3/composables/meta-v3/types').RowClassRule[]>>({});
+  const detailRowEditableRulesByTab = shallowRef<Record<string, import('@/v3/composables/meta-v3/types').RowEditableRule[]>>({});
   const masterToolbar = shallowRef<ToolbarRule | null>(null);
 
   async function loadComponents() {
@@ -542,6 +544,8 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
       }
 
       detailContextMenuByTab.value[tab.key] = parseContextMenuRule(tab.key, tabRules) || detailContextMenuDefault.value;
+      detailRowClassRulesByTab.value[tab.key] = parseRowClassRule(tab.key, tabRules);
+      detailRowEditableRulesByTab.value[tab.key] = parseRowEditableRule(tab.key, tabRules);
     }
 
 
@@ -585,6 +589,8 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
     detailLookupRulesByTab,
     masterRowEditableRules,
     masterRowClassRules,
+    detailRowClassRulesByTab,
+    detailRowEditableRulesByTab,
     masterToolbar,
     loadComponents,
     parseConfig,

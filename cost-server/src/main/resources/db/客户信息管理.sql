@@ -314,10 +314,20 @@ INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CR
 VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'customer-manage', 'masterGrid', 'ROW_CLASS',
 '[{"field":"iserp","operator":"eq","value":1,"className":"row-confirmed"}]', 'system');
 
+-- 主表行编辑规则（iserp=1时禁止编辑和删除）
+INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'customer-manage', 'masterGrid', 'ROW_EDITABLE',
+'[{"field":"iserp","operator":"ne","value":1}]', 'system');
+
 -- 从表行样式
 INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
 VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'customer-manage', 'tranposer', 'ROW_CLASS',
 '[{"field":"iserp","operator":"eq","value":1,"className":"row-confirmed"}]', 'system');
+
+-- 从表行编辑规则（iserp=1时禁止编辑和删除）
+INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'customer-manage', 'tranposer', 'ROW_EDITABLE',
+'[{"field":"iserp","operator":"ne","value":1}]', 'system');
 
 -- 主表右键菜单
 INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)

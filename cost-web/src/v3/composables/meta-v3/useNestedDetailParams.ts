@@ -8,6 +8,8 @@ import {
   resolveSummaryConfig
 } from '@/v3/composables/meta-v3/summary-config';
 import { buildGridRuntimeOptions, autoSizeColumnsOnReady, type ResolvedGridOptions } from '@/v3/composables/meta-v3/grid-options';
+import { buildRowClassCallback } from '@/v3/composables/meta-v3/usePageRules';
+import type { RowClassRule } from '@/v3/composables/meta-v3/types';
 
 export function useNestedDetailParams(params: {
   pageConfig: Ref<ParsedPageConfig | null>;
@@ -17,6 +19,7 @@ export function useNestedDetailParams(params: {
   cellClassRules: ColDef['cellClassRules'];
   getRowClass: (params: any) => string | undefined;
   detailRowClassByTab?: Ref<Record<string, ((params: any) => string | undefined) | undefined>>;
+  detailRowClassRulesByTab?: Ref<Record<string, RowClassRule[]>>;
   detailGridOptionsByTab?: Ref<Record<string, ResolvedGridOptions>>;
   applyGridConfig?: (gridKey: string, api: any, columnApi: any) => void;
   getDetailContextMenuItems: (masterId: number, masterRowKey: string, tabKey: string) => (params: any) => any[];
@@ -33,6 +36,7 @@ export function useNestedDetailParams(params: {
     cellClassRules,
     getRowClass,
     detailRowClassByTab,
+    detailRowClassRulesByTab,
     detailGridOptionsByTab,
     applyGridConfig,
     getDetailContextMenuItems,
@@ -106,6 +110,8 @@ export function useNestedDetailParams(params: {
       const masterRowKey = params.data?._masterRowKey;
       const columns = detailColumnsByTab.value[tabKey] || [];
       const metaRowClass = detailRowClassByTab?.value?.[tabKey];
+      const rowClassRules = detailRowClassRulesByTab?.value?.[tabKey] || [];
+      const ruleRowClass = buildRowClassCallback(rowClassRules);
       const gridOptions = detailGridOptionsByTab?.value?.[tabKey];
       const mergedRowClass = (rowParams: any) => {
         const classes: string[] = [];
@@ -113,6 +119,8 @@ export function useNestedDetailParams(params: {
         if (baseClass) classes.push(baseClass);
         const metaClass = metaRowClass?.(rowParams);
         if (metaClass) classes.push(metaClass);
+        const ruleClass = ruleRowClass?.(rowParams);
+        if (ruleClass) classes.push(ruleClass);
         return classes.length > 0 ? classes.join(' ') : undefined;
       };
       const runtimeOptions = buildGridRuntimeOptions(gridOptions);

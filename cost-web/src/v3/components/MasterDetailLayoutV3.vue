@@ -65,7 +65,7 @@
           :activeMasterRowKey="activeMasterRowKey"
           :detailCache="detailCache"
           :detailColumnsByTab="detailColumnsByTab"
-          :detailRowClassByTab="detailRowClassGetterByTab"
+          :detailRowClassByTab="mergedDetailRowClassByTab"
           :detailGridOptionsByTab="detailGridOptionsByTab"
           :cellClassRules="cellClassRules"
           :applyGridConfig="applyGridConfig"
@@ -128,6 +128,7 @@ import { useMasterGridBindings } from '@/v3/composables/meta-v3/useMasterGridBin
 import { useGridContextMenu } from '@/v3/composables/meta-v3/useGridContextMenu';
 import { useThemeStore } from '@/store/modules/theme';
 import { ensureRowKey } from '@/v3/logic/calc-engine';
+import { buildRowClassCallback, buildRowEditableCallback } from '@/v3/composables/meta-v3/usePageRules';
 
 const props = defineProps<{ runtime: any }>();
 
@@ -151,6 +152,8 @@ const {
   pageConfig,
   masterRowClassGetter,
   detailRowClassGetterByTab,
+  detailRowClassRulesByTab,
+  detailRowEditableRulesByTab,
   masterGridOptions,
   detailGridOptionsByTab,
   detailGridApisByTab,
@@ -226,6 +229,45 @@ const splitConfig = computed(() => {
 });
 // 使用全局主题设置判断是否为分屏模式
 const isSplitMode = computed(() => masterDetailMode.value === 'split');
+
+// 合并明细表行样式：列元数据 rulesConfig + T_COST_PAGE_RULE ROW_CLASS
+const mergedDetailRowClassByTab = computed(() => {
+  const result: Record<string, ((params: any) => string | undefined) | undefined> = {};
+  const tabs = pageConfig.value?.tabs || [];
+  for (const tab of tabs) {
+    const metaGetter = detailRowClassGetterByTab?.value?.[tab.key];
+    const rules = detailRowClassRulesByTab?.value?.[tab.key] || [];
+    const ruleGetter = buildRowClassCallback(rules);
+    
+    if (!metaGetter && !ruleGetter) {
+      result[tab.key] = undefined;
+    } else {
+      result[tab.key] = (params: any) => {
+        const classes: string[] = [];
+        const metaClass = metaGetter?.(params);
+        if (metaClass) classes.push(metaClass);
+        const ruleClass = ruleGetter?.(params);
+        if (ruleClass) classes.push(ruleClass);
+        return classes.length > 0 ? classes.join(' ') : undefined;
+      };
+    }
+  }
+  return result;
+});
+
+// 从表行编辑权限检查（用于控制删除）
+const detailRowEditableByTab = computed(() => {
+  const result: Record<string, ((row: any) => boolean) | undefined> = {};
+  const tabs = pageConfig.value?.tabs || [];
+  for (const tab of tabs) {
+    const rules = detailRowEditableRulesByTab?.value?.[tab.key] || [];
+    console.log(`[DEBUG] detailRowEditableByTab - tab: ${tab.key}, rules:`, rules);
+    const callback = buildRowEditableCallback(rules);
+    result[tab.key] = callback ? (row: any) => callback({ data: row }) : undefined;
+  }
+  console.log('[DEBUG] detailRowEditableByTab result:', Object.keys(result).map(k => `${k}: ${result[k] ? 'has callback' : 'undefined'}`));
+  return result;
+});
 const activeMasterId = ref<number | null>(null);
 const activeMasterRowKey = ref<string | null>(null);
 
@@ -299,7 +341,9 @@ const { getDetailContextMenuItems } = useGridContextMenu({
   copyDetailRow,
   save,
   saveGridConfig,
-  detailMenuByTab: detailContextMenuByTab
+  detailMenuByTab: detailContextMenuByTab,
+  isDetailRowEditableByTab: detailRowEditableByTab,
+  notifyError: (msg: string) => window.$message?.error(msg)
 });
 
 const masterGridApi = ref<any>(null);
@@ -349,7 +393,7 @@ const gridContext = {
     tabs: detailTabs,
     detailCache,
     detailColumnsByTab,
-    detailRowClassByTab: detailRowClassGetterByTab,
+    detailRowClassByTab: mergedDetailRowClassByTab,
     detailGridOptionsByTab,
     cellClassRules,
     applyGridConfig,
