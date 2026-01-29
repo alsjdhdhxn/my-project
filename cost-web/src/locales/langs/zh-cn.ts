@@ -195,6 +195,11 @@ const local: App.I18n.Schema = {
         title: '从表视图模式',
         tab: 'Tab模式',
         stack: '堆叠模式'
+      },
+      masterDetailMode: {
+        title: '主从模式',
+        masterDetail: '行展开模式',
+        split: '上下分屏'
       }
     },
     general: {

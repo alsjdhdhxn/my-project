@@ -27,6 +27,7 @@
       <template #1>
         <div class="master-panel">
           <AgGridVue
+            :key="'split-master-grid'"
             class="ag-theme-quartz master-grid"
             :columnDefs="masterColumnDefs"
             :defaultColDef="defaultColDef"
@@ -85,6 +86,7 @@
 
     <div v-else class="master-panel">
       <AgGridVue
+        :key="'master-detail-grid'"
         class="ag-theme-quartz master-grid"
         :columnDefs="masterColumnDefs"
         :defaultColDef="defaultColDef"
@@ -207,6 +209,9 @@ async function handleToolbarClick(item: any) {
 // 使用全局主题设置的detailViewMode
 const detailViewMode = computed(() => themeStore.detailViewMode);
 
+// 使用全局主题设置的masterDetailMode
+const masterDetailMode = computed(() => themeStore.masterDetailMode);
+
 const detailFeatureEnabled = computed(() => runtime?.features?.detailTabs !== false);
 const hasDetailTabs = computed(() => detailFeatureEnabled.value && (pageConfig.value?.tabs?.length || 0) > 0);
 const detailTabs = computed(() => pageConfig.value?.tabs || []);
@@ -219,7 +224,8 @@ const splitConfig = computed(() => {
     max: config?.max ?? 0.8
   };
 });
-const isSplitMode = computed(() => detailLayoutMode.value === 'split');
+// 使用全局主题设置判断是否为分屏模式
+const isSplitMode = computed(() => masterDetailMode.value === 'split');
 const activeMasterId = ref<number | null>(null);
 const activeMasterRowKey = ref<string | null>(null);
 
@@ -227,11 +233,12 @@ const masterGridOptionsValue = computed(() => masterGridOptions?.value || null);
 
 // 确保 dataSource 只创建一次，避免因响应式重新计算导致 AG Grid 重置
 let cachedDataSource: any = null;
-const dataSource = computed(() => {
-  if (cachedDataSource) return cachedDataSource;
-  cachedDataSource = runtime?.createServerSideDataSource?.({ pageSize: masterGridOptionsValue.value?.cacheBlockSize });
+function getDataSource() {
+  if (!cachedDataSource) {
+    cachedDataSource = runtime?.createServerSideDataSource?.({ pageSize: masterGridOptionsValue.value?.cacheBlockSize });
+  }
   return cachedDataSource;
-});
+}
 
 const {
   cellClassRules,
@@ -259,7 +266,7 @@ const {
   contextMenuConfig: masterContextMenu,
   rowEditableRules: masterRowEditableRules?.value,
   rowClassRules: masterRowClassRules?.value,
-  dataSource: dataSource.value,
+  dataSource: getDataSource(),
   onSelectionChanged: async (rows) => {
     if (!isSplitMode.value || !hasDetailTabs.value) return;
     const selected = rows?.[0];
@@ -298,6 +305,7 @@ const { getDetailContextMenuItems } = useGridContextMenu({
 const masterGridApi = ref<any>(null);
 
 function handleMasterGridReady(event: any) {
+  console.log('[DEBUG] handleMasterGridReady called, isSplitMode:', isSplitMode.value);
   masterGridApi.value = event.api;
   onMasterGridReady(event);
   applyGridConfig?.(masterGridKey.value, event.api, event.columnApi);

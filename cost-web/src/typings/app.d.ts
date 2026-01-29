@@ -115,6 +115,8 @@ declare namespace App {
       };
       /** Detail view mode for master-detail layout */
       detailViewMode: 'tab' | 'stack';
+      /** Master-detail display mode */
+      masterDetailMode: 'master-detail' | 'split';
       /** Watermark */
       watermark: {
         /** Whether to show the watermark */

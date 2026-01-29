@@ -238,7 +238,6 @@ public class CustomExportService {
         }
 
         String pkColumn = resolvePkColumn(config);
-        ensureColumnReference(baseSql, masterAlias, pkColumn, "masterSql");
 
         String existsClause = buildPageExistsClause(config, pageView, pageMeta, conditions, masterAlias);
         String filtered = appendWhereClause(baseSql, existsClause);
@@ -261,12 +260,19 @@ public class CustomExportService {
             throw new BusinessException(400, "masterTableAlias is required for detail export");
         }
 
-        String existsClause = buildPageExistsClause(config, pageView, pageMeta, conditions, masterAlias);
+        // 从表使用 detailLinkColumn 作为关联列
+        String detailLinkColumn = detail.getDetailLinkColumn();
+        String existsClause = buildPageExistsClause(config, pageView, pageMeta, conditions, masterAlias, detailLinkColumn);
         return appendWhereClause(baseSql, existsClause);
     }
 
     private String buildPageExistsClause(ExportConfig config, String pageView, TableMetadataDTO pageMeta,
             List<QueryParam.QueryCondition> conditions, String masterAlias) {
+        return buildPageExistsClause(config, pageView, pageMeta, conditions, masterAlias, null);
+    }
+
+    private String buildPageExistsClause(ExportConfig config, String pageView, TableMetadataDTO pageMeta,
+            List<QueryParam.QueryCondition> conditions, String masterAlias, String linkColumnOverride) {
         String pageViewAlias = StrUtil.isNotBlank(config.getPageViewAlias())
                 ? config.getPageViewAlias()
                 : DEFAULT_PAGE_VIEW_ALIAS;
@@ -280,11 +286,17 @@ public class CustomExportService {
             throw new BusinessException(400, "invalid pkColumn");
         }
 
+        // 使用覆盖的关联列（从表场景），否则使用主表主键列
+        String joinColumn = StrUtil.isNotBlank(linkColumnOverride) ? linkColumnOverride : pkColumn;
+        if (!isSafeIdentifier(joinColumn)) {
+            throw new BusinessException(400, "invalid linkColumn");
+        }
+
         Map<String, ColumnMetadataDTO> columnMap = buildColumnMap(pageMeta);
         StringBuilder sb = new StringBuilder();
         sb.append("EXISTS (SELECT 1 FROM ").append(pageView).append(" ").append(pageViewAlias);
         sb.append(" WHERE ").append(pageViewAlias).append(".").append(pageFkColumn);
-        sb.append(" = ").append(masterAlias).append(".").append(pkColumn);
+        sb.append(" = ").append(masterAlias).append(".").append(joinColumn);
 
         if (hasDeletedColumn(columnMap)) {
             sb.append(" AND ").append(pageViewAlias).append(".DELETED = 0");
@@ -305,17 +317,6 @@ public class CustomExportService {
             throw new BusinessException(400, "pkColumn is required for current export");
         }
         return pkColumn;
-    }
-
-    private void ensureColumnReference(String sql, String alias, String column, String label) {
-        if (StrUtil.isBlank(sql) || StrUtil.isBlank(alias) || StrUtil.isBlank(column)) {
-            return;
-        }
-        String normalizedSql = sql.replaceAll("\\s+", "").toUpperCase(Locale.ROOT);
-        String target = (alias + "." + column).replaceAll("\\s+", "").toUpperCase(Locale.ROOT);
-        if (!normalizedSql.contains(target)) {
-            throw new BusinessException(400, label + " must reference " + alias + "." + column);
-        }
     }
 
     private String buildConditionClause(List<QueryParam.QueryCondition> conditions,
@@ -1354,6 +1355,7 @@ public class CustomExportService {
      */
     private static class SimpleHeadStyleHandler extends AbstractCellWriteHandler {
         private CellStyle headStyle;
+        private boolean rowHeightSet = false;
 
         @Override
         public void afterCellDispose(WriteSheetHolder writeSheetHolder, WriteTableHolder writeTableHolder,
@@ -1372,6 +1374,12 @@ public class CustomExportService {
                 headStyle.setVerticalAlignment(VerticalAlignment.CENTER);
             }
             cell.setCellStyle(headStyle);
+            
+            // 设置表头行高与数据行一致（只设置一次）
+            if (!rowHeightSet) {
+                cell.getRow().setHeightInPoints(15);
+                rowHeightSet = true;
+            }
         }
     }
 

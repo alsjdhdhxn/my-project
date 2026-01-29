@@ -329,7 +329,6 @@ export function createRowClassGetter(rules: RowStyleRule[]) {
  */
 export function metaToColDefs(columns: ColumnMetadata[]): ColDef[] {
   return columns
-    .filter(col => col.fieldName !== 'id') // 排除 id 列
     .sort((a, b) => a.displayOrder - b.displayOrder)
     .map(metaToColDef);
 }

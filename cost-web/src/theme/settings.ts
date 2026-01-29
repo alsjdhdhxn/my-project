@@ -58,6 +58,7 @@ export const themeSettings: App.Theme.ThemeSetting = {
     right: true
   },
   detailViewMode: 'stack',
+  masterDetailMode: 'master-detail',
   watermark: {
     visible: false,
     text: '华益低代码平台',

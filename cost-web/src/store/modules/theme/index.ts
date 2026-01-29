@@ -219,6 +219,15 @@ export const useThemeStore = defineStore(SetupStoreId.Theme, () => {
     settings.value.detailViewMode = mode;
   }
 
+  /**
+   * Set master-detail mode
+   *
+   * @param mode Master-detail mode ('master-detail' or 'split')
+   */
+  function setMasterDetailMode(mode: 'master-detail' | 'split') {
+    settings.value.masterDetailMode = mode;
+  }
+
   /** Only run timer when watermark is visible and time display is enabled */
   function updateWatermarkTimer() {
     const { watermark } = settings.value;
@@ -307,6 +316,7 @@ export const useThemeStore = defineStore(SetupStoreId.Theme, () => {
     setWatermarkEnableUserName,
     setWatermarkEnableTime,
     setNaiveThemeOverrides,
-    setDetailViewMode
+    setDetailViewMode,
+    setMasterDetailMode
   };
 });

@@ -147,15 +147,13 @@ export function useMasterGridBindings(params: {
     masterMenuConfig: params.contextMenuConfig
   });
 
-  // 防止重复设置 datasource
-  let datasourceSet = false;
-
   function onGridReady(params: GridReadyEvent) {
     if (runtime.masterGridApi) runtime.masterGridApi.value = params.api;
-    // V3 强制使用 SSRM - 只设置一次
-    if (dataSource && !datasourceSet) {
+    // V3 强制使用 SSRM - 每次 grid-ready 都设置 datasource
+    console.log('[DEBUG] onGridReady - dataSource:', dataSource ? 'exists' : 'null');
+    if (dataSource) {
       params.api.setGridOption('serverSideDatasource', dataSource);
-      datasourceSet = true;
+      console.log('[DEBUG] serverSideDatasource set successfully');
     }
     const currentDefs = (params.api.getColumnDefs?.() as ColDef[] | undefined) ?? [];
     const hasExplicitWidth = currentDefs.some(def => typeof def.width === 'number' && def.width > 0);

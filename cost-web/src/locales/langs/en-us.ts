@@ -199,6 +199,11 @@ const local: App.I18n.Schema = {
         title: 'Detail View Mode',
         tab: 'Tab Mode',
         stack: 'Stack Mode'
+      },
+      masterDetailMode: {
+        title: 'Master-Detail Mode',
+        masterDetail: 'Row Expand',
+        split: 'Split View'
       }
     },
     general: {
