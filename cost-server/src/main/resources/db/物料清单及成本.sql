@@ -218,3 +218,36 @@ VALUES (SEQ_COST_ROLE_PAGE.NEXTVAL,
     'goods-price-manage', '["*"]', NULL, 'system');
 
 COMMIT;
+
+-- =====================================================
+-- J. 产品弹窗配置（按物料）
+-- =====================================================
+
+-- 1. 创建产品弹窗视图
+CREATE OR REPLACE VIEW V_COST_GOODS_BY_APEX AS
+SELECT c.GOODSID AS P_GOODSID,
+       c.GOODSNAME,
+       c.GOODSTYPE,
+       c.PACKTYPE,
+       c.TRANPOSID,
+       c.TRANPOSNAME,
+       c.ZX_CUSTOMERID,
+       c.CUSTOMNAME,
+       c.ZONE,
+       a.APEX_GOODSID AS GOODSID
+  FROM T_COST_PINGGU_DTL a, T_COST_PINGGU b, T_COST_GOODS_V c
+ WHERE a.DOCID = b.DOCID
+   AND b.GOODSID = c.GOODSID;
+
+-- 2. 创建lookup配置（goodsid是关联字段，不显示）
+INSERT INTO T_COST_LOOKUP_CONFIG (ID, LOOKUP_CODE, LOOKUP_NAME, DATA_SOURCE, DISPLAY_COLUMNS, SEARCH_COLUMNS, VALUE_FIELD, LABEL_FIELD, CREATE_BY)
+VALUES (SEQ_COST_LOOKUP_CONFIG.NEXTVAL, 'goodsByApex', '产品选择(按物料)', 'V_COST_GOODS_BY_APEX',
+'[{"field":"pGoodsid","header":"产品ID","width":80},{"field":"goodsname","header":"产品名称","width":200},{"field":"goodstype","header":"规格","width":150},{"field":"packtype","header":"包装规格","width":120},{"field":"tranposname","header":"分销商","width":150},{"field":"customname","header":"客户名称","width":150},{"field":"zone","header":"国家","width":100}]',
+'["goodsname","customname"]', 'goodsid', 'goodsname', 'system');
+
+-- 3. 给物料清单及成本页面添加LOOKUP规则（无回填）
+INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
+VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'goods-price-manage', 'grid', 'LOOKUP',
+'[{"field":"goodsid","lookupCode":"goodsByApex","noFillback":true}]', 'system');
+
+COMMIT;
