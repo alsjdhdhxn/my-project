@@ -13,3 +13,13 @@ html {
   overflow-x: hidden;
   color: rgb(var(--base-text-color));
 }
+
+/* Lookup 字段高亮样式 */
+.ag-cell.lookup-field {
+  color: #1890ff;
+  cursor: pointer;
+}
+
+.ag-cell.lookup-field:hover {
+  text-decoration: underline;
+}

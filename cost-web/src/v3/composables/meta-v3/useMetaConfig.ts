@@ -488,6 +488,17 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
     const masterLookup = parseLookupRuleConfig(masterRuleLabel, masterRules);
     masterLookupRules.value = masterLookup.length > 0 ? masterLookup : extractLookupRules(masterColumnMeta.value);
 
+    // 给有 lookup 的列添加高亮样式
+    const lookupFields = new Set(masterLookupRules.value.map(r => r.fieldName));
+    if (lookupFields.size > 0) {
+      masterColumnDefs.value = masterColumnDefs.value.map(col => {
+        if (col.field && lookupFields.has(col.field)) {
+          return { ...col, cellClass: 'lookup-field' };
+        }
+        return col;
+      });
+    }
+
     const masterCalcRules = parseCalcRuleConfig(masterRuleLabel, masterRules);
     if (masterCalcRules.length > 0) {
       compiledMasterCalcRules.value = compileCalcRules(masterCalcRules, `${pageCode}_master`);
@@ -540,6 +551,17 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
       detailLookupRulesByTab.value[tab.key] = detailLookup.length > 0
         ? detailLookup
         : extractLookupRules(rawColumns);
+
+      // 给有 lookup 的列添加高亮样式
+      const detailLookupFields = new Set(detailLookupRulesByTab.value[tab.key].map(r => r.fieldName));
+      if (detailLookupFields.size > 0 && detailColumnsByTab.value[tab.key]) {
+        detailColumnsByTab.value[tab.key] = detailColumnsByTab.value[tab.key].map(col => {
+          if (col.field && detailLookupFields.has(col.field)) {
+            return { ...col, cellClass: 'lookup-field' };
+          }
+          return col;
+        });
+      }
 
       const detailCalcRules = parseCalcRuleConfig(tab.key, tabRules);
       const calcRules = detailCalcRules.length > 0 ? detailCalcRules : extractCalcRules(rawColumns);
