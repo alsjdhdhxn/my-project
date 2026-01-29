@@ -213,6 +213,7 @@ watch(
 <style scoped>
 .detail-grid-wrap {
   min-height: 120px;
+  width: 100%;
   display: flex;
   flex-direction: column;
   position: relative;

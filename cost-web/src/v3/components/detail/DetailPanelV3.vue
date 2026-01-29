@@ -201,6 +201,8 @@ function refreshLayout() {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  width: 100%;
+  height: 100%;
   --detail-title-height: 24px;
 }
 
@@ -246,10 +248,15 @@ function refreshLayout() {
 }
 
 .detail-body {
-  padding: 0 12px 12px 12px;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  padding: 0;
 }
 
 .detail-content {
+  width: 100%;
+  height: 100%;
 }
 
 /* Tab 模式下单个 grid */
@@ -262,6 +269,8 @@ function refreshLayout() {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  width: 100%;
+  height: 100%;
 }
 
 .detail-empty {
