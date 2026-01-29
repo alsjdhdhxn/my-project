@@ -275,6 +275,19 @@ export function useSave(params: {
             applyIdMapping(mapping);
           }
           const resolvedMasterId = Number((data as any)?.masterId ?? mapping.get(masterId) ?? masterId);
+          
+          // 用后端返回的最新数据更新本地行
+          const returnedMasterRow = (data as any)?.masterRow;
+          if (returnedMasterRow && !masterRow._isDeleted) {
+            // 保留前端内部字段，合并后端返回的数据
+            const internalFields = ['_rowKey', '_isNew', '_isDeleted', '_dirtyFields', '_changeType', '_originalValues'];
+            for (const [key, value] of Object.entries(returnedMasterRow)) {
+              if (!key.startsWith('_')) {
+                masterRow[key] = value;
+              }
+            }
+          }
+          
           saveStats.successCount++;
           savedMasterIds.push(resolvedMasterId);
         }

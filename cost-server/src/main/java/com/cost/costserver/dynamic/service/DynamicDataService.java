@@ -870,7 +870,27 @@ public class DynamicDataService {
             OperationLogContext.LogSession session = OperationLogContext.end();
             operationLogService.saveAsync(session, "SUCCESS", null);
 
-            return new SaveResult(masterId, idMapping.isEmpty() ? null : idMapping);
+            SaveResult result = new SaveResult(masterId, idMapping.isEmpty() ? null : idMapping);
+            
+            // 查询更新后的主表行数据（非删除操作）
+            if (masterId != null && !"deleted".equals(master.getStatus())) {
+                try {
+                    QueryParam queryParam = new QueryParam();
+                    queryParam.setLookup(true); // 跳过权限检查
+                    // 使用 id 字段查询（元数据统一映射主键为 id）
+                    queryParam.setConditions(List.of(
+                        new QueryParam.QueryCondition("id", "eq", masterId, null)
+                    ));
+                    PageResult<Map<String, Object>> queryResult = query(masterTableCode, queryParam);
+                    if (queryResult.getList() != null && !queryResult.getList().isEmpty()) {
+                        result.setMasterRow(queryResult.getList().get(0));
+                    }
+                } catch (Exception e) {
+                    log.warn("查询更新后的主表数据失败: {}", e.getMessage());
+                }
+            }
+            
+            return result;
         } catch (Exception e) {
             // 保存操作日志 - 失败
             OperationLogContext.LogSession session = OperationLogContext.end();
