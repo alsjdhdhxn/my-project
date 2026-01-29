@@ -9,6 +9,7 @@ import { useUserGridConfig } from '@/v3/composables/meta-v3/useUserGridConfig';
 import { useCustomExport } from '@/v3/composables/meta-v3/useCustomExport';
 import { useMasterGridBindings } from '@/v3/composables/meta-v3/useMasterGridBindings';
 import { resolveFormRenderer } from '@/v3/composables/meta-v3/form-renderer-registry';
+import { buildCellEditableCallback } from '@/v3/composables/meta-v3/usePageRules';
 import { executePageRuleAction } from '@/service/api/dynamic';
 import { createRuntimeLogger } from './logger';
 import type { ComponentState, FormState, GridState, MetaError, RuntimeFeatures, RuntimeStage } from './types';
@@ -173,6 +174,15 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
 
   recalcAggregatesRef.current = calc.recalcAggregates;
 
+  // 构建行可编辑检查函数（使用闭包引用 meta，确保获取最新值）
+  const isRowEditable = (row: any) => {
+    const cellRules = meta.masterCellEditableRules?.value || [];
+    const rowRules = meta.masterRowEditableRules?.value || [];
+    if (cellRules.length === 0 && rowRules.length === 0) return true;
+    const callback = buildCellEditableCallback(cellRules, rowRules);
+    return callback ? callback({ data: row, colDef: {} }) : true;
+  };
+
   const lookup = useLookupDialog({
     getMasterRowById: data.getMasterRowById,
     getMasterRowByRowKey: data.getMasterRowByRowKey,
@@ -184,7 +194,8 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     runMasterCalc: calc.runMasterCalc,
     runDetailCalc: calc.runDetailCalc,
     recalcAggregates: recalcAggregatesProxy,
-    detailGridApisByTab
+    detailGridApisByTab,
+    isRowEditable
   });
 
   const { save, isSaving } = useSave({

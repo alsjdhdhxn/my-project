@@ -25,6 +25,8 @@ export function useLookupDialog(params: {
   runDetailCalc: RunDetailCalc;
   recalcAggregates: RecalcAggregates;
   detailGridApisByTab?: Ref<Record<string, any>>;
+  isRowEditable?: (row: RowData) => boolean;
+  isDetailRowEditable?: (row: RowData, tabKey: string) => boolean;
 }) {
   const {
     getMasterRowById,
@@ -37,7 +39,9 @@ export function useLookupDialog(params: {
     runMasterCalc,
     runDetailCalc,
     recalcAggregates,
-    detailGridApisByTab
+    detailGridApisByTab,
+    isRowEditable,
+    isDetailRowEditable
   } = params;
 
   const lookupDialogRef = ref<LookupDialogExpose | null>(null);
@@ -50,6 +54,10 @@ export function useLookupDialog(params: {
     const field = event.colDef?.field;
     const rowData = event.data;
     if (!field || !rowData) return;
+    
+    // 检查行是否可编辑
+    if (isRowEditable && !isRowEditable(rowData)) return;
+    
     const rule = masterLookupRules.value.find(r => r.fieldName === field);
     if (!rule) return;
     currentLookupRule.value = rule;
@@ -63,6 +71,10 @@ export function useLookupDialog(params: {
     const field = event.colDef?.field;
     const rowData = event.data;
     if (!field || !rowData) return;
+    
+    // 检查行是否可编辑
+    if (isDetailRowEditable && !isDetailRowEditable(rowData, tabKey)) return;
+    
     const rule = detailLookupRulesByTab.value[tabKey]?.find(r => r.fieldName === field);
     if (!rule) return;
     currentLookupRule.value = rule;
