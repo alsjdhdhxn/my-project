@@ -12,7 +12,6 @@ public record LookupConfigDTO(
     String lookupName,
     String dataSource,
     List<DisplayColumn> displayColumns,
-    List<String> searchColumns,
     String valueField,
     String labelField
 ) {
@@ -36,19 +35,11 @@ public record LookupConfigDTO(
             } catch (Exception ignored) {}
         }
 
-        List<String> searchCols = Collections.emptyList();
-        if (entity.getSearchColumns() != null) {
-            try {
-                searchCols = JSONUtil.parseArray(entity.getSearchColumns()).toList(String.class);
-            } catch (Exception ignored) {}
-        }
-
         return new LookupConfigDTO(
             entity.getLookupCode(),
             entity.getLookupName(),
             entity.getDataSource(),
             columns,
-            searchCols,
             entity.getValueField(),
             entity.getLabelField()
         );

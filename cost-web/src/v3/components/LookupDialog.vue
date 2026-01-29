@@ -11,7 +11,7 @@
 
       <!-- 内容区 -->
       <div class="lookup-dialog-body">
-        <div class="lookup-search" v-if="config?.searchColumns?.length">
+        <div class="lookup-search">
           <NInput v-model:value="searchText" placeholder="输入关键字搜索" clearable @keyup.enter="handleSearch">
             <template #prefix><SvgIcon icon="mdi:magnify" class="text-icon" /></template>
           </NInput>
@@ -54,7 +54,15 @@ import { fetchLookupConfig } from '@/service/api';
 import { request } from '@/service/request';
 import SvgIcon from '@/components/custom/svg-icon.vue';
 
-const props = defineProps<{ lookupCode: string; mapping: Record<string, string> }>();
+const props = defineProps<{
+  lookupCode: string;
+  mapping: Record<string, string>;
+  rowData?: Record<string, any>;
+  filterField?: string;
+  filterColumn?: string;
+  filterValueFrom?: 'row' | 'cell';
+  filterValue?: any;
+}>();
 const emit = defineEmits<{ (e: 'select', data: Record<string, any>): void; (e: 'cancel'): void }>();
 
 const visible = ref(false);
@@ -157,9 +165,21 @@ async function open() {
 
 async function loadData() {
   if (!config.value?.lookupCode) return;
+  const params: Record<string, any> = { page: 1, pageSize: 500 };
+  // 如果配置了筛选字段，带上筛选条件
+  let filterValue: any = null;
+  if (props.filterValueFrom === 'cell') {
+    filterValue = props.filterValue;
+  } else if (props.filterField && props.rowData) {
+    filterValue = props.rowData[props.filterField];
+  }
+  if (props.filterColumn && filterValue != null) {
+    params.filterColumn = props.filterColumn;
+    params.filterValue = filterValue;
+  }
   const { data } = await request<{ list: Record<string, any>[] }>({
     url: `/api/lookup/${props.lookupCode}/data`,
-    params: { page: 1, pageSize: 500 }
+    params
   });
   rowData.value = data?.list || [];
 }

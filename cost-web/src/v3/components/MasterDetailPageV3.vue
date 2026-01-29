@@ -12,6 +12,11 @@
       ref="lookupDialogRef"
       :lookupCode="currentLookupRule.lookupCode"
       :mapping="currentLookupRule.mapping"
+      :rowData="currentLookupRowData"
+      :filterField="currentLookupRule.filterField"
+      :filterColumn="currentLookupRule.filterColumn"
+      :filterValueFrom="currentLookupRule.filterValueFrom"
+      :filterValue="currentLookupCellValue"
       @select="onLookupSelect"
       @cancel="onLookupCancel"
     />
@@ -36,7 +41,7 @@ const runtime = useMetaRuntime({
 });
 
 const { isReady, pageComponents, init } = runtime;
-const { lookupDialogRef, currentLookupRule, onLookupSelect, onLookupCancel } = runtime as any;
+const { lookupDialogRef, currentLookupRule, currentLookupRowData, currentLookupCellValue, onLookupSelect, onLookupCancel } = runtime as any;
 const pageError = (runtime as any).pageError;
 
 onMounted(async () => {

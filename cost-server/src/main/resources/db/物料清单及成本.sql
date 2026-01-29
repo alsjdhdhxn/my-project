@@ -243,14 +243,14 @@ SELECT a.apex_goodsid goodsid,
    AND c.goodsid = d.goodsid;
 
 -- 2. 创建lookup配置
-INSERT INTO T_COST_LOOKUP_CONFIG (ID, LOOKUP_CODE, LOOKUP_NAME, DATA_SOURCE, DISPLAY_COLUMNS, SEARCH_COLUMNS, VALUE_FIELD, LABEL_FIELD, CREATE_BY)
-VALUES (SEQ_COST_LOOKUP_CONFIG.NEXTVAL, 'pgoodsByMgoods', '产品选择(按物料)', 'CostPgoodsByMgoods',
+INSERT INTO T_COST_LOOKUP_CONFIG (ID, LOOKUP_CODE, LOOKUP_NAME, DATA_SOURCE, DISPLAY_COLUMNS, VALUE_FIELD, LABEL_FIELD, CREATE_BY)
+VALUES (SEQ_COST_LOOKUP_CONFIG.NEXTVAL, 'pgoodsByMgoods', '产品选择(按物料)', 'V_COST_PGOODS_BY_MGOODS',
 '[{"field":"goodsid","header":"物料ID","width":80},{"field":"apexGoodsname","header":"物料名称","width":200},{"field":"dtlUseflag","header":"生产属性","width":100},{"field":"factoryname","header":"厂家","width":150},{"field":"price","header":"价格","width":100},{"field":"goodsno","header":"华益代码","width":120},{"field":"pgoodsid","header":"成品ID","width":80},{"field":"pgoodsno","header":"成品编码","width":120},{"field":"goodsname","header":"成品名称","width":200},{"field":"apexPl","header":"批量","width":100},{"field":"batchQty","header":"每批用量","width":100}]',
-'["apexGoodsname","goodsname","goodsno"]', 'goodsid', 'apexGoodsname', 'system');
+'goodsid', 'apexGoodsname', 'system');
 
 -- 3. 给物料清单及成本页面添加LOOKUP规则（无回填）
 INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
 VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'goods-price-manage', 'grid', 'LOOKUP',
-'[{"field":"id","lookupCode":"pgoodsByMgoods","noFillback":true}]', 'system');
+'[{"field":"id","lookupCode":"pgoodsByMgoods","noFillback":true,"filterField":"goodsid","filterColumn":"GOODSID"}]', 'system');
 
 COMMIT;

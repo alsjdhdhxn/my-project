@@ -234,7 +234,8 @@ public class DynamicDataService {
     /**
      * Lookup 查询（不依赖表元数据）
      */
-    public PageResult<Map<String, Object>> queryLookupData(String lookupCode, Integer page, Integer pageSize) {
+    public PageResult<Map<String, Object>> queryLookupData(String lookupCode, Integer page, Integer pageSize, 
+            String filterColumn, String filterValue) {
         LookupConfigDTO config = metadataService.getLookupConfig(lookupCode);
         if (config == null || StrUtil.isBlank(config.dataSource())) {
             throw new BusinessException(400, "Lookup 数据源不能为空");
@@ -246,7 +247,15 @@ public class DynamicDataService {
         int currentPage = (page != null && page > 0) ? page : 1;
         Integer pSize = (pageSize != null && pageSize > 0) ? pageSize : null;
 
-        String whereClause = " WHERE DELETED = 0";
+        // 构建 WHERE 条件
+        StringBuilder whereClause = new StringBuilder(" WHERE DELETED = 0");
+        if (StrUtil.isNotBlank(filterColumn) && StrUtil.isNotBlank(filterValue)) {
+            validateIdentifier(filterColumn, "filterColumn");
+            // 对 filterValue 进行转义防止 SQL 注入
+            String safeValue = filterValue.replace("'", "''");
+            whereClause.append(String.format(" AND %s = '%s'", filterColumn, safeValue));
+        }
+        
         String countSql = String.format("SELECT COUNT(*) FROM %s%s", dataSource, whereClause);
         Long total = dynamicMapper.selectCount(countSql);
 

@@ -47,6 +47,8 @@ export function useLookupDialog(params: {
   const lookupDialogRef = ref<LookupDialogExpose | null>(null);
   const currentLookupRule = ref<LookupRule | null>(null);
   const currentLookupRowId = ref<number | null>(null);
+  const currentLookupRowData = ref<RowData | null>(null);
+  const currentLookupCellValue = ref<any>(null);
   const currentLookupIsMaster = ref<boolean>(true);
   const currentLookupTabKey = ref<string>('');
 
@@ -63,6 +65,8 @@ export function useLookupDialog(params: {
     
     currentLookupRule.value = rule;
     currentLookupRowId.value = rowData.id;
+    currentLookupRowData.value = rowData;
+    currentLookupCellValue.value = rowData[field];
     currentLookupIsMaster.value = true;
     currentLookupTabKey.value = '';
     lookupDialogRef.value?.open();
@@ -81,6 +85,8 @@ export function useLookupDialog(params: {
     
     currentLookupRule.value = rule;
     currentLookupRowId.value = rowData.id;
+    currentLookupRowData.value = rowData;
+    currentLookupCellValue.value = rowData[field];
     currentLookupIsMaster.value = false;
     currentLookupTabKey.value = tabKey;
     lookupDialogRef.value?.open();
@@ -91,6 +97,8 @@ export function useLookupDialog(params: {
     if (currentLookupRule.value?.noFillback) {
       currentLookupRule.value = null;
       currentLookupRowId.value = null;
+      currentLookupRowData.value = null;
+      currentLookupCellValue.value = null;
       return;
     }
     
@@ -161,17 +169,23 @@ export function useLookupDialog(params: {
 
     currentLookupRule.value = null;
     currentLookupRowId.value = null;
+    currentLookupRowData.value = null;
+    currentLookupCellValue.value = null;
   }
 
   function onLookupCancel() {
     currentLookupRule.value = null;
     currentLookupRowId.value = null;
+    currentLookupRowData.value = null;
+    currentLookupCellValue.value = null;
   }
 
   return {
     lookupDialogRef,
     currentLookupRule,
     currentLookupRowId,
+    currentLookupRowData,
+    currentLookupCellValue,
     currentLookupIsMaster,
     currentLookupTabKey,
     onMasterCellClicked,

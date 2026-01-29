@@ -33,6 +33,11 @@ export type LookupRuleConfig = {
   mapping: Record<string, string>;
   /** 是否禁止回填（仅查看模式） */
   noFillback?: boolean;
+  /** 用于筛选的字段名（当前行的字段） */
+  filterField?: string;
+  /** 用于筛选的列名（弹窗数据源的列） */
+  filterColumn?: string;
+  filterValueFrom?: 'row' | 'cell';
 };
 
 export type RoleBindingRule = {

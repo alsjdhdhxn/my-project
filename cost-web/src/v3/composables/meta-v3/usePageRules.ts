@@ -123,7 +123,10 @@ export function parseLookupRuleConfig(componentKey: string, rules: PageRule[]): 
       fieldName: item.field ?? item.fieldName ?? '',
       lookupCode: item.lookupCode,
       mapping: item.mapping,
-      noFillback: item.noFillback
+      noFillback: item.noFillback,
+      filterField: item.filterField,
+      filterColumn: item.filterColumn,
+      filterValueFrom: item.filterValueFrom
     }));
 }
 
@@ -437,4 +440,3 @@ export function parseToolbarRule(componentKey: string, rules: PageRule[]): Toolb
     return null;
   }
 }
-
