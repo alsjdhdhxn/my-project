@@ -30,6 +30,7 @@ type RuntimeApi = {
   applyGridConfig?: (gridKey: string, api: any, columnApi: any) => void;
   customExportConfigs?: Ref<CustomExportConfig[]> | CustomExportConfig[];
   executeCustomExport?: (exportCode: string, mode: 'all' | 'current') => void;
+  executeAction?: (actionCode: string, options?: { data?: Record<string, any>; selectedRow?: Record<string, any> | null }) => Promise<void>;
   markFieldChange?: (row: any, field: string, oldValue: any, newValue: any, type: 'user' | 'calc') => void;
   runMasterCalc?: (node: any, row: any) => void;
   broadcastToDetail?: (masterId: number, row: any, changedFields?: string | string[]) => Promise<void> | void;
@@ -143,6 +144,7 @@ export function useMasterGridBindings(params: {
     saveGridConfig: (runtime as any).saveGridConfig,
     customExportConfigs: runtime.customExportConfigs,
     executeCustomExport: runtime.executeCustomExport,
+    executeAction: runtime.executeAction,
     masterGridKey,
     masterMenuConfig: params.contextMenuConfig
   });

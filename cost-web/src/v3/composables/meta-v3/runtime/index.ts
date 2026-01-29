@@ -229,7 +229,7 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
   async function executeAction(actionCode: string, options?: { 
     data?: Record<string, any>;
     selectedRow?: Record<string, any> | null;
-    refreshMode?: 'all' | 'row' | 'none';
+    refreshMode?: 'all' | 'row' | 'detail' | 'none';
     componentKey?: string;
   }) {
     if (!actionCode) return;
@@ -257,14 +257,30 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     notifySuccess('执行成功');
     
     // 根据 refreshMode 决定刷新方式
-    const refreshMode = options?.refreshMode ?? 'all';
+    const refreshMode = options?.refreshMode ?? 'detail';
     if (refreshMode === 'none') {
       return;
     }
     
     const api = masterGridApi.value as any;
-    if (refreshMode === 'row' && options?.selectedRow) {
-      const rowId = options.selectedRow.id;
+    const rowId = options?.selectedRow?.id;
+    const rowKey = options?.selectedRow?._rowKey;
+    
+    // 清空当前行的明细缓存
+    if (rowKey && data.detailCache) {
+      data.detailCache.delete(rowKey);
+    }
+    
+    if (refreshMode === 'detail') {
+      // 只刷新明细，不刷新主表
+      // 重新加载明细数据
+      if (rowId != null && rowKey) {
+        await data.loadDetailData(rowId, rowKey);
+      }
+      return;
+    }
+    
+    if (refreshMode === 'row') {
       api?.refreshServerSide?.({ purge: false });
       setTimeout(() => {
         api?.forEachNode?.((node: any) => {
@@ -275,6 +291,8 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
       }, 100);
       return;
     }
+    
+    // refreshMode === 'all'
     api?.refreshServerSide?.({ purge: true });
   }
 

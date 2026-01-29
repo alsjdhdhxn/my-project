@@ -7,6 +7,7 @@ import com.cost.costserver.dynamic.action.ActionParam;
 import com.cost.costserver.dynamic.action.ActionResult;
 import com.cost.costserver.dynamic.action.ActionRule;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.ibatis.type.JdbcType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
@@ -18,6 +19,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class ProcedureActionExecutor implements ActionExecutor {
@@ -37,6 +39,10 @@ public class ProcedureActionExecutor implements ActionExecutor {
         List<ActionParam> params = rule.getParams() == null ? Collections.emptyList() : rule.getParams();
         String callSql = buildProcedureCall(rule.getProcedure(), params.size());
 
+        log.info("执行存储过程: {}", callSql);
+        log.info("ActionContext data: {}", context.getData());
+        log.info("ActionContext vars: {}", context.getVars());
+
         return jdbcTemplate.execute((Connection connection) -> {
             CallableStatement statement = connection.prepareCall(callSql);
             int index = 1;
@@ -45,6 +51,7 @@ public class ProcedureActionExecutor implements ActionExecutor {
                 int jdbcType = resolveJdbcType(param.getJdbcType());
                 if ("IN".equals(mode) || "INOUT".equals(mode)) {
                     Object value = resolveSource(param.getSource(), context);
+                    log.info("参数[{}] source={}, mode={}, jdbcType={}, value={}", index, param.getSource(), mode, param.getJdbcType(), value);
                     statement.setObject(index, value, jdbcType);
                 }
                 if ("OUT".equals(mode) || "INOUT".equals(mode)) {

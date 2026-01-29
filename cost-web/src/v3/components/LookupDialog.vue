@@ -39,7 +39,7 @@
     <template #footer>
       <NSpace justify="end">
         <NButton @click="handleCancel">取消</NButton>
-        <NButton type="primary" :disabled="!selectedRow" @click="handleConfirm">确定</NButton>
+        <NButton type="primary" :disabled="!selectedRow || !hasMapping" @click="handleConfirm">确定</NButton>
       </NSpace>
     </template>
   </NModal>
@@ -94,6 +94,10 @@ const defaultColDef: ColDef = {
 };
 
 const rowSelection = { mode: 'singleRow' as const, enableClickSelection: true };
+
+const hasMapping = computed(() => {
+  return props.mapping && Object.keys(props.mapping).length > 0;
+});
 
 // ==================== Methods ====================
 
@@ -173,7 +177,7 @@ function onGridReady(params: GridReadyEvent) {
 }
 
 function onRowDoubleClicked(_event: RowDoubleClickedEvent) {
-  if (selectedRow.value) {
+  if (selectedRow.value && hasMapping.value) {
     handleConfirm();
   }
 }

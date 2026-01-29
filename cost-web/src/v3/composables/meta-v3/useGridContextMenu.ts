@@ -6,11 +6,6 @@ const LABEL_COPY = '复制';
 const LABEL_DELETE = '删除';
 const LABEL_SAVE = '保存';
 const LABEL_SAVE_GRID = '保存列配置';
-const LABEL_EXPORT_SELECTED = '导出选中';
-const LABEL_EXPORT_CURRENT = '导出当前';
-const LABEL_EXPORT_ALL = '导出全部';
-const LABEL_RESET_EXPORT = '重置导出配置';
-const LABEL_HEADER_CONFIG = '表头配置';
 const LABEL_CUSTOM_EXPORT = '自定义导出';
 
 type MenuConfigInput = ContextMenuRule | { value?: ContextMenuRule | null } | null | undefined;
@@ -32,11 +27,6 @@ export function useGridContextMenu(params: {
   copyDetailRow: (masterId: number, tabKey: string, row: any, masterRowKey?: string) => void;
   save: () => void;
   saveGridConfig?: (gridKey: string, api: any, columnApi: any) => void;
-  exportSelected?: () => void;
-  exportCurrent?: () => void;
-  exportAll?: () => void;
-  resetExportConfig?: () => void;
-  openHeaderConfig?: () => void;
   masterGridKey?: string | null;
   masterMenuConfig?: MenuConfigInput;
   detailMenuByTab?: Record<string, ContextMenuRule | null> | { value?: Record<string, ContextMenuRule | null> };
@@ -44,6 +34,8 @@ export function useGridContextMenu(params: {
   customExportConfigs?: CustomExportConfig[] | { value?: CustomExportConfig[] };
   /** 执行自定义导出的回调 */
   executeCustomExport?: (exportCode: string, mode: 'all' | 'current') => void;
+  /** 执行后端 action */
+  executeAction?: (actionCode: string, options?: { data?: Record<string, any>; selectedRow?: Record<string, any> | null }) => Promise<void>;
 }) {
   const {
     addMasterRow,
@@ -54,16 +46,12 @@ export function useGridContextMenu(params: {
     copyDetailRow,
     save,
     saveGridConfig,
-    exportSelected,
-    exportCurrent,
-    exportAll,
-    resetExportConfig,
-    openHeaderConfig,
     masterGridKey,
     masterMenuConfig,
     detailMenuByTab,
     customExportConfigs,
-    executeCustomExport
+    executeCustomExport,
+    executeAction
   } = params;
 
   function resolveMenuConfig(config: MenuConfigInput): ContextMenuRule | null {
@@ -112,27 +100,6 @@ export function useGridContextMenu(params: {
       case 'saveGridConfig':
       case 'saveColumnConfig':
         return 'saveGridConfig';
-      case 'export.selected':
-      case 'export_selected':
-      case 'exportSelected':
-        return 'exportSelected';
-      case 'export.current':
-      case 'export_current':
-      case 'exportCurrent':
-        return 'exportCurrent';
-      case 'export.all':
-      case 'export_all':
-      case 'exportAll':
-        return 'exportAll';
-      case 'export.reset':
-      case 'export_reset':
-      case 'resetExportConfig':
-        return 'resetExportConfig';
-      case 'export.header':
-      case 'export_header':
-      case 'openHeaderConfig':
-      case 'headerConfig':
-        return 'openHeaderConfig';
       case 'clipboard.copy':
       case 'clipboard_copy':
         return 'clipboardCopy';
@@ -171,14 +138,12 @@ export function useGridContextMenu(params: {
             const selectedRows = api?.getSelectedRows?.() || [];
             
             if (selectedRows.length > 1) {
-              // 多选复制
               if (ctx.type === 'master') {
                 selectedRows.forEach((row: any) => copyMasterRow(row));
               } else if (ctx.masterId != null && ctx.tabKey) {
                 selectedRows.forEach((row: any) => copyDetailRow(ctx.masterId!, ctx.tabKey!, row, ctx.masterRowKey));
               }
             } else {
-              // 单行复制
               const row = resolveRow(ctx.params);
               if (!row) return;
               if (ctx.type === 'master') copyMasterRow(row);
@@ -195,14 +160,12 @@ export function useGridContextMenu(params: {
             const selectedRows = api?.getSelectedRows?.() || [];
             
             if (selectedRows.length > 1) {
-              // 多选删除
               if (ctx.type === 'master') {
                 selectedRows.forEach((row: any) => deleteMasterRow(row));
               } else if (ctx.masterId != null && ctx.tabKey) {
                 selectedRows.forEach((row: any) => deleteDetailRow(ctx.masterId!, ctx.tabKey!, row, ctx.masterRowKey));
               }
             } else {
-              // 单行删除
               const row = resolveRow(ctx.params);
               if (!row) return;
               if (ctx.type === 'master') deleteMasterRow(row);
@@ -221,16 +184,6 @@ export function useGridContextMenu(params: {
           handler: () => saveGridConfig(key, ctx.params?.api, ctx.params?.columnApi)
         };
       }
-      case 'exportSelected':
-        return exportSelected ? { label: LABEL_EXPORT_SELECTED, requiresSelection: true, handler: () => exportSelected() } : null;
-      case 'exportCurrent':
-        return exportCurrent ? { label: LABEL_EXPORT_CURRENT, handler: () => exportCurrent() } : null;
-      case 'exportAll':
-        return exportAll ? { label: LABEL_EXPORT_ALL, handler: () => exportAll() } : null;
-      case 'resetExportConfig':
-        return resetExportConfig ? { label: LABEL_RESET_EXPORT, handler: () => resetExportConfig() } : null;
-      case 'openHeaderConfig':
-        return openHeaderConfig ? { label: LABEL_HEADER_CONFIG, handler: () => openHeaderConfig() } : null;
       case 'clipboardCopy':
         return { builtIn: 'copy' };
       case 'clipboardPaste':
@@ -251,6 +204,12 @@ export function useGridContextMenu(params: {
     if (item.action && normalizeAction(item.action) === 'separator') return true;
     return (item as any).separator === true;
   }
+
+  // 内置前端 action 列表
+  const BUILTIN_ACTIONS = [
+    'addRow', 'copyRow', 'deleteRow', 'save', 'saveGridConfig',
+    'clipboardCopy', 'clipboardPaste'
+  ];
 
   function buildMenuItems(items: ContextMenuItemRule[], ctx: MenuScope): any[] {
     const built: any[] = [];
@@ -273,34 +232,52 @@ export function useGridContextMenu(params: {
 
       const actionKey = normalizeAction(item.action);
       if (!actionKey || actionKey === 'separator') continue;
+      
       const resolved = resolveAction(actionKey, ctx);
-      if (!resolved) {
-        // 可选 action（如 openHeaderConfig）在函数未传入时静默跳过，不打印警告
-        // 只对真正未知的 action 打印警告
-        const optionalActions = ['openHeaderConfig', 'exportSelected', 'exportCurrent', 'exportAll', 'resetExportConfig', 'saveGridConfig'];
-        if (!optionalActions.includes(actionKey)) {
-          console.warn('[ContextMenu] unknown action', actionKey);
+      if (resolved) {
+        // 内置 action
+        const needsRow = item.requiresRow ?? resolved.requiresRow ?? false;
+        if (needsRow && !ctx.params?.node) continue;
+
+        const needsSelection = item.requiresSelection ?? resolved.requiresSelection ?? false;
+        const disabled = item.disabled || (needsSelection && !hasSelection(ctx.params));
+
+        if (resolved.builtIn) {
+          if (disabled) continue;
+          built.push(resolved.builtIn);
+          continue;
         }
+
+        built.push({
+          name: item.label || resolved.label || actionKey,
+          action: resolved.handler,
+          disabled: Boolean(disabled)
+        });
         continue;
       }
 
-      const needsRow = item.requiresRow ?? resolved.requiresRow ?? false;
-      if (needsRow && !ctx.params?.node) continue;
-
-      const needsSelection = item.requiresSelection ?? resolved.requiresSelection ?? false;
-      const disabled = item.disabled || (needsSelection && !hasSelection(ctx.params));
-
-      if (resolved.builtIn) {
-        if (disabled) continue;
-        built.push(resolved.builtIn);
+      // 内置 action 但函数未传入，跳过
+      if (BUILTIN_ACTIONS.includes(actionKey)) {
         continue;
       }
 
-      built.push({
-        name: item.label || resolved.label || actionKey,
-        action: resolved.handler,
-        disabled: Boolean(disabled)
-      });
+      // 非内置 action，调用后端执行
+      if (executeAction) {
+        const needsRow = item.requiresRow ?? false;
+        if (needsRow && !ctx.params?.node) continue;
+
+        const needsSelection = item.requiresSelection ?? false;
+        const disabled = item.disabled || (needsSelection && !hasSelection(ctx.params));
+
+        built.push({
+          name: item.label || actionKey,
+          action: () => {
+            const row = resolveRow(ctx.params);
+            executeAction(actionKey, { data: row || {}, selectedRow: row });
+          },
+          disabled: Boolean(disabled)
+        });
+      }
     }
 
     return normalizeSeparators(built);
@@ -329,7 +306,6 @@ export function useGridContextMenu(params: {
 
     const subMenuItems: any[] = [];
     for (const config of configs) {
-      // 每个配置提供两个选项：导出当前、导出所有
       subMenuItems.push({
         name: `${config.exportName} - 导出当前`,
         action: () => executeCustomExport(config.exportCode, 'current')

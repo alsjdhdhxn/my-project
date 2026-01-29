@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.cost.costserver.common.BusinessException;
 import com.cost.costserver.dynamic.action.ActionContext;
 import com.cost.costserver.dynamic.action.ActionExecutionReport;
+import com.cost.costserver.dynamic.action.ActionParam;
 import com.cost.costserver.dynamic.action.ActionResult;
 import com.cost.costserver.dynamic.action.ActionRule;
 import com.cost.costserver.dynamic.action.executor.ActionExecutor;
@@ -113,6 +114,7 @@ public class PageRuleActionService {
         return null;
     }
 
+    @SuppressWarnings("unchecked")
     private ActionRule toActionRule(Map<String, Object> item, String actionCode) {
         ActionRule rule = new ActionRule();
         rule.setCode(actionCode);
@@ -133,6 +135,21 @@ public class PageRuleActionService {
         } else if (StrUtil.isNotBlank(procedure)) {
             rule.setType("proc");
             rule.setProcedure(procedure);
+            // 解析 params
+            Object paramsObj = item.get("params");
+            if (paramsObj instanceof List) {
+                List<Map<String, Object>> paramsList = (List<Map<String, Object>>) paramsObj;
+                List<ActionParam> actionParams = new ArrayList<>();
+                for (Map<String, Object> p : paramsList) {
+                    ActionParam ap = new ActionParam();
+                    ap.setSource((String) p.get("source"));
+                    ap.setTarget((String) p.get("target"));
+                    ap.setMode((String) p.get("mode"));
+                    ap.setJdbcType((String) p.get("jdbcType"));
+                    actionParams.add(ap);
+                }
+                rule.setParams(actionParams);
+            }
         } else {
             // 没有配置执行内容，可能是前端 JS 处理的
             return null;
