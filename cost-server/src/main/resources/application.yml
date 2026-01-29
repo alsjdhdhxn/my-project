@@ -40,9 +40,19 @@ mybatis-plus:
   configuration:
     map-underscore-to-camel-case: true
     jdbc-type-for-null: 'null'
+    log-impl: org.apache.ibatis.logging.nologging.NoLoggingImpl
   global-config:
     db-config:
       id-type: input
+
+# 禁用 MyBatis JDBC 日志（防止打印每行数据，使用自定义 SqlLogInterceptor）
+logging:
+  level:
+    org.apache.ibatis: WARN
+    org.mybatis: WARN
+    com.baomidou.mybatisplus: WARN
+    java.sql: WARN
+    org.springframework.jdbc: WARN
 
 # Knife4j 文档配置
 springdoc:

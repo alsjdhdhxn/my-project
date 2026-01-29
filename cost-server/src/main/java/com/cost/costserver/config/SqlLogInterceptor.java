@@ -8,6 +8,7 @@ import org.apache.ibatis.plugin.*;
 import org.apache.ibatis.session.ResultHandler;
 
 import java.sql.Statement;
+import java.util.List;
 import java.util.Properties;
 
 /**
@@ -35,19 +36,25 @@ public class SqlLogInterceptor implements Interceptor {
             Object result = invocation.proceed();
             long cost = System.currentTimeMillis() - start;
             
-            // 计算影响行数
-            Integer affectedRows = null;
+            // 计算影响/返回行数
+            Integer rowCount = null;
             if (result instanceof Integer) {
-                affectedRows = (Integer) result;
+                rowCount = (Integer) result;
+            } else if (result instanceof List) {
+                rowCount = ((List<?>) result).size();
             }
             
             // 记录到上下文（如果有活跃会话）
             if (OperationLogContext.isActive() && !isLogTableSql(sql)) {
-                OperationLogContext.addSql(sqlType, sql, cost, affectedRows);
+                OperationLogContext.addSql(sqlType, sql, cost, rowCount);
             }
             
-            // 控制台输出
-            log.debug("[SQL] {}ms | {} | {}", cost, sqlType, truncate(sql, 200));
+            // 控制台输出：SQL + 耗时 + 行数
+            if ("SELECT".equals(sqlType)) {
+                log.info("[SQL] {}ms | {} rows | {}", cost, rowCount, truncate(sql, 300));
+            } else {
+                log.info("[SQL] {}ms | {} affected | {}", cost, rowCount, truncate(sql, 300));
+            }
             
             return result;
         } catch (Exception e) {
@@ -57,7 +64,7 @@ public class SqlLogInterceptor implements Interceptor {
                 OperationLogContext.addFailedSql(sqlType, sql, cost, e.getMessage());
             }
             
-            log.error("[SQL] {}ms | FAILED | {}", cost, truncate(sql, 200));
+            log.error("[SQL] {}ms | FAILED | {} | {}", cost, truncate(sql, 200), e.getMessage());
             throw e;
         }
     }

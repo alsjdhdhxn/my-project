@@ -355,12 +355,15 @@ export function useSave(params: {
             }
             if (!tabKey) return;
             detailInfo.api.setGridOption?.('rowData', cached[tabKey]);
+            detailInfo.api.refreshCells?.({ force: true });
           });
         }
 
         if (detailGridApisByTab?.value && activeMasterRowKey?.value === masterRowKey) {
           for (const [tabKey, rows] of Object.entries(cached)) {
-            detailGridApisByTab.value[tabKey]?.setGridOption?.('rowData', rows);
+            const detailApi = detailGridApisByTab.value[tabKey];
+            detailApi?.setGridOption?.('rowData', rows);
+            detailApi?.refreshCells?.({ force: true });
           }
         }
       }

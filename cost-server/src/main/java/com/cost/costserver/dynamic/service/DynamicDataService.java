@@ -589,9 +589,17 @@ public class DynamicDataService {
         if (value == null || value.isEmpty()) {
             return "NULL";
         }
-        // 只允许数字、小数点、负号
-        if (!value.matches("^-?\\d+(\\.\\d+)?$")) {
+        // 支持普通数字和科学计数法（如 6.5E-6, 1.23e+10）
+        if (!value.matches("^-?\\d+(\\.\\d+)?([eE][+-]?\\d+)?$")) {
             throw new BusinessException(400, "非法的数字格式: " + value);
+        }
+        // 如果是科学计数法，转换为普通数字格式（Oracle 不支持科学计数法字面量）
+        if (value.toLowerCase().contains("e")) {
+            try {
+                return new java.math.BigDecimal(value).toPlainString();
+            } catch (NumberFormatException e) {
+                throw new BusinessException(400, "非法的数字格式: " + value);
+            }
         }
         return value;
     }

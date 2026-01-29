@@ -5,11 +5,6 @@ spring:
     username: cmx
     password: cmx
 
-# 开发环境开启 SQL 日志
-mybatis-plus:
-  configuration:
-    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
-
 # 开发环境 Flyway 配置
 spring.flyway:
   enabled: false  # 开发环境手动管理数据库
