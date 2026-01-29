@@ -255,8 +255,10 @@ public class DynamicDataService {
         data.put("createTime", now);
         data.put("updateTime", now);
         data.put("deleted", 0);
-        data.put("createBy", "system");
-        data.put("updateBy", "system");
+        String currentUser = SecurityUtils.getCurrentUsername();
+        String operator = StrUtil.isNotBlank(currentUser) ? currentUser : "system";
+        data.put("createBy", operator);
+        data.put("updateBy", operator);
 
         StringBuilder columns = new StringBuilder();
         StringBuilder values = new StringBuilder();
@@ -353,7 +355,8 @@ public class DynamicDataService {
         Map<String, ColumnMetadataDTO> columnMap = buildColumnMap(metadata);
 
         data.put("updateTime", LocalDateTime.now().format(DT_FORMATTER));
-        data.put("updateBy", "system");
+        String currentUser = SecurityUtils.getCurrentUsername();
+        data.put("updateBy", StrUtil.isNotBlank(currentUser) ? currentUser : "system");
         data.remove("id");
         data.remove("createTime");
         data.remove("createBy");
@@ -401,6 +404,8 @@ public class DynamicDataService {
 
         TableMetadataDTO metadata = metadataService.getTableMetadata(tableCode);
         String now = LocalDateTime.now().format(DT_FORMATTER);
+        String currentUser = SecurityUtils.getCurrentUsername();
+        String operator = StrUtil.isNotBlank(currentUser) ? currentUser : "system";
 
         // 1. 先级联删除子表数据
         List<TableMetadataDTO> childTables = metadataService.findChildTables(tableCode);
@@ -410,15 +415,15 @@ public class DynamicDataService {
                 continue;
             }
             String childSql = String.format(
-                    "UPDATE %s SET DELETED = 1, UPDATE_TIME = TO_TIMESTAMP('%s', 'YYYY-MM-DD HH24:MI:SS'), UPDATE_BY = 'system' WHERE %s = %d AND DELETED = 0",
-                    child.targetTable(), now, child.parentFkColumn(), id);
+                    "UPDATE %s SET DELETED = 1, UPDATE_TIME = TO_TIMESTAMP('%s', 'YYYY-MM-DD HH24:MI:SS'), UPDATE_BY = '%s' WHERE %s = %d AND DELETED = 0",
+                    child.targetTable(), now, operator, child.parentFkColumn(), id);
             dynamicMapper.delete(childSql);
         }
 
         // 2. 再删除主表数据
         String sql = String.format(
-                "UPDATE %s SET DELETED = 1, UPDATE_TIME = TO_TIMESTAMP('%s', 'YYYY-MM-DD HH24:MI:SS'), UPDATE_BY = 'system' WHERE %s = %d AND DELETED = 0",
-                metadata.targetTable(), now, metadata.pkColumn(), id);
+                "UPDATE %s SET DELETED = 1, UPDATE_TIME = TO_TIMESTAMP('%s', 'YYYY-MM-DD HH24:MI:SS'), UPDATE_BY = '%s' WHERE %s = %d AND DELETED = 0",
+                metadata.targetTable(), now, operator, metadata.pkColumn(), id);
 
         int rows = dynamicMapper.delete(sql);
         if (rows == 0) {

@@ -124,8 +124,23 @@ export function useSave(params: {
 
     const excludeFields = new Set<string>(['masterId', ...extraExcludeFields.filter(Boolean)]);
     const data: Record<string, any> = { _tableCode: tableCode };
-    for (const [key, value] of Object.entries(row)) {
-      if (!key.startsWith('_') && !excludeFields.has(key)) data[key] = value;
+    
+    if (isNew) {
+      // 新增：传所有字段
+      for (const [key, value] of Object.entries(row)) {
+        if (!key.startsWith('_') && !excludeFields.has(key)) data[key] = value;
+      }
+    } else if (status === 'modified') {
+      // 修改：只传脏字段 + id
+      data.id = row.id;
+      for (const field of Object.keys(dirtyFields)) {
+        if (!excludeFields.has(field)) {
+          data[field] = row[field];
+        }
+      }
+    } else {
+      // 删除或未变更：只传 id
+      data.id = row.id;
     }
 
     const changes = Object.entries(dirtyFields)
