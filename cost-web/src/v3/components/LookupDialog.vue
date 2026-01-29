@@ -1,52 +1,52 @@
 ﻿<template>
-  <NModal
-    v-model:show="visible"
-    preset="card"
-    :title="config?.lookupName || '选择'"
-    :style="{ width: '700px' }"
-    :mask-closable="false"
-  >
-    <!-- 搜索框 -->
-    <div class="lookup-search" v-if="config?.searchColumns?.length">
-      <NInput
-        v-model:value="searchText"
-        placeholder="输入关键字搜索"
-        clearable
-        @keyup.enter="handleSearch"
-      >
-        <template #prefix>
-          <SvgIcon icon="mdi:magnify" class="text-icon" />
-        </template>
-      </NInput>
-    </div>
+  <NModal v-model:show="visible" :mask-closable="false" :close-on-esc="true">
+    <div ref="dialogRef" class="lookup-dialog" :style="dialogStyle">
+      <!-- 标题栏（可拖拽） -->
+      <div class="lookup-dialog-header" @mousedown="startDrag">
+        <span class="lookup-dialog-title">{{ config?.lookupName || '选择' }}</span>
+        <NButton quaternary circle size="small" @click="handleCancel">
+          <template #icon><SvgIcon icon="mdi:close" /></template>
+        </NButton>
+      </div>
 
-    <!-- 数据表格 -->
-    <div class="lookup-grid">
-      <AgGridVue
-        class="ag-theme-quartz"
-        style="width: 100%; height: 300px"
-        :rowData="rowData"
-        :columnDefs="columnDefs"
-        :defaultColDef="defaultColDef"
-        :rowSelection="rowSelection"
-        @grid-ready="onGridReady"
-        @row-double-clicked="onRowDoubleClicked"
-        @selection-changed="onSelectionChanged"
-      />
-    </div>
+      <!-- 内容区 -->
+      <div class="lookup-dialog-body">
+        <div class="lookup-search" v-if="config?.searchColumns?.length">
+          <NInput v-model:value="searchText" placeholder="输入关键字搜索" clearable @keyup.enter="handleSearch">
+            <template #prefix><SvgIcon icon="mdi:magnify" class="text-icon" /></template>
+          </NInput>
+        </div>
+        <div class="lookup-grid" :style="{ height: gridHeight + 'px' }">
+          <AgGridVue
+            class="ag-theme-quartz"
+            style="width: 100%; height: 100%"
+            :rowData="rowData"
+            :columnDefs="columnDefs"
+            :defaultColDef="defaultColDef"
+            :rowSelection="rowSelection"
+            @grid-ready="onGridReady"
+            @row-double-clicked="onRowDoubleClicked"
+            @selection-changed="onSelectionChanged"
+          />
+        </div>
+      </div>
 
-    <!-- 底部按钮 -->
-    <template #footer>
-      <NSpace justify="end">
-        <NButton @click="handleCancel">取消</NButton>
-        <NButton type="primary" :disabled="!selectedRow || !hasMapping" @click="handleConfirm">确定</NButton>
-      </NSpace>
-    </template>
+      <!-- 底部按钮 -->
+      <div class="lookup-dialog-footer">
+        <NSpace justify="end">
+          <NButton @click="handleCancel">取消</NButton>
+          <NButton type="primary" :disabled="!selectedRow || !hasMapping" @click="handleConfirm">确定</NButton>
+        </NSpace>
+      </div>
+
+      <!-- 右下角拖拽调整大小手柄 -->
+      <div class="resize-handle" @mousedown.stop="startResize"></div>
+    </div>
   </NModal>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, onUnmounted } from 'vue';
 import { NModal, NInput, NButton, NSpace } from 'naive-ui';
 import { AgGridVue } from 'ag-grid-vue3';
 import type { GridApi, ColDef, GridReadyEvent, RowDoubleClickedEvent, SelectionChangedEvent } from 'ag-grid-community';
@@ -54,19 +54,8 @@ import { fetchLookupConfig } from '@/service/api';
 import { request } from '@/service/request';
 import SvgIcon from '@/components/custom/svg-icon.vue';
 
-// ==================== Props & Emits ====================
-
-const props = defineProps<{
-  lookupCode: string;
-  mapping: Record<string, string>;  // 回填映射：目标字段 -> 源字段
-}>();
-
-const emit = defineEmits<{
-  (e: 'select', data: Record<string, any>): void;
-  (e: 'cancel'): void;
-}>();
-
-// ==================== State ====================
+const props = defineProps<{ lookupCode: string; mapping: Record<string, string> }>();
+const emit = defineEmits<{ (e: 'select', data: Record<string, any>): void; (e: 'cancel'): void }>();
 
 const visible = ref(false);
 const config = ref<Api.Metadata.LookupConfig | null>(null);
@@ -75,81 +64,108 @@ const searchText = ref('');
 const selectedRow = ref<Record<string, any> | null>(null);
 let gridApi: GridApi | null = null;
 
-// ==================== Computed ====================
+const dialogWidth = ref(1050);
+const dialogHeight = ref(550);
+const dialogX = ref(0);
+const dialogY = ref(0);
+const dialogRef = ref<HTMLElement | null>(null);
+
+const isDragging = ref(false);
+const isResizing = ref(false);
+const dragStartX = ref(0);
+const dragStartY = ref(0);
+const startWidth = ref(0);
+const startHeight = ref(0);
 
 const columnDefs = computed<ColDef[]>(() => {
   if (!config.value?.displayColumns) return [];
   return config.value.displayColumns.map(col => ({
-    field: col.field,
-    headerName: col.header,
-    width: col.width || 120,
-    sortable: true,
-    resizable: true
+    field: col.field, headerName: col.header, width: col.width || 120, sortable: true, resizable: true
   }));
 });
 
-const defaultColDef: ColDef = {
-  sortable: true,
-  resizable: true
-};
-
+const defaultColDef: ColDef = { sortable: true, resizable: true };
 const rowSelection = { mode: 'singleRow' as const, enableClickSelection: true };
+const hasMapping = computed(() => props.mapping && Object.keys(props.mapping).length > 0);
 
-const hasMapping = computed(() => {
-  return props.mapping && Object.keys(props.mapping).length > 0;
-});
+const dialogStyle = computed(() => ({
+  width: `${dialogWidth.value}px`,
+  height: `${dialogHeight.value}px`,
+  transform: `translate(${dialogX.value}px, ${dialogY.value}px)`
+}));
 
-// ==================== Methods ====================
+const gridHeight = computed(() => dialogHeight.value - 168);
+
+function startDrag(e: MouseEvent) {
+  if ((e.target as HTMLElement).closest('button')) return;
+  e.preventDefault();
+  isDragging.value = true;
+  dragStartX.value = e.clientX - dialogX.value;
+  dragStartY.value = e.clientY - dialogY.value;
+  document.addEventListener('mousemove', onDrag);
+  document.addEventListener('mouseup', stopDrag);
+}
+
+function onDrag(e: MouseEvent) {
+  if (!isDragging.value) return;
+  dialogX.value = e.clientX - dragStartX.value;
+  dialogY.value = e.clientY - dragStartY.value;
+}
+
+function stopDrag() {
+  isDragging.value = false;
+  document.removeEventListener('mousemove', onDrag);
+  document.removeEventListener('mouseup', stopDrag);
+}
+
+function startResize(e: MouseEvent) {
+  e.preventDefault();
+  isResizing.value = true;
+  dragStartX.value = e.clientX;
+  dragStartY.value = e.clientY;
+  startWidth.value = dialogWidth.value;
+  startHeight.value = dialogHeight.value;
+  document.addEventListener('mousemove', onResize);
+  document.addEventListener('mouseup', stopResize);
+}
+
+function onResize(e: MouseEvent) {
+  if (!isResizing.value) return;
+  dialogWidth.value = Math.max(600, Math.min(startWidth.value + e.clientX - dragStartX.value, window.innerWidth - 100));
+  dialogHeight.value = Math.max(400, Math.min(startHeight.value + e.clientY - dragStartY.value, window.innerHeight - 100));
+}
+
+function stopResize() {
+  isResizing.value = false;
+  document.removeEventListener('mousemove', onResize);
+  document.removeEventListener('mouseup', stopResize);
+  gridApi?.sizeColumnsToFit();
+}
 
 async function open() {
   visible.value = true;
   selectedRow.value = null;
   searchText.value = '';
-
-  // 加载配置
+  dialogX.value = 0;
+  dialogY.value = 0;
   if (!config.value) {
     const { data } = await fetchLookupConfig(props.lookupCode);
-    if (data) {
-      config.value = data;
-    }
+    if (data) config.value = data;
   }
-
-  // 加载数据
   await loadData();
 }
 
 async function loadData() {
   if (!config.value?.dataSource) return;
-
-  // 使用动态数据接口查询
-  // dataSource 可以是表名（如 T_COST_MATERIAL）或 tableCode（如 CostMaterial）
   const tableCode = config.value.dataSource.startsWith('T_COST_')
-    ? toTableCode(config.value.dataSource)
+    ? config.value.dataSource.replace(/^T_COST_/, '').toLowerCase().replace(/_([a-z])/g, (_, c) => c.toUpperCase()).replace(/^([a-z])/, (_, c) => c.toUpperCase())
     : config.value.dataSource;
-
-  const { data } = await request<{ list: Record<string, any>[] }>({
-    url: `/api/data/${tableCode}`,
-    params: { page: 1, pageSize: 500, lookup: true }
-  });
-
+  const { data } = await request<{ list: Record<string, any>[] }>({ url: `/api/data/${tableCode}`, params: { page: 1, pageSize: 500, lookup: true } });
   rowData.value = data?.list || [];
 }
 
-function toTableCode(tableName: string): string {
-  // T_COST_MATERIAL -> CostMaterial
-  return tableName
-    .replace(/^T_COST_/, '')
-    .toLowerCase()
-    .replace(/_([a-z])/g, (_, c) => c.toUpperCase())
-    .replace(/^([a-z])/, (_, c) => c.toUpperCase());
-}
-
 function handleSearch() {
-  if (!gridApi || !searchText.value) {
-    gridApi?.setGridOption('quickFilterText', '');
-    return;
-  }
-  gridApi.setGridOption('quickFilterText', searchText.value);
+  gridApi?.setGridOption('quickFilterText', searchText.value || '');
 }
 
 function handleCancel() {
@@ -159,53 +175,69 @@ function handleCancel() {
 
 function handleConfirm() {
   if (!selectedRow.value) return;
-
-  // 根据 mapping 构建回填数据
   const fillData: Record<string, any> = {};
   for (const [targetField, sourceField] of Object.entries(props.mapping)) {
     fillData[targetField] = selectedRow.value[sourceField];
   }
-
   visible.value = false;
   emit('select', fillData);
 }
 
-// ==================== Event Handlers ====================
-
-function onGridReady(params: GridReadyEvent) {
-  gridApi = params.api;
-}
-
-function onRowDoubleClicked(_event: RowDoubleClickedEvent) {
-  if (selectedRow.value && hasMapping.value) {
-    handleConfirm();
-  }
-}
-
+function onGridReady(params: GridReadyEvent) { gridApi = params.api; }
+function onRowDoubleClicked() { if (selectedRow.value && hasMapping.value) handleConfirm(); }
 function onSelectionChanged(event: SelectionChangedEvent) {
   const rows = event.api.getSelectedRows();
   selectedRow.value = rows.length > 0 ? rows[0] : null;
 }
 
-// ==================== Watch ====================
+watch(searchText, handleSearch);
 
-watch(searchText, () => {
-  handleSearch();
+onUnmounted(() => {
+  document.removeEventListener('mousemove', onDrag);
+  document.removeEventListener('mouseup', stopDrag);
+  document.removeEventListener('mousemove', onResize);
+  document.removeEventListener('mouseup', stopResize);
 });
-
-// ==================== Expose ====================
 
 defineExpose({ open });
 </script>
 
 <style scoped>
-.lookup-search {
-  margin-bottom: 12px;
+.lookup-dialog {
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 6px 16px 0 rgba(0,0,0,0.08), 0 3px 6px -4px rgba(0,0,0,0.12), 0 9px 28px 8px rgba(0,0,0,0.05);
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  min-width: 600px;
+  min-height: 400px;
 }
-
-.lookup-grid {
-  border: 1px solid #e8e8e8;
-  border-radius: 4px;
-  overflow: hidden;
+.lookup-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid #f0f0f0;
+  cursor: move;
+  user-select: none;
+}
+.lookup-dialog-title { font-size: 16px; font-weight: 500; color: #333; }
+.lookup-dialog-body { flex: 1; padding: 16px; overflow: hidden; display: flex; flex-direction: column; }
+.lookup-search { margin-bottom: 12px; flex-shrink: 0; }
+.lookup-grid { flex: 1; border: 1px solid #e8e8e8; border-radius: 4px; overflow: hidden; }
+.lookup-dialog-footer { padding: 12px 16px; border-top: 1px solid #f0f0f0; }
+.resize-handle {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 16px;
+  height: 16px;
+  cursor: se-resize;
+  background: linear-gradient(135deg, transparent 50%, #d9d9d9 50%, #d9d9d9 60%, transparent 60%, transparent 70%, #d9d9d9 70%, #d9d9d9 80%, transparent 80%);
+  border-radius: 0 0 8px 0;
+}
+.resize-handle:hover {
+  background: linear-gradient(135deg, transparent 50%, #1890ff 50%, #1890ff 60%, transparent 60%, transparent 70%, #1890ff 70%, #1890ff 80%, transparent 80%);
 }
 </style>
