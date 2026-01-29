@@ -23,3 +23,16 @@ html {
 .ag-cell.lookup-field:hover {
   text-decoration: underline;
 }
+
+/* AG Grid 筛选按钮统一在右边 */
+.ag-header-cell .ag-cell-label-container {
+  flex-direction: row !important;
+}
+
+.ag-header-cell .ag-header-cell-filter-button {
+  order: 99 !important;
+}
+
+.ag-header-cell.ag-right-aligned-header .ag-header-cell-label {
+  justify-content: flex-end;
+}
