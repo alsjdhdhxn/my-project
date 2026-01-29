@@ -36,6 +36,10 @@ export function useGridContextMenu(params: {
   executeCustomExport?: (exportCode: string, mode: 'all' | 'current') => void;
   /** 执行后端 action */
   executeAction?: (actionCode: string, options?: { data?: Record<string, any>; selectedRow?: Record<string, any> | null }) => Promise<void>;
+  /** 行是否可编辑的回调（用于控制删除权限） */
+  isRowEditable?: (row: any) => boolean;
+  /** 提示消息 */
+  notifyError?: (message: string) => void;
 }) {
   const {
     addMasterRow,
@@ -51,7 +55,9 @@ export function useGridContextMenu(params: {
     detailMenuByTab,
     customExportConfigs,
     executeCustomExport,
-    executeAction
+    executeAction,
+    isRowEditable,
+    notifyError
   } = params;
 
   function resolveMenuConfig(config: MenuConfigInput): ContextMenuRule | null {
@@ -159,17 +165,35 @@ export function useGridContextMenu(params: {
             const api = ctx.params?.api;
             const selectedRows = api?.getSelectedRows?.() || [];
             
+            // 检查行是否可编辑（不可编辑的行不允许删除）
+            const checkEditable = (row: any): boolean => {
+              if (!row) return false;
+              // 新增行始终可以删除
+              if (row._isNew) return true;
+              // 如果有 isRowEditable 回调，使用它判断
+              if (isRowEditable && !isRowEditable(row)) {
+                notifyError?.('该行不允许删除');
+                return false;
+              }
+              return true;
+            };
+            
             if (selectedRows.length > 1) {
               if (ctx.type === 'master') {
-                selectedRows.forEach((row: any) => deleteMasterRow(row));
+                const editableRows = selectedRows.filter((row: any) => checkEditable(row));
+                editableRows.forEach((row: any) => deleteMasterRow(row));
               } else if (ctx.masterId != null && ctx.tabKey) {
                 selectedRows.forEach((row: any) => deleteDetailRow(ctx.masterId!, ctx.tabKey!, row, ctx.masterRowKey));
               }
             } else {
               const row = resolveRow(ctx.params);
               if (!row) return;
-              if (ctx.type === 'master') deleteMasterRow(row);
-              else if (ctx.masterId != null && ctx.tabKey) deleteDetailRow(ctx.masterId, ctx.tabKey, row, ctx.masterRowKey);
+              if (ctx.type === 'master') {
+                if (!checkEditable(row)) return;
+                deleteMasterRow(row);
+              } else if (ctx.masterId != null && ctx.tabKey) {
+                deleteDetailRow(ctx.masterId, ctx.tabKey, row, ctx.masterRowKey);
+              }
             }
           }
         };

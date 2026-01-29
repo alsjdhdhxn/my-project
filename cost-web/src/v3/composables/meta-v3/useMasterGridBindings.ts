@@ -49,6 +49,7 @@ export function useMasterGridBindings(params: {
   rowEditableRules?: RowEditableRule[];
   rowClassRules?: RowClassRule[];
   dataSource?: any;
+  notifyError?: (message: string) => void;
 }) {
   const { runtime } = params;
   const isUserEditing = params.isUserEditing ?? ref(false);
@@ -146,7 +147,9 @@ export function useMasterGridBindings(params: {
     executeCustomExport: runtime.executeCustomExport,
     executeAction: runtime.executeAction,
     masterGridKey,
-    masterMenuConfig: params.contextMenuConfig
+    masterMenuConfig: params.contextMenuConfig,
+    isRowEditable: rowEditableCallback ? (row: any) => rowEditableCallback({ data: row }) : undefined,
+    notifyError: params.notifyError
   });
 
   function onGridReady(params: GridReadyEvent) {

@@ -516,7 +516,8 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
         gridKey: masterKey,
         contextMenuConfig: meta.masterContextMenu?.value,
         rowEditableRules: meta.masterRowEditableRules?.value,
-        dataSource
+        dataSource,
+        notifyError
       });
 
       gridState.defaultColDef = bindings.defaultColDef;
