@@ -259,25 +259,25 @@ END;
 -- =====================================================
 -- 产品选择（使用专用Lookup视图，显示全部12列）
 INSERT INTO T_COST_LOOKUP_CONFIG (ID, LOOKUP_CODE, LOOKUP_NAME, DATA_SOURCE, DISPLAY_COLUMNS, SEARCH_COLUMNS, VALUE_FIELD, LABEL_FIELD, CREATE_BY)
-VALUES (SEQ_COST_LOOKUP_CONFIG.NEXTVAL, 'costGoods', '产品选择', 'CostGoodsLookup',
+VALUES (SEQ_COST_LOOKUP_CONFIG.NEXTVAL, 'costGoods', '产品选择', 'V_COST_GOODS_LOOKUP',
   '[{"field":"goodsid","header":"产品ID","width":80},{"field":"goodsname","header":"产品名称","width":200},{"field":"maNo","header":"批准文号","width":150},{"field":"apexPl","header":"批量","width":80},{"field":"mah","header":"持证商","width":150},{"field":"pPerpack","header":"每盒片数","width":100},{"field":"sPerback","header":"每箱装盒数","width":100},{"field":"customid","header":"客户ID","width":80},{"field":"customname","header":"客户名称","width":150},{"field":"memo","header":"BOM状态","width":120},{"field":"strength","header":"剂量","width":100},{"field":"livery","header":"分销商","width":150}]',
   '["goodsname","customname","maNo"]', 'goodsid', 'goodsname', 'system');
 
 -- 物料选择（从物料清单及成本中选择）
 INSERT INTO T_COST_LOOKUP_CONFIG (ID, LOOKUP_CODE, LOOKUP_NAME, DATA_SOURCE, DISPLAY_COLUMNS, SEARCH_COLUMNS, VALUE_FIELD, LABEL_FIELD, CREATE_BY)
-VALUES (SEQ_COST_LOOKUP_CONFIG.NEXTVAL, 'costMaterial', '物料选择', 'CostGoodsPrice',
+VALUES (SEQ_COST_LOOKUP_CONFIG.NEXTVAL, 'costMaterial', '物料选择', 'T_COST_GOODS_PRICE_V',
   '[{"field":"goodsname","header":"物料名称","width":200},{"field":"useflag","header":"用途","width":80},{"field":"goodstype","header":"规格","width":150},{"field":"price","header":"单价","width":100},{"field":"factoryname","header":"供应商","width":150}]',
   '["goodsname","factoryname"]', 'goodsid', 'goodsname', 'system');
 
 -- 币种选择（从外币管理中选择）
 INSERT INTO T_COST_LOOKUP_CONFIG (ID, LOOKUP_CODE, LOOKUP_NAME, DATA_SOURCE, DISPLAY_COLUMNS, SEARCH_COLUMNS, VALUE_FIELD, LABEL_FIELD, CREATE_BY)
-VALUES (SEQ_COST_LOOKUP_CONFIG.NEXTVAL, 'formoney', '币种选择', 'CostFormoney',
+VALUES (SEQ_COST_LOOKUP_CONFIG.NEXTVAL, 'formoney', '币种选择', 'T_COST_FORMONEY_V',
   '[{"field":"fmname","header":"币种名称","width":150},{"field":"fmrate","header":"汇率","width":100},{"field":"fmsign","header":"符号","width":80}]',
   '["fmname"]', 'fmid', 'fmname', 'system');
 
 -- 客户选择（从客户信息中选择）
 INSERT INTO T_COST_LOOKUP_CONFIG (ID, LOOKUP_CODE, LOOKUP_NAME, DATA_SOURCE, DISPLAY_COLUMNS, SEARCH_COLUMNS, VALUE_FIELD, LABEL_FIELD, CREATE_BY)
-VALUES (SEQ_COST_LOOKUP_CONFIG.NEXTVAL, 'costCustomer', '客户选择', 'CostCustomerLookup',
+VALUES (SEQ_COST_LOOKUP_CONFIG.NEXTVAL, 'costCustomer', '客户选择', 'V_COST_CUSTOMER_LOOKUP',
   '[{"field":"customid","header":"客户ID","width":80},{"field":"customname","header":"客户名称","width":200},{"field":"country","header":"国家","width":100},{"field":"livery","header":"分销商","width":150}]',
   '["customname"]', 'customid', 'customname', 'system');
 

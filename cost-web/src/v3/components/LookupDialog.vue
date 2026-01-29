@@ -156,11 +156,11 @@ async function open() {
 }
 
 async function loadData() {
-  if (!config.value?.dataSource) return;
-  const tableCode = config.value.dataSource.startsWith('T_COST_')
-    ? config.value.dataSource.replace(/^T_COST_/, '').toLowerCase().replace(/_([a-z])/g, (_, c) => c.toUpperCase()).replace(/^([a-z])/, (_, c) => c.toUpperCase())
-    : config.value.dataSource;
-  const { data } = await request<{ list: Record<string, any>[] }>({ url: `/api/data/${tableCode}`, params: { page: 1, pageSize: 500, lookup: true } });
+  if (!config.value?.lookupCode) return;
+  const { data } = await request<{ list: Record<string, any>[] }>({
+    url: `/api/lookup/${props.lookupCode}/data`,
+    params: { page: 1, pageSize: 500 }
+  });
   rowData.value = data?.list || [];
 }
 

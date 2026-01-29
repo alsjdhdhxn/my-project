@@ -16,6 +16,7 @@ import com.cost.costserver.log.AuditLogService;
 import com.cost.costserver.log.OperationLogContext;
 import com.cost.costserver.log.OperationLogService;
 import com.cost.costserver.metadata.dto.ColumnMetadataDTO;
+import com.cost.costserver.metadata.dto.LookupConfigDTO;
 import com.cost.costserver.metadata.dto.TableMetadataDTO;
 import com.cost.costserver.metadata.service.MetadataService;
 import com.cost.costserver.dynamic.validation.ValidationReport;
@@ -228,6 +229,47 @@ public class DynamicDataService {
 
         List<Map<String, Object>> list = dynamicMapper.selectList(sql);
         return list.stream().map(row -> convertToCamelCase(row, columnMap)).collect(Collectors.toList());
+    }
+
+    /**
+     * Lookup 查询（不依赖表元数据）
+     */
+    public PageResult<Map<String, Object>> queryLookupData(String lookupCode, Integer page, Integer pageSize) {
+        LookupConfigDTO config = metadataService.getLookupConfig(lookupCode);
+        if (config == null || StrUtil.isBlank(config.dataSource())) {
+            throw new BusinessException(400, "Lookup 数据源不能为空");
+        }
+
+        String dataSource = config.dataSource().trim();
+        validateIdentifier(dataSource, "dataSource");
+
+        int currentPage = (page != null && page > 0) ? page : 1;
+        Integer pSize = (pageSize != null && pageSize > 0) ? pageSize : null;
+
+        String whereClause = " WHERE DELETED = 0";
+        String countSql = String.format("SELECT COUNT(*) FROM %s%s", dataSource, whereClause);
+        Long total = dynamicMapper.selectCount(countSql);
+
+        if (pSize == null) {
+            String sql = String.format("SELECT * FROM %s%s", dataSource, whereClause);
+            List<Map<String, Object>> list = dynamicMapper.selectList(sql);
+            List<Map<String, Object>> result = list.stream()
+                    .map(this::convertToCamelCaseSimple)
+                    .collect(Collectors.toList());
+            return new PageResult<>(result, total == null ? result.size() : total, 1, result.size());
+        }
+
+        int offset = (currentPage - 1) * pSize;
+        String dataSql = String.format(
+                "SELECT * FROM (SELECT t.*, ROWNUM rn FROM (SELECT * FROM %s%s) t WHERE ROWNUM <= %d) WHERE rn > %d",
+                dataSource, whereClause, offset + pSize, offset);
+
+        List<Map<String, Object>> list = dynamicMapper.selectList(dataSql);
+        List<Map<String, Object>> result = list.stream()
+                .map(this::convertToCamelCaseSimple)
+                .collect(Collectors.toList());
+
+        return new PageResult<>(result, total == null ? 0 : total, currentPage, pSize);
     }
 
     public Map<String, Object> getById(String tableCode, Long id) {
@@ -610,6 +652,19 @@ public class DynamicDataService {
         return value.replace("'", "''");
     }
 
+    /**
+     * 简化版：将下划线列名转换为 camelCase（不依赖元数据）
+     */
+    private Map<String, Object> convertToCamelCaseSimple(Map<String, Object> row) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> entry : row.entrySet()) {
+            String fieldName = underscoreToCamel(entry.getKey());
+            Object value = convertOracleType(entry.getValue());
+            result.put(fieldName, value);
+        }
+        return result;
+    }
+
     private Map<String, Object> convertToCamelCase(Map<String, Object> row, Map<String, ColumnMetadataDTO> columnMap) {
         Map<String, Object> result = new LinkedHashMap<>();
         Map<String, String> reverseMap = columnMap.values().stream()
@@ -622,6 +677,18 @@ public class DynamicDataService {
             result.put(fieldName, value);
         }
         return result;
+    }
+
+    /**
+     * 仅允许字母/数字/下划线/点，防止注入
+     */
+    private void validateIdentifier(String value, String label) {
+        if (value == null || value.isBlank()) {
+            throw new BusinessException(400, label + " 不能为空");
+        }
+        if (!value.matches("^[A-Za-z][A-Za-z0-9_\\.]*$")) {
+            throw new BusinessException(400, label + " 非法: " + value);
+        }
     }
 
     /**

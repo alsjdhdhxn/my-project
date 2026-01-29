@@ -281,7 +281,7 @@ INSERT INTO T_COST_LOOKUP_CONFIG (
     SEQ_COST_LOOKUP_CONFIG.NEXTVAL,
     'department',
     '部门选择',
-    'CostDepartment',
+    'T_COST_DEPARTMENT',
     '[{"field":"deptCode","header":"部门编码","width":120},{"field":"deptName","header":"部门名称","width":200}]',
     '["deptCode","deptName"]',
     'id',
