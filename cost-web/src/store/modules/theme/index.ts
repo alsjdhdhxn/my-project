@@ -24,6 +24,16 @@ export const useThemeStore = defineStore(SetupStoreId.Theme, () => {
   /** Theme settings */
   const settings: Ref<App.Theme.ThemeSetting> = ref(initThemeSettings());
 
+  // 从localStorage恢复detailViewMode和masterDetailMode
+  const savedDetailViewMode = localStg.get('detailViewMode');
+  if (savedDetailViewMode) {
+    settings.value.detailViewMode = savedDetailViewMode;
+  }
+  const savedMasterDetailMode = localStg.get('masterDetailMode');
+  if (savedMasterDetailMode) {
+    settings.value.masterDetailMode = savedMasterDetailMode;
+  }
+
   /** Optional NaiveUI theme overrides from preset */
   const naiveThemeOverrides: Ref<App.Theme.NaiveUIThemeOverride | undefined> = ref(undefined);
 
@@ -217,6 +227,7 @@ export const useThemeStore = defineStore(SetupStoreId.Theme, () => {
    */
   function setDetailViewMode(mode: 'tab' | 'stack') {
     settings.value.detailViewMode = mode;
+    localStg.set('detailViewMode', mode);
   }
 
   /**
@@ -226,6 +237,7 @@ export const useThemeStore = defineStore(SetupStoreId.Theme, () => {
    */
   function setMasterDetailMode(mode: 'master-detail' | 'split') {
     settings.value.masterDetailMode = mode;
+    localStg.set('masterDetailMode', mode);
   }
 
   /** Only run timer when watermark is visible and time display is enabled */
