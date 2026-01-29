@@ -172,7 +172,7 @@ VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'goods-manage', 'grid', 'COLUMN_OVERRIDE',
 INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, CREATE_BY)
 VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'goods-manage', 'grid', 'LOOKUP',
 '[
-  {"field":"customname","lookupCode":"customer","mapping":{"zxCustomerid":"customid","customname":"customname","tranposid":"tranposid","tranposname":"tranposname"}}
+  {"field":"zxCustomerid","lookupCode":"costCustomer","mapping":{"zxCustomerid":"customid","customname":"customname","zone":"country","tranposid":"tranposid","tranposname":"livery"}}
 ]', 'system');
 
 -- 右键菜单
