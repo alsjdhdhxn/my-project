@@ -122,7 +122,8 @@ export function parseLookupRuleConfig(componentKey: string, rules: PageRule[]): 
     .map(item => ({
       fieldName: item.field ?? item.fieldName ?? '',
       lookupCode: item.lookupCode,
-      mapping: item.mapping
+      mapping: item.mapping,
+      noFillback: item.noFillback
     }));
 }
 

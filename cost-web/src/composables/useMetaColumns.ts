@@ -402,6 +402,8 @@ export interface LookupRule {
   fieldName: string;
   lookupCode: string;
   mapping: Record<string, string>;
+  /** 是否禁止回填（仅查看模式） */
+  noFillback?: boolean;
 }
 
 /**
@@ -419,7 +421,8 @@ export function extractLookupRules(columns: ColumnMetadata[]): LookupRule[] {
         rules.push({
           fieldName: col.fieldName,
           lookupCode: config.lookup.code,
-          mapping: config.lookup.mapping
+          mapping: config.lookup.mapping,
+          noFillback: config.lookup.noFillback
         });
       }
     } catch (e) {

@@ -31,6 +31,8 @@ export type LookupRuleConfig = {
   fieldName?: string;
   lookupCode: string;
   mapping: Record<string, string>;
+  /** 是否禁止回填（仅查看模式） */
+  noFillback?: boolean;
 };
 
 export type RoleBindingRule = {

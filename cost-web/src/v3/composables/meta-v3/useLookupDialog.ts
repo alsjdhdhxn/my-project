@@ -55,11 +55,12 @@ export function useLookupDialog(params: {
     const rowData = event.data;
     if (!field || !rowData) return;
     
-    // 检查行是否可编辑
-    if (isRowEditable && !isRowEditable(rowData)) return;
-    
     const rule = masterLookupRules.value.find(r => r.fieldName === field);
     if (!rule) return;
+    
+    // 检查行是否可编辑（noFillback 模式下允许弹窗查看）
+    if (isRowEditable && !isRowEditable(rowData) && !rule.noFillback) return;
+    
     currentLookupRule.value = rule;
     currentLookupRowId.value = rowData.id;
     currentLookupIsMaster.value = true;
@@ -72,11 +73,12 @@ export function useLookupDialog(params: {
     const rowData = event.data;
     if (!field || !rowData) return;
     
-    // 检查行是否可编辑
-    if (isDetailRowEditable && !isDetailRowEditable(rowData, tabKey)) return;
-    
     const rule = detailLookupRulesByTab.value[tabKey]?.find(r => r.fieldName === field);
     if (!rule) return;
+    
+    // 检查行是否可编辑（noFillback 模式下允许弹窗查看）
+    if (isDetailRowEditable && !isDetailRowEditable(rowData, tabKey) && !rule.noFillback) return;
+    
     currentLookupRule.value = rule;
     currentLookupRowId.value = rowData.id;
     currentLookupIsMaster.value = false;
@@ -85,6 +87,13 @@ export function useLookupDialog(params: {
   }
 
   function onLookupSelect(fillData: Record<string, any>) {
+    // noFillback 模式下不执行回填
+    if (currentLookupRule.value?.noFillback) {
+      currentLookupRule.value = null;
+      currentLookupRowId.value = null;
+      return;
+    }
+    
     if (!currentLookupRowId.value) return;
     const rowId = currentLookupRowId.value;
 
