@@ -71,9 +71,9 @@ import SvgIcon from '@/components/custom/svg-icon.vue';
  * 
  * - filterValue: 直接传入的筛选值（filterValueFrom='cell' 时使用）
  */
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   lookupCode: string;
-  mapping: Record<string, string>;
+  mapping?: Record<string, string>;
   /** 当前行数据，用于 filterValueFrom='row' 时取值 */
   rowData?: Record<string, any>;
   /** 从当前行取哪个字段的值作为筛选值 */
@@ -84,7 +84,9 @@ const props = defineProps<{
   filterValueFrom?: 'row' | 'cell';
   /** 直接传入的筛选值（filterValueFrom='cell' 时使用） */
   filterValue?: any;
-}>();
+}>(), {
+  mapping: () => ({})
+});
 const emit = defineEmits<{ (e: 'select', data: Record<string, any>): void; (e: 'cancel'): void }>();
 
 const visible = ref(false);
@@ -110,12 +112,17 @@ const startHeight = ref(0);
 const columnDefs = computed<ColDef[]>(() => {
   if (!config.value?.displayColumns) return [];
   return config.value.displayColumns.map(col => ({
-    field: col.field, headerName: col.header, width: col.width || 120, sortable: true, resizable: true
+    field: col.field,
+    headerName: col.header,
+    // 只有配置了 width 才设置固定宽度，否则由 autoSize 自动计算
+    ...(col.width ? { width: col.width } : {}),
+    sortable: true,
+    resizable: true
   }));
 });
 
 const defaultColDef: ColDef = { sortable: true, resizable: true, suppressHeaderMenuButton: true };
-const rowSelection = { mode: 'singleRow' as const, enableClickSelection: true };
+const rowSelection = { mode: 'singleRow' as const, enableClickSelection: true, checkboxes: false };
 const hasMapping = computed(() => props.mapping && Object.keys(props.mapping).length > 0);
 
 const dialogStyle = computed(() => ({
@@ -239,7 +246,13 @@ function handleConfirm() {
   emit('select', fillData);
 }
 
-function onGridReady(params: GridReadyEvent) { gridApi = params.api; }
+function onGridReady(params: GridReadyEvent) {
+  gridApi = params.api;
+  // 数据加载后自动调整列宽
+  setTimeout(() => {
+    gridApi?.autoSizeAllColumns();
+  }, 100);
+}
 function onRowDoubleClicked() { if (selectedRow.value && hasMapping.value) handleConfirm(); }
 function onSelectionChanged(event: SelectionChangedEvent) {
   const rows = event.api.getSelectedRows();
