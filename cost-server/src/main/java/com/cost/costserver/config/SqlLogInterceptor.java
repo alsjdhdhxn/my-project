@@ -4,12 +4,13 @@ import com.cost.costserver.log.OperationLogContext;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.ibatis.executor.statement.StatementHandler;
 import org.apache.ibatis.mapping.BoundSql;
+import org.apache.ibatis.mapping.ParameterMapping;
 import org.apache.ibatis.plugin.*;
 import org.apache.ibatis.session.ResultHandler;
 
 import java.sql.Statement;
-import java.util.List;
-import java.util.Properties;
+import java.text.SimpleDateFormat;
+import java.util.*;
 
 /**
  * SQL 日志拦截器
@@ -30,6 +31,9 @@ public class SqlLogInterceptor implements Interceptor {
         String sql = boundSql.getSql().replaceAll("\\s+", " ").trim();
         String sqlType = detectSqlType(sql);
         
+        // 获取完整SQL（参数替换进去）
+        String fullSql = getFullSql(boundSql, handler);
+        
         long start = System.currentTimeMillis();
         
         try {
@@ -46,14 +50,14 @@ public class SqlLogInterceptor implements Interceptor {
             
             // 记录到上下文（如果有活跃会话）
             if (OperationLogContext.isActive() && !isLogTableSql(sql)) {
-                OperationLogContext.addSql(sqlType, sql, cost, rowCount);
+                OperationLogContext.addSql(sqlType, fullSql, cost, rowCount);
             }
             
-            // 控制台输出：SQL + 耗时 + 行数
+            // 控制台输出
             if ("SELECT".equals(sqlType)) {
-                log.info("[SQL] {}ms | {} rows | {}", cost, rowCount, truncate(sql, 300));
+                log.info("[SQL] {}ms | {} rows | {}", cost, rowCount, fullSql);
             } else {
-                log.info("[SQL] {}ms | {} affected | {}", cost, rowCount, truncate(sql, 300));
+                log.info("[SQL] {}ms | {} affected | {}", cost, rowCount, fullSql);
             }
             
             return result;
@@ -61,11 +65,113 @@ public class SqlLogInterceptor implements Interceptor {
             long cost = System.currentTimeMillis() - start;
             
             if (OperationLogContext.isActive() && !isLogTableSql(sql)) {
-                OperationLogContext.addFailedSql(sqlType, sql, cost, e.getMessage());
+                OperationLogContext.addFailedSql(sqlType, fullSql, cost, e.getMessage());
             }
             
-            log.error("[SQL] {}ms | FAILED | {} | {}", cost, truncate(sql, 200), e.getMessage());
+            log.error("[SQL] {}ms | FAILED | {} | {}", cost, fullSql, e.getMessage());
             throw e;
+        }
+    }
+
+    /**
+     * 获取完整SQL（参数替换进去）
+     */
+    private String getFullSql(BoundSql boundSql, StatementHandler handler) {
+        String sql = boundSql.getSql().replaceAll("\\s+", " ").trim();
+        Object parameterObject = boundSql.getParameterObject();
+        List<ParameterMapping> parameterMappings = boundSql.getParameterMappings();
+        
+        if (parameterMappings == null || parameterMappings.isEmpty()) {
+            return sql;
+        }
+        
+        if (parameterObject == null) {
+            return sql.replace("?", "null");
+        }
+
+        // 简单类型
+        if (parameterObject instanceof String || 
+            parameterObject instanceof Number ||
+            parameterObject instanceof Boolean) {
+            return sql.replaceFirst("\\?", formatValue(parameterObject));
+        }
+        
+        // 逐个替换?
+        for (ParameterMapping mapping : parameterMappings) {
+            String propertyName = mapping.getProperty();
+            Object value = null;
+            
+            if (boundSql.hasAdditionalParameter(propertyName)) {
+                value = boundSql.getAdditionalParameter(propertyName);
+            } else if (parameterObject instanceof Map) {
+                value = getValueFromMap((Map<?, ?>) parameterObject, propertyName);
+            } else {
+                value = getPropertyValue(parameterObject, propertyName);
+            }
+            
+            sql = sql.replaceFirst("\\?", formatValue(value));
+        }
+        
+        return sql;
+    }
+
+    private Object getValueFromMap(Map<?, ?> map, String propertyName) {
+        // 直接key
+        if (map.containsKey(propertyName)) {
+            return map.get(propertyName);
+        }
+        // 处理 ew.paramNameValuePairs.MPGENVAL1 这种格式
+        if (propertyName.contains(".")) {
+            String[] parts = propertyName.split("\\.");
+            Object current = map;
+            for (String part : parts) {
+                if (current instanceof Map) {
+                    current = ((Map<?, ?>) current).get(part);
+                } else {
+                    current = getPropertyValue(current, part);
+                }
+                if (current == null) break;
+            }
+            return current;
+        }
+        return null;
+    }
+
+    private Object getPropertyValue(Object obj, String propertyName) {
+        if (obj == null) return null;
+        try {
+            // 处理嵌套属性
+            if (propertyName.contains(".")) {
+                String[] parts = propertyName.split("\\.", 2);
+                Object nested = getPropertyValue(obj, parts[0]);
+                return getPropertyValue(nested, parts[1]);
+            }
+            
+            // 尝试getter方法
+            String getterName = "get" + propertyName.substring(0, 1).toUpperCase() + propertyName.substring(1);
+            try {
+                java.lang.reflect.Method getter = obj.getClass().getMethod(getterName);
+                return getter.invoke(obj);
+            } catch (NoSuchMethodException e) {
+                // 尝试直接访问字段
+                java.lang.reflect.Field field = obj.getClass().getDeclaredField(propertyName);
+                field.setAccessible(true);
+                return field.get(obj);
+            }
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private String formatValue(Object value) {
+        if (value == null) {
+            return "null";
+        } else if (value instanceof String) {
+            return "'" + value + "'";
+        } else if (value instanceof Date) {
+            return "'" + new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(value) + "'";
+        } else {
+            return value.toString();
         }
     }
 

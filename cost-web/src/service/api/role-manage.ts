@@ -49,60 +49,95 @@ export interface PageSimpleVO {
 
 // ==================== 角色管理 ====================
 
-export function fetchRoles() {
-  return request<RoleVO[]>({ url: '/role-manage/roles' });
+export async function fetchRoles() {
+  const { data } = await request<RoleVO[]>({ url: '/role-manage/roles' });
+  return data || [];
 }
 
-export function createRole(role: RoleVO) {
-  return request<RoleVO>({ url: '/role-manage/role', method: 'post', data: role });
+export async function createRole(role: RoleVO) {
+  const { data, error } = await request<RoleVO>({ url: '/role-manage/role', method: 'post', data: role });
+  if (error) throw error;
+  return data!;
 }
 
-export function updateRole(id: number, role: RoleVO) {
-  return request<RoleVO>({ url: `/role-manage/role/${id}`, method: 'put', data: role });
+export async function updateRole(id: number, role: RoleVO) {
+  const { data, error } = await request<RoleVO>({ url: `/role-manage/role/${id}`, method: 'put', data: role });
+  if (error) throw error;
+  return data!;
 }
 
-export function deleteRole(id: number) {
-  return request<void>({ url: `/role-manage/role/${id}`, method: 'delete' });
+export async function deleteRole(id: number) {
+  const { error } = await request<void>({ url: `/role-manage/role/${id}`, method: 'delete' });
+  if (error) throw error;
 }
 
 // ==================== 角色人员管理 ====================
 
-export function fetchUsersByRole(roleId: number) {
-  return request<UserRoleVO[]>({ url: `/role-manage/role/${roleId}/users` });
+export async function fetchUsersByRole(roleId: number) {
+  const { data } = await request<UserRoleVO[]>({ url: `/role-manage/role/${roleId}/users` });
+  return data || [];
 }
 
-export function addUserToRole(roleId: number, userRole: UserRoleVO) {
-  return request<UserRoleVO>({ url: `/role-manage/role/${roleId}/user`, method: 'post', data: userRole });
+export async function addUserToRole(roleId: number, userRole: Partial<UserRoleVO>) {
+  const { data, error } = await request<UserRoleVO>({ url: `/role-manage/role/${roleId}/user`, method: 'post', data: userRole });
+  if (error) throw error;
+  return data!;
 }
 
-export function removeUserFromRole(id: number) {
-  return request<void>({ url: `/role-manage/user-role/${id}`, method: 'delete' });
+export async function removeUserFromRole(id: number) {
+  const { error } = await request<void>({ url: `/role-manage/user-role/${id}`, method: 'delete' });
+  if (error) throw error;
 }
 
 // ==================== 角色页面管理 ====================
 
-export function fetchPagesByRole(roleId: number) {
-  return request<RolePageVO[]>({ url: `/role-manage/role/${roleId}/pages` });
+export async function fetchPagesByRole(roleId: number) {
+  const { data } = await request<RolePageVO[]>({ url: `/role-manage/role/${roleId}/pages` });
+  return data || [];
 }
 
-export function addPageToRole(roleId: number, rolePage: RolePageVO) {
-  return request<RolePageVO>({ url: `/role-manage/role/${roleId}/page`, method: 'post', data: rolePage });
+export async function addPageToRole(roleId: number, rolePage: Partial<RolePageVO>) {
+  const { data, error } = await request<RolePageVO>({ url: `/role-manage/role/${roleId}/page`, method: 'post', data: rolePage });
+  if (error) throw error;
+  return data!;
 }
 
-export function updateRolePage(id: number, rolePage: RolePageVO) {
-  return request<RolePageVO>({ url: `/role-manage/role-page/${id}`, method: 'put', data: rolePage });
+export async function updateRolePage(id: number, rolePage: Partial<RolePageVO>) {
+  const { data, error } = await request<RolePageVO>({ url: `/role-manage/role-page/${id}`, method: 'put', data: rolePage });
+  if (error) throw error;
+  return data!;
 }
 
-export function removePageFromRole(id: number) {
-  return request<void>({ url: `/role-manage/role-page/${id}`, method: 'delete' });
+export async function removePageFromRole(id: number) {
+  const { error } = await request<void>({ url: `/role-manage/role-page/${id}`, method: 'delete' });
+  if (error) throw error;
 }
 
 // ==================== 辅助查询 ====================
 
-export function fetchAllUsers() {
-  return request<UserSimpleVO[]>({ url: '/role-manage/users' });
+export async function fetchAllUsers() {
+  const { data } = await request<UserSimpleVO[]>({ url: '/role-manage/users' });
+  return data || [];
 }
 
-export function fetchAllPages() {
-  return request<PageSimpleVO[]>({ url: '/role-manage/pages' });
+export async function fetchAllPages() {
+  const { data } = await request<PageSimpleVO[]>({ url: '/role-manage/pages' });
+  return data || [];
+}
+
+// ==================== 高级查询 ====================
+
+export interface SearchCondition {
+  field: string;
+  operator: string;
+  value: string;
+}
+
+export async function searchRoles(conditions: SearchCondition[]) {
+  const { data } = await request<RoleVO[]>({ 
+    url: '/role-manage/roles/search', 
+    method: 'post',
+    data: conditions
+  });
+  return data || [];
 }

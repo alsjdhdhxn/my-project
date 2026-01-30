@@ -13,7 +13,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.util.List;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
@@ -35,7 +35,6 @@ public class RoleManageService {
     public List<RoleVO> listRoles() {
         List<Role> roles = roleMapper.selectList(
             new LambdaQueryWrapper<Role>()
-                .eq(Role::getDeleted, 0)
                 .orderByAsc(Role::getId)
         );
         return roles.stream().map(this::toRoleVO).collect(Collectors.toList());
@@ -47,7 +46,6 @@ public class RoleManageService {
         Long count = roleMapper.selectCount(
             new LambdaQueryWrapper<Role>()
                 .eq(Role::getRoleCode, vo.getRoleCode())
-                .eq(Role::getDeleted, 0)
         );
         if (count > 0) {
             throw new BusinessException("角色编码已存在");
@@ -67,7 +65,7 @@ public class RoleManageService {
     @Transactional
     public RoleVO updateRole(RoleVO vo) {
         Role role = roleMapper.selectById(vo.getId());
-        if (role == null || role.getDeleted() == 1) {
+        if (role == null) {
             throw new BusinessException("角色不存在");
         }
 
@@ -76,7 +74,6 @@ public class RoleManageService {
             new LambdaQueryWrapper<Role>()
                 .eq(Role::getRoleCode, vo.getRoleCode())
                 .ne(Role::getId, vo.getId())
-                .eq(Role::getDeleted, 0)
         );
         if (count > 0) {
             throw new BusinessException("角色编码已存在");
@@ -98,10 +95,8 @@ public class RoleManageService {
         if (role == null) {
             throw new BusinessException("角色不存在");
         }
-        role.setDeleted(1);
-        role.setUpdateBy(SecurityUtils.getCurrentUsername());
-        role.setUpdateTime(LocalDateTime.now());
-        roleMapper.updateById(role);
+        // 使用 MyBatis-Plus 逻辑删除
+        roleMapper.deleteById(id);
     }
 
     // ==================== 角色人员管理 ====================
@@ -117,7 +112,6 @@ public class RoleManageService {
             new LambdaQueryWrapper<UserRole>()
                 .eq(UserRole::getRoleId, vo.getRoleId())
                 .eq(UserRole::getUserId, vo.getUserId())
-                .eq(UserRole::getDeleted, 0)
         );
         if (count > 0) {
             throw new BusinessException("该用户已在此角色中");
@@ -146,10 +140,7 @@ public class RoleManageService {
         if (userRole == null) {
             throw new BusinessException("记录不存在");
         }
-        userRole.setDeleted(1);
-        userRole.setUpdateBy(SecurityUtils.getCurrentUsername());
-        userRole.setUpdateTime(LocalDateTime.now());
-        userRoleMapper.updateById(userRole);
+        userRoleMapper.deleteById(id);
     }
 
     // ==================== 角色页面管理 ====================
@@ -165,7 +156,6 @@ public class RoleManageService {
             new LambdaQueryWrapper<RolePage>()
                 .eq(RolePage::getRoleId, vo.getRoleId())
                 .eq(RolePage::getPageCode, vo.getPageCode())
-                .eq(RolePage::getDeleted, 0)
         );
         if (count > 0) {
             throw new BusinessException("该页面已授权给此角色");
@@ -193,7 +183,7 @@ public class RoleManageService {
     @Transactional
     public RolePageVO updateRolePage(RolePageVO vo) {
         RolePage rolePage = rolePageMapper.selectById(vo.getId());
-        if (rolePage == null || rolePage.getDeleted() == 1) {
+        if (rolePage == null) {
             throw new BusinessException("记录不存在");
         }
 
@@ -217,10 +207,7 @@ public class RoleManageService {
         if (rolePage == null) {
             throw new BusinessException("记录不存在");
         }
-        rolePage.setDeleted(1);
-        rolePage.setUpdateBy(SecurityUtils.getCurrentUsername());
-        rolePage.setUpdateTime(LocalDateTime.now());
-        rolePageMapper.updateById(rolePage);
+        rolePageMapper.deleteById(id);
     }
 
     // ==================== 辅助查询 ====================
@@ -228,7 +215,6 @@ public class RoleManageService {
     public List<UserSimpleVO> listAllUsers() {
         List<User> users = userMapper.selectList(
             new LambdaQueryWrapper<User>()
-                .eq(User::getDeleted, 0)
                 .orderByAsc(User::getId)
         );
         return users.stream().map(u -> {
@@ -243,7 +229,6 @@ public class RoleManageService {
     public List<PageSimpleVO> listAllPages() {
         List<Resource> resources = resourceMapper.selectList(
             new LambdaQueryWrapper<Resource>()
-                .eq(Resource::getDeleted, 0)
                 .isNotNull(Resource::getPageCode)
                 .orderByAsc(Resource::getSortOrder)
         );
@@ -253,6 +238,131 @@ public class RoleManageService {
             vo.setPageName(r.getResourceName());
             return vo;
         }).collect(Collectors.toList());
+    }
+
+    // ==================== 高级查询 ====================
+
+    public List<RoleVO> searchRoles(List<SearchConditionDTO> conditions) {
+        // 分离角色本身的条件和关联表的条件
+        List<SearchConditionDTO> roleConditions = new ArrayList<>();
+        List<SearchConditionDTO> userConditions = new ArrayList<>();
+        List<SearchConditionDTO> pageConditions = new ArrayList<>();
+
+        for (SearchConditionDTO cond : conditions) {
+            switch (cond.getField()) {
+                case "roleCode", "roleName" -> roleConditions.add(cond);
+                case "username" -> userConditions.add(cond);
+                case "pageCode" -> pageConditions.add(cond);
+            }
+        }
+
+        // 构建角色查询
+        LambdaQueryWrapper<Role> wrapper = new LambdaQueryWrapper<Role>().orderByAsc(Role::getId);
+        
+        // 主表条件
+        for (SearchConditionDTO cond : roleConditions) {
+            applyCondition(wrapper, cond);
+        }
+
+        // 从表条件：用户 EXISTS
+        if (!userConditions.isEmpty()) {
+            for (SearchConditionDTO cond : userConditions) {
+                String existsSql = buildUserExistsSql(cond);
+                wrapper.exists(existsSql);
+            }
+        }
+
+        // 从表条件：页面 EXISTS
+        if (!pageConditions.isEmpty()) {
+            for (SearchConditionDTO cond : pageConditions) {
+                String existsSql = buildPageExistsSql(cond);
+                wrapper.exists(existsSql);
+            }
+        }
+
+        List<Role> roles = roleMapper.selectList(wrapper);
+        return roles.stream().map(this::toRoleVO).collect(Collectors.toList());
+    }
+
+    /**
+     * 构建用户EXISTS子查询
+     */
+    private String buildUserExistsSql(SearchConditionDTO cond) {
+        String valueCondition = buildValueCondition("u.USERNAME", cond.getOperator(), cond.getValue());
+        String realNameCondition = buildValueCondition("u.REAL_NAME", cond.getOperator(), cond.getValue());
+        
+        return String.format(
+            "SELECT 1 FROM T_COST_USER_ROLE ur " +
+            "JOIN T_COST_USER u ON ur.USER_ID = u.ID AND u.DELETED = 0 " +
+            "WHERE ur.ROLE_ID = T_COST_ROLE.ID AND ur.DELETED = 0 " +
+            "AND (%s OR %s)",
+            valueCondition, realNameCondition
+        );
+    }
+
+    /**
+     * 构建页面EXISTS子查询
+     */
+    private String buildPageExistsSql(SearchConditionDTO cond) {
+        String codeCondition = buildValueCondition("rp.PAGE_CODE", cond.getOperator(), cond.getValue());
+        String nameCondition = buildValueCondition("res.RESOURCE_NAME", cond.getOperator(), cond.getValue());
+        
+        return String.format(
+            "SELECT 1 FROM T_COST_ROLE_PAGE rp " +
+            "LEFT JOIN T_COST_RESOURCE res ON rp.PAGE_CODE = res.PAGE_CODE AND res.DELETED = 0 " +
+            "WHERE rp.ROLE_ID = T_COST_ROLE.ID AND rp.DELETED = 0 " +
+            "AND (%s OR %s)",
+            codeCondition, nameCondition
+        );
+    }
+
+    /**
+     * 构建值条件SQL片段
+     */
+    private String buildValueCondition(String column, String operator, String value) {
+        // 防SQL注入：简单转义单引号
+        String safeValue = value.replace("'", "''");
+        
+        return switch (operator) {
+            case "eq" -> String.format("%s = '%s'", column, safeValue);
+            case "ne" -> String.format("%s <> '%s'", column, safeValue);
+            case "like" -> String.format("%s LIKE '%%%s%%'", column, safeValue);
+            case "likeLeft" -> String.format("%s LIKE '%%%s'", column, safeValue);
+            case "likeRight" -> String.format("%s LIKE '%s%%'", column, safeValue);
+            case "gt" -> String.format("%s > '%s'", column, safeValue);
+            case "ge" -> String.format("%s >= '%s'", column, safeValue);
+            case "lt" -> String.format("%s < '%s'", column, safeValue);
+            case "le" -> String.format("%s <= '%s'", column, safeValue);
+            case "in" -> {
+                String[] values = safeValue.split(",");
+                String inList = Arrays.stream(values)
+                    .map(v -> "'" + v.trim() + "'")
+                    .collect(Collectors.joining(","));
+                yield String.format("%s IN (%s)", column, inList);
+            }
+            default -> String.format("%s LIKE '%%%s%%'", column, safeValue);
+        };
+    }
+
+    private void applyCondition(LambdaQueryWrapper<Role> wrapper, SearchConditionDTO cond) {
+        String value = cond.getValue();
+        switch (cond.getField()) {
+            case "roleCode" -> applyStringCondition(wrapper, Role::getRoleCode, cond.getOperator(), value);
+            case "roleName" -> applyStringCondition(wrapper, Role::getRoleName, cond.getOperator(), value);
+        }
+    }
+
+    private <T> void applyStringCondition(LambdaQueryWrapper<T> wrapper, 
+            com.baomidou.mybatisplus.core.toolkit.support.SFunction<T, String> column,
+            String operator, String value) {
+        switch (operator) {
+            case "eq" -> wrapper.eq(column, value);
+            case "ne" -> wrapper.ne(column, value);
+            case "like" -> wrapper.like(column, value);
+            case "likeLeft" -> wrapper.likeLeft(column, value);
+            case "likeRight" -> wrapper.likeRight(column, value);
+            case "in" -> wrapper.in(column, Arrays.asList(value.split(",")));
+        }
     }
 
     // ==================== 工具方法 ====================
