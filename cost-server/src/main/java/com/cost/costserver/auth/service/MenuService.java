@@ -8,6 +8,7 @@ import com.cost.costserver.auth.entity.Role;
 import com.cost.costserver.auth.entity.Resource;
 import com.cost.costserver.auth.mapper.ResourceMapper;
 import com.cost.costserver.auth.mapper.RoleMapper;
+import com.cost.costserver.common.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -23,7 +24,7 @@ public class MenuService {
     private final ResourceMapper resourceMapper;
     private final PermissionService permissionService;
     private final RoleMapper roleMapper;
-    private static final String SUPER_ADMIN_ROLE = "ADMIN";
+    private static final String SUPER_ADMIN_USERNAME = "admin";
 
     /**
      * 获取用户菜单（根据权限过滤）
@@ -38,18 +39,19 @@ public class MenuService {
                 .orderByAsc(Resource::getSortOrder)
         );
 
-        List<Role> roles = roleMapper.selectByUserId(userId);
-        List<String> roleCodes = roles.stream().map(Role::getRoleCode).toList();
-        boolean isSuperAdmin = roleCodes.stream()
-            .anyMatch(code -> SUPER_ADMIN_ROLE.equalsIgnoreCase(code));
-
-        if (isSuperAdmin) {
+        // admin 用户直接返回所有菜单
+        String currentUsername = SecurityUtils.getCurrentUsername();
+        if (SUPER_ADMIN_USERNAME.equalsIgnoreCase(currentUsername)) {
             List<MenuRoute> routes = buildMenuTree(resources);
             return new UserRoute(routes, "home");
         }
 
+        // 获取用户角色
+        List<Role> roles = roleMapper.selectByUserId(userId);
+        List<String> roleCodes = roles.stream().map(Role::getRoleCode).toList();
+
         // 获取用户有权限的 pageCode 集合
-        UserPermissionContext permContext = permissionService.buildUserPermissionContext(userId, null, roleCodes);
+        UserPermissionContext permContext = permissionService.buildUserPermissionContext(userId, currentUsername, roleCodes);
         Set<String> allowedPageCodes = permContext.pageCodes();
 
         // 过滤菜单：PAGE 类型必须有权限，DIRECTORY 类型保留（后续根据子菜单决定）
@@ -63,7 +65,7 @@ public class MenuService {
 
     /**
      * 根据权限过滤菜单资源
-     * - PAGE 类型：pageCode 必须在允许列表中，或者 pageCode 为空（硬编码页面）
+     * - PAGE 类型：pageCode 必须在允许列表中
      * - DIRECTORY/MENU 类型：保留，后续在构建树时根据是否有子菜单决定
      */
     private List<Resource> filterResourcesByPermission(List<Resource> resources, Set<String> allowedPageCodes) {
@@ -72,10 +74,9 @@ public class MenuService {
         }
         
         // 先收集有权限的 PAGE 资源 ID
-        // 硬编码页面（pageCode 为空）对所有用户可见
         Set<Long> allowedPageIds = resources.stream()
             .filter(r -> "PAGE".equals(r.getResourceType()))
-            .filter(r -> r.getPageCode() == null || allowedPageCodes.contains(r.getPageCode()))
+            .filter(r -> allowedPageCodes.contains(r.getPageCode()))
             .map(Resource::getId)
             .collect(Collectors.toSet());
         
@@ -135,9 +136,10 @@ public class MenuService {
         MenuRoute route = new MenuRoute();
         route.setId(resource.getId().toString());
         // 子路由 name 格式：parent_child（elegant-router 要求）
+        // 统一使用 pageCode 作为路由名
         String routeName = parentName != null 
-            ? parentName + "_" + resource.getResourceCode() 
-            : resource.getResourceCode();
+            ? parentName + "_" + resource.getPageCode() 
+            : resource.getPageCode();
         route.setName(routeName);
         route.setPath(buildPath(resource, isTopLevel));
         route.setComponent(buildComponent(resource, isTopLevel));
@@ -171,8 +173,8 @@ public class MenuService {
             }
             return resource.getRoute();
         }
-        // 目录类型，路径为 /resourceCode
-        return "/" + resource.getResourceCode();
+        // 目录类型，路径为 /pageCode
+        return "/" + resource.getPageCode();
     }
 
     private String buildComponent(Resource resource, boolean isTopLevel) {
@@ -184,9 +186,9 @@ public class MenuService {
             if ("home".equals(resource.getPageCode())) {
                 return "layout.base$view.home";
             }
-            // 硬编码页面（pageCode 为空），使用 resourceCode 作为视图名
-            if (resource.getPageCode() == null) {
-                return "layout.base$view." + resource.getResourceCode();
+            // 硬编码页面，使用 pageCode 作为视图名
+            if (resource.getIsHardcoded() != null && resource.getIsHardcoded() == 1) {
+                return "layout.base$view." + resource.getPageCode();
             }
             if (isV3Page(resource)) {
                 return "layout.base$view.dynamic-v3";
@@ -194,9 +196,9 @@ public class MenuService {
             return "layout.base$view.dynamic";
         }
         // 子级页面只返回视图组件
-        // 硬编码页面（pageCode 为空），使用 resourceCode 作为视图名
-        if (resource.getPageCode() == null) {
-            return "view." + resource.getResourceCode();
+        // 硬编码页面，使用 pageCode 作为视图名
+        if (resource.getIsHardcoded() != null && resource.getIsHardcoded() == 1) {
+            return "view." + resource.getPageCode();
         }
         if (isV3Page(resource)) {
             return "view.dynamic-v3";
@@ -208,7 +210,7 @@ public class MenuService {
         if (resource == null) {
             return false;
         }
-        String code = resource.getResourceCode();
+        String code = resource.getPageCode();
         return "cost-pinggu-v3".equalsIgnoreCase(code) 
             || "wms-con-doc".equalsIgnoreCase(code);
     }

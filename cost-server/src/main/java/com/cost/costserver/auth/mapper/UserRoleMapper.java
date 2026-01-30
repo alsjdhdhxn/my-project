@@ -12,11 +12,15 @@ import java.util.List;
 @Mapper
 public interface UserRoleMapper extends BaseMapper<UserRole> {
 
+    /**
+     * 根据角色ID查询用户角色关联VO
+     * 注意：视图已更新，无需 DELETED 条件
+     */
     @Select("""
-        SELECT ID, USER_ID, USERNAME, REAL_NAME, ROLE_ID, CREATE_TIME, CREATE_BY
+        SELECT ID, USER_ID, USERNAME, REAL_NAME, ROLE_ID
         FROM V_COST_USER_ROLE
         WHERE ROLE_ID = #{roleId}
-        ORDER BY CREATE_TIME DESC
+        ORDER BY ID DESC
         """)
     List<UserRoleVO> selectByRoleId(@Param("roleId") Long roleId);
 }

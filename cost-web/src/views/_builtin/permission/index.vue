@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { ref, computed, watch, h } from 'vue';
 import { NButton, NTabs, NTabPane, NEmpty, NTag, NPopconfirm, NModal, NForm, NFormItem, NInput, NSelect, useMessage, NScrollbar, NCheckbox, NSpace, NPopover, NDataTable, NTree } from 'naive-ui';
-import type { TreeOption } from 'naive-ui';
+import type { TreeOption, TreeRenderProps } from 'naive-ui';
 import { Icon } from '@iconify/vue';
 import {
   fetchRoles, createRole, updateRole, deleteRole,
   fetchUsersByRole, addUserToRole, removeUserFromRole,
-  fetchPagesByRole, addPageToRole, updateRolePage, removePageFromRole,
+  addPageToRole, updateRolePage, removePageFromRole,
   fetchAllUsers, searchRoles, fetchPageButtons, fetchResourcePermissionTree
 } from '@/service/api/role-manage';
 import type { RoleVO, UserRoleVO, RolePageVO, UserSimpleVO, PageButtonVO, ResourcePermissionVO } from '@/service/api/role-manage';
@@ -267,10 +267,26 @@ const userColumns = [
 ];
 
 // ==================== 角色页面（树形权限） ====================
-const rolePages = ref<RolePageVO[]>([]);
 const loadingPages = ref(false);
 const resourceTree = ref<ResourcePermissionVO[]>([]);
 const checkedKeys = ref<string[]>([]);
+
+// 资源映射表（用于快速查找）
+const resourceMap = computed(() => {
+  const map = new Map<string, ResourcePermissionVO>();
+  function traverse(nodes: ResourcePermissionVO[]) {
+    for (const node of nodes) {
+      if (node.pageCode) {
+        map.set(node.pageCode, node);
+      }
+      if (node.children?.length) {
+        traverse(node.children);
+      }
+    }
+  }
+  traverse(resourceTree.value);
+  return map;
+});
 
 // 加载资源权限树（包含授权状态）
 async function loadResourcePermissionTree() {
@@ -281,26 +297,23 @@ async function loadResourcePermissionTree() {
     resourceTree.value = data || [];
     // 从树中提取已授权的pageCode
     checkedKeys.value = extractAuthorizedKeys(resourceTree.value);
-    // 同时提取rolePages用于按钮权限配置
-    rolePages.value = extractRolePages(resourceTree.value);
   } catch (e) {
     resourceTree.value = [];
     checkedKeys.value = [];
-    rolePages.value = [];
   } finally {
     loadingPages.value = false;
   }
 }
 
-// 从树中提取已授权的key（使用resourceCode）
+// 从树中提取已授权的key（使用pageCode）
 function extractAuthorizedKeys(nodes: ResourcePermissionVO[]): string[] {
   const keys: string[] = [];
   function traverse(list: ResourcePermissionVO[]) {
     for (const node of list) {
-      if (node.isAuthorized === 1 && node.resourceCode) {
-        keys.push(node.resourceCode);
+      if (node.isAuthorized === 1 && node.pageCode) {
+        keys.push(node.pageCode);
       }
-      if (node.children && node.children.length > 0) {
+      if (node.children?.length) {
         traverse(node.children);
       }
     }
@@ -309,41 +322,88 @@ function extractAuthorizedKeys(nodes: ResourcePermissionVO[]): string[] {
   return keys;
 }
 
-// 从树中提取已授权的RolePageVO
-function extractRolePages(nodes: ResourcePermissionVO[]): RolePageVO[] {
-  const pages: RolePageVO[] = [];
-  function traverse(list: ResourcePermissionVO[]) {
-    for (const node of list) {
-      if (node.isAuthorized === 1 && node.rolePageId) {
-        pages.push({
-          id: node.rolePageId,
-          pageCode: node.resourceCode || '',  // 使用 resourceCode
-          pageName: node.resourceName,
-          buttonPolicy: node.buttonPolicy,
-          columnPolicy: node.columnPolicy
-        });
-      }
-      if (node.children && node.children.length > 0) {
-        traverse(node.children);
-      }
-    }
-  }
-  traverse(nodes);
-  return pages;
+// 扩展TreeOption，添加原始数据
+interface ExtendedTreeOption extends TreeOption {
+  raw?: ResourcePermissionVO;
 }
 
 // 将ResourcePermissionVO转换为TreeOption
-function convertToTreeOptions(nodes: ResourcePermissionVO[]): TreeOption[] {
+function convertToTreeOptions(nodes: ResourcePermissionVO[]): ExtendedTreeOption[] {
   return nodes.map(node => ({
-    // 使用 resourceCode 作为 key，因为 T_COST_ROLE_PAGE.PAGE_CODE 存的是 resourceCode
-    key: node.resourceCode || `dir-${node.id}`,
+    key: node.pageCode || `dir-${node.id}`,
     label: node.resourceName,
     isLeaf: node.resourceType === 'PAGE',
-    children: node.children && node.children.length > 0 ? convertToTreeOptions(node.children) : undefined
+    raw: node,
+    children: node.children?.length ? convertToTreeOptions(node.children) : undefined
   }));
 }
 
 const treeOptions = computed(() => convertToTreeOptions(resourceTree.value));
+
+// 判断是否是全部按钮权限
+function isAllButtonsPolicy(policy: string | undefined): boolean {
+  return policy === '["*"]' || !policy;
+}
+
+// 自定义树节点渲染
+function renderTreeLabel({ option }: TreeRenderProps) {
+  const opt = option as ExtendedTreeOption;
+  const raw = opt.raw;
+  const isPage = raw?.resourceType === 'PAGE';
+  const isAuthorized = raw?.isAuthorized === 1;
+  
+  // 目录节点：只显示名称
+  if (!isPage) {
+    return h('span', { class: 'tree-node-label' }, opt.label as string);
+  }
+  
+  // 页面节点：显示名称 + 按钮权限标签 + 配置按钮
+  const children: any[] = [
+    h('span', { class: 'tree-node-label' }, opt.label as string)
+  ];
+  
+  // 已授权的页面显示三个配置按钮
+  if (isAuthorized && raw) {
+    children.push(
+      h(NButton, { 
+        text: true, 
+        size: 'tiny', 
+        type: 'primary',
+        class: 'ml-2 config-btn',
+        onClick: (e: Event) => {
+          e.stopPropagation();
+          openEditButton(raw);
+        }
+      }, { default: () => '配置按钮' })
+    );
+    children.push(
+      h(NButton, { 
+        text: true, 
+        size: 'tiny', 
+        type: 'primary',
+        class: 'ml-1 config-btn',
+        onClick: (e: Event) => {
+          e.stopPropagation();
+          openEditColumn(raw);
+        }
+      }, { default: () => '配置列' })
+    );
+    children.push(
+      h(NButton, { 
+        text: true, 
+        size: 'tiny', 
+        type: 'primary',
+        class: 'ml-1 config-btn',
+        onClick: (e: Event) => {
+          e.stopPropagation();
+          openEditRow(raw);
+        }
+      }, { default: () => '配置行' })
+    );
+  }
+  
+  return h('span', { class: 'tree-node-content' }, children);
+}
 
 // 处理树节点选中变化
 async function handleCheckedKeysChange(keys: string[]) {
@@ -367,10 +427,10 @@ async function handleCheckedKeysChange(keys: string[]) {
   
   // 移除权限
   for (const pageCode of toRemove) {
-    const rp = rolePages.value.find(r => r.pageCode === pageCode);
-    if (rp?.id) {
+    const resource = resourceMap.value.get(pageCode);
+    if (resource?.rolePageId) {
       try {
-        await removePageFromRole(rp.id);
+        await removePageFromRole(resource.rolePageId);
       } catch (e) {
         // ignore
       }
@@ -385,33 +445,73 @@ async function handleCheckedKeysChange(keys: string[]) {
   }
 }
 
-// 编辑页面权限弹窗
-const showEditPageModal = ref(false);
-const editPageForm = ref<RolePageVO>({ pageCode: '' });
-const editingPage = ref(false);
+// 编辑按钮权限弹窗
+const showEditButtonModal = ref(false);
+const editButtonForm = ref<{ id?: number; pageCode: string; pageName?: string; buttonPolicy?: string }>({ pageCode: '' });
+const editingButton = ref(false);
 const pageButtons = ref<PageButtonVO[]>([]);
 const selectedButtons = ref<string[]>([]);
 const loadingButtons = ref(false);
 const isAllButtons = ref(true);
 
-async function openEditPage(rp: RolePageVO) {
-  editPageForm.value = { ...rp };
-  if (rp.buttonPolicy === '["*"]' || !rp.buttonPolicy) {
+// 编辑列权限弹窗
+const showEditColumnModal = ref(false);
+const editColumnForm = ref<{ id?: number; pageCode: string; pageName?: string; columnPolicy?: string }>({ pageCode: '' });
+const editingColumn = ref(false);
+
+// 编辑行权限弹窗
+const showEditRowModal = ref(false);
+const editRowForm = ref<{ id?: number; pageCode: string; pageName?: string; rowPolicy?: string }>({ pageCode: '' });
+const editingRow = ref(false);
+
+// 打开按钮权限配置
+async function openEditButton(resource: ResourcePermissionVO) {
+  editButtonForm.value = {
+    id: resource.rolePageId,
+    pageCode: resource.pageCode || '',
+    pageName: resource.resourceName,
+    buttonPolicy: resource.buttonPolicy
+  };
+  
+  if (resource.buttonPolicy === '["*"]' || !resource.buttonPolicy) {
     isAllButtons.value = true;
     selectedButtons.value = [];
   } else {
     isAllButtons.value = false;
-    try { selectedButtons.value = JSON.parse(rp.buttonPolicy); } catch { selectedButtons.value = []; }
+    try { selectedButtons.value = JSON.parse(resource.buttonPolicy); } catch { selectedButtons.value = []; }
   }
+  
   loadingButtons.value = true;
   try {
-    pageButtons.value = await fetchPageButtons(rp.pageCode);
+    pageButtons.value = await fetchPageButtons(resource.pageCode || '');
   } catch (e) {
     pageButtons.value = [];
   } finally {
     loadingButtons.value = false;
   }
-  showEditPageModal.value = true;
+  showEditButtonModal.value = true;
+}
+
+// 打开列权限配置
+function openEditColumn(resource: ResourcePermissionVO) {
+  editColumnForm.value = {
+    id: resource.rolePageId,
+    pageCode: resource.pageCode || '',
+    pageName: resource.resourceName,
+    columnPolicy: resource.columnPolicy
+  };
+  showEditColumnModal.value = true;
+}
+
+// 打开行权限配置
+function openEditRow(resource: ResourcePermissionVO) {
+  editRowForm.value = {
+    id: resource.rolePageId,
+    pageCode: resource.pageCode || '',
+    pageName: resource.resourceName,
+    rowPolicy: resource.rowPolicy
+  };
+  showEditRowModal.value = true;
 }
 
 function toggleAllButtons(checked: boolean) {
@@ -419,29 +519,47 @@ function toggleAllButtons(checked: boolean) {
   if (checked) selectedButtons.value = [];
 }
 
-async function handleUpdatePage() {
-  if (!editPageForm.value.id) return;
-  editingPage.value = true;
+// 保存按钮权限
+async function handleUpdateButton() {
+  if (!editButtonForm.value.id) return;
+  editingButton.value = true;
   try {
-    editPageForm.value.buttonPolicy = isAllButtons.value ? '["*"]' : JSON.stringify(selectedButtons.value);
-    await updateRolePage(editPageForm.value.id, editPageForm.value);
-    message.success('更新成功');
-    showEditPageModal.value = false;
+    const buttonPolicy = isAllButtons.value ? '["*"]' : JSON.stringify(selectedButtons.value);
+    await updateRolePage(editButtonForm.value.id, { buttonPolicy });
+    message.success('按钮权限更新成功');
+    showEditButtonModal.value = false;
     await loadResourcePermissionTree();
   } finally {
-    editingPage.value = false;
+    editingButton.value = false;
   }
 }
 
-async function handleRemovePage(id: number) {
-  await removePageFromRole(id);
-  message.success('移除成功');
-  await loadResourcePermissionTree();
+// 保存列权限
+async function handleUpdateColumn() {
+  if (!editColumnForm.value.id) return;
+  editingColumn.value = true;
+  try {
+    await updateRolePage(editColumnForm.value.id, { columnPolicy: editColumnForm.value.columnPolicy });
+    message.success('列权限更新成功');
+    showEditColumnModal.value = false;
+    await loadResourcePermissionTree();
+  } finally {
+    editingColumn.value = false;
+  }
 }
 
-// 判断是否是全部按钮权限
-function isAllButtonsPolicy(policy: string | undefined): boolean {
-  return policy === '["*"]' || !policy;
+// 保存行权限
+async function handleUpdateRow() {
+  if (!editRowForm.value.id) return;
+  editingRow.value = true;
+  try {
+    await updateRolePage(editRowForm.value.id, { rowPolicy: editRowForm.value.rowPolicy });
+    message.success('行权限更新成功');
+    showEditRowModal.value = false;
+    await loadResourcePermissionTree();
+  } finally {
+    editingRow.value = false;
+  }
 }
 
 // ==================== 监听和初始化 ====================
@@ -565,12 +683,14 @@ loadRoles();
                     <span class="title-bar"></span>
                     功能权限树
                   </div>
+                  <div class="section-tip">勾选页面授权，点击「配置」设置按钮权限</div>
                 </div>
                 
                 <div class="tree-container">
                   <NTree
                     :data="treeOptions"
                     :checked-keys="checkedKeys"
+                    :render-label="renderTreeLabel"
                     checkable
                     cascade
                     selectable
@@ -579,33 +699,6 @@ loadRoles();
                     @update:checked-keys="handleCheckedKeysChange"
                   />
                   <NEmpty v-if="treeOptions.length === 0" description="暂无页面" />
-                </div>
-              </div>
-
-              <!-- 已授权页面列表（带修改/删除按钮） -->
-              <div v-if="rolePages.length > 0" class="permission-section mt-4">
-                <div class="section-header">
-                  <div class="section-title">
-                    <span class="title-bar"></span>
-                    按钮权限配置
-                  </div>
-                </div>
-                
-                <div class="authorized-list">
-                  <div v-for="rp in rolePages" :key="rp.id" class="authorized-item">
-                    <div class="item-info">
-                      <Icon icon="mdi:file-document-outline" class="item-icon" />
-                      <span class="item-name">{{ rp.pageName || rp.pageCode }}</span>
-                      <NTag v-if="isAllButtonsPolicy(rp.buttonPolicy)" size="tiny" type="success">全部按钮</NTag>
-                      <NTag v-else size="tiny" type="warning">部分按钮</NTag>
-                    </div>
-                    <div class="item-actions">
-                      <NButton text size="small" type="primary" @click="openEditPage(rp)">
-                        <template #icon><Icon icon="mdi:pencil-outline" /></template>
-                        配置
-                      </NButton>
-                    </div>
-                  </div>
                 </div>
               </div>
             </div>
@@ -696,11 +789,11 @@ loadRoles();
       </template>
     </NModal>
 
-    <!-- 编辑页面权限弹窗 -->
-    <NModal v-model:show="showEditPageModal" preset="card" title="编辑页面权限" class="w-500px">
+    <!-- 编辑按钮权限弹窗 -->
+    <NModal v-model:show="showEditButtonModal" preset="card" title="配置按钮权限" class="w-500px">
       <NForm label-placement="left" label-width="70" size="small">
         <NFormItem label="页面">
-          <NInput :value="editPageForm.pageName || editPageForm.pageCode" disabled />
+          <NInput :value="editButtonForm.pageName || editButtonForm.pageCode" disabled />
         </NFormItem>
         <NFormItem label="按钮权限">
           <div class="button-policy-section">
@@ -709,19 +802,63 @@ loadRoles();
               <template v-if="loadingButtons"><span class="loading-text">加载中...</span></template>
               <template v-else-if="pageButtons.length === 0"><span class="empty-text-small">该页面暂无按钮配置</span></template>
               <template v-else>
-                <NCheckbox v-for="btn in pageButtons" :key="btn.buttonKey" :checked="selectedButtons.includes(btn.buttonKey)" @update:checked="(checked: boolean) => { if (checked) { selectedButtons.push(btn.buttonKey); } else { selectedButtons = selectedButtons.filter(k => k !== btn.buttonKey); } }">{{ btn.buttonLabel }}</NCheckbox>
+                <NCheckbox 
+                  v-for="btn in pageButtons" 
+                  :key="btn.buttonKey" 
+                  :checked="selectedButtons.includes(btn.buttonKey)" 
+                  @update:checked="(checked: boolean) => { 
+                    if (checked) { 
+                      selectedButtons.push(btn.buttonKey); 
+                    } else { 
+                      selectedButtons = selectedButtons.filter(k => k !== btn.buttonKey); 
+                    } 
+                  }"
+                >{{ btn.buttonLabel }}</NCheckbox>
               </template>
             </div>
           </div>
         </NFormItem>
+      </NForm>
+      <template #footer>
+        <div class="modal-footer">
+          <NButton size="small" @click="showEditButtonModal = false">取消</NButton>
+          <NButton type="primary" size="small" :loading="editingButton" @click="handleUpdateButton">确定</NButton>
+        </div>
+      </template>
+    </NModal>
+
+    <!-- 编辑列权限弹窗 -->
+    <NModal v-model:show="showEditColumnModal" preset="card" title="配置列权限" class="w-500px">
+      <NForm label-placement="left" label-width="70" size="small">
+        <NFormItem label="页面">
+          <NInput :value="editColumnForm.pageName || editColumnForm.pageCode" disabled />
+        </NFormItem>
         <NFormItem label="列权限">
-          <NInput v-model:value="editPageForm.columnPolicy" type="textarea" placeholder="JSON格式，留空表示全部" :rows="2" />
+          <NInput v-model:value="editColumnForm.columnPolicy" type="textarea" placeholder="JSON格式，留空表示全部列可见" :rows="4" />
         </NFormItem>
       </NForm>
       <template #footer>
         <div class="modal-footer">
-          <NButton size="small" @click="showEditPageModal = false">取消</NButton>
-          <NButton type="primary" size="small" :loading="editingPage" @click="handleUpdatePage">确定</NButton>
+          <NButton size="small" @click="showEditColumnModal = false">取消</NButton>
+          <NButton type="primary" size="small" :loading="editingColumn" @click="handleUpdateColumn">确定</NButton>
+        </div>
+      </template>
+    </NModal>
+
+    <!-- 编辑行权限弹窗 -->
+    <NModal v-model:show="showEditRowModal" preset="card" title="配置行权限" class="w-500px">
+      <NForm label-placement="left" label-width="70" size="small">
+        <NFormItem label="页面">
+          <NInput :value="editRowForm.pageName || editRowForm.pageCode" disabled />
+        </NFormItem>
+        <NFormItem label="行权限">
+          <NInput v-model:value="editRowForm.rowPolicy" type="textarea" placeholder="JSON格式，留空表示全部行可见" :rows="4" />
+        </NFormItem>
+      </NForm>
+      <template #footer>
+        <div class="modal-footer">
+          <NButton size="small" @click="showEditRowModal = false">取消</NButton>
+          <NButton type="primary" size="small" :loading="editingRow" @click="handleUpdateRow">确定</NButton>
         </div>
       </template>
     </NModal>
@@ -967,6 +1104,11 @@ loadRoles();
   color: #333;
 }
 
+.section-tip {
+  font-size: 12px;
+  color: #9ca3af;
+}
+
 .title-bar {
   width: 3px;
   height: 14px;
@@ -978,52 +1120,31 @@ loadRoles();
   border: 1px solid #e8e8e8;
   border-radius: 8px;
   padding: 12px;
-  max-height: 300px;
+  max-height: 500px;
   overflow: auto;
 }
 
-/* 已授权列表 */
-.authorized-list {
-  border: 1px solid #e8e8e8;
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-.authorized-item {
-  display: flex;
+/* 树节点样式 */
+.tree-node-content {
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 10px 16px;
-  border-bottom: 1px solid #f0f0f0;
 }
 
-.authorized-item:last-child {
-  border-bottom: none;
-}
-
-.authorized-item:hover {
-  background: #fafafa;
-}
-
-.item-info {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.item-icon {
-  color: #1890ff;
-  font-size: 16px;
-}
-
-.item-name {
+.tree-node-label {
   font-size: 13px;
-  color: #333;
 }
 
-.item-actions {
-  display: flex;
-  gap: 8px;
+.ml-2 {
+  margin-left: 8px;
+}
+
+.config-btn {
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.tree-container :deep(.n-tree-node:hover) .config-btn {
+  opacity: 1;
 }
 
 /* 空状态 */

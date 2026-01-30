@@ -1,7 +1,6 @@
 package com.cost.costserver.auth.dto;
 
 import lombok.Data;
-import java.time.LocalDateTime;
 
 @Data
 public class RolePageVO {
@@ -11,8 +10,5 @@ public class RolePageVO {
     private String pageName;
     private String buttonPolicy;
     private String columnPolicy;
-    private LocalDateTime createTime;
-    private LocalDateTime updateTime;
-    private String createBy;
-    private String updateBy;
+    private String rowPolicy;
 }

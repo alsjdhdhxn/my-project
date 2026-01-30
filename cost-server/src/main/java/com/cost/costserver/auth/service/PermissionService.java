@@ -1,21 +1,18 @@
 package com.cost.costserver.auth.service;
 
 import cn.hutool.core.util.StrUtil;
+import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import com.cost.costserver.auth.dto.*;
-import com.cost.costserver.auth.entity.Role;
 import com.cost.costserver.auth.entity.RolePage;
-import com.cost.costserver.auth.entity.RolePageDataRule;
-import com.cost.costserver.auth.mapper.RoleMapper;
-import com.cost.costserver.auth.mapper.RolePageDataRuleMapper;
 import com.cost.costserver.auth.mapper.RolePageMapper;
+import com.cost.costserver.common.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
-import java.util.stream.Collectors;
 
 /**
  * 权限组装服务
@@ -27,26 +24,17 @@ import java.util.stream.Collectors;
 public class PermissionService {
 
     private final RolePageMapper rolePageMapper;
-    private final RolePageDataRuleMapper rolePageDataRuleMapper;
-    private final RoleMapper roleMapper;
     
-    private static final String SUPER_ADMIN_ROLE = "ADMIN";
+    private static final String SUPER_ADMIN_USERNAME = "admin";
 
     /**
      * 组装用户完整权限上下文
      */
     public UserPermissionContext buildUserPermissionContext(Long userId, String username, List<String> roles) {
-        // 1. 查询用户所有页面权限
+        // 查询用户所有页面权限
         List<RolePage> rolePages = rolePageMapper.selectByUserId(userId);
         
-        // 2. 查询用户所有数据权限规则
-        List<RolePageDataRule> dataRules = rolePageDataRuleMapper.selectByUserId(userId);
-        
-        // 按 rolePageId 分组数据规则
-        Map<Long, List<RolePageDataRule>> dataRuleMap = dataRules.stream()
-            .collect(Collectors.groupingBy(RolePageDataRule::getRolePageId));
-        
-        // 3. 组装页面权限（多角色合并：取并集）
+        // 组装页面权限（多角色合并：取并集）
         Map<String, PagePermission> pagePermissions = new HashMap<>();
         Set<String> pageCodes = new HashSet<>();
         
@@ -60,12 +48,8 @@ public class PermissionService {
             // 解析列权限
             Map<String, ColumnPermission> columns = parseColumns(rp.getColumnPolicy());
             
-            // 解析数据权限规则
-            List<DataRule> rules = dataRuleMap.getOrDefault(rp.getId(), Collections.emptyList())
-                .stream()
-                .map(this::parseDataRule)
-                .filter(Objects::nonNull)
-                .toList();
+            // 解析行权限规则（从 rowPolicy 字段）
+            List<DataRule> rules = parseRowPolicy(rp.getRowPolicy());
             
             // 合并权限（多角色取并集）
             PagePermission existing = pagePermissions.get(pageCode);
@@ -81,19 +65,15 @@ public class PermissionService {
 
     /**
      * 获取指定页面的权限
-     * ADMIN 角色直接返回全权限
+     * 用户名为 admin 直接返回全权限
      */
     public PagePermission getPagePermission(Long userId, String pageCode) {
-        // ADMIN 角色直接放行，返回全权限
-        if (isSuperAdmin(userId)) {
+        // admin 用户直接放行，返回全权限
+        if (isSuperAdmin()) {
             return new PagePermission(pageCode, Set.of("*"), Collections.emptyMap(), Collections.emptyList());
         }
         
         List<RolePage> rolePages = rolePageMapper.selectByUserId(userId);
-        List<RolePageDataRule> dataRules = rolePageDataRuleMapper.selectByUserId(userId);
-        
-        Map<Long, List<RolePageDataRule>> dataRuleMap = dataRules.stream()
-            .collect(Collectors.groupingBy(RolePageDataRule::getRolePageId));
         
         boolean hasPage = false;
         Set<String> mergedButtons = new HashSet<>();
@@ -110,11 +90,7 @@ public class PermissionService {
             Map<String, ColumnPermission> columns = parseColumns(rp.getColumnPolicy());
             mergeColumns(mergedColumns, columns);
             
-            List<DataRule> rules = dataRuleMap.getOrDefault(rp.getId(), Collections.emptyList())
-                .stream()
-                .map(this::parseDataRule)
-                .filter(Objects::nonNull)
-                .toList();
+            List<DataRule> rules = parseRowPolicy(rp.getRowPolicy());
             mergedRules.addAll(rules);
         }
         
@@ -166,6 +142,34 @@ public class PermissionService {
     }
 
     /**
+     * 解析行权限 JSON
+     * 格式：[{"fieldName":"DEPT_ID","operator":"eq","value":"${userDeptId}","valueType":"placeholder"}, ...]
+     */
+    private List<DataRule> parseRowPolicy(String rowPolicy) {
+        if (StrUtil.isBlank(rowPolicy)) {
+            return Collections.emptyList();
+        }
+        try {
+            JSONArray arr = JSONUtil.parseArray(rowPolicy);
+            List<DataRule> rules = new ArrayList<>();
+            for (int i = 0; i < arr.size(); i++) {
+                JSONObject obj = arr.getJSONObject(i);
+                DataRule rule = new DataRule(
+                    obj.getStr("fieldName"),
+                    obj.getStr("operator"),
+                    obj.getStr("value"),
+                    obj.getStr("valueType")
+                );
+                rules.add(rule);
+            }
+            return rules;
+        } catch (Exception e) {
+            log.warn("解析行权限失败: {}", rowPolicy, e);
+            return Collections.emptyList();
+        }
+    }
+
+    /**
      * 合并页面权限（多角色取并集）
      */
     private PagePermission mergePagePermission(PagePermission existing, Set<String> buttons, 
@@ -207,32 +211,10 @@ public class PermissionService {
     }
 
     /**
-     * 判断用户是否为超级管理员
+     * 判断当前用户是否为超级管理员（用户名为 admin）
      */
-    private boolean isSuperAdmin(Long userId) {
-        List<Role> roles = roleMapper.selectByUserId(userId);
-        return roles.stream()
-            .anyMatch(r -> SUPER_ADMIN_ROLE.equalsIgnoreCase(r.getRoleCode()));
-    }
-
-    /**
-     * 解析数据权限规则（从 ruleConfig JSON 中解析）
-     */
-    private DataRule parseDataRule(RolePageDataRule rule) {
-        if (rule == null || StrUtil.isBlank(rule.getRuleConfig())) {
-            return null;
-        }
-        try {
-            JSONObject config = JSONUtil.parseObj(rule.getRuleConfig());
-            return new DataRule(
-                config.getStr("fieldName"),
-                config.getStr("operator"),
-                config.getStr("value"),
-                config.getStr("valueType")
-            );
-        } catch (Exception e) {
-            log.warn("解析数据规则失败: {}", rule.getRuleConfig(), e);
-            return null;
-        }
+    private boolean isSuperAdmin() {
+        String username = SecurityUtils.getCurrentUsername();
+        return SUPER_ADMIN_USERNAME.equalsIgnoreCase(username);
     }
 }

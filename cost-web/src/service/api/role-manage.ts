@@ -30,10 +30,7 @@ export interface RolePageVO {
   pageName?: string;
   buttonPolicy?: string;
   columnPolicy?: string;
-  createTime?: string;
-  updateTime?: string;
-  createBy?: string;
-  updateBy?: string;
+  rowPolicy?: string;
 }
 
 export interface UserSimpleVO {
@@ -53,10 +50,10 @@ export interface PageSimpleVO {
 
 export interface ResourcePermissionVO {
   id?: number;
-  resourceCode?: string;
+  pageCode?: string;
   resourceName?: string;
   resourceType?: string;  // DIRECTORY, PAGE
-  pageCode?: string;
+  isHardcoded?: number;   // 1=硬编码页面, 0=元数据驱动
   icon?: string;
   route?: string;
   parentId?: number;
@@ -64,6 +61,7 @@ export interface ResourcePermissionVO {
   rolePageId?: number;      // 有值表示已授权
   buttonPolicy?: string;
   columnPolicy?: string;
+  rowPolicy?: string;
   isAuthorized?: number;    // 1=已授权, 0=未授权
   children?: ResourcePermissionVO[];
 }

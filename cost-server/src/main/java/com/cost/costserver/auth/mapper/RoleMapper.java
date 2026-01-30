@@ -11,10 +11,14 @@ import java.util.List;
 @Mapper
 public interface RoleMapper extends BaseMapper<Role> {
 
+    /**
+     * 根据用户ID查询角色列表
+     * 注意：T_COST_ROLE 和 T_COST_USER_ROLE 均无逻辑删除
+     */
     @Select("""
         SELECT r.* FROM T_COST_ROLE r
         JOIN T_COST_USER_ROLE ur ON r.ID = ur.ROLE_ID
-        WHERE ur.USER_ID = #{userId} AND r.DELETED = 0 AND ur.DELETED = 0
+        WHERE ur.USER_ID = #{userId}
         """)
     List<Role> selectByUserId(@Param("userId") Long userId);
 }

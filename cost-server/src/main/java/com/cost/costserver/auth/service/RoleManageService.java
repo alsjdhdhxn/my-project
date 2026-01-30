@@ -5,14 +5,12 @@ import com.cost.costserver.auth.dto.*;
 import com.cost.costserver.auth.entity.*;
 import com.cost.costserver.auth.mapper.*;
 import com.cost.costserver.common.BusinessException;
-import com.cost.costserver.common.SecurityUtils;
 import com.cost.costserver.dynamic.mapper.DynamicMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -54,9 +52,6 @@ public class RoleManageService {
         Role role = new Role();
         BeanUtils.copyProperties(vo, role);
         role.setId(getNextId("SEQ_COST_ROLE"));
-        role.setDeleted(0);
-        role.setCreateBy(SecurityUtils.getCurrentUsername());
-        role.setCreateTime(LocalDateTime.now());
         roleMapper.insert(role);
         
         return toRoleVO(role);
@@ -82,8 +77,6 @@ public class RoleManageService {
         role.setRoleCode(vo.getRoleCode());
         role.setRoleName(vo.getRoleName());
         role.setDescription(vo.getDescription());
-        role.setUpdateBy(SecurityUtils.getCurrentUsername());
-        role.setUpdateTime(LocalDateTime.now());
         roleMapper.updateById(role);
         
         return toRoleVO(role);
@@ -95,7 +88,9 @@ public class RoleManageService {
         if (role == null) {
             throw new BusinessException("角色不存在");
         }
-        // 使用 MyBatis-Plus 逻辑删除
+        // 物理删除角色及关联数据
+        userRoleMapper.delete(new LambdaQueryWrapper<UserRole>().eq(UserRole::getRoleId, id));
+        rolePageMapper.delete(new LambdaQueryWrapper<RolePage>().eq(RolePage::getRoleId, id));
         roleMapper.deleteById(id);
     }
 
@@ -121,9 +116,6 @@ public class RoleManageService {
         userRole.setId(getNextId("SEQ_COST_USER_ROLE"));
         userRole.setRoleId(vo.getRoleId());
         userRole.setUserId(vo.getUserId());
-        userRole.setDeleted(0);
-        userRole.setCreateBy(SecurityUtils.getCurrentUsername());
-        userRole.setCreateTime(LocalDateTime.now());
         userRoleMapper.insert(userRole);
 
         // 查询返回完整信息
@@ -167,9 +159,7 @@ public class RoleManageService {
         rolePage.setPageCode(vo.getPageCode());
         rolePage.setButtonPolicy(vo.getButtonPolicy());
         rolePage.setColumnPolicy(vo.getColumnPolicy());
-        rolePage.setDeleted(0);
-        rolePage.setCreateBy(SecurityUtils.getCurrentUsername());
-        rolePage.setCreateTime(LocalDateTime.now());
+        rolePage.setRowPolicy(vo.getRowPolicy());
         rolePageMapper.insert(rolePage);
 
         // 查询返回完整信息
@@ -187,10 +177,16 @@ public class RoleManageService {
             throw new BusinessException("记录不存在");
         }
 
-        rolePage.setButtonPolicy(vo.getButtonPolicy());
-        rolePage.setColumnPolicy(vo.getColumnPolicy());
-        rolePage.setUpdateBy(SecurityUtils.getCurrentUsername());
-        rolePage.setUpdateTime(LocalDateTime.now());
+        // 只更新非null的字段
+        if (vo.getButtonPolicy() != null) {
+            rolePage.setButtonPolicy(vo.getButtonPolicy());
+        }
+        if (vo.getColumnPolicy() != null) {
+            rolePage.setColumnPolicy(vo.getColumnPolicy());
+        }
+        if (vo.getRowPolicy() != null) {
+            rolePage.setRowPolicy(vo.getRowPolicy());
+        }
         rolePageMapper.updateById(rolePage);
 
         // 查询返回完整信息
@@ -272,8 +268,8 @@ public class RoleManageService {
      */
     public List<ResourcePermissionVO> getResourcePermissionTree(Long roleId) {
         // 从视图查询
-        String sql = "SELECT ID, RESOURCE_CODE, RESOURCE_NAME, RESOURCE_TYPE, PAGE_CODE, ICON, ROUTE, " +
-                     "PARENT_ID, SORT_ORDER, ROLE_PAGE_ID, BUTTON_POLICY, COLUMN_POLICY, IS_AUTHORIZED " +
+        String sql = "SELECT ID, PAGE_CODE, RESOURCE_NAME, RESOURCE_TYPE, IS_HARDCODED, ICON, ROUTE, " +
+                     "PARENT_ID, SORT_ORDER, ROLE_PAGE_ID, BUTTON_POLICY, COLUMN_POLICY, ROW_POLICY, IS_AUTHORIZED " +
                      "FROM V_COST_RESOURCE_PERMISSION WHERE ROLE_ID = " + roleId + " ORDER BY SORT_ORDER";
         
         List<Map<String, Object>> rows = dynamicMapper.selectList(sql);
@@ -285,10 +281,10 @@ public class RoleManageService {
         for (Map<String, Object> row : rows) {
             ResourcePermissionVO vo = new ResourcePermissionVO();
             vo.setId(getLong(row, "ID"));
-            vo.setResourceCode((String) row.get("RESOURCE_CODE"));
+            vo.setPageCode((String) row.get("PAGE_CODE"));
             vo.setResourceName((String) row.get("RESOURCE_NAME"));
             vo.setResourceType((String) row.get("RESOURCE_TYPE"));
-            vo.setPageCode((String) row.get("PAGE_CODE"));
+            vo.setIsHardcoded(getInt(row, "IS_HARDCODED"));
             vo.setIcon((String) row.get("ICON"));
             vo.setRoute((String) row.get("ROUTE"));
             vo.setParentId(getLong(row, "PARENT_ID"));
@@ -296,6 +292,7 @@ public class RoleManageService {
             vo.setRolePageId(getLong(row, "ROLE_PAGE_ID"));
             vo.setButtonPolicy((String) row.get("BUTTON_POLICY"));
             vo.setColumnPolicy((String) row.get("COLUMN_POLICY"));
+            vo.setRowPolicy((String) row.get("ROW_POLICY"));
             vo.setIsAuthorized(getInt(row, "IS_AUTHORIZED"));
             vo.setChildren(new ArrayList<>());
             
@@ -336,41 +333,67 @@ public class RoleManageService {
     }
 
     public List<PageButtonVO> listPageButtons(String pageCode) {
-        // 从页面组件表查询BUTTON类型的组件
-        List<Map<String, Object>> buttons = dynamicMapper.selectList(
-            "SELECT COMPONENT_KEY, COMPONENT_CONFIG FROM T_COST_PAGE_COMPONENT " +
+        // 从页面规则表查询 TOOLBAR 和 CONTEXT_MENU 类型的按钮配置
+        List<Map<String, Object>> rules = dynamicMapper.selectList(
+            "SELECT COMPONENT_KEY, RULE_TYPE, RULES FROM T_COST_PAGE_RULE " +
             "WHERE PAGE_CODE = '" + pageCode.replace("'", "''") + "' " +
-            "AND COMPONENT_TYPE = 'BUTTON' AND DELETED = 0 " +
-            "ORDER BY SORT_ORDER"
+            "AND RULE_TYPE IN ('TOOLBAR', 'CONTEXT_MENU') AND DELETED = 0 " +
+            "ORDER BY RULE_TYPE, SORT_ORDER"
         );
         
         List<PageButtonVO> result = new ArrayList<>();
-        for (Map<String, Object> btn : buttons) {
-            PageButtonVO vo = new PageButtonVO();
-            String key = (String) btn.get("COMPONENT_KEY");
-            vo.setButtonKey(key);
+        for (Map<String, Object> rule : rules) {
+            String ruleType = (String) rule.get("RULE_TYPE");
+            String buttonType = "TOOLBAR".equals(ruleType) ? "页面按钮" : "菜单按钮";
             
-            // 尝试从componentConfig解析label
-            String config = (String) btn.get("COMPONENT_CONFIG");
-            String label = key;
-            if (config != null && !config.isEmpty()) {
-                try {
-                    // 简单解析JSON获取label
-                    if (config.contains("\"label\"")) {
-                        int start = config.indexOf("\"label\"") + 9;
-                        int end = config.indexOf("\"", start);
-                        if (end > start) {
-                            label = config.substring(start, end);
-                        }
-                    }
-                } catch (Exception e) {
-                    // ignore
-                }
+            Object rulesObj = rule.get("RULES");
+            String rulesJson = rulesObj != null ? rulesObj.toString() : null;
+            if (rulesJson == null || rulesJson.isEmpty()) continue;
+            
+            try {
+                // 解析 {"items": [...]} 结构
+                cn.hutool.json.JSONObject json = cn.hutool.json.JSONUtil.parseObj(rulesJson);
+                cn.hutool.json.JSONArray items = json.getJSONArray("items");
+                if (items == null) continue;
+                
+                extractButtons(items, buttonType, result);
+            } catch (Exception e) {
+                // ignore parse error
             }
-            vo.setButtonLabel(label);
-            result.add(vo);
         }
         return result;
+    }
+    
+    /**
+     * 递归提取按钮（处理嵌套的子菜单）
+     */
+    private void extractButtons(cn.hutool.json.JSONArray items, String buttonType, List<PageButtonVO> result) {
+        for (int i = 0; i < items.size(); i++) {
+            cn.hutool.json.JSONObject item = items.getJSONObject(i);
+            String action = item.getStr("action");
+            String type = item.getStr("type");
+            String label = item.getStr("label");
+            
+            // 跳过分隔符
+            if ("separator".equals(type)) continue;
+            
+            // 处理子菜单（如"导出"下拉菜单）
+            cn.hutool.json.JSONArray subItems = item.getJSONArray("items");
+            if (subItems != null && !subItems.isEmpty()) {
+                // 递归处理子菜单
+                extractButtons(subItems, buttonType, result);
+                continue;
+            }
+            
+            // 有 action 的才是按钮
+            if (action == null) continue;
+            
+            PageButtonVO vo = new PageButtonVO();
+            vo.setButtonKey(action);
+            // 显示格式：[页面按钮] 同步ERP汇率  或  [菜单按钮] 新增
+            vo.setButtonLabel("[" + buttonType + "] " + (label != null ? label : action));
+            result.add(vo);
+        }
     }
 
     // ==================== 高级查询 ====================
@@ -419,6 +442,7 @@ public class RoleManageService {
 
     /**
      * 构建用户EXISTS子查询
+     * 注意：T_COST_USER_ROLE 无逻辑删除，T_COST_USER 仍有逻辑删除
      */
     private String buildUserExistsSql(SearchConditionDTO cond) {
         String valueCondition = buildValueCondition("u.USERNAME", cond.getOperator(), cond.getValue());
@@ -427,7 +451,7 @@ public class RoleManageService {
         return String.format(
             "SELECT 1 FROM T_COST_USER_ROLE ur " +
             "JOIN T_COST_USER u ON ur.USER_ID = u.ID AND u.DELETED = 0 " +
-            "WHERE ur.ROLE_ID = T_COST_ROLE.ID AND ur.DELETED = 0 " +
+            "WHERE ur.ROLE_ID = T_COST_ROLE.ID " +
             "AND (%s OR %s)",
             valueCondition, realNameCondition
         );
@@ -435,6 +459,7 @@ public class RoleManageService {
 
     /**
      * 构建页面EXISTS子查询
+     * 注意：T_COST_ROLE_PAGE 和 T_COST_RESOURCE 均无逻辑删除
      */
     private String buildPageExistsSql(SearchConditionDTO cond) {
         String codeCondition = buildValueCondition("rp.PAGE_CODE", cond.getOperator(), cond.getValue());
@@ -442,8 +467,8 @@ public class RoleManageService {
         
         return String.format(
             "SELECT 1 FROM T_COST_ROLE_PAGE rp " +
-            "LEFT JOIN T_COST_RESOURCE res ON rp.PAGE_CODE = res.PAGE_CODE AND res.DELETED = 0 " +
-            "WHERE rp.ROLE_ID = T_COST_ROLE.ID AND rp.DELETED = 0 " +
+            "LEFT JOIN T_COST_RESOURCE res ON rp.PAGE_CODE = res.PAGE_CODE " +
+            "WHERE rp.ROLE_ID = T_COST_ROLE.ID " +
             "AND (%s OR %s)",
             codeCondition, nameCondition
         );
