@@ -397,17 +397,32 @@ export function extractDefaultValues(columns: ColumnMetadata[]): Record<string, 
   return defaults;
 }
 
-/** Lookup 配置 */
+/**
+ * Lookup 弹窗规则
+ * 
+ * 筛选相关字段说明：
+ * - filterField: 从"当前行数据"取哪个字段的值作为筛选值
+ *   生效场景：filterValueFrom 没写或为 'row'
+ *   例：filterField: "id" → 用当前行的 rowData.id 作为筛选值
+ * 
+ * - filterColumn: 弹窗数据源里要过滤的列名（SQL 中的列名）
+ *   例：filterColumn: "GOODSID" → 最终会拼成 AND GOODSID = <filterValue>
+ * 
+ * - filterValueFrom: 筛选值来源
+ *   'row': 用 rowData[filterField]
+ *   'cell': 用你点击的单元格的值（不需要 filterField）
+ */
 export interface LookupRule {
   fieldName: string;
   lookupCode: string;
   mapping: Record<string, string>;
   /** 是否禁止回填（仅查看模式） */
   noFillback?: boolean;
-  /** 用于筛选的字段名（当前行的字段） */
+  /** 从当前行取哪个字段的值作为筛选值，生效于 filterValueFrom='row' 或未配置时 */
   filterField?: string;
-  /** 用于筛选的列名（弹窗数据源的列） */
+  /** 弹窗数据源的筛选列名（SQL列名），如 "GOODSID" */
   filterColumn?: string;
+  /** 筛选值来源：'row' 用行数据字段，'cell' 用点击单元格的值 */
   filterValueFrom?: 'row' | 'cell';
 }
 

@@ -54,13 +54,35 @@ import { fetchLookupConfig } from '@/service/api';
 import { request } from '@/service/request';
 import SvgIcon from '@/components/custom/svg-icon.vue';
 
+/**
+ * Lookup 弹窗组件 Props
+ * 
+ * 筛选相关属性说明：
+ * - filterField: 从"当前行数据"取哪个字段的值作为筛选值
+ *   生效场景：filterValueFrom 没写或为 'row'
+ *   例：filterField: "id" → 用当前行的 rowData.id 作为筛选值
+ * 
+ * - filterColumn: 弹窗数据源里要过滤的列名（SQL 中的列名）
+ *   例：filterColumn: "GOODSID" → 最终会拼成 AND GOODSID = <filterValue>
+ * 
+ * - filterValueFrom: 筛选值来源
+ *   'row': 用 rowData[filterField]
+ *   'cell': 用你点击的单元格的值（不需要 filterField）
+ * 
+ * - filterValue: 直接传入的筛选值（filterValueFrom='cell' 时使用）
+ */
 const props = defineProps<{
   lookupCode: string;
   mapping: Record<string, string>;
+  /** 当前行数据，用于 filterValueFrom='row' 时取值 */
   rowData?: Record<string, any>;
+  /** 从当前行取哪个字段的值作为筛选值 */
   filterField?: string;
+  /** 弹窗数据源的筛选列名（SQL列名） */
   filterColumn?: string;
+  /** 筛选值来源：'row' 用行数据字段，'cell' 用点击单元格的值 */
   filterValueFrom?: 'row' | 'cell';
+  /** 直接传入的筛选值（filterValueFrom='cell' 时使用） */
   filterValue?: any;
 }>();
 const emit = defineEmits<{ (e: 'select', data: Record<string, any>): void; (e: 'cancel'): void }>();
@@ -92,7 +114,7 @@ const columnDefs = computed<ColDef[]>(() => {
   }));
 });
 
-const defaultColDef: ColDef = { sortable: true, resizable: true };
+const defaultColDef: ColDef = { sortable: true, resizable: true, suppressHeaderMenuButton: true };
 const rowSelection = { mode: 'singleRow' as const, enableClickSelection: true };
 const hasMapping = computed(() => props.mapping && Object.keys(props.mapping).length > 0);
 
@@ -163,20 +185,34 @@ async function open() {
   await loadData();
 }
 
+/**
+ * 加载弹窗数据
+ * 
+ * 筛选逻辑：
+ * 1. filterValueFrom='cell' → 直接用 props.filterValue
+ * 2. filterValueFrom='row' 或未配置 → 用 rowData[filterField]
+ * 3. 有 filterColumn 且 filterValue 不为空时，传给后端做 SQL 筛选
+ */
 async function loadData() {
   if (!config.value?.lookupCode) return;
   const params: Record<string, any> = { page: 1, pageSize: 500 };
-  // 如果配置了筛选字段，带上筛选条件
+  
+  // 确定筛选值来源
   let filterValue: any = null;
   if (props.filterValueFrom === 'cell') {
+    // 'cell' 模式：用点击单元格的值
     filterValue = props.filterValue;
   } else if (props.filterField && props.rowData) {
+    // 'row' 模式或默认：用 rowData[filterField]
     filterValue = props.rowData[props.filterField];
   }
+  
+  // 有筛选列名且筛选值不为空时，传给后端
   if (props.filterColumn && filterValue != null) {
     params.filterColumn = props.filterColumn;
     params.filterValue = filterValue;
   }
+  
   const { data } = await request<{ list: Record<string, any>[] }>({
     url: `/api/lookup/${props.lookupCode}/data`,
     params

@@ -254,3 +254,35 @@ VALUES (SEQ_COST_PAGE_RULE.NEXTVAL, 'goods-price-manage', 'grid', 'LOOKUP',
 '[{"field":"id","lookupCode":"pgoodsByMgoods","noFillback":true,"filterField":"goodsid","filterColumn":"GOODSID"}]', 'system');
 
 COMMIT;
+
+-- =====================================================
+-- K. 自定义导出配置
+-- =====================================================
+DECLARE
+    v_config_id NUMBER;
+BEGIN
+    SELECT SEQ_COST_EXPORT_CONFIG.NEXTVAL INTO v_config_id FROM DUAL;
+    
+    -- 导出配置：产品选择(按物料)
+    INSERT INTO T_COST_EXPORT_CONFIG (
+        ID, EXPORT_CODE, EXPORT_NAME, PAGE_CODE,
+        MASTER_SQL, MASTER_TABLE_ALIAS, PK_COLUMN, PAGE_FK_COLUMN,
+        MASTER_SHEET_NAME, MASTER_LINK_COLUMN, DISPLAY_ORDER, CREATE_BY
+    ) VALUES (
+        v_config_id,
+        'goods-price-pgoods-export',
+        '产品选择(按物料)导出',
+        'goods-price-manage',
+        'SELECT m.GOODSID, m.APEX_GOODSNAME, m.DTL_USEFLAG, m.FACTORYNAME, m.PRICE, m.GOODSNO, m.PGOODSID, m.PGOODSNO, m.GOODSNAME, m.APEX_PL, m.BATCH_QTY FROM V_COST_PGOODS_BY_MGOODS m',
+        'm',
+        'GOODSID',
+        'GOODSID',
+        '产品选择(按物料)',
+        'GOODSID',
+        1,
+        'system'
+    );
+
+    COMMIT;
+END;
+/
