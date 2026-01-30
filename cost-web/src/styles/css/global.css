@@ -36,3 +36,13 @@ html {
 .ag-header-cell.ag-right-aligned-header .ag-header-cell-label {
   justify-content: flex-end;
 }
+
+/* AG Grid Side Bar 图标栏宽度 */
+.ag-side-buttons {
+  width: 20px !important;
+}
+
+.ag-side-button-button {
+  min-width: 20px !important;
+  padding: 8px 2px !important;
+}

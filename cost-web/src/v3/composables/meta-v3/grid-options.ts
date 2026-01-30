@@ -26,7 +26,7 @@ const DEFAULT_SIDE_BAR = {
       labelKey: 'columns',
       iconKey: 'columns',
       toolPanel: 'agColumnsToolPanel',
-      minWidth: 200,
+      minWidth: 180,
       width: 250,
       toolPanelParams: {
         suppressRowGroups: true,
@@ -49,7 +49,7 @@ const DEFAULT_SIDE_BAR = {
     }
   ],
   position: 'right' as const,
-  defaultToolPanel: 'columns'
+  defaultToolPanel: ''
 };
 
 function normalizeSideBar(value: GridOptionsRule['sideBar'] | GridOptionsRule['enableSidebar']) {

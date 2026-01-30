@@ -136,7 +136,7 @@ COMMIT;
 -- H. 插入菜单资源
 -- =====================================================
 INSERT INTO T_COST_RESOURCE (ID, RESOURCE_CODE, RESOURCE_NAME, RESOURCE_TYPE, PAGE_CODE, ICON, ROUTE, PARENT_ID, SORT_ORDER, CREATE_BY)
-VALUES (SEQ_COST_RESOURCE.NEXTVAL, 'cost', '成本管理', 'DIRECTORY', NULL, 'mdi:currency-usd', '/cost', NULL, 1, 'system');
+VALUES (SEQ_COST_RESOURCE.NEXTVAL, 'cost', '基础信息', 'DIRECTORY', NULL, 'mdi:currency-usd', '/cost', NULL, 1, 'system');
 
 DECLARE
     v_cost_id NUMBER;
