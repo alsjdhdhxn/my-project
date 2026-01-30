@@ -63,8 +63,8 @@ public class MenuService {
 
     /**
      * 根据权限过滤菜单资源
-     * - PAGE 类型：pageCode 必须在允许列表中
-     * - DIRECTORY 类型：保留，后续在构建树时根据是否有子菜单决定
+     * - PAGE 类型：pageCode 必须在允许列表中，或者 pageCode 为空（硬编码页面）
+     * - DIRECTORY/MENU 类型：保留，后续在构建树时根据是否有子菜单决定
      */
     private List<Resource> filterResourcesByPermission(List<Resource> resources, Set<String> allowedPageCodes) {
         if (allowedPageCodes == null || allowedPageCodes.isEmpty()) {
@@ -72,21 +72,22 @@ public class MenuService {
         }
         
         // 先收集有权限的 PAGE 资源 ID
+        // 硬编码页面（pageCode 为空）对所有用户可见
         Set<Long> allowedPageIds = resources.stream()
             .filter(r -> "PAGE".equals(r.getResourceType()))
-            .filter(r -> r.getPageCode() != null && allowedPageCodes.contains(r.getPageCode()))
+            .filter(r -> r.getPageCode() == null || allowedPageCodes.contains(r.getPageCode()))
             .map(Resource::getId)
             .collect(Collectors.toSet());
         
         // 收集这些 PAGE 的所有祖先目录 ID
         Set<Long> ancestorIds = collectAncestorIds(resources, allowedPageIds);
         
-        // 过滤：PAGE 必须有权限，DIRECTORY 必须是祖先
+        // 过滤：PAGE 必须有权限，DIRECTORY/MENU 必须是祖先
         return resources.stream()
             .filter(r -> {
                 if ("PAGE".equals(r.getResourceType())) {
                     return allowedPageIds.contains(r.getId());
-                } else if ("DIRECTORY".equals(r.getResourceType())) {
+                } else if ("DIRECTORY".equals(r.getResourceType()) || "MENU".equals(r.getResourceType())) {
                     return ancestorIds.contains(r.getId());
                 }
                 return false;
@@ -175,7 +176,7 @@ public class MenuService {
     }
 
     private String buildComponent(Resource resource, boolean isTopLevel) {
-        if ("DIRECTORY".equals(resource.getResourceType())) {
+        if ("DIRECTORY".equals(resource.getResourceType()) || "MENU".equals(resource.getResourceType())) {
             return "layout.base";
         }
         // 顶级 PAGE 需要布局，子级 PAGE 只需要视图
@@ -183,12 +184,20 @@ public class MenuService {
             if ("home".equals(resource.getPageCode())) {
                 return "layout.base$view.home";
             }
+            // 硬编码页面（pageCode 为空），使用 resourceCode 作为视图名
+            if (resource.getPageCode() == null) {
+                return "layout.base$view." + resource.getResourceCode();
+            }
             if (isV3Page(resource)) {
                 return "layout.base$view.dynamic-v3";
             }
             return "layout.base$view.dynamic";
         }
         // 子级页面只返回视图组件
+        // 硬编码页面（pageCode 为空），使用 resourceCode 作为视图名
+        if (resource.getPageCode() == null) {
+            return "view." + resource.getResourceCode();
+        }
         if (isV3Page(resource)) {
             return "view.dynamic-v3";
         }

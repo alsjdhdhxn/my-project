@@ -92,5 +92,14 @@ export const generatedRoutes: GeneratedRoute[] = [
       constant: true,
       hideInMenu: true
     }
+  },
+  {
+    name: 'permission',
+    path: '/permission',
+    component: 'layout.base$view.permission',
+    meta: {
+      title: 'permission',
+      i18nKey: 'route.permission'
+    }
   }
 ];

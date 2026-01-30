@@ -1,6 +1,7 @@
 package com.cost.costserver.auth.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.cost.costserver.auth.dto.RolePageVO;
 import com.cost.costserver.auth.entity.RolePage;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -17,4 +18,13 @@ public interface RolePageMapper extends BaseMapper<RolePage> {
         WHERE ur.USER_ID = #{userId} AND rp.DELETED = 0 AND ur.DELETED = 0
         """)
     List<RolePage> selectByUserId(@Param("userId") Long userId);
+
+    @Select("""
+        SELECT ID, ROLE_ID, PAGE_CODE, PAGE_NAME, BUTTON_POLICY, COLUMN_POLICY, 
+               CREATE_TIME, UPDATE_TIME, CREATE_BY, UPDATE_BY
+        FROM V_COST_ROLE_PAGE
+        WHERE ROLE_ID = #{roleId}
+        ORDER BY CREATE_TIME DESC
+        """)
+    List<RolePageVO> selectVOByRoleId(@Param("roleId") Long roleId);
 }
