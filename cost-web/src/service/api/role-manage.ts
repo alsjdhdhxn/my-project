@@ -125,6 +125,16 @@ export async function fetchAllPages() {
   return data || [];
 }
 
+export interface PageButtonVO {
+  buttonKey: string;
+  buttonLabel: string;
+}
+
+export async function fetchPageButtons(pageCode: string) {
+  const { data } = await request<PageButtonVO[]>({ url: `/role-manage/page/${pageCode}/buttons` });
+  return data || [];
+}
+
 // ==================== 高级查询 ====================
 
 export interface SearchCondition {

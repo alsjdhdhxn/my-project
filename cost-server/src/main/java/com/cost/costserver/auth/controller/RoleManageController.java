@@ -98,6 +98,11 @@ public class RoleManageController {
         return Result.ok(roleManageService.listAllPages());
     }
 
+    @GetMapping("/page/{pageCode}/buttons")
+    public Result<List<PageButtonVO>> listPageButtons(@PathVariable String pageCode) {
+        return Result.ok(roleManageService.listPageButtons(pageCode));
+    }
+
     // ==================== 高级查询 ====================
 
     @PostMapping("/roles/search")

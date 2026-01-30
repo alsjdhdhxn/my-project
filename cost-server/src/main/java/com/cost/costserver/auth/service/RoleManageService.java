@@ -240,6 +240,44 @@ public class RoleManageService {
         }).collect(Collectors.toList());
     }
 
+    public List<PageButtonVO> listPageButtons(String pageCode) {
+        // 从页面组件表查询BUTTON类型的组件
+        List<Map<String, Object>> buttons = dynamicMapper.selectList(
+            "SELECT COMPONENT_KEY, COMPONENT_CONFIG FROM T_COST_PAGE_COMPONENT " +
+            "WHERE PAGE_CODE = '" + pageCode.replace("'", "''") + "' " +
+            "AND COMPONENT_TYPE = 'BUTTON' AND DELETED = 0 " +
+            "ORDER BY SORT_ORDER"
+        );
+        
+        List<PageButtonVO> result = new ArrayList<>();
+        for (Map<String, Object> btn : buttons) {
+            PageButtonVO vo = new PageButtonVO();
+            String key = (String) btn.get("COMPONENT_KEY");
+            vo.setButtonKey(key);
+            
+            // 尝试从componentConfig解析label
+            String config = (String) btn.get("COMPONENT_CONFIG");
+            String label = key;
+            if (config != null && !config.isEmpty()) {
+                try {
+                    // 简单解析JSON获取label
+                    if (config.contains("\"label\"")) {
+                        int start = config.indexOf("\"label\"") + 9;
+                        int end = config.indexOf("\"", start);
+                        if (end > start) {
+                            label = config.substring(start, end);
+                        }
+                    }
+                } catch (Exception e) {
+                    // ignore
+                }
+            }
+            vo.setButtonLabel(label);
+            result.add(vo);
+        }
+        return result;
+    }
+
     // ==================== 高级查询 ====================
 
     public List<RoleVO> searchRoles(List<SearchConditionDTO> conditions) {

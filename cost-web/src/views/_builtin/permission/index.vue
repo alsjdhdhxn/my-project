@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
-import { NButton, NTabs, NTabPane, NEmpty, NTag, NPopconfirm, NModal, NForm, NFormItem, NInput, NSelect, NInputGroup, useMessage, NScrollbar, NCheckbox, NSpace } from 'naive-ui';
+import { NButton, NTabs, NTabPane, NEmpty, NTag, NPopconfirm, NModal, NForm, NFormItem, NInput, NSelect, NInputGroup, useMessage, NScrollbar, NCheckbox, NSpace, NPopover } from 'naive-ui';
 import { Icon } from '@iconify/vue';
-import type { RoleVO, UserRoleVO, RolePageVO, UserSimpleVO, PageSimpleVO } from '@/service/api/role-manage';
 import {
   fetchRoles, createRole, updateRole, deleteRole,
   fetchUsersByRole, addUserToRole, removeUserFromRole,
   fetchPagesByRole, addPageToRole, updateRolePage, removePageFromRole,
-  fetchAllUsers, fetchAllPages, searchRoles
+  fetchAllUsers, fetchAllPages, searchRoles, fetchPageButtons
 } from '@/service/api/role-manage';
+import type { RoleVO, UserRoleVO, RolePageVO, UserSimpleVO, PageSimpleVO, PageButtonVO } from '@/service/api/role-manage';
 
 const message = useMessage();
 
@@ -21,14 +21,50 @@ interface SearchCondition {
   operator: string;
   value: string;
   enabled: boolean;
+  visible: boolean;
 }
 
 const searchConditions = ref<SearchCondition[]>([
-  { field: 'roleCode', fieldLabel: '角色编码', operator: 'like', value: '', enabled: false },
-  { field: 'roleName', fieldLabel: '角色名称', operator: 'like', value: '', enabled: false },
-  { field: 'username', fieldLabel: '包含用户', operator: 'like', value: '', enabled: false },
-  { field: 'pageCode', fieldLabel: '包含页面', operator: 'like', value: '', enabled: false },
+  { field: 'roleCode', fieldLabel: '角色编码', operator: 'like', value: '', enabled: false, visible: true },
+  { field: 'roleName', fieldLabel: '角色名称', operator: 'like', value: '', enabled: false, visible: true },
+  { field: 'username', fieldLabel: '包含用户', operator: 'like', value: '', enabled: false, visible: true },
+  { field: 'pageCode', fieldLabel: '包含页面', operator: 'like', value: '', enabled: false, visible: true },
 ]);
+
+const showFieldSettings = ref(false);
+
+// 从localStorage加载字段可见性设置
+const STORAGE_KEY = 'permission-search-fields';
+function loadFieldSettings() {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      const visibleFields = JSON.parse(saved) as string[];
+      searchConditions.value.forEach(c => {
+        c.visible = visibleFields.includes(c.field);
+      });
+    }
+  } catch (e) {
+    console.error('加载查询字段设置失败', e);
+  }
+}
+
+function saveFieldSettings() {
+  const visibleFields = searchConditions.value.filter(c => c.visible).map(c => c.field);
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(visibleFields));
+}
+
+// 监听visible变化，自动保存
+watch(
+  () => searchConditions.value.map(c => c.visible),
+  () => saveFieldSettings(),
+  { deep: true }
+);
+
+// 初始化时加载设置
+loadFieldSettings();
+
+const visibleConditions = computed(() => searchConditions.value.filter(c => c.visible));
 
 const operatorOptions = [
   { label: '等于', value: 'eq' },
@@ -293,16 +329,58 @@ async function handleAddPage() {
 const showEditPageModal = ref(false);
 const editPageForm = ref<RolePageVO>({ pageCode: '' });
 const editingPage = ref(false);
+const pageButtons = ref<PageButtonVO[]>([]);
+const selectedButtons = ref<string[]>([]);
+const loadingButtons = ref(false);
+const isAllButtons = ref(true);
 
-function openEditPage(page: RolePageVO) {
+async function openEditPage(page: RolePageVO) {
   editPageForm.value = { ...page };
+  
+  // 解析当前按钮权限
+  if (page.buttonPolicy === '["*"]' || !page.buttonPolicy) {
+    isAllButtons.value = true;
+    selectedButtons.value = [];
+  } else {
+    isAllButtons.value = false;
+    try {
+      selectedButtons.value = JSON.parse(page.buttonPolicy);
+    } catch {
+      selectedButtons.value = [];
+    }
+  }
+  
+  // 加载该页面的按钮列表
+  loadingButtons.value = true;
+  try {
+    pageButtons.value = await fetchPageButtons(page.pageCode);
+  } catch (e) {
+    pageButtons.value = [];
+  } finally {
+    loadingButtons.value = false;
+  }
+  
   showEditPageModal.value = true;
+}
+
+function toggleAllButtons(checked: boolean) {
+  isAllButtons.value = checked;
+  if (checked) {
+    selectedButtons.value = [];
+  }
 }
 
 async function handleUpdatePage() {
   if (!editPageForm.value.id) return;
   editingPage.value = true;
   try {
+    // 构建按钮权限
+    if (isAllButtons.value) {
+      editPageForm.value.buttonPolicy = '["*"]';
+    } else {
+      editPageForm.value.buttonPolicy = JSON.stringify(selectedButtons.value);
+    }
+    
     await updateRolePage(editPageForm.value.id, editPageForm.value);
     message.success('更新成功');
     showEditPageModal.value = false;
@@ -468,23 +546,19 @@ function isAllButtonPolicy(policy: string | undefined): boolean {
                   <div class="item-title">{{ rp.pageName || rp.pageCode }}</div>
                   <div class="item-desc">{{ rp.pageCode }}</div>
                 </div>
-                <div class="item-tags">
-                  <NTag v-if="isAllButtonPolicy(rp.buttonPolicy)" type="success" size="small" :bordered="false">全部按钮</NTag>
-                  <NTag v-else-if="rp.buttonPolicy" type="warning" size="small" :bordered="false">部分按钮</NTag>
-                </div>
-                <div class="item-actions">
-                  <NButton quaternary circle size="small" @click="openEditPage(rp)">
-                    <template #icon><Icon icon="mdi:pencil-outline" class="text-gray-400" /></template>
-                  </NButton>
-                  <NPopconfirm v-if="rp.id" @positive-click="handleRemovePage(rp.id)">
-                    <template #trigger>
-                      <NButton quaternary circle size="small">
-                        <template #icon><Icon icon="mdi:close" class="text-gray-400 hover:text-red-500" /></template>
-                      </NButton>
-                    </template>
-                    确定移除该页面权限？
-                  </NPopconfirm>
-                </div>
+                <div class="flex items-center gap-2">
+                <NButton text size="small" @click="openEditPage(rp)">
+                  <Icon icon="mdi:pencil-outline" class="text-gray-400" />
+                </NButton>
+                <NPopconfirm v-if="rp.id" @positive-click="handleRemovePage(rp.id)">
+                  <template #trigger>
+                    <NButton quaternary circle size="small">
+                      <template #icon><Icon icon="mdi:close" class="text-gray-400 hover:text-red-500" /></template>
+                    </NButton>
+                  </template>
+                  确定移除该页面权限？
+                </NPopconfirm>
+              </div>
               </div>
               <NEmpty v-if="rolePages.length === 0" description="暂无页面权限" class="py-12" />
             </div>
@@ -563,13 +637,41 @@ function isAllButtonPolicy(policy: string | undefined): boolean {
     </NModal>
 
     <!-- 编辑页面权限弹窗 -->
-    <NModal v-model:show="showEditPageModal" preset="card" title="编辑页面权限" class="w-420px">
+    <NModal v-model:show="showEditPageModal" preset="card" title="编辑页面权限" class="w-500px">
       <NForm label-placement="left" label-width="70" size="small">
         <NFormItem label="页面">
           <NInput :value="editPageForm.pageName || editPageForm.pageCode" disabled />
         </NFormItem>
         <NFormItem label="按钮权限">
-          <NInput v-model:value="editPageForm.buttonPolicy" placeholder='["*"] 表示全部' />
+          <div class="w-full">
+            <NCheckbox :checked="isAllButtons" @update:checked="toggleAllButtons">
+              全部按钮
+            </NCheckbox>
+            <div v-if="!isAllButtons" class="button-select-list mt-2">
+              <template v-if="loadingButtons">
+                <span class="text-gray-400 text-xs">加载中...</span>
+              </template>
+              <template v-else-if="pageButtons.length === 0">
+                <span class="text-gray-400 text-xs">该页面暂无按钮配置</span>
+              </template>
+              <template v-else>
+                <NCheckbox
+                  v-for="btn in pageButtons"
+                  :key="btn.buttonKey"
+                  :checked="selectedButtons.includes(btn.buttonKey)"
+                  @update:checked="(checked: boolean) => {
+                    if (checked) {
+                      selectedButtons.push(btn.buttonKey);
+                    } else {
+                      selectedButtons = selectedButtons.filter(k => k !== btn.buttonKey);
+                    }
+                  }"
+                >
+                  {{ btn.buttonLabel }}
+                </NCheckbox>
+              </template>
+            </div>
+          </div>
         </NFormItem>
         <NFormItem label="列权限">
           <NInput v-model:value="editPageForm.columnPolicy" type="textarea" placeholder="JSON格式，留空表示全部" :rows="2" />
@@ -584,9 +686,29 @@ function isAllButtonPolicy(policy: string | undefined): boolean {
     </NModal>
 
     <!-- 查询面板 -->
-    <NModal v-model:show="showSearchPanel" preset="card" title="查询条件" class="w-560px">
+    <NModal v-model:show="showSearchPanel" preset="card" class="w-560px">
+      <template #header>
+        <div class="flex items-center justify-between w-full pr-8">
+          <span>查询条件</span>
+          <NPopover trigger="click" placement="bottom-end">
+            <template #trigger>
+              <NButton quaternary circle size="small">
+                <template #icon><Icon icon="mdi:cog-outline" /></template>
+              </NButton>
+            </template>
+            <div class="field-settings">
+              <div class="text-xs text-gray-400 mb-2">显示字段</div>
+              <div v-for="cond in searchConditions" :key="cond.field" class="field-setting-item">
+                <NCheckbox v-model:checked="cond.visible" size="small">
+                  {{ cond.fieldLabel }}
+                </NCheckbox>
+              </div>
+            </div>
+          </NPopover>
+        </div>
+      </template>
       <div class="search-condition-list">
-        <div v-for="(cond, idx) in searchConditions" :key="idx" class="search-condition-row">
+        <div v-for="cond in visibleConditions" :key="cond.field" class="search-condition-row">
           <NCheckbox v-model:checked="cond.enabled" class="w-100px">
             {{ cond.fieldLabel }}
           </NCheckbox>
@@ -605,6 +727,7 @@ function isAllButtonPolicy(policy: string | undefined): boolean {
             @keyup.enter="executeSearch"
           />
         </div>
+        <NEmpty v-if="visibleConditions.length === 0" description="请在设置中选择要显示的字段" size="small" />
       </div>
       <template #footer>
         <div class="flex justify-between">
@@ -682,6 +805,29 @@ function isAllButtonPolicy(policy: string | undefined): boolean {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.field-settings {
+  min-width: 120px;
+}
+
+.field-setting-item {
+  padding: 4px 0;
+}
+
+.button-select-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  padding: 8px;
+  background: #f9fafb;
+  border-radius: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.dark .button-select-list {
+  background: #374151;
 }
 
 .role-list {
