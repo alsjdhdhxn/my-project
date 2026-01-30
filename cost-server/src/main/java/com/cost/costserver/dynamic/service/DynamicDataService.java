@@ -66,8 +66,10 @@ public class DynamicDataService {
         String queryView = metadata.queryView();
         String whereClause = buildWhereClause(param != null ? param.getConditions() : null, columnMap);
 
-        // 注入数据权限条件（Lookup 查询不注入）
-        if (!isLookup && param != null && StrUtil.isNotBlank(param.getPageCode())) {
+        // 注入数据权限条件（Lookup 查询不注入，从表查询不注入）
+        // 从表通过外键关联主表，间接继承主表的数据权限
+        boolean isDetailTable = StrUtil.isNotBlank(metadata.parentTableCode());
+        if (!isLookup && !isDetailTable && param != null && StrUtil.isNotBlank(param.getPageCode())) {
             Long userId = SecurityUtils.getCurrentUserId();
             PagePermission permission = permissionService.getPagePermission(userId, param.getPageCode());
             String dataRuleClause = buildDataRuleClause(permission, columnMap);
@@ -125,7 +127,9 @@ public class DynamicDataService {
 
         String whereClause = buildWhereClause(param != null ? param.getConditions() : null, columnMap);
 
-        if (!isLookup && param != null && StrUtil.isNotBlank(param.getPageCode())) {
+        // 注入数据权限条件（Lookup 查询不注入，从表查询不注入）
+        boolean isDetailTable = StrUtil.isNotBlank(metadata.parentTableCode());
+        if (!isLookup && !isDetailTable && param != null && StrUtil.isNotBlank(param.getPageCode())) {
             Long userId = SecurityUtils.getCurrentUserId();
             PagePermission permission = permissionService.getPagePermission(userId, param.getPageCode());
             String dataRuleClause = buildDataRuleClause(permission, columnMap);

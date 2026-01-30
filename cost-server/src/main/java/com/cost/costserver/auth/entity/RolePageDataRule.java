@@ -12,10 +12,9 @@ public class RolePageDataRule {
     private Long id;
 
     private Long rolePageId;      // 关联 T_COST_ROLE_PAGE.ID
-    private String fieldName;     // 字段名（驼峰）
-    private String operator;      // 操作符：eq/ne/in/like/between
-    private String value;         // 值，支持占位符如 ${userId}、${deptId}
-    private String valueType;     // 值类型：literal/placeholder
+    private String ruleType;      // 规则类型
+    private String ruleConfig;    // 规则配置 JSON
+    private Integer priority;     // 优先级
 
     @TableLogic
     private Integer deleted;
@@ -23,9 +22,5 @@ public class RolePageDataRule {
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createTime;
 
-    @TableField(fill = FieldFill.INSERT_UPDATE)
-    private LocalDateTime updateTime;
-
     private String createBy;
-    private String updateBy;
 }

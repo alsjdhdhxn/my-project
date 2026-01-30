@@ -63,7 +63,8 @@ public class PermissionService {
             // 解析数据权限规则
             List<DataRule> rules = dataRuleMap.getOrDefault(rp.getId(), Collections.emptyList())
                 .stream()
-                .map(r -> new DataRule(r.getFieldName(), r.getOperator(), r.getValue(), r.getValueType()))
+                .map(this::parseDataRule)
+                .filter(Objects::nonNull)
                 .toList();
             
             // 合并权限（多角色取并集）
@@ -111,7 +112,8 @@ public class PermissionService {
             
             List<DataRule> rules = dataRuleMap.getOrDefault(rp.getId(), Collections.emptyList())
                 .stream()
-                .map(r -> new DataRule(r.getFieldName(), r.getOperator(), r.getValue(), r.getValueType()))
+                .map(this::parseDataRule)
+                .filter(Objects::nonNull)
                 .toList();
             mergedRules.addAll(rules);
         }
@@ -211,5 +213,26 @@ public class PermissionService {
         List<Role> roles = roleMapper.selectByUserId(userId);
         return roles.stream()
             .anyMatch(r -> SUPER_ADMIN_ROLE.equalsIgnoreCase(r.getRoleCode()));
+    }
+
+    /**
+     * 解析数据权限规则（从 ruleConfig JSON 中解析）
+     */
+    private DataRule parseDataRule(RolePageDataRule rule) {
+        if (rule == null || StrUtil.isBlank(rule.getRuleConfig())) {
+            return null;
+        }
+        try {
+            JSONObject config = JSONUtil.parseObj(rule.getRuleConfig());
+            return new DataRule(
+                config.getStr("fieldName"),
+                config.getStr("operator"),
+                config.getStr("value"),
+                config.getStr("valueType")
+            );
+        } catch (Exception e) {
+            log.warn("解析数据规则失败: {}", rule.getRuleConfig(), e);
+            return null;
+        }
     }
 }
