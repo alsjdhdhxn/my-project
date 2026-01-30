@@ -43,8 +43,29 @@ export interface UserSimpleVO {
 }
 
 export interface PageSimpleVO {
+  id?: number;
   pageCode: string;
   pageName: string;
+  resourceType?: string;  // DIRECTORY, PAGE
+  parentId?: number;
+  children?: PageSimpleVO[];
+}
+
+export interface ResourcePermissionVO {
+  id?: number;
+  resourceCode?: string;
+  resourceName?: string;
+  resourceType?: string;  // DIRECTORY, PAGE
+  pageCode?: string;
+  icon?: string;
+  route?: string;
+  parentId?: number;
+  sortOrder?: number;
+  rolePageId?: number;      // 有值表示已授权
+  buttonPolicy?: string;
+  columnPolicy?: string;
+  isAuthorized?: number;    // 1=已授权, 0=未授权
+  children?: ResourcePermissionVO[];
 }
 
 // ==================== 角色管理 ====================
@@ -122,6 +143,11 @@ export async function fetchAllUsers() {
 
 export async function fetchAllPages() {
   const { data } = await request<PageSimpleVO[]>({ url: '/role-manage/pages' });
+  return data || [];
+}
+
+export async function fetchResourcePermissionTree(roleId: number) {
+  const { data } = await request<ResourcePermissionVO[]>({ url: `/role-manage/role/${roleId}/resource-tree` });
   return data || [];
 }
 

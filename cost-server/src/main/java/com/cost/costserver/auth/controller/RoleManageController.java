@@ -98,6 +98,14 @@ public class RoleManageController {
         return Result.ok(roleManageService.listAllPages());
     }
 
+    /**
+     * 获取角色的资源权限树（包含授权状态）
+     */
+    @GetMapping("/role/{roleId}/resource-tree")
+    public Result<List<ResourcePermissionVO>> getResourcePermissionTree(@PathVariable Long roleId) {
+        return Result.ok(roleManageService.getResourcePermissionTree(roleId));
+    }
+
     @GetMapping("/page/{pageCode}/buttons")
     public Result<List<PageButtonVO>> listPageButtons(@PathVariable String pageCode) {
         return Result.ok(roleManageService.listPageButtons(pageCode));

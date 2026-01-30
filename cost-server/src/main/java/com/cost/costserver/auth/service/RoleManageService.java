@@ -227,17 +227,112 @@ public class RoleManageService {
     }
 
     public List<PageSimpleVO> listAllPages() {
+        // 查询所有资源（包括目录和页面）
         List<Resource> resources = resourceMapper.selectList(
             new LambdaQueryWrapper<Resource>()
-                .isNotNull(Resource::getPageCode)
                 .orderByAsc(Resource::getSortOrder)
         );
-        return resources.stream().map(r -> {
+        
+        // 转换为VO
+        Map<Long, PageSimpleVO> voMap = new HashMap<>();
+        List<PageSimpleVO> allVOs = new ArrayList<>();
+        
+        for (Resource r : resources) {
             PageSimpleVO vo = new PageSimpleVO();
+            vo.setId(r.getId());
             vo.setPageCode(r.getPageCode());
             vo.setPageName(r.getResourceName());
-            return vo;
-        }).collect(Collectors.toList());
+            vo.setResourceType(r.getResourceType());
+            vo.setParentId(r.getParentId());
+            vo.setChildren(new ArrayList<>());
+            voMap.put(r.getId(), vo);
+            allVOs.add(vo);
+        }
+        
+        // 构建树形结构
+        List<PageSimpleVO> roots = new ArrayList<>();
+        for (PageSimpleVO vo : allVOs) {
+            if (vo.getParentId() == null || vo.getParentId() == 0) {
+                roots.add(vo);
+            } else {
+                PageSimpleVO parent = voMap.get(vo.getParentId());
+                if (parent != null) {
+                    parent.getChildren().add(vo);
+                } else {
+                    roots.add(vo);
+                }
+            }
+        }
+        
+        return roots;
+    }
+
+    /**
+     * 获取角色的资源权限树（包含授权状态）
+     */
+    public List<ResourcePermissionVO> getResourcePermissionTree(Long roleId) {
+        // 从视图查询
+        String sql = "SELECT ID, RESOURCE_CODE, RESOURCE_NAME, RESOURCE_TYPE, PAGE_CODE, ICON, ROUTE, " +
+                     "PARENT_ID, SORT_ORDER, ROLE_PAGE_ID, BUTTON_POLICY, COLUMN_POLICY, IS_AUTHORIZED " +
+                     "FROM V_COST_RESOURCE_PERMISSION WHERE ROLE_ID = " + roleId + " ORDER BY SORT_ORDER";
+        
+        List<Map<String, Object>> rows = dynamicMapper.selectList(sql);
+        
+        // 转换为VO
+        Map<Long, ResourcePermissionVO> voMap = new HashMap<>();
+        List<ResourcePermissionVO> allVOs = new ArrayList<>();
+        
+        for (Map<String, Object> row : rows) {
+            ResourcePermissionVO vo = new ResourcePermissionVO();
+            vo.setId(getLong(row, "ID"));
+            vo.setResourceCode((String) row.get("RESOURCE_CODE"));
+            vo.setResourceName((String) row.get("RESOURCE_NAME"));
+            vo.setResourceType((String) row.get("RESOURCE_TYPE"));
+            vo.setPageCode((String) row.get("PAGE_CODE"));
+            vo.setIcon((String) row.get("ICON"));
+            vo.setRoute((String) row.get("ROUTE"));
+            vo.setParentId(getLong(row, "PARENT_ID"));
+            vo.setSortOrder(getInt(row, "SORT_ORDER"));
+            vo.setRolePageId(getLong(row, "ROLE_PAGE_ID"));
+            vo.setButtonPolicy((String) row.get("BUTTON_POLICY"));
+            vo.setColumnPolicy((String) row.get("COLUMN_POLICY"));
+            vo.setIsAuthorized(getInt(row, "IS_AUTHORIZED"));
+            vo.setChildren(new ArrayList<>());
+            
+            voMap.put(vo.getId(), vo);
+            allVOs.add(vo);
+        }
+        
+        // 构建树形结构
+        List<ResourcePermissionVO> roots = new ArrayList<>();
+        for (ResourcePermissionVO vo : allVOs) {
+            if (vo.getParentId() == null || vo.getParentId() == 0) {
+                roots.add(vo);
+            } else {
+                ResourcePermissionVO parent = voMap.get(vo.getParentId());
+                if (parent != null) {
+                    parent.getChildren().add(vo);
+                } else {
+                    roots.add(vo);
+                }
+            }
+        }
+        
+        return roots;
+    }
+    
+    private Long getLong(Map<String, Object> row, String key) {
+        Object val = row.get(key);
+        if (val == null) return null;
+        if (val instanceof Number) return ((Number) val).longValue();
+        return Long.parseLong(val.toString());
+    }
+    
+    private Integer getInt(Map<String, Object> row, String key) {
+        Object val = row.get(key);
+        if (val == null) return null;
+        if (val instanceof Number) return ((Number) val).intValue();
+        return Integer.parseInt(val.toString());
     }
 
     public List<PageButtonVO> listPageButtons(String pageCode) {

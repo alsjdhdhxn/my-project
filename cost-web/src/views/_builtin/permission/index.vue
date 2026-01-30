@@ -1,16 +1,26 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
-import { NButton, NTabs, NTabPane, NEmpty, NTag, NPopconfirm, NModal, NForm, NFormItem, NInput, NSelect, NInputGroup, useMessage, NScrollbar, NCheckbox, NSpace, NPopover } from 'naive-ui';
+import { ref, computed, watch, h } from 'vue';
+import { NButton, NTabs, NTabPane, NEmpty, NTag, NPopconfirm, NModal, NForm, NFormItem, NInput, NSelect, useMessage, NScrollbar, NCheckbox, NSpace, NPopover, NDataTable, NTree } from 'naive-ui';
+import type { TreeOption } from 'naive-ui';
 import { Icon } from '@iconify/vue';
 import {
   fetchRoles, createRole, updateRole, deleteRole,
   fetchUsersByRole, addUserToRole, removeUserFromRole,
   fetchPagesByRole, addPageToRole, updateRolePage, removePageFromRole,
-  fetchAllUsers, fetchAllPages, searchRoles, fetchPageButtons
+  fetchAllUsers, searchRoles, fetchPageButtons, fetchResourcePermissionTree
 } from '@/service/api/role-manage';
-import type { RoleVO, UserRoleVO, RolePageVO, UserSimpleVO, PageSimpleVO, PageButtonVO } from '@/service/api/role-manage';
+import type { RoleVO, UserRoleVO, RolePageVO, UserSimpleVO, PageButtonVO, ResourcePermissionVO } from '@/service/api/role-manage';
 
 const message = useMessage();
+
+// 角色图标颜色
+const roleColors = ['#10b981', '#f59e0b', '#3b82f6', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4'];
+function getRoleColor(index: number) {
+  return roleColors[index % roleColors.length];
+}
+function getRoleInitial(name: string) {
+  return name?.charAt(0) || '角';
+}
 
 // ==================== 查询面板 ====================
 const showSearchPanel = ref(false);
@@ -31,9 +41,6 @@ const searchConditions = ref<SearchCondition[]>([
   { field: 'pageCode', fieldLabel: '包含页面', operator: 'like', value: '', enabled: false, visible: true },
 ]);
 
-const showFieldSettings = ref(false);
-
-// 从localStorage加载字段可见性设置
 const STORAGE_KEY = 'permission-search-fields';
 function loadFieldSettings() {
   try {
@@ -44,9 +51,7 @@ function loadFieldSettings() {
         c.visible = visibleFields.includes(c.field);
       });
     }
-  } catch (e) {
-    console.error('加载查询字段设置失败', e);
-  }
+  } catch (e) { /* ignore */ }
 }
 
 function saveFieldSettings() {
@@ -54,14 +59,7 @@ function saveFieldSettings() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(visibleFields));
 }
 
-// 监听visible变化，自动保存
-watch(
-  () => searchConditions.value.map(c => c.visible),
-  () => saveFieldSettings(),
-  { deep: true }
-);
-
-// 初始化时加载设置
+watch(() => searchConditions.value.map(c => c.visible), () => saveFieldSettings(), { deep: true });
 loadFieldSettings();
 
 const visibleConditions = computed(() => searchConditions.value.filter(c => c.visible));
@@ -88,35 +86,22 @@ function openSearchPanel() {
 
 async function executeSearch() {
   const enabledConditions = searchConditions.value.filter(c => c.enabled && c.value);
-  
   if (enabledConditions.length === 0) {
-    // 无条件，加载全部
     await loadRoles();
     activeFilters.value = [];
     showSearchPanel.value = false;
     return;
   }
-
   isSearching.value = true;
   try {
-    // 构建查询参数
-    const conditions = enabledConditions.map(c => ({
-      field: c.field,
-      operator: c.operator,
-      value: c.value
-    }));
-
+    const conditions = enabledConditions.map(c => ({ field: c.field, operator: c.operator, value: c.value }));
     const data = await searchRoles(conditions);
     roles.value = data || [];
-    
-    // 更新筛选标签
     activeFilters.value = enabledConditions.map(c => {
       const op = operatorOptions.find(o => o.value === c.operator);
       return `${c.fieldLabel} ${op?.label || c.operator} "${c.value}"`;
     });
-
     showSearchPanel.value = false;
-    
     if (roles.value.length === 0) {
       message.warning('未找到匹配的角色');
       selectedRoleId.value = null;
@@ -125,7 +110,6 @@ async function executeSearch() {
       selectedRoleId.value = roles.value[0].id ?? null;
     }
   } catch (e) {
-    console.error('查询失败', e);
     message.error('查询失败');
   } finally {
     isSearching.value = false;
@@ -133,10 +117,7 @@ async function executeSearch() {
 }
 
 async function clearSearch() {
-  searchConditions.value.forEach(c => {
-    c.enabled = false;
-    c.value = '';
-  });
+  searchConditions.value.forEach(c => { c.enabled = false; c.value = ''; });
   activeFilters.value = [];
   await loadRoles();
 }
@@ -147,7 +128,6 @@ const selectedRoleId = ref<number | null>(null);
 const loadingRoles = ref(false);
 
 const selectedRole = computed(() => roles.value.find(r => r.id === selectedRoleId.value));
-
 const filteredRoles = computed(() => roles.value);
 
 async function loadRoles() {
@@ -159,7 +139,6 @@ async function loadRoles() {
       selectedRoleId.value = roles.value[0].id ?? null;
     }
   } catch (e) {
-    console.error('加载角色失败', e);
     roles.value = [];
   } finally {
     loadingRoles.value = false;
@@ -182,7 +161,8 @@ function openAddRole() {
   showRoleModal.value = true;
 }
 
-function openEditRole(role: RoleVO) {
+function openEditRole(role: RoleVO, e: Event) {
+  e.stopPropagation();
   isEditRole.value = true;
   roleForm.value = { ...role };
   showRoleModal.value = true;
@@ -213,9 +193,7 @@ async function saveRole() {
 async function handleDeleteRole(id: number) {
   await deleteRole(id);
   message.success('删除成功');
-  if (selectedRoleId.value === id) {
-    selectedRoleId.value = null;
-  }
+  if (selectedRoleId.value === id) selectedRoleId.value = null;
   await loadRoles();
 }
 
@@ -231,14 +209,12 @@ async function loadUserRoles() {
     const data = await fetchUsersByRole(selectedRoleId.value);
     userRoles.value = data || [];
   } catch (e) {
-    console.error('加载角色人员失败', e);
     userRoles.value = [];
   } finally {
     loadingUsers.value = false;
   }
 }
 
-// 添加用户弹窗
 const showAddUserModal = ref(false);
 const selectedUserId = ref<number | null>(null);
 const addingUser = ref(false);
@@ -271,57 +247,141 @@ async function handleAddUser() {
 
 async function handleRemoveUser(id: number) {
   await removeUserFromRole(id);
-  message.success('移除成功');
+  message.success('解除成功');
   await loadUserRoles();
 }
 
-// ==================== 角色页面 ====================
+// 人员表格列
+const userColumns = [
+  { title: '姓名', key: 'realName', render: (row: UserRoleVO) => row.realName || row.username },
+  { title: '用户名', key: 'username' },
+  { 
+    title: '操作', 
+    key: 'action', 
+    width: 80,
+    render: (row: UserRoleVO) => {
+      if (!row.id) return null;
+      return h(NButton, { text: true, type: 'error', size: 'small', onClick: () => handleRemoveUser(row.id!) }, { default: () => '解除' });
+    }
+  }
+];
+
+// ==================== 角色页面（树形权限） ====================
 const rolePages = ref<RolePageVO[]>([]);
 const loadingPages = ref(false);
-const allPages = ref<PageSimpleVO[]>([]);
+const resourceTree = ref<ResourcePermissionVO[]>([]);
+const checkedKeys = ref<string[]>([]);
 
-async function loadRolePages() {
+// 加载资源权限树（包含授权状态）
+async function loadResourcePermissionTree() {
   if (!selectedRoleId.value) return;
   loadingPages.value = true;
   try {
-    const data = await fetchPagesByRole(selectedRoleId.value);
-    rolePages.value = data || [];
+    const data = await fetchResourcePermissionTree(selectedRoleId.value);
+    resourceTree.value = data || [];
+    // 从树中提取已授权的pageCode
+    checkedKeys.value = extractAuthorizedKeys(resourceTree.value);
+    // 同时提取rolePages用于按钮权限配置
+    rolePages.value = extractRolePages(resourceTree.value);
   } catch (e) {
-    console.error('加载角色页面失败', e);
+    resourceTree.value = [];
+    checkedKeys.value = [];
     rolePages.value = [];
   } finally {
     loadingPages.value = false;
   }
 }
 
-// 添加页面弹窗
-const showAddPageModal = ref(false);
-const pageForm = ref<RolePageVO>({ pageCode: '', buttonPolicy: '["*"]', columnPolicy: '' });
-const addingPage = ref(false);
-
-async function openAddPage() {
-  if (allPages.value.length === 0) {
-    allPages.value = await fetchAllPages();
+// 从树中提取已授权的key（使用resourceCode）
+function extractAuthorizedKeys(nodes: ResourcePermissionVO[]): string[] {
+  const keys: string[] = [];
+  function traverse(list: ResourcePermissionVO[]) {
+    for (const node of list) {
+      if (node.isAuthorized === 1 && node.resourceCode) {
+        keys.push(node.resourceCode);
+      }
+      if (node.children && node.children.length > 0) {
+        traverse(node.children);
+      }
+    }
   }
-  pageForm.value = { pageCode: '', buttonPolicy: '["*"]', columnPolicy: '' };
-  showAddPageModal.value = true;
+  traverse(nodes);
+  return keys;
 }
 
-const availablePages = computed(() => {
-  const existingCodes = new Set(rolePages.value.map(rp => rp.pageCode));
-  return allPages.value.filter(p => !existingCodes.has(p.pageCode));
-});
+// 从树中提取已授权的RolePageVO
+function extractRolePages(nodes: ResourcePermissionVO[]): RolePageVO[] {
+  const pages: RolePageVO[] = [];
+  function traverse(list: ResourcePermissionVO[]) {
+    for (const node of list) {
+      if (node.isAuthorized === 1 && node.rolePageId) {
+        pages.push({
+          id: node.rolePageId,
+          pageCode: node.resourceCode || '',  // 使用 resourceCode
+          pageName: node.resourceName,
+          buttonPolicy: node.buttonPolicy,
+          columnPolicy: node.columnPolicy
+        });
+      }
+      if (node.children && node.children.length > 0) {
+        traverse(node.children);
+      }
+    }
+  }
+  traverse(nodes);
+  return pages;
+}
 
-async function handleAddPage() {
-  if (!pageForm.value.pageCode || !selectedRoleId.value) return;
-  addingPage.value = true;
-  try {
-    await addPageToRole(selectedRoleId.value, pageForm.value);
-    message.success('添加成功');
-    showAddPageModal.value = false;
-    await loadRolePages();
-  } finally {
-    addingPage.value = false;
+// 将ResourcePermissionVO转换为TreeOption
+function convertToTreeOptions(nodes: ResourcePermissionVO[]): TreeOption[] {
+  return nodes.map(node => ({
+    // 使用 resourceCode 作为 key，因为 T_COST_ROLE_PAGE.PAGE_CODE 存的是 resourceCode
+    key: node.resourceCode || `dir-${node.id}`,
+    label: node.resourceName,
+    isLeaf: node.resourceType === 'PAGE',
+    children: node.children && node.children.length > 0 ? convertToTreeOptions(node.children) : undefined
+  }));
+}
+
+const treeOptions = computed(() => convertToTreeOptions(resourceTree.value));
+
+// 处理树节点选中变化
+async function handleCheckedKeysChange(keys: string[]) {
+  if (!selectedRoleId.value) return;
+  
+  const oldKeys = new Set(checkedKeys.value);
+  const newKeys = new Set(keys);
+  
+  // 找出新增的和删除的（排除目录节点）
+  const toAdd = keys.filter(k => !oldKeys.has(k) && !k.startsWith('dir-'));
+  const toRemove = checkedKeys.value.filter(k => !newKeys.has(k) && !k.startsWith('dir-'));
+  
+  // 添加新权限
+  for (const pageCode of toAdd) {
+    try {
+      await addPageToRole(selectedRoleId.value, { pageCode, buttonPolicy: '["*"]' });
+    } catch (e) {
+      // ignore
+    }
+  }
+  
+  // 移除权限
+  for (const pageCode of toRemove) {
+    const rp = rolePages.value.find(r => r.pageCode === pageCode);
+    if (rp?.id) {
+      try {
+        await removePageFromRole(rp.id);
+      } catch (e) {
+        // ignore
+      }
+    }
+  }
+  
+  // 重新加载
+  await loadResourcePermissionTree();
+  
+  if (toAdd.length > 0 || toRemove.length > 0) {
+    message.success('权限已更新');
   }
 }
 
@@ -334,57 +394,40 @@ const selectedButtons = ref<string[]>([]);
 const loadingButtons = ref(false);
 const isAllButtons = ref(true);
 
-async function openEditPage(page: RolePageVO) {
-  editPageForm.value = { ...page };
-  
-  // 解析当前按钮权限
-  if (page.buttonPolicy === '["*"]' || !page.buttonPolicy) {
+async function openEditPage(rp: RolePageVO) {
+  editPageForm.value = { ...rp };
+  if (rp.buttonPolicy === '["*"]' || !rp.buttonPolicy) {
     isAllButtons.value = true;
     selectedButtons.value = [];
   } else {
     isAllButtons.value = false;
-    try {
-      selectedButtons.value = JSON.parse(page.buttonPolicy);
-    } catch {
-      selectedButtons.value = [];
-    }
+    try { selectedButtons.value = JSON.parse(rp.buttonPolicy); } catch { selectedButtons.value = []; }
   }
-  
-  // 加载该页面的按钮列表
   loadingButtons.value = true;
   try {
-    pageButtons.value = await fetchPageButtons(page.pageCode);
+    pageButtons.value = await fetchPageButtons(rp.pageCode);
   } catch (e) {
     pageButtons.value = [];
   } finally {
     loadingButtons.value = false;
   }
-  
   showEditPageModal.value = true;
 }
 
 function toggleAllButtons(checked: boolean) {
   isAllButtons.value = checked;
-  if (checked) {
-    selectedButtons.value = [];
-  }
+  if (checked) selectedButtons.value = [];
 }
 
 async function handleUpdatePage() {
   if (!editPageForm.value.id) return;
   editingPage.value = true;
   try {
-    // 构建按钮权限
-    if (isAllButtons.value) {
-      editPageForm.value.buttonPolicy = '["*"]';
-    } else {
-      editPageForm.value.buttonPolicy = JSON.stringify(selectedButtons.value);
-    }
-    
+    editPageForm.value.buttonPolicy = isAllButtons.value ? '["*"]' : JSON.stringify(selectedButtons.value);
     await updateRolePage(editPageForm.value.id, editPageForm.value);
     message.success('更新成功');
     showEditPageModal.value = false;
-    await loadRolePages();
+    await loadResourcePermissionTree();
   } finally {
     editingPage.value = false;
   }
@@ -393,20 +436,21 @@ async function handleUpdatePage() {
 async function handleRemovePage(id: number) {
   await removePageFromRole(id);
   message.success('移除成功');
-  await loadRolePages();
+  await loadResourcePermissionTree();
+}
+
+// 判断是否是全部按钮权限
+function isAllButtonsPolicy(policy: string | undefined): boolean {
+  return policy === '["*"]' || !policy;
 }
 
 // ==================== 监听和初始化 ====================
-watch(selectedRoleId, () => {
+watch(selectedRoleId, async () => {
   loadUserRoles();
-  loadRolePages();
+  loadResourcePermissionTree();
 });
 
 loadRoles();
-
-function isAllButtonPolicy(policy: string | undefined): boolean {
-  return policy === '["*"]';
-}
 </script>
 
 <template>
@@ -415,160 +459,163 @@ function isAllButtonPolicy(policy: string | undefined): boolean {
     <div class="role-panel">
       <div class="panel-header">
         <span class="panel-title">角色管理</span>
-        <NSpace :size="4">
-          <NButton size="small" @click="openSearchPanel">
-            <template #icon><Icon icon="mdi:magnify" /></template>
-            查询
-          </NButton>
-          <NButton type="primary" size="small" @click="openAddRole">
-            <template #icon><Icon icon="mdi:plus" /></template>
-            新增
-          </NButton>
-        </NSpace>
       </div>
       
-      <!-- 当前筛选条件 -->
+      <div class="panel-toolbar">
+        <NButton size="small" @click="openSearchPanel">
+          <template #icon><Icon icon="mdi:magnify" /></template>
+          查询
+        </NButton>
+        <NButton type="primary" size="small" @click="openAddRole">
+          <template #icon><Icon icon="mdi:plus" /></template>
+          新增
+        </NButton>
+      </div>
+      
+      <!-- 筛选条件 -->
       <div v-if="activeFilters.length > 0" class="filter-tags">
-        <NTag v-for="(f, i) in activeFilters" :key="i" size="small" closable @close="clearSearch">
-          {{ f }}
-        </NTag>
-        <NButton text size="tiny" type="error" @click="clearSearch">清除全部</NButton>
+        <NTag v-for="(f, i) in activeFilters" :key="i" size="small" closable @close="clearSearch">{{ f }}</NTag>
+        <NButton text size="tiny" type="error" @click="clearSearch">清除</NButton>
       </div>
 
       <NScrollbar class="role-list">
         <div
-          v-for="role in filteredRoles"
+          v-for="(role, idx) in filteredRoles"
           :key="role.id ?? 0"
           class="role-card"
           :class="{ active: selectedRoleId === role.id }"
           @click="role.id && selectRole(role.id)"
         >
+          <div class="role-icon" :style="{ background: getRoleColor(idx) }">
+            {{ getRoleInitial(role.roleName) }}
+          </div>
           <div class="role-info">
             <div class="role-name">{{ role.roleName }}</div>
             <div class="role-code">{{ role.roleCode }}</div>
           </div>
-          <div class="role-actions">
-            <NButton quaternary circle size="tiny" @click.stop="openEditRole(role)">
-              <template #icon><Icon icon="mdi:pencil-outline" /></template>
-            </NButton>
-            <NPopconfirm v-if="role.id" @positive-click="handleDeleteRole(role.id)">
-              <template #trigger>
-                <NButton quaternary circle size="tiny" @click.stop>
-                  <template #icon><Icon icon="mdi:delete-outline" class="text-red-500" /></template>
-                </NButton>
-              </template>
-              确定删除「{{ role.roleName }}」？
-            </NPopconfirm>
-          </div>
+          <NPopover trigger="click" placement="bottom">
+            <template #trigger>
+              <NButton quaternary circle size="tiny" class="role-menu-btn" @click.stop>
+                <template #icon><Icon icon="mdi:dots-vertical" /></template>
+              </NButton>
+            </template>
+            <div class="role-menu">
+              <div class="role-menu-item" @click="openEditRole(role, $event)">
+                <Icon icon="mdi:pencil-outline" /> 编辑
+              </div>
+              <NPopconfirm v-if="role.id" @positive-click="handleDeleteRole(role.id)">
+                <template #trigger>
+                  <div class="role-menu-item danger">
+                    <Icon icon="mdi:delete-outline" /> 删除
+                  </div>
+                </template>
+                确定删除「{{ role.roleName }}」？
+              </NPopconfirm>
+            </div>
+          </NPopover>
         </div>
         <NEmpty v-if="filteredRoles.length === 0" description="暂无角色" class="mt-8" />
       </NScrollbar>
+    </div>
+
+    <!-- 中间分隔线 -->
+    <div class="panel-divider">
+      <div class="divider-btn">
+        <Icon icon="mdi:chevron-left" />
+      </div>
     </div>
 
     <!-- 右侧：详情区域 -->
     <div class="detail-panel">
       <template v-if="selectedRole">
         <div class="detail-header">
-          <div class="selected-role-info">
-            <Icon icon="mdi:shield-account-outline" class="text-2xl text-primary" />
-            <div>
-              <div class="text-lg font-medium">{{ selectedRole.roleName }}</div>
-              <div class="text-xs text-gray-400">{{ selectedRole.roleCode }}</div>
-            </div>
+          <div class="header-left">
+            <NTag type="success" size="small">激活角色</NTag>
+            <span class="role-title">{{ selectedRole.roleName }}</span>
           </div>
         </div>
 
         <NTabs type="line" animated class="detail-tabs">
-          <!-- Tab1: 角色人员 -->
-          <NTabPane name="users">
-            <template #tab>
-              <div class="tab-label">
-                <Icon icon="mdi:account-group-outline" />
-                <span>成员管理</span>
-                <NTag size="small" round :bordered="false">{{ userRoles.length }}</NTag>
-              </div>
-            </template>
-
-            <div class="tab-toolbar">
+          <!-- Tab1: 人员列表 -->
+          <NTabPane name="users" tab="人员列表">
+            <div class="tab-header">
               <NButton type="primary" size="small" @click="openAddUser">
-                <template #icon><Icon icon="mdi:account-plus-outline" /></template>
-                添加成员
+                <template #icon><Icon icon="mdi:plus" /></template>
+                分配人员
               </NButton>
             </div>
-
-            <div class="data-list">
-              <div v-for="ur in userRoles" :key="ur.id ?? 0" class="data-item">
-                <div class="item-avatar">
-                  <Icon icon="mdi:account" class="text-lg" />
-                </div>
-                <div class="item-info">
-                  <div class="item-title">{{ ur.realName || ur.username }}</div>
-                  <div class="item-desc">{{ ur.username }}</div>
-                </div>
-                <div class="item-actions">
-                  <NPopconfirm v-if="ur.id" @positive-click="handleRemoveUser(ur.id)">
-                    <template #trigger>
-                      <NButton quaternary circle size="small">
-                        <template #icon><Icon icon="mdi:close" class="text-gray-400 hover:text-red-500" /></template>
-                      </NButton>
-                    </template>
-                    确定移除该成员？
-                  </NPopconfirm>
-                </div>
-              </div>
-              <NEmpty v-if="userRoles.length === 0" description="暂无成员" class="py-12" />
+            <div class="tab-content">
+              <NDataTable
+                :columns="userColumns"
+                :data="userRoles"
+                :loading="loadingUsers"
+                :bordered="false"
+                size="small"
+                :pagination="{ pageSize: 10 }"
+              />
             </div>
           </NTabPane>
 
-          <!-- Tab2: 角色页面 -->
-          <NTabPane name="pages">
-            <template #tab>
-              <div class="tab-label">
-                <Icon icon="mdi:file-document-outline" />
-                <span>页面权限</span>
-                <NTag size="small" round :bordered="false">{{ rolePages.length }}</NTag>
-              </div>
-            </template>
-
-            <div class="tab-toolbar">
-              <NButton type="primary" size="small" @click="openAddPage">
-                <template #icon><Icon icon="mdi:file-plus-outline" /></template>
-                添加页面
-              </NButton>
-            </div>
-
-            <div class="data-list">
-              <div v-for="rp in rolePages" :key="rp.id ?? 0" class="data-item">
-                <div class="item-avatar page">
-                  <Icon icon="mdi:file-document-outline" class="text-lg" />
+          <!-- Tab2: 页面权限配置 -->
+          <NTabPane name="pages" tab="页面权限配置">
+            <div class="tab-content">
+              <div class="permission-section">
+                <div class="section-header">
+                  <div class="section-title">
+                    <span class="title-bar"></span>
+                    功能权限树
+                  </div>
                 </div>
-                <div class="item-info">
-                  <div class="item-title">{{ rp.pageName || rp.pageCode }}</div>
-                  <div class="item-desc">{{ rp.pageCode }}</div>
+                
+                <div class="tree-container">
+                  <NTree
+                    :data="treeOptions"
+                    :checked-keys="checkedKeys"
+                    checkable
+                    cascade
+                    selectable
+                    expand-on-click
+                    default-expand-all
+                    @update:checked-keys="handleCheckedKeysChange"
+                  />
+                  <NEmpty v-if="treeOptions.length === 0" description="暂无页面" />
                 </div>
-                <div class="flex items-center gap-2">
-                <NButton text size="small" @click="openEditPage(rp)">
-                  <Icon icon="mdi:pencil-outline" class="text-gray-400" />
-                </NButton>
-                <NPopconfirm v-if="rp.id" @positive-click="handleRemovePage(rp.id)">
-                  <template #trigger>
-                    <NButton quaternary circle size="small">
-                      <template #icon><Icon icon="mdi:close" class="text-gray-400 hover:text-red-500" /></template>
-                    </NButton>
-                  </template>
-                  确定移除该页面权限？
-                </NPopconfirm>
               </div>
+
+              <!-- 已授权页面列表（带修改/删除按钮） -->
+              <div v-if="rolePages.length > 0" class="permission-section mt-4">
+                <div class="section-header">
+                  <div class="section-title">
+                    <span class="title-bar"></span>
+                    按钮权限配置
+                  </div>
+                </div>
+                
+                <div class="authorized-list">
+                  <div v-for="rp in rolePages" :key="rp.id" class="authorized-item">
+                    <div class="item-info">
+                      <Icon icon="mdi:file-document-outline" class="item-icon" />
+                      <span class="item-name">{{ rp.pageName || rp.pageCode }}</span>
+                      <NTag v-if="isAllButtonsPolicy(rp.buttonPolicy)" size="tiny" type="success">全部按钮</NTag>
+                      <NTag v-else size="tiny" type="warning">部分按钮</NTag>
+                    </div>
+                    <div class="item-actions">
+                      <NButton text size="small" type="primary" @click="openEditPage(rp)">
+                        <template #icon><Icon icon="mdi:pencil-outline" /></template>
+                        配置
+                      </NButton>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <NEmpty v-if="rolePages.length === 0" description="暂无页面权限" class="py-12" />
             </div>
           </NTabPane>
         </NTabs>
       </template>
 
       <div v-else class="empty-state">
-        <Icon icon="mdi:shield-off-outline" class="text-6xl text-gray-300" />
-        <div class="text-gray-400 mt-4">请选择一个角色</div>
+        <Icon icon="mdi:shield-off-outline" class="empty-icon" />
+        <div class="empty-text">请选择一个角色</div>
       </div>
     </div>
 
@@ -586,7 +633,7 @@ function isAllButtonPolicy(policy: string | undefined): boolean {
         </NFormItem>
       </NForm>
       <template #footer>
-        <div class="flex justify-end gap-2">
+        <div class="modal-footer">
           <NButton size="small" @click="showRoleModal = false">取消</NButton>
           <NButton type="primary" size="small" :loading="savingRole" @click="saveRole">确定</NButton>
         </div>
@@ -594,7 +641,7 @@ function isAllButtonPolicy(policy: string | undefined): boolean {
     </NModal>
 
     <!-- 添加用户弹窗 -->
-    <NModal v-model:show="showAddUserModal" preset="card" title="添加成员" class="w-380px">
+    <NModal v-model:show="showAddUserModal" preset="card" title="分配人员" class="w-380px">
       <NSelect
         v-model:value="selectedUserId"
         :options="availableUsers.map(u => ({ label: `${u.realName || u.username} (${u.username})`, value: u.id }))"
@@ -603,35 +650,48 @@ function isAllButtonPolicy(policy: string | undefined): boolean {
         size="small"
       />
       <template #footer>
-        <div class="flex justify-end gap-2">
+        <div class="modal-footer">
           <NButton size="small" @click="showAddUserModal = false">取消</NButton>
           <NButton type="primary" size="small" :loading="addingUser" :disabled="!selectedUserId" @click="handleAddUser">确定</NButton>
         </div>
       </template>
     </NModal>
 
-    <!-- 添加页面弹窗 -->
-    <NModal v-model:show="showAddPageModal" preset="card" title="添加页面权限" class="w-420px">
-      <NForm label-placement="left" label-width="70" size="small">
-        <NFormItem label="页面" required>
-          <NSelect
-            v-model:value="pageForm.pageCode"
-            :options="availablePages.map(p => ({ label: `${p.pageName} (${p.pageCode})`, value: p.pageCode }))"
-            placeholder="请选择"
-            filterable
-          />
-        </NFormItem>
-        <NFormItem label="按钮权限">
-          <NInput v-model:value="pageForm.buttonPolicy" placeholder='["*"] 表示全部' />
-        </NFormItem>
-        <NFormItem label="列权限">
-          <NInput v-model:value="pageForm.columnPolicy" type="textarea" placeholder="JSON格式，留空表示全部" :rows="2" />
-        </NFormItem>
-      </NForm>
+    <!-- 查询面板 -->
+    <NModal v-model:show="showSearchPanel" preset="card" class="w-560px">
+      <template #header>
+        <div class="search-header">
+          <span>查询条件</span>
+          <NPopover trigger="click" placement="bottom-end">
+            <template #trigger>
+              <NButton quaternary circle size="small">
+                <template #icon><Icon icon="mdi:cog-outline" /></template>
+              </NButton>
+            </template>
+            <div class="field-settings">
+              <div class="settings-title">显示字段</div>
+              <div v-for="cond in searchConditions" :key="cond.field" class="field-setting-item">
+                <NCheckbox v-model:checked="cond.visible" size="small">{{ cond.fieldLabel }}</NCheckbox>
+              </div>
+            </div>
+          </NPopover>
+        </div>
+      </template>
+      <div class="search-condition-list">
+        <div v-for="cond in visibleConditions" :key="cond.field" class="search-condition-row">
+          <NCheckbox v-model:checked="cond.enabled" class="condition-label">{{ cond.fieldLabel }}</NCheckbox>
+          <NSelect v-model:value="cond.operator" :options="operatorOptions" size="small" class="condition-operator" />
+          <NInput v-model:value="cond.value" size="small" class="condition-value" :placeholder="cond.operator === 'in' ? '多个值用逗号分隔' : '请输入'" @input="() => { if (cond.value) cond.enabled = true }" @keyup.enter="executeSearch" />
+        </div>
+        <NEmpty v-if="visibleConditions.length === 0" description="请在设置中选择要显示的字段" size="small" />
+      </div>
       <template #footer>
-        <div class="flex justify-end gap-2">
-          <NButton size="small" @click="showAddPageModal = false">取消</NButton>
-          <NButton type="primary" size="small" :loading="addingPage" :disabled="!pageForm.pageCode" @click="handleAddPage">确定</NButton>
+        <div class="search-footer">
+          <NButton size="small" @click="clearSearch">重置</NButton>
+          <NSpace :size="8">
+            <NButton size="small" @click="showSearchPanel = false">取消</NButton>
+            <NButton type="primary" size="small" :loading="isSearching" @click="executeSearch">查询</NButton>
+          </NSpace>
         </div>
       </template>
     </NModal>
@@ -643,32 +703,13 @@ function isAllButtonPolicy(policy: string | undefined): boolean {
           <NInput :value="editPageForm.pageName || editPageForm.pageCode" disabled />
         </NFormItem>
         <NFormItem label="按钮权限">
-          <div class="w-full">
-            <NCheckbox :checked="isAllButtons" @update:checked="toggleAllButtons">
-              全部按钮
-            </NCheckbox>
-            <div v-if="!isAllButtons" class="button-select-list mt-2">
-              <template v-if="loadingButtons">
-                <span class="text-gray-400 text-xs">加载中...</span>
-              </template>
-              <template v-else-if="pageButtons.length === 0">
-                <span class="text-gray-400 text-xs">该页面暂无按钮配置</span>
-              </template>
+          <div class="button-policy-section">
+            <NCheckbox :checked="isAllButtons" @update:checked="toggleAllButtons">全部按钮</NCheckbox>
+            <div v-if="!isAllButtons" class="button-select-list">
+              <template v-if="loadingButtons"><span class="loading-text">加载中...</span></template>
+              <template v-else-if="pageButtons.length === 0"><span class="empty-text-small">该页面暂无按钮配置</span></template>
               <template v-else>
-                <NCheckbox
-                  v-for="btn in pageButtons"
-                  :key="btn.buttonKey"
-                  :checked="selectedButtons.includes(btn.buttonKey)"
-                  @update:checked="(checked: boolean) => {
-                    if (checked) {
-                      selectedButtons.push(btn.buttonKey);
-                    } else {
-                      selectedButtons = selectedButtons.filter(k => k !== btn.buttonKey);
-                    }
-                  }"
-                >
-                  {{ btn.buttonLabel }}
-                </NCheckbox>
+                <NCheckbox v-for="btn in pageButtons" :key="btn.buttonKey" :checked="selectedButtons.includes(btn.buttonKey)" @update:checked="(checked: boolean) => { if (checked) { selectedButtons.push(btn.buttonKey); } else { selectedButtons = selectedButtons.filter(k => k !== btn.buttonKey); } }">{{ btn.buttonLabel }}</NCheckbox>
               </template>
             </div>
           </div>
@@ -678,64 +719,9 @@ function isAllButtonPolicy(policy: string | undefined): boolean {
         </NFormItem>
       </NForm>
       <template #footer>
-        <div class="flex justify-end gap-2">
+        <div class="modal-footer">
           <NButton size="small" @click="showEditPageModal = false">取消</NButton>
           <NButton type="primary" size="small" :loading="editingPage" @click="handleUpdatePage">确定</NButton>
-        </div>
-      </template>
-    </NModal>
-
-    <!-- 查询面板 -->
-    <NModal v-model:show="showSearchPanel" preset="card" class="w-560px">
-      <template #header>
-        <div class="flex items-center justify-between w-full pr-8">
-          <span>查询条件</span>
-          <NPopover trigger="click" placement="bottom-end">
-            <template #trigger>
-              <NButton quaternary circle size="small">
-                <template #icon><Icon icon="mdi:cog-outline" /></template>
-              </NButton>
-            </template>
-            <div class="field-settings">
-              <div class="text-xs text-gray-400 mb-2">显示字段</div>
-              <div v-for="cond in searchConditions" :key="cond.field" class="field-setting-item">
-                <NCheckbox v-model:checked="cond.visible" size="small">
-                  {{ cond.fieldLabel }}
-                </NCheckbox>
-              </div>
-            </div>
-          </NPopover>
-        </div>
-      </template>
-      <div class="search-condition-list">
-        <div v-for="cond in visibleConditions" :key="cond.field" class="search-condition-row">
-          <NCheckbox v-model:checked="cond.enabled" class="w-100px">
-            {{ cond.fieldLabel }}
-          </NCheckbox>
-          <NSelect
-            v-model:value="cond.operator"
-            :options="operatorOptions"
-            size="small"
-            class="w-100px"
-          />
-          <NInput
-            v-model:value="cond.value"
-            size="small"
-            class="flex-1"
-            :placeholder="cond.operator === 'in' ? '多个值用逗号分隔' : '请输入'"
-            @input="() => { if (cond.value) cond.enabled = true }"
-            @keyup.enter="executeSearch"
-          />
-        </div>
-        <NEmpty v-if="visibleConditions.length === 0" description="请在设置中选择要显示的字段" size="small" />
-      </div>
-      <template #footer>
-        <div class="flex justify-between">
-          <NButton size="small" @click="clearSearch">重置</NButton>
-          <NSpace :size="8">
-            <NButton size="small" @click="showSearchPanel = false">取消</NButton>
-            <NButton type="primary" size="small" :loading="isSearching" @click="executeSearch">查询</NButton>
-          </NSpace>
         </div>
       </template>
     </NModal>
@@ -746,114 +732,83 @@ function isAllButtonPolicy(policy: string | undefined): boolean {
 .permission-page {
   display: flex;
   height: 100%;
-  gap: 16px;
-  padding: 16px;
   background: #f5f7fa;
 }
 
 /* 左侧角色面板 */
 .role-panel {
   width: 280px;
-  flex-shrink: 0;
+  min-width: 280px;
   background: #fff;
-  border-radius: 8px;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  border-right: 1px solid #e8e8e8;
 }
 
 .panel-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px;
+  padding: 16px 16px 12px;
   border-bottom: 1px solid #f0f0f0;
 }
 
 .panel-title {
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 600;
-  color: #1f2937;
+  color: #333;
 }
 
-.search-box {
-  padding: 0 16px 12px;
+.panel-toolbar {
+  display: flex;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid #f0f0f0;
 }
 
 .filter-tags {
-  padding: 8px 16px;
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
+  padding: 8px 16px;
+  background: #fafafa;
+  border-bottom: 1px solid #f0f0f0;
   align-items: center;
-  background: #fef9c3;
-  border-bottom: 1px solid #fde047;
-}
-
-.dark .filter-tags {
-  background: #422006;
-  border-color: #854d0e;
-}
-
-.search-condition-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.search-condition-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.field-settings {
-  min-width: 120px;
-}
-
-.field-setting-item {
-  padding: 4px 0;
-}
-
-.button-select-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 16px;
-  padding: 8px;
-  background: #f9fafb;
-  border-radius: 4px;
-  max-height: 200px;
-  overflow-y: auto;
-}
-
-.dark .button-select-list {
-  background: #374151;
 }
 
 .role-list {
   flex: 1;
-  padding: 0 12px 12px;
+  padding: 8px;
 }
 
 .role-card {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 12px;
   padding: 12px;
   margin-bottom: 8px;
-  border-radius: 6px;
+  border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s;
-  border: 1px solid transparent;
 }
 
 .role-card:hover {
-  background: #f9fafb;
+  background: #f5f5f5;
 }
 
 .role-card.active {
-  background: #eff6ff;
-  border-color: #3b82f6;
+  background: #e6f7ff;
+  border: 1px solid #91d5ff;
+}
+
+.role-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 18px;
+  font-weight: 600;
+  flex-shrink: 0;
 }
 
 .role-info {
@@ -864,49 +819,101 @@ function isAllButtonPolicy(policy: string | undefined): boolean {
 .role-name {
   font-size: 14px;
   font-weight: 500;
-  color: #1f2937;
-  white-space: nowrap;
+  color: #333;
+  margin-bottom: 2px;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .role-code {
   font-size: 12px;
-  color: #9ca3af;
-  margin-top: 2px;
+  color: #999;
 }
 
-.role-actions {
-  display: flex;
-  gap: 2px;
+.role-menu-btn {
   opacity: 0;
   transition: opacity 0.2s;
 }
 
-.role-card:hover .role-actions {
+.role-card:hover .role-menu-btn {
   opacity: 1;
+}
+
+.role-menu {
+  min-width: 100px;
+}
+
+.role-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 13px;
+  color: #333;
+}
+
+.role-menu-item:hover {
+  background: #f5f5f5;
+}
+
+.role-menu-item.danger {
+  color: #ff4d4f;
+}
+
+.role-menu-item.danger:hover {
+  background: #fff1f0;
+}
+
+/* 分隔线 */
+.panel-divider {
+  width: 12px;
+  background: #f0f0f0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.divider-btn {
+  width: 16px;
+  height: 40px;
+  background: #e8e8e8;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #999;
 }
 
 /* 右侧详情面板 */
 .detail-panel {
   flex: 1;
   background: #fff;
-  border-radius: 8px;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-  overflow: hidden;
+  min-width: 0;
 }
 
 .detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   padding: 16px 20px;
   border-bottom: 1px solid #f0f0f0;
 }
 
-.selected-role-info {
+.header-left {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+.role-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #333;
 }
 
 .detail-tabs {
@@ -923,88 +930,103 @@ function isAllButtonPolicy(policy: string | undefined): boolean {
   flex: 1;
   display: flex;
   flex-direction: column;
-  padding: 0 !important;
+  padding: 0;
 }
 
-.tab-label {
+.tab-header {
   display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.tab-toolbar {
+  justify-content: flex-end;
   padding: 12px 20px;
-  border-bottom: 1px solid #f5f5f5;
+  border-bottom: 1px solid #f0f0f0;
 }
 
-.data-list {
+.tab-content {
   flex: 1;
-  padding: 8px 12px;
-  overflow-y: auto;
+  padding: 16px 20px;
+  overflow: auto;
 }
 
-.data-item {
+/* 权限区块 */
+.permission-section {
+  margin-bottom: 16px;
+}
+
+.section-header {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 12px;
-  border-radius: 6px;
-  transition: background 0.2s;
+  justify-content: space-between;
+  margin-bottom: 12px;
 }
 
-.data-item:hover {
-  background: #f9fafb;
-}
-
-.item-avatar {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: #eff6ff;
-  color: #3b82f6;
+.section-title {
   display: flex;
   align-items: center;
-  justify-content: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #333;
 }
 
-.item-avatar.page {
+.title-bar {
+  width: 3px;
+  height: 14px;
+  background: #1890ff;
+  border-radius: 2px;
+}
+
+.tree-container {
+  border: 1px solid #e8e8e8;
   border-radius: 8px;
-  background: #f0fdf4;
-  color: #22c55e;
+  padding: 12px;
+  max-height: 300px;
+  overflow: auto;
+}
+
+/* 已授权列表 */
+.authorized-list {
+  border: 1px solid #e8e8e8;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.authorized-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.authorized-item:last-child {
+  border-bottom: none;
+}
+
+.authorized-item:hover {
+  background: #fafafa;
 }
 
 .item-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.item-title {
-  font-size: 14px;
-  color: #1f2937;
-}
-
-.item-desc {
-  font-size: 12px;
-  color: #9ca3af;
-  margin-top: 1px;
-}
-
-.item-tags {
   display: flex;
-  gap: 4px;
+  align-items: center;
+  gap: 8px;
+}
+
+.item-icon {
+  color: #1890ff;
+  font-size: 16px;
+}
+
+.item-name {
+  font-size: 13px;
+  color: #333;
 }
 
 .item-actions {
   display: flex;
-  gap: 2px;
-  opacity: 0;
-  transition: opacity 0.2s;
+  gap: 8px;
 }
 
-.data-item:hover .item-actions {
-  opacity: 1;
-}
-
+/* 空状态 */
 .empty-state {
   flex: 1;
   display: flex;
@@ -1013,35 +1035,103 @@ function isAllButtonPolicy(policy: string | undefined): boolean {
   justify-content: center;
 }
 
-/* 暗色模式 */
-.dark .permission-page {
-  background: #111827;
+.empty-icon {
+  font-size: 60px;
+  color: #d1d5db;
 }
 
-.dark .role-panel,
-.dark .detail-panel {
-  background: #1f2937;
+.empty-text {
+  color: #9ca3af;
+  margin-top: 16px;
 }
 
-.dark .panel-header,
-.dark .detail-header,
-.dark .tab-toolbar {
-  border-color: #374151;
+/* 弹窗 */
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
-.dark .panel-title,
-.dark .role-name,
-.dark .item-title {
-  color: #f3f4f6;
+/* 查询面板 */
+.search-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding-right: 32px;
 }
 
-.dark .role-card:hover,
-.dark .data-item:hover {
-  background: #374151;
+.search-condition-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
-.dark .role-card.active {
-  background: #1e3a5f;
-  border-color: #3b82f6;
+.search-condition-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.condition-label {
+  width: 100px;
+}
+
+.condition-operator {
+  width: 100px;
+}
+
+.condition-value {
+  flex: 1;
+}
+
+.search-footer {
+  display: flex;
+  justify-content: space-between;
+}
+
+/* 字段设置 */
+.field-settings {
+  min-width: 140px;
+}
+
+.settings-title {
+  font-size: 12px;
+  color: #9ca3af;
+  margin-bottom: 8px;
+}
+
+.field-setting-item {
+  padding: 4px 0;
+}
+
+/* 按钮权限 */
+.button-policy-section {
+  width: 100%;
+}
+
+.button-select-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px;
+  background: #fafafa;
+  border-radius: 4px;
+  margin-top: 8px;
+}
+
+.loading-text,
+.empty-text-small {
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+/* 工具类 */
+.mt-4 {
+  margin-top: 16px;
+}
+
+.mt-8 {
+  margin-top: 32px;
 }
 </style>
