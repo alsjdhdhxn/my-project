@@ -31,7 +31,7 @@ UPDATE T_COST_PAGE_RULE SET RULE_TYPE = 'BUTTON', RULES = '{"items":[{"action":"
 WHERE ID = 279;
 
 -- 6. user-manage masterGrid (ID=13)
-UPDATE T_COST_PAGE_RULE SET RULE_TYPE = 'BUTTON', RULES = '{"items":[{"action":"addRow"},{"action":"deleteRow","requiresRow":true},{"type":"separator"},{"action":"save"}]}'
+UPDATE T_COST_PAGE_RULE SET RULE_TYPE = 'BUTTON', RULES = '{"items":[{"action":"addRow"},{"action":"deleteRow","requiresRow":true},{"action":"resetPassword","label":"初始化密码","position":"toolbar","requiresRow":true,"method":"userService.resetPassword"},{"action":"save"}]}'
 WHERE ID = 13;
 
 -- 7. dept-manage masterGrid (ID=15)

@@ -82,7 +82,8 @@ public class MetadataService {
             Long userId,
             boolean applyUserPreferences) {
         TableMetadataDTO base = getTableMetadata(tableCode);
-        List<ColumnMetadataDTO> columns = applyColumnOverrides(base.columns(), pageCode, gridKey);
+        // COLUMN_OVERRIDE 规则已在 getPageComponents 中返回，由前端应用
+        List<ColumnMetadataDTO> columns = base.columns();
         columns = applyPermission(columns, permission);
         if (applyUserPreferences) {
             columns = applyUserPreferences(columns, userId, pageCode, gridKey);
@@ -500,7 +501,6 @@ public class MetadataService {
         List<PageRule> rules = pageRuleMapper.selectList(
                 new LambdaQueryWrapper<PageRule>()
                         .eq(PageRule::getPageCode, pageCode)
-                        .eq(PageRule::getDeleted, 0)
                         .orderByAsc(PageRule::getSortOrder));
         return rules.stream().map(PageRuleDTO::from).toList();
     }

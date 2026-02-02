@@ -7,6 +7,7 @@ import com.cost.costserver.auth.mapper.*;
 import com.cost.costserver.common.BusinessException;
 import com.cost.costserver.dynamic.mapper.DynamicMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,6 +18,7 @@ import java.util.stream.Collectors;
 /**
  * 权限管理服务（硬编码页面专用）
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class RoleManageService {
@@ -334,42 +336,68 @@ public class RoleManageService {
 
     public List<PageButtonVO> listPageButtons(String pageCode) {
         // 从页面规则表查询 BUTTON 类型的按钮配置
+        // 通过 T_COST_PAGE_COMPONENT.REF_TABLE_CODE 关联 T_COST_TABLE_METADATA 获取表中文名
         List<Map<String, Object>> rules = dynamicMapper.selectList(
-            "SELECT COMPONENT_KEY, RULES FROM T_COST_PAGE_RULE " +
-            "WHERE PAGE_CODE = '" + pageCode.replace("'", "''") + "' " +
-            "AND RULE_TYPE = 'BUTTON' AND DELETED = 0 " +
-            "ORDER BY SORT_ORDER"
+            "SELECT r.COMPONENT_KEY, r.RULES, m.TABLE_NAME " +
+            "FROM T_COST_PAGE_RULE r " +
+            "LEFT JOIN T_COST_PAGE_COMPONENT c ON r.PAGE_CODE = c.PAGE_CODE AND r.COMPONENT_KEY = c.COMPONENT_KEY AND c.DELETED = 0 " +
+            "LEFT JOIN T_COST_TABLE_METADATA m ON c.REF_TABLE_CODE = m.TABLE_CODE " +
+            "WHERE r.PAGE_CODE = '" + pageCode.replace("'", "''") + "' " +
+            "AND r.RULE_TYPE = 'BUTTON' AND r.DELETED = 0 " +
+            "ORDER BY r.SORT_ORDER"
         );
         
         List<PageButtonVO> result = new ArrayList<>();
         for (Map<String, Object> rule : rules) {
             Object rulesObj = rule.get("RULES");
-            String rulesJson = rulesObj != null ? rulesObj.toString() : null;
+            String rulesJson = convertClobToString(rulesObj);
             if (rulesJson == null || rulesJson.isEmpty()) continue;
+            
+            // 获取表中文名，如果没有则用 COMPONENT_KEY
+            Object tableNameObj = rule.get("TABLE_NAME");
+            String tableName = tableNameObj != null ? tableNameObj.toString() : 
+                               (rule.get("COMPONENT_KEY") != null ? rule.get("COMPONENT_KEY").toString() : "");
             
             try {
                 cn.hutool.json.JSONObject json = cn.hutool.json.JSONUtil.parseObj(rulesJson);
                 cn.hutool.json.JSONArray items = json.getJSONArray("items");
                 if (items == null) continue;
                 
-                extractButtonsWithPosition(items, result);
+                extractButtonsWithTableName(items, result, tableName);
             } catch (Exception e) {
-                // ignore parse error
+                log.warn("解析按钮配置失败, pageCode={}, json={}, error={}", pageCode, rulesJson, e.getMessage());
             }
         }
         return result;
     }
     
     /**
-     * 从新格式 BUTTON 规则中提取按钮（根据 position 字段）
+     * 将CLOB或其他类型转换为字符串
      */
-    private void extractButtonsWithPosition(cn.hutool.json.JSONArray items, List<PageButtonVO> result) {
+    private String convertClobToString(Object obj) {
+        if (obj == null) return null;
+        if (obj instanceof String) return (String) obj;
+        if (obj instanceof java.sql.Clob) {
+            try {
+                java.sql.Clob clob = (java.sql.Clob) obj;
+                return clob.getSubString(1, (int) clob.length());
+            } catch (Exception e) {
+                log.warn("读取CLOB失败: {}", e.getMessage());
+                return null;
+            }
+        }
+        return obj.toString();
+    }
+    
+    /**
+     * 从按钮规则中提取按钮，使用表名作为前缀
+     */
+    private void extractButtonsWithTableName(cn.hutool.json.JSONArray items, List<PageButtonVO> result, String tableName) {
         for (int i = 0; i < items.size(); i++) {
             cn.hutool.json.JSONObject item = items.getJSONObject(i);
             String action = item.getStr("action");
             String type = item.getStr("type");
             String label = item.getStr("label");
-            String position = item.getStr("position");
             
             // 跳过分隔符
             if ("separator".equals(type)) continue;
@@ -377,27 +405,18 @@ public class RoleManageService {
             // 处理子菜单（如"导出"下拉菜单）
             cn.hutool.json.JSONArray subItems = item.getJSONArray("items");
             if (subItems != null && !subItems.isEmpty()) {
-                // 递归处理子菜单
-                extractButtonsWithPosition(subItems, result);
+                extractButtonsWithTableName(subItems, result, tableName);
                 continue;
             }
             
             // 有 action 的才是按钮
             if (action == null) continue;
             
-            // 根据 position 确定按钮类型，默认是 context
-            String buttonType;
-            if ("toolbar".equals(position)) {
-                buttonType = "页面按钮";
-            } else if ("both".equals(position)) {
-                buttonType = "通用按钮";
-            } else {
-                buttonType = "菜单按钮";
-            }
-            
             PageButtonVO vo = new PageButtonVO();
             vo.setButtonKey(action);
-            vo.setButtonLabel("[" + buttonType + "] " + (label != null ? label : action));
+            // 格式：表名.按钮名
+            String buttonLabel = label != null ? label : action;
+            vo.setButtonLabel(tableName.isEmpty() ? buttonLabel : tableName + "." + buttonLabel);
             result.add(vo);
         }
     }
