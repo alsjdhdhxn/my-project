@@ -7,6 +7,7 @@ import com.cost.costserver.dynamic.action.ActionHandler;
 import com.cost.costserver.dynamic.action.ActionResult;
 import com.cost.costserver.dynamic.action.ActionRule;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Component;
 
@@ -14,6 +15,7 @@ import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.Map;
 
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class JavaActionExecutor implements ActionExecutor {
@@ -70,7 +72,16 @@ public class JavaActionExecutor implements ActionExecutor {
             throw new BusinessException(400, "方法返回值类型必须是 ActionResult: " + methodRef);
         } catch (BusinessException e) {
             throw e;
+        } catch (java.lang.reflect.InvocationTargetException e) {
+            Throwable cause = e.getCause();
+            log.error("执行方法失败: {}", methodRef, cause);
+            if (cause instanceof BusinessException be) {
+                throw be;
+            }
+            String msg = cause != null ? cause.getMessage() : e.getMessage();
+            throw new BusinessException(500, msg != null ? msg : "执行方法失败");
         } catch (Exception e) {
+            log.error("执行执行器方法失败: {}", methodRef, e);
             throw new BusinessException(500, "执行执行器方法失败: " + e.getMessage());
         }
     }

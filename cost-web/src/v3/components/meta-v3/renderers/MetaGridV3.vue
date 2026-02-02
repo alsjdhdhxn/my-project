@@ -108,6 +108,11 @@ async function handleToolbarClick(item: any) {
     console.warn('[MetaGridV3] executeAction not found in runtime');
     return;
   }
+
+  // 获取选中行（和右键菜单一样）
+  const api = (props.runtime as any)?.masterGridApi?.value;
+  const selectedRows = api?.getSelectedRows?.() || [];
+  const row = selectedRows[0] || null;
   
   // 如果有确认提示
   if (item.confirm) {
@@ -117,13 +122,13 @@ async function handleToolbarClick(item: any) {
       positiveText: '确定',
       negativeText: '取消',
       onPositiveClick: async () => {
-        await executeAction(item.action);
+        await executeAction(item.action, { data: row || {}, selectedRow: row });
       }
     });
     return;
   }
   
-  await executeAction(item.action);
+  await executeAction(item.action, { data: row || {}, selectedRow: row });
 }
 
 function toCssSize(value: string | number | undefined) {

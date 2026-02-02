@@ -93,7 +93,7 @@ public class SqlLogInterceptor implements Interceptor {
         if (parameterObject instanceof String || 
             parameterObject instanceof Number ||
             parameterObject instanceof Boolean) {
-            return sql.replaceFirst("\\?", formatValue(parameterObject));
+            return sql.replaceFirst("\\?", java.util.regex.Matcher.quoteReplacement(formatValue(parameterObject)));
         }
         
         // 逐个替换?
@@ -109,7 +109,7 @@ public class SqlLogInterceptor implements Interceptor {
                 value = getPropertyValue(parameterObject, propertyName);
             }
             
-            sql = sql.replaceFirst("\\?", formatValue(value));
+            sql = sql.replaceFirst("\\?", java.util.regex.Matcher.quoteReplacement(formatValue(value)));
         }
         
         return sql;

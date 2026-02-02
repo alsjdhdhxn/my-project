@@ -124,6 +124,7 @@ public class PageRuleActionService {
         // 确定类型和内容
         String sql = (String) item.get("sql");
         String handler = (String) item.get("handler");
+        String method = (String) item.get("method");
         String procedure = (String) item.get("procedure");
 
         if (StrUtil.isNotBlank(sql)) {
@@ -132,6 +133,9 @@ public class PageRuleActionService {
         } else if (StrUtil.isNotBlank(handler)) {
             rule.setType("java");
             rule.setHandler(handler);
+        } else if (StrUtil.isNotBlank(method)) {
+            rule.setType("java");
+            rule.setMethod(method);
         } else if (StrUtil.isNotBlank(procedure)) {
             rule.setType("proc");
             rule.setProcedure(procedure);
