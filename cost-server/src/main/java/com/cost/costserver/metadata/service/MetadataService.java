@@ -543,9 +543,12 @@ public class MetadataService {
      * 过滤组件中的按钮（根据用户权限）
      */
     private PageComponentDTO filterButtonsInComponent(PageComponentDTO dto, Set<String> allowedButtons, Map<String, String> tableNameMap) {
-        if (allowedButtons == null || allowedButtons.isEmpty() || allowedButtons.contains("*")) {
-            return dto; // 无权限限制或全部权限
+        // null 表示不过滤（如 admin 用户或未传入权限）
+        // 包含 "*" 表示全部权限
+        if (allowedButtons == null || allowedButtons.contains("*")) {
+            return dto;
         }
+        // 空集合表示没有任何按钮权限，需要过滤掉所有按钮
         
         String config = dto.componentConfig();
         if (StrUtil.isBlank(config)) {
