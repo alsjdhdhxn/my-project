@@ -464,6 +464,13 @@ public class MetadataService {
      * 获取页面组件树
      */
     public List<PageComponentDTO> getPageComponents(String pageCode) {
+        return getPageComponents(pageCode, null);
+    }
+    
+    /**
+     * 获取页面组件树（带权限过滤）
+     */
+    public List<PageComponentDTO> getPageComponents(String pageCode, Set<String> allowedButtons) {
         List<PageComponent> components = pageComponentMapper.selectList(
                 new LambdaQueryWrapper<PageComponent>()
                         .eq(PageComponent::getPageCode, pageCode)
@@ -472,18 +479,154 @@ public class MetadataService {
         Map<String, List<PageRuleDTO>> rulesByComponent = getPageRules(pageCode).stream()
                 .filter(rule -> StrUtil.isNotBlank(rule.componentKey()))
                 .collect(Collectors.groupingBy(PageRuleDTO::componentKey));
+        
+        // 构建 tableCode -> tableName 映射
+        Map<String, String> tableNameMap = buildTableNameMap(components);
 
         // 构建树形结构
         Map<String, List<PageComponentDTO>> childrenMap = components.stream()
                 .filter(c -> StrUtil.isNotBlank(c.getParentKey()))
                 .map(component -> toDTOWithRules(component, rulesByComponent))
+                .map(dto -> filterButtonsInComponent(dto, allowedButtons, tableNameMap))
                 .collect(Collectors.groupingBy(PageComponentDTO::parentKey));
 
         return components.stream()
                 .filter(c -> StrUtil.isBlank(c.getParentKey()))
                 .map(component -> toDTOWithRules(component, rulesByComponent))
+                .map(dto -> filterButtonsInComponent(dto, allowedButtons, tableNameMap))
                 .map(dto -> buildTree(dto, childrenMap))
                 .toList();
+    }
+    
+    /**
+     * 构建 tableCode -> tableName 映射
+     */
+    private Map<String, String> buildTableNameMap(List<PageComponent> components) {
+        Set<String> tableCodes = new HashSet<>();
+        for (PageComponent c : components) {
+            if (StrUtil.isNotBlank(c.getRefTableCode())) {
+                tableCodes.add(c.getRefTableCode());
+            }
+            // 从 TABS 组件的 config 中提取 tableCode
+            if ("TABS".equalsIgnoreCase(c.getComponentType()) && StrUtil.isNotBlank(c.getComponentConfig())) {
+                try {
+                    cn.hutool.json.JSONObject config = cn.hutool.json.JSONUtil.parseObj(c.getComponentConfig());
+                    cn.hutool.json.JSONArray tabs = config.getJSONArray("tabs");
+                    if (tabs != null) {
+                        for (int i = 0; i < tabs.size(); i++) {
+                            String tableCode = tabs.getJSONObject(i).getStr("tableCode");
+                            if (StrUtil.isNotBlank(tableCode)) {
+                                tableCodes.add(tableCode);
+                            }
+                        }
+                    }
+                } catch (Exception ignored) {}
+            }
+        }
+        
+        if (tableCodes.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        
+        List<TableMetadata> tables = tableMetadataMapper.selectList(
+                new LambdaQueryWrapper<TableMetadata>()
+                        .in(TableMetadata::getTableCode, tableCodes));
+        
+        Map<String, String> map = new HashMap<>();
+        for (TableMetadata t : tables) {
+            map.put(t.getTableCode(), t.getTableName());
+        }
+        return map;
+    }
+    
+    /**
+     * 过滤组件中的按钮（根据用户权限）
+     */
+    private PageComponentDTO filterButtonsInComponent(PageComponentDTO dto, Set<String> allowedButtons, Map<String, String> tableNameMap) {
+        if (allowedButtons == null || allowedButtons.isEmpty() || allowedButtons.contains("*")) {
+            return dto; // 无权限限制或全部权限
+        }
+        
+        String config = dto.componentConfig();
+        if (StrUtil.isBlank(config)) {
+            return dto;
+        }
+        
+        try {
+            cn.hutool.json.JSONObject configJson = cn.hutool.json.JSONUtil.parseObj(config);
+            boolean modified = false;
+            
+            // 处理 GRID 组件的 buttons - 使用表的中文名作为 groupName
+            if (configJson.containsKey("buttons")) {
+                String tableName = tableNameMap.get(dto.refTableCode());
+                cn.hutool.json.JSONArray buttons = configJson.getJSONArray("buttons");
+                cn.hutool.json.JSONArray filteredButtons = filterButtons(buttons, allowedButtons, tableName);
+                configJson.set("buttons", filteredButtons);
+                modified = true;
+            }
+            
+            // 处理 TABS 组件的 tabs[].buttons - 使用 tab 的 title 作为 groupName
+            if (configJson.containsKey("tabs")) {
+                cn.hutool.json.JSONArray tabs = configJson.getJSONArray("tabs");
+                for (int i = 0; i < tabs.size(); i++) {
+                    cn.hutool.json.JSONObject tab = tabs.getJSONObject(i);
+                    String tabTitle = tab.getStr("title");
+                    if (tab.containsKey("buttons")) {
+                        cn.hutool.json.JSONArray buttons = tab.getJSONArray("buttons");
+                        cn.hutool.json.JSONArray filteredButtons = filterButtons(buttons, allowedButtons, tabTitle);
+                        tab.set("buttons", filteredButtons);
+                        modified = true;
+                    }
+                }
+            }
+            
+            if (modified) {
+                return dto.withComponentConfig(configJson.toString());
+            }
+        } catch (Exception e) {
+            log.warn("过滤按钮失败, componentKey={}, error={}", dto.componentKey(), e.getMessage());
+        }
+        
+        return dto;
+    }
+    
+    /**
+     * 过滤按钮数组
+     */
+    private cn.hutool.json.JSONArray filterButtons(cn.hutool.json.JSONArray buttons, Set<String> allowedButtons, String groupName) {
+        cn.hutool.json.JSONArray result = new cn.hutool.json.JSONArray();
+        for (int i = 0; i < buttons.size(); i++) {
+            cn.hutool.json.JSONObject btn = buttons.getJSONObject(i);
+            String action = btn.getStr("action");
+            String type = btn.getStr("type");
+            
+            // 保留分隔符
+            if ("separator".equals(type)) {
+                result.add(btn);
+                continue;
+            }
+            
+            // 处理子菜单
+            if (btn.containsKey("items")) {
+                cn.hutool.json.JSONArray subItems = btn.getJSONArray("items");
+                cn.hutool.json.JSONArray filteredSubItems = filterButtons(subItems, allowedButtons, groupName);
+                if (!filteredSubItems.isEmpty()) {
+                    cn.hutool.json.JSONObject newBtn = new cn.hutool.json.JSONObject(btn);
+                    newBtn.set("items", filteredSubItems);
+                    result.add(newBtn);
+                }
+                continue;
+            }
+            
+            // 检查权限
+            if (action != null) {
+                String fullKey = groupName != null ? groupName + ":" + action : action;
+                if (allowedButtons.contains(fullKey) || allowedButtons.contains(action)) {
+                    result.add(btn);
+                }
+            }
+        }
+        return result;
     }
 
     private PageComponentDTO buildTree(PageComponentDTO node, Map<String, List<PageComponentDTO>> childrenMap) {

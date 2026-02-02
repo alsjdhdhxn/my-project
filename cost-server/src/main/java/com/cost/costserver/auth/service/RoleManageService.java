@@ -6,6 +6,8 @@ import com.cost.costserver.auth.entity.*;
 import com.cost.costserver.auth.mapper.*;
 import com.cost.costserver.common.BusinessException;
 import com.cost.costserver.dynamic.mapper.DynamicMapper;
+import com.cost.costserver.export.entity.ExportConfig;
+import com.cost.costserver.export.mapper.ExportConfigMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
@@ -29,6 +31,7 @@ public class RoleManageService {
     private final UserMapper userMapper;
     private final ResourceMapper resourceMapper;
     private final DynamicMapper dynamicMapper;
+    private final ExportConfigMapper exportConfigMapper;
 
     // ==================== 角色管理 ====================
 
@@ -383,6 +386,10 @@ public class RoleManageService {
                     pageCode, comp.get("COMPONENT_KEY"), e.getMessage());
             }
         }
+        
+        // 添加导出配置到按钮列表
+        addExportConfigsToButtons(pageCode, result);
+        
         return result;
     }
     
@@ -431,6 +438,20 @@ public class RoleManageService {
             vo.setButtonKey(action);
             vo.setButtonLabel(label != null ? label : action);
             vo.setGroupName(tableName);
+            result.add(vo);
+        }
+    }
+    
+    /**
+     * 添加导出配置到按钮列表
+     */
+    private void addExportConfigsToButtons(String pageCode, List<PageButtonVO> result) {
+        List<ExportConfig> exportConfigs = exportConfigMapper.findByPageCode(pageCode);
+        for (ExportConfig config : exportConfigs) {
+            PageButtonVO vo = new PageButtonVO();
+            vo.setButtonKey(config.getExportCode());  // 直接用 exportCode
+            vo.setButtonLabel(config.getExportName());
+            vo.setGroupName("自定义导出");
             result.add(vo);
         }
     }

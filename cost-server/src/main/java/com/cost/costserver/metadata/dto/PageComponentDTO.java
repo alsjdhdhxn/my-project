@@ -48,4 +48,11 @@ public record PageComponentDTO(
             componentConfig, refTableCode, slotName, sortOrder, description, rules, children
         );
     }
+    
+    public PageComponentDTO withComponentConfig(String componentConfig) {
+        return new PageComponentDTO(
+            id, pageCode, componentKey, componentType, parentKey,
+            componentConfig, refTableCode, slotName, sortOrder, description, rules, children
+        );
+    }
 }

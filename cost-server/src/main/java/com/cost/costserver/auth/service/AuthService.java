@@ -17,9 +17,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -73,19 +71,7 @@ public class AuthService {
         List<Role> roles = roleMapper.selectByUserId(userId);
         List<String> roleCodes = roles.stream().map(Role::getRoleCode).toList();
 
-        // 查询用户按钮权限
-        List<RolePage> rolePages = rolePageMapper.selectByUserId(userId);
-        Set<String> buttons = new HashSet<>();
-        for (RolePage rp : rolePages) {
-            if (rp.getButtonPolicy() != null) {
-                JSONArray arr = JSONUtil.parseArray(rp.getButtonPolicy());
-                for (Object item : arr) {
-                    buttons.add(item.toString());
-                }
-            }
-        }
-
-        return new UserInfo(userId.toString(), username, roleCodes, buttons);
+        return new UserInfo(userId.toString(), username, roleCodes);
     }
 
     /**

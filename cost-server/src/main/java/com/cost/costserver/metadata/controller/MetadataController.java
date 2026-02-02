@@ -52,7 +52,17 @@ public class MetadataController {
     @Operation(summary = "获取页面组件树")
     @GetMapping("/page/{pageCode}")
     public Result<List<PageComponentDTO>> getPageComponents(@PathVariable String pageCode) {
-        return Result.ok(metadataService.getPageComponents(pageCode));
+        Long userId = SecurityUtils.getCurrentUserId();
+        if (userId == null) {
+            // 未登录用户返回不带按钮过滤的组件
+            return Result.ok(metadataService.getPageComponents(pageCode));
+        }
+        PagePermission permission = permissionService.getPagePermission(userId, pageCode);
+        if (permission == null) {
+            // 无页面权限，返回不带按钮的组件
+            return Result.ok(metadataService.getPageComponents(pageCode, java.util.Collections.emptySet()));
+        }
+        return Result.ok(metadataService.getPageComponents(pageCode, permission.buttons()));
     }
 
     @Operation(summary = "获取字典项")

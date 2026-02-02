@@ -74,6 +74,17 @@ public class CustomExportService {
     }
 
     /**
+     * 根据导出编码获取导出配置（简单信息，用于权限校验）
+     */
+    public CustomExportConfigDTO getExportConfigByCode(String exportCode) {
+        ExportConfig config = exportConfigMapper.findByCode(exportCode);
+        if (config == null) {
+            return null;
+        }
+        return toSimpleDTO(config);
+    }
+
+    /**
      * 执行自定义导出
      */
     public void export(String exportCode, CustomExportRequest request, HttpServletResponse response) {
