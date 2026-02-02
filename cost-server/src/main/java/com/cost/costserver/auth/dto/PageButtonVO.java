@@ -6,4 +6,5 @@ import lombok.Data;
 public class PageButtonVO {
     private String buttonKey;
     private String buttonLabel;
+    private String groupName;
 }

@@ -115,6 +115,42 @@ function collectComponentKeysByType(components: PageComponentWithRules[], type: 
   return keys;
 }
 
+/**
+ * 根据 componentKey 查找组件
+ */
+function findComponentByKey(components: PageComponentWithRules[], key: string): PageComponentWithRules | null {
+  for (const component of components) {
+    if (component.componentKey === key) return component;
+    if (Array.isArray(component.children)) {
+      const found = findComponentByKey(component.children, key);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+/**
+ * 获取组件的 componentConfig
+ */
+function getComponentConfig(components: PageComponentWithRules[], key: string): string | undefined {
+  const component = findComponentByKey(components, key);
+  return component?.componentConfig;
+}
+
+/**
+ * 获取 TABS 组件的 componentConfig（用于读取 tab 的按钮配置）
+ */
+function getTabsComponentConfig(components: PageComponentWithRules[]): string | undefined {
+  for (const component of components) {
+    if (component.componentType === 'TABS') return component.componentConfig;
+    if (Array.isArray(component.children)) {
+      const config = getTabsComponentConfig(component.children);
+      if (config) return config;
+    }
+  }
+  return undefined;
+}
+
 function resolveLayoutKeys(
   components: PageComponentWithRules[],
   rulesByComponent: Map<string, PageRule[]>
@@ -522,11 +558,16 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
     detailCalcRulesByTab.value = {};
     detailContextMenuByTab.value = {};
 
-    masterContextMenu.value = parseContextMenuRule(masterRuleLabel, masterRules);
+    // 获取主表组件配置（用于读取按钮）
+    const masterComponentConfig = getComponentConfig(pageComponents.value || [], resolvedMasterGridKey || 'masterGrid');
+    // 获取 TABS 组件配置（用于读取 tab 的按钮）
+    const tabsComponentConfig = getTabsComponentConfig(pageComponents.value || []);
+
+    masterContextMenu.value = parseContextMenuRule(masterRuleLabel, masterRules, masterComponentConfig);
     masterRowEditableRules.value = parseRowEditableRule(masterRuleLabel, masterRules);
     masterCellEditableRules.value = parseCellEditableRule(masterRuleLabel, masterRules);
     masterRowClassRules.value = parseRowClassRule(masterRuleLabel, masterRules);
-    masterToolbar.value = parseToolbarRule(masterRuleLabel, masterRules);
+    masterToolbar.value = parseToolbarRule(masterRuleLabel, masterRules, masterComponentConfig);
     detailContextMenuDefault.value = null;
 
     const tabsComponentKeys = collectComponentKeysByType(pageComponents.value || [], 'TABS');
@@ -569,7 +610,8 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
         detailCalcRulesByTab.value[tab.key] = compileCalcRules(calcRules, `${pageCode}_${tab.key}`);
       }
 
-      detailContextMenuByTab.value[tab.key] = parseContextMenuRule(tab.key, tabRules) || detailContextMenuDefault.value;
+      // 从 TABS 组件配置中读取 tab 的按钮
+      detailContextMenuByTab.value[tab.key] = parseContextMenuRule(tab.key, tabRules, tabsComponentConfig, tab.key) || detailContextMenuDefault.value;
       detailRowClassRulesByTab.value[tab.key] = parseRowClassRule(tab.key, tabRules);
       detailRowEditableRulesByTab.value[tab.key] = parseRowEditableRule(tab.key, tabRules);
       detailCellEditableRulesByTab.value[tab.key] = parseCellEditableRule(tab.key, tabRules);

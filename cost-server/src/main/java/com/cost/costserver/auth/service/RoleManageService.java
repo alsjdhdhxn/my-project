@@ -335,37 +335,52 @@ public class RoleManageService {
     }
 
     public List<PageButtonVO> listPageButtons(String pageCode) {
-        // 从页面规则表查询 BUTTON 类型的按钮配置
-        // 通过 T_COST_PAGE_COMPONENT.REF_TABLE_CODE 关联 T_COST_TABLE_METADATA 获取表中文名
-        List<Map<String, Object>> rules = dynamicMapper.selectList(
-            "SELECT r.COMPONENT_KEY, r.RULES, m.TABLE_NAME " +
-            "FROM T_COST_PAGE_RULE r " +
-            "LEFT JOIN T_COST_PAGE_COMPONENT c ON r.PAGE_CODE = c.PAGE_CODE AND r.COMPONENT_KEY = c.COMPONENT_KEY AND c.DELETED = 0 " +
+        // 从页面组件表查询按钮配置（按钮现在存在 COMPONENT_CONFIG.buttons 中）
+        List<Map<String, Object>> components = dynamicMapper.selectList(
+            "SELECT c.COMPONENT_KEY, c.COMPONENT_TYPE, c.COMPONENT_CONFIG, c.REF_TABLE_CODE, m.TABLE_NAME " +
+            "FROM T_COST_PAGE_COMPONENT c " +
             "LEFT JOIN T_COST_TABLE_METADATA m ON c.REF_TABLE_CODE = m.TABLE_CODE " +
-            "WHERE r.PAGE_CODE = '" + pageCode.replace("'", "''") + "' " +
-            "AND r.RULE_TYPE = 'BUTTON' AND r.DELETED = 0 " +
-            "ORDER BY r.SORT_ORDER"
+            "WHERE c.PAGE_CODE = '" + pageCode.replace("'", "''") + "' " +
+            "AND c.DELETED = 0 " +
+            "ORDER BY c.SORT_ORDER"
         );
         
         List<PageButtonVO> result = new ArrayList<>();
-        for (Map<String, Object> rule : rules) {
-            Object rulesObj = rule.get("RULES");
-            String rulesJson = convertClobToString(rulesObj);
-            if (rulesJson == null || rulesJson.isEmpty()) continue;
+        for (Map<String, Object> comp : components) {
+            Object configObj = comp.get("COMPONENT_CONFIG");
+            String configJson = convertClobToString(configObj);
+            if (configJson == null || configJson.isEmpty()) continue;
             
-            // 获取表中文名，如果没有则用 COMPONENT_KEY
-            Object tableNameObj = rule.get("TABLE_NAME");
-            String tableName = tableNameObj != null ? tableNameObj.toString() : 
-                               (rule.get("COMPONENT_KEY") != null ? rule.get("COMPONENT_KEY").toString() : "");
+            String componentType = comp.get("COMPONENT_TYPE") != null ? comp.get("COMPONENT_TYPE").toString() : "";
+            Object tableNameObj = comp.get("TABLE_NAME");
+            String tableName = tableNameObj != null ? tableNameObj.toString() : "";
             
             try {
-                cn.hutool.json.JSONObject json = cn.hutool.json.JSONUtil.parseObj(rulesJson);
-                cn.hutool.json.JSONArray items = json.getJSONArray("items");
-                if (items == null) continue;
+                cn.hutool.json.JSONObject config = cn.hutool.json.JSONUtil.parseObj(configJson);
                 
-                extractButtonsWithTableName(items, result, tableName);
+                if ("TABS".equals(componentType)) {
+                    // TABS 组件：从每个 tab 的 buttons 中提取
+                    cn.hutool.json.JSONArray tabs = config.getJSONArray("tabs");
+                    if (tabs != null) {
+                        for (int i = 0; i < tabs.size(); i++) {
+                            cn.hutool.json.JSONObject tab = tabs.getJSONObject(i);
+                            String tabTitle = tab.getStr("title");
+                            cn.hutool.json.JSONArray buttons = tab.getJSONArray("buttons");
+                            if (buttons != null) {
+                                extractButtonsWithTableName(buttons, result, tabTitle != null ? tabTitle : "");
+                            }
+                        }
+                    }
+                } else {
+                    // 其他组件：从 buttons 中提取
+                    cn.hutool.json.JSONArray buttons = config.getJSONArray("buttons");
+                    if (buttons != null) {
+                        extractButtonsWithTableName(buttons, result, tableName);
+                    }
+                }
             } catch (Exception e) {
-                log.warn("解析按钮配置失败, pageCode={}, json={}, error={}", pageCode, rulesJson, e.getMessage());
+                log.warn("解析组件配置失败, pageCode={}, componentKey={}, error={}", 
+                    pageCode, comp.get("COMPONENT_KEY"), e.getMessage());
             }
         }
         return result;
@@ -414,9 +429,8 @@ public class RoleManageService {
             
             PageButtonVO vo = new PageButtonVO();
             vo.setButtonKey(action);
-            // 格式：表名.按钮名
-            String buttonLabel = label != null ? label : action;
-            vo.setButtonLabel(tableName.isEmpty() ? buttonLabel : tableName + "." + buttonLabel);
+            vo.setButtonLabel(label != null ? label : action);
+            vo.setGroupName(tableName);
             result.add(vo);
         }
     }

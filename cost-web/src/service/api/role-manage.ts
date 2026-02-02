@@ -152,6 +152,7 @@ export async function fetchResourcePermissionTree(roleId: number) {
 export interface PageButtonVO {
   buttonKey: string;
   buttonLabel: string;
+  groupName?: string;
 }
 
 export async function fetchPageButtons(pageCode: string) {

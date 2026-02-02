@@ -454,6 +454,19 @@ const selectedButtons = ref<string[]>([]);
 const loadingButtons = ref(false);
 const isAllButtons = ref(true);
 
+// 按钮按分组显示
+const groupedButtons = computed(() => {
+  const groups = new Map<string, PageButtonVO[]>();
+  for (const btn of pageButtons.value) {
+    const groupName = btn.groupName || '';
+    if (!groups.has(groupName)) {
+      groups.set(groupName, []);
+    }
+    groups.get(groupName)!.push(btn);
+  }
+  return Array.from(groups.entries()).map(([groupName, buttons]) => ({ groupName, buttons }));
+});
+
 // 编辑列权限弹窗
 const showEditColumnModal = ref(false);
 const editColumnForm = ref<{ id?: number; pageCode: string; pageName?: string; columnPolicy?: string }>({ pageCode: '' });
@@ -802,18 +815,23 @@ loadRoles();
               <template v-if="loadingButtons"><span class="loading-text">加载中...</span></template>
               <template v-else-if="pageButtons.length === 0"><span class="empty-text-small">该页面暂无按钮配置</span></template>
               <template v-else>
-                <NCheckbox 
-                  v-for="btn in pageButtons" 
-                  :key="btn.buttonKey" 
-                  :checked="selectedButtons.includes(btn.buttonKey)" 
-                  @update:checked="(checked: boolean) => { 
-                    if (checked) { 
-                      selectedButtons.push(btn.buttonKey); 
-                    } else { 
-                      selectedButtons = selectedButtons.filter(k => k !== btn.buttonKey); 
-                    } 
-                  }"
-                >{{ btn.buttonLabel }}</NCheckbox>
+                <div v-for="group in groupedButtons" :key="group.groupName" class="button-group">
+                  <div class="button-group-title">{{ group.groupName || '通用' }}</div>
+                  <div class="button-group-items">
+                    <NCheckbox 
+                      v-for="btn in group.buttons" 
+                      :key="btn.buttonKey" 
+                      :checked="selectedButtons.includes(btn.buttonKey)" 
+                      @update:checked="(checked: boolean) => { 
+                        if (checked) { 
+                          selectedButtons.push(btn.buttonKey); 
+                        } else { 
+                          selectedButtons = selectedButtons.filter(k => k !== btn.buttonKey); 
+                        } 
+                      }"
+                    >{{ btn.buttonLabel }}</NCheckbox>
+                  </div>
+                </div>
               </template>
             </div>
           </div>
@@ -1232,13 +1250,33 @@ loadRoles();
 }
 
 .button-select-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
   padding: 8px;
   background: #fafafa;
   border-radius: 4px;
   margin-top: 8px;
+}
+
+.button-group {
+  margin-bottom: 12px;
+}
+
+.button-group:last-child {
+  margin-bottom: 0;
+}
+
+.button-group-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: #333;
+  margin-bottom: 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid #e8e8e8;
+}
+
+.button-group-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .loading-text,

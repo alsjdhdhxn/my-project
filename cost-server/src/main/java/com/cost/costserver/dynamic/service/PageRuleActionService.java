@@ -10,8 +10,8 @@ import com.cost.costserver.dynamic.action.ActionResult;
 import com.cost.costserver.dynamic.action.ActionRule;
 import com.cost.costserver.dynamic.action.executor.ActionExecutor;
 import com.cost.costserver.dynamic.action.executor.ActionExecutorRegistry;
-import com.cost.costserver.metadata.entity.PageRule;
-import com.cost.costserver.metadata.mapper.PageRuleMapper;
+import com.cost.costserver.metadata.entity.PageComponent;
+import com.cost.costserver.metadata.mapper.PageComponentMapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -26,7 +26,7 @@ import java.util.*;
 @RequiredArgsConstructor
 public class PageRuleActionService {
 
-    private final PageRuleMapper pageRuleMapper;
+    private final PageComponentMapper pageComponentMapper;
     private final ObjectMapper objectMapper;
     private final ActionExecutorRegistry actionExecutorRegistry;
 
@@ -39,21 +39,19 @@ public class PageRuleActionService {
             throw new BusinessException(400, "actionCode不能为空");
         }
 
-        // 查询 BUTTON 规则
-        List<PageRule> rules = pageRuleMapper.selectList(
-            new LambdaQueryWrapper<PageRule>()
-                .eq(PageRule::getPageCode, pageCode)
-                .eq(StrUtil.isNotBlank(componentKey), PageRule::getComponentKey, componentKey)
-                .eq(PageRule::getRuleType, "BUTTON")
-                .eq(PageRule::getDeleted, 0)
+        // 从页面组件表查询按钮配置（按钮现在存在 COMPONENT_CONFIG.buttons 中）
+        List<PageComponent> components = pageComponentMapper.selectList(
+            new LambdaQueryWrapper<PageComponent>()
+                .eq(PageComponent::getPageCode, pageCode)
+                .eq(PageComponent::getDeleted, 0)
         );
 
-        if (rules.isEmpty()) {
-            throw new BusinessException(404, "未找到页面规则: " + pageCode);
+        if (components.isEmpty()) {
+            throw new BusinessException(404, "未找到页面组件: " + pageCode);
         }
 
-        // 从规则中查找匹配的 action
-        ActionRule actionRule = findActionRule(rules, actionCode);
+        // 从组件配置中查找匹配的 action
+        ActionRule actionRule = findActionRule(components, componentKey, actionCode);
         if (actionRule == null) {
             throw new BusinessException(404, "未找到执行器: " + actionCode);
         }
@@ -73,28 +71,47 @@ public class PageRuleActionService {
         return report;
     }
 
-    private ActionRule findActionRule(List<PageRule> rules, String actionCode) {
-        for (PageRule rule : rules) {
-            if (StrUtil.isBlank(rule.getRules())) continue;
+    private ActionRule findActionRule(List<PageComponent> components, String componentKey, String actionCode) {
+        for (PageComponent component : components) {
+            // 如果指定了 componentKey，只在该组件中查找
+            if (StrUtil.isNotBlank(componentKey) && !componentKey.equals(component.getComponentKey())) {
+                continue;
+            }
+            
+            String configJson = component.getComponentConfig();
+            if (StrUtil.isBlank(configJson)) continue;
+            
             try {
-                Map<String, Object> ruleConfig = objectMapper.readValue(rule.getRules(), new TypeReference<>() {});
-                List<Map<String, Object>> items = extractItems(ruleConfig);
-                ActionRule found = findInItems(items, actionCode);
-                if (found != null) return found;
+                Map<String, Object> config = objectMapper.readValue(configJson, new TypeReference<>() {});
+                
+                // TABS 组件：从每个 tab 的 buttons 中查找
+                if ("TABS".equals(component.getComponentType())) {
+                    @SuppressWarnings("unchecked")
+                    List<Map<String, Object>> tabs = (List<Map<String, Object>>) config.get("tabs");
+                    if (tabs != null) {
+                        for (Map<String, Object> tab : tabs) {
+                            @SuppressWarnings("unchecked")
+                            List<Map<String, Object>> buttons = (List<Map<String, Object>>) tab.get("buttons");
+                            if (buttons != null) {
+                                ActionRule found = findInItems(buttons, actionCode);
+                                if (found != null) return found;
+                            }
+                        }
+                    }
+                } else {
+                    // 其他组件：从 buttons 中查找
+                    @SuppressWarnings("unchecked")
+                    List<Map<String, Object>> buttons = (List<Map<String, Object>>) config.get("buttons");
+                    if (buttons != null) {
+                        ActionRule found = findInItems(buttons, actionCode);
+                        if (found != null) return found;
+                    }
+                }
             } catch (Exception e) {
-                log.warn("解析规则失败: {}", e.getMessage());
+                log.warn("解析组件配置失败: {}", e.getMessage());
             }
         }
         return null;
-    }
-
-    @SuppressWarnings("unchecked")
-    private List<Map<String, Object>> extractItems(Map<String, Object> config) {
-        Object items = config.get("items");
-        if (items instanceof List) {
-            return (List<Map<String, Object>>) items;
-        }
-        return Collections.emptyList();
     }
 
     private ActionRule findInItems(List<Map<String, Object>> items, String actionCode) {
