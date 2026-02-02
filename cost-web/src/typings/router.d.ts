@@ -70,5 +70,7 @@ declare module 'vue-router' {
     query?: { key: string; value: string }[] | null;
     /** 动态页面的 pageCode */
     pageCode?: string | null;
+    /** 是否不显示内容区域的 padding */
+    noPadding?: boolean | null;
   }
 }

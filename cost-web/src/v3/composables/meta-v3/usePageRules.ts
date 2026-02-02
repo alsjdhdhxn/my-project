@@ -238,19 +238,33 @@ export function parseButtonRule(componentKey: string, rules: PageRule[]): Button
  * 从按钮项中过滤出指定位置的按钮
  */
 function filterButtonsByPosition(items: ButtonItemRule[], position: 'context' | 'toolbar'): ButtonItemRule[] {
-  return items.filter(item => {
-    // separator 跟随上下文
-    if (item.type === 'separator') return true;
+  const result: ButtonItemRule[] = [];
+  
+  for (const item of items) {
+    // separator 只在右键菜单中保留，工具栏不需要
+    if (item.type === 'separator') {
+      if (position === 'context') {
+        result.push(item);
+      }
+      continue;
+    }
+    
     // 检查 position
     const pos = item.position || 'context'; // 默认是 context
-    return pos === position || pos === 'both';
-  }).map(item => {
+    if (pos !== position && pos !== 'both') continue;
+    
     // 递归处理子菜单
     if (item.items && item.items.length > 0) {
-      return { ...item, items: filterButtonsByPosition(item.items, position) };
+      const subItems = filterButtonsByPosition(item.items, position);
+      if (subItems.length > 0) {
+        result.push({ ...item, items: subItems });
+      }
+    } else {
+      result.push(item);
     }
-    return item;
-  });
+  }
+  
+  return result;
 }
 
 /**
