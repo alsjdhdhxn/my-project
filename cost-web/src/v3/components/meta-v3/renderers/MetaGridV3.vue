@@ -220,7 +220,7 @@ onUnmounted(() => {
 }
 
 .toolbar-container {
-  padding: 8px 0;
+  padding: 4px 0;
   flex-shrink: 0;
 }
 
