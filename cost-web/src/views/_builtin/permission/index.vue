@@ -7,9 +7,10 @@ import {
   fetchRoles, createRole, updateRole, deleteRole,
   fetchUsersByRole, addUserToRole, removeUserFromRole,
   addPageToRole, updateRolePage, removePageFromRole,
-  fetchAllUsers, searchRoles, fetchPageButtons, fetchResourcePermissionTree
+  fetchAllUsers, searchRoles, fetchPageButtons, fetchResourcePermissionTree,
+  fetchPageColumns
 } from '@/service/api/role-manage';
-import type { RoleVO, UserRoleVO, RolePageVO, UserSimpleVO, PageButtonVO, ResourcePermissionVO } from '@/service/api/role-manage';
+import type { RoleVO, UserRoleVO, RolePageVO, UserSimpleVO, PageButtonVO, ResourcePermissionVO, PageTableColumnsVO, PageColumnVO } from '@/service/api/role-manage';
 
 const message = useMessage();
 
@@ -476,6 +477,11 @@ function getButtonUniqueKey(groupName: string, buttonKey: string): string {
 const showEditColumnModal = ref(false);
 const editColumnForm = ref<{ id?: number; pageCode: string; pageName?: string; columnPolicy?: string }>({ pageCode: '' });
 const editingColumn = ref(false);
+const loadingColumns = ref(false);
+const pageTableColumns = ref<PageTableColumnsVO[]>([]);
+const activeColumnTab = ref<string>('');
+// 列权限状态：{ tableKey: { fieldName: { visible: boolean, editable: boolean } } }
+const columnPermissions = ref<Record<string, Record<string, { visible: boolean; editable: boolean }>>>({});
 
 // 编辑行权限弹窗
 const showEditRowModal = ref(false);
@@ -511,13 +517,55 @@ async function openEditButton(resource: ResourcePermissionVO) {
 }
 
 // 打开列权限配置
-function openEditColumn(resource: ResourcePermissionVO) {
+async function openEditColumn(resource: ResourcePermissionVO) {
   editColumnForm.value = {
     id: resource.rolePageId,
     pageCode: resource.pageCode || '',
     pageName: resource.resourceName,
     columnPolicy: resource.columnPolicy
   };
+  
+  // 加载页面的表格列信息
+  loadingColumns.value = true;
+  try {
+    pageTableColumns.value = await fetchPageColumns(resource.pageCode || '');
+    
+    // 设置默认选中的 tab
+    if (pageTableColumns.value.length > 0) {
+      activeColumnTab.value = pageTableColumns.value[0].tableKey;
+    }
+    
+    // 解析已有的列权限配置
+    columnPermissions.value = {};
+    if (resource.columnPolicy) {
+      try {
+        const policy = JSON.parse(resource.columnPolicy);
+        columnPermissions.value = policy;
+      } catch {
+        columnPermissions.value = {};
+      }
+    }
+    
+    // 初始化每个表格的列权限（如果没有配置，则使用 COLUMN_OVERRIDE 的默认值）
+    for (const table of pageTableColumns.value) {
+      if (!columnPermissions.value[table.tableKey]) {
+        columnPermissions.value[table.tableKey] = {};
+      }
+      for (const col of table.columns) {
+        if (!columnPermissions.value[table.tableKey][col.fieldName]) {
+          // 默认使用 COLUMN_OVERRIDE 中的值
+          columnPermissions.value[table.tableKey][col.fieldName] = {
+            visible: col.visible,
+            editable: col.editable
+          };
+        }
+      }
+    }
+  } catch (e) {
+    pageTableColumns.value = [];
+  } finally {
+    loadingColumns.value = false;
+  }
   showEditColumnModal.value = true;
 }
 
@@ -552,12 +600,156 @@ async function handleUpdateButton() {
   }
 }
 
+// 获取列的基础配置（从 COLUMN_OVERRIDE）
+function getBaseColumnConfig(tableKey: string, fieldName: string): { visible: boolean; editable: boolean } {
+  const table = pageTableColumns.value.find(t => t.tableKey === tableKey);
+  const col = table?.columns.find(c => c.fieldName === fieldName);
+  return { visible: col?.visible ?? true, editable: col?.editable ?? true };
+}
+
+// 切换列可见性
+function toggleColumnVisible(tableKey: string, fieldName: string, checked: boolean) {
+  const base = getBaseColumnConfig(tableKey, fieldName);
+  // 只能缩小权限：如果基础配置是不可见，则不能设为可见
+  if (!base.visible && checked) {
+    message.warning('该列在基础配置中已设为不可见，无法通过权限放大');
+    return;
+  }
+  if (!columnPermissions.value[tableKey]) {
+    columnPermissions.value[tableKey] = {};
+  }
+  if (!columnPermissions.value[tableKey][fieldName]) {
+    columnPermissions.value[tableKey][fieldName] = { visible: base.visible, editable: base.editable };
+  }
+  columnPermissions.value[tableKey][fieldName].visible = checked;
+  // 如果设为不可见，则编辑也要设为 false
+  if (!checked) {
+    columnPermissions.value[tableKey][fieldName].editable = false;
+  }
+}
+
+// 切换列可编辑性
+function toggleColumnEditable(tableKey: string, fieldName: string, checked: boolean) {
+  const base = getBaseColumnConfig(tableKey, fieldName);
+  // 只能缩小权限：如果基础配置是不可编辑，则不能设为可编辑
+  if (!base.editable && checked) {
+    message.warning('该列在基础配置中已设为不可编辑，无法通过权限放大');
+    return;
+  }
+  if (!columnPermissions.value[tableKey]) {
+    columnPermissions.value[tableKey] = {};
+  }
+  if (!columnPermissions.value[tableKey][fieldName]) {
+    columnPermissions.value[tableKey][fieldName] = { visible: base.visible, editable: base.editable };
+  }
+  columnPermissions.value[tableKey][fieldName].editable = checked;
+}
+
+// 计算当前表格的全选状态
+function isAllVisibleChecked(tableKey: string): boolean {
+  const table = pageTableColumns.value.find(t => t.tableKey === tableKey);
+  if (!table) return false;
+  // 只检查基础配置可见的列
+  const checkableCols = table.columns.filter(col => col.visible);
+  if (checkableCols.length === 0) return false;
+  return checkableCols.every(col => {
+    return columnPermissions.value[tableKey]?.[col.fieldName]?.visible ?? col.visible;
+  });
+}
+
+function isAllEditableChecked(tableKey: string): boolean {
+  const table = pageTableColumns.value.find(t => t.tableKey === tableKey);
+  if (!table) return false;
+  // 只检查基础配置可编辑且当前可见的列
+  const checkableCols = table.columns.filter(col => {
+    if (!col.editable) return false; // 基础配置不可编辑的跳过
+    const visible = columnPermissions.value[tableKey]?.[col.fieldName]?.visible ?? col.visible;
+    return visible; // 只检查可见的列
+  });
+  if (checkableCols.length === 0) return false;
+  return checkableCols.every(col => {
+    return columnPermissions.value[tableKey]?.[col.fieldName]?.editable ?? col.editable;
+  });
+}
+
+// 全选/取消全选可见
+function toggleAllVisible(tableKey: string, checked: boolean) {
+  const table = pageTableColumns.value.find(t => t.tableKey === tableKey);
+  if (!table) return;
+  
+  if (!columnPermissions.value[tableKey]) {
+    columnPermissions.value[tableKey] = {};
+  }
+  
+  for (const col of table.columns) {
+    if (!col.visible) continue; // 基础配置不可见的不能操作
+    if (!columnPermissions.value[tableKey][col.fieldName]) {
+      columnPermissions.value[tableKey][col.fieldName] = { visible: col.visible, editable: col.editable };
+    }
+    columnPermissions.value[tableKey][col.fieldName].visible = checked;
+    // 如果设为不可见，则编辑也要设为 false
+    if (!checked) {
+      columnPermissions.value[tableKey][col.fieldName].editable = false;
+    }
+  }
+}
+
+// 全选/取消全选可编辑
+function toggleAllEditable(tableKey: string, checked: boolean) {
+  const table = pageTableColumns.value.find(t => t.tableKey === tableKey);
+  if (!table) return;
+  
+  if (!columnPermissions.value[tableKey]) {
+    columnPermissions.value[tableKey] = {};
+  }
+  
+  for (const col of table.columns) {
+    if (!col.editable) continue; // 基础配置不可编辑的不能操作
+    const visible = columnPermissions.value[tableKey]?.[col.fieldName]?.visible ?? col.visible;
+    if (!visible) continue; // 不可见的不能编辑
+    
+    if (!columnPermissions.value[tableKey][col.fieldName]) {
+      columnPermissions.value[tableKey][col.fieldName] = { visible: col.visible, editable: col.editable };
+    }
+    columnPermissions.value[tableKey][col.fieldName].editable = checked;
+  }
+}
+
 // 保存列权限
 async function handleUpdateColumn() {
   if (!editColumnForm.value.id) return;
   editingColumn.value = true;
   try {
-    await updateRolePage(editColumnForm.value.id, { columnPolicy: editColumnForm.value.columnPolicy });
+    // 只保存与基础配置不同的列权限（缩小的部分）
+    const policyToSave: Record<string, Record<string, { visible?: boolean; editable?: boolean }>> = {};
+    for (const table of pageTableColumns.value) {
+      const tablePerms = columnPermissions.value[table.tableKey];
+      if (!tablePerms) continue;
+      
+      for (const col of table.columns) {
+        const perm = tablePerms[col.fieldName];
+        if (!perm) continue;
+        
+        // 只保存与基础配置不同的值
+        const diff: { visible?: boolean; editable?: boolean } = {};
+        if (perm.visible !== col.visible) {
+          diff.visible = perm.visible;
+        }
+        if (perm.editable !== col.editable) {
+          diff.editable = perm.editable;
+        }
+        
+        if (Object.keys(diff).length > 0) {
+          if (!policyToSave[table.tableKey]) {
+            policyToSave[table.tableKey] = {};
+          }
+          policyToSave[table.tableKey][col.fieldName] = diff;
+        }
+      }
+    }
+    
+    const columnPolicy = Object.keys(policyToSave).length > 0 ? JSON.stringify(policyToSave) : '';
+    await updateRolePage(editColumnForm.value.id, { columnPolicy });
     message.success('列权限更新成功');
     showEditColumnModal.value = false;
     await loadResourcePermissionTree();
@@ -852,15 +1044,68 @@ loadRoles();
     </NModal>
 
     <!-- 编辑列权限弹窗 -->
-    <NModal v-model:show="showEditColumnModal" preset="card" title="配置列权限" class="w-500px">
-      <NForm label-placement="left" label-width="70" size="small">
-        <NFormItem label="页面">
-          <NInput :value="editColumnForm.pageName || editColumnForm.pageCode" disabled />
-        </NFormItem>
-        <NFormItem label="列权限">
-          <NInput v-model:value="editColumnForm.columnPolicy" type="textarea" placeholder="JSON格式，留空表示全部列可见" :rows="4" />
-        </NFormItem>
-      </NForm>
+    <NModal v-model:show="showEditColumnModal" preset="card" title="配置列权限" style="width: 800px;">
+      <div class="column-modal-header">
+        <span class="page-label">页面：{{ editColumnForm.pageName || editColumnForm.pageCode }}</span>
+      </div>
+      
+      <template v-if="loadingColumns">
+        <div class="loading-container">加载中...</div>
+      </template>
+      <template v-else-if="pageTableColumns.length === 0">
+        <NEmpty description="该页面暂无列配置" />
+      </template>
+      <template v-else>
+        <NTabs v-model:value="activeColumnTab" type="line" size="small">
+          <NTabPane v-for="table in pageTableColumns" :key="table.tableKey" :name="table.tableKey" :tab="table.tableName">
+            <div class="column-table-container">
+              <NDataTable
+                :columns="[
+                  { title: '列名', key: 'headerText', width: 150 },
+                  { title: '字段名', key: 'fieldName', width: 150 },
+                  { 
+                    title: () => h('div', { class: 'column-header-with-checkbox' }, [
+                      h(NCheckbox, {
+                        checked: isAllVisibleChecked(table.tableKey),
+                        onUpdateChecked: (checked: boolean) => toggleAllVisible(table.tableKey, checked)
+                      }),
+                      h('span', '可见')
+                    ]),
+                    key: 'visible', 
+                    width: 100,
+                    render: (row: PageColumnVO) => h(NCheckbox, {
+                      checked: columnPermissions[table.tableKey]?.[row.fieldName]?.visible ?? row.visible,
+                      disabled: !row.visible,
+                      onUpdateChecked: (checked: boolean) => toggleColumnVisible(table.tableKey, row.fieldName, checked)
+                    })
+                  },
+                  { 
+                    title: () => h('div', { class: 'column-header-with-checkbox' }, [
+                      h(NCheckbox, {
+                        checked: isAllEditableChecked(table.tableKey),
+                        onUpdateChecked: (checked: boolean) => toggleAllEditable(table.tableKey, checked)
+                      }),
+                      h('span', '可编辑')
+                    ]),
+                    key: 'editable', 
+                    width: 100,
+                    render: (row: PageColumnVO) => h(NCheckbox, {
+                      checked: columnPermissions[table.tableKey]?.[row.fieldName]?.editable ?? row.editable,
+                      disabled: !row.editable || !(columnPermissions[table.tableKey]?.[row.fieldName]?.visible ?? row.visible),
+                      onUpdateChecked: (checked: boolean) => toggleColumnEditable(table.tableKey, row.fieldName, checked)
+                    })
+                  }
+                ]"
+                :data="table.columns"
+                :bordered="false"
+                size="small"
+                :max-height="400"
+              />
+            </div>
+          </NTabPane>
+        </NTabs>
+      </template>
+      
       <template #footer>
         <div class="modal-footer">
           <NButton size="small" @click="showEditColumnModal = false">取消</NButton>
@@ -1291,6 +1536,35 @@ loadRoles();
   color: #9ca3af;
 }
 
+/* 列权限弹窗 */
+.column-modal-header {
+  margin-bottom: 12px;
+}
+
+.page-label {
+  font-size: 14px;
+  color: #666;
+}
+
+.column-table-container {
+  border: 1px solid #e8e8e8;
+  border-radius: 4px;
+}
+
+.loading-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  color: #9ca3af;
+}
+
+.column-header-with-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
 /* 工具类 */
 .mt-4 {
   margin-top: 16px;
@@ -1298,5 +1572,8 @@ loadRoles();
 
 .mt-8 {
   margin-top: 32px;
+}
+.ml-1 {
+  margin-left: 4px;
 }
 </style>

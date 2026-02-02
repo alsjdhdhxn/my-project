@@ -160,6 +160,26 @@ export async function fetchPageButtons(pageCode: string) {
   return data || [];
 }
 
+// ==================== 列权限配置 ====================
+
+export interface PageColumnVO {
+  fieldName: string;
+  headerText: string;
+  visible: boolean;
+  editable: boolean;
+}
+
+export interface PageTableColumnsVO {
+  tableKey: string;
+  tableName: string;
+  columns: PageColumnVO[];
+}
+
+export async function fetchPageColumns(pageCode: string) {
+  const { data } = await request<PageTableColumnsVO[]>({ url: `/role-manage/page/${pageCode}/columns` });
+  return data || [];
+}
+
 // ==================== 高级查询 ====================
 
 export interface SearchCondition {

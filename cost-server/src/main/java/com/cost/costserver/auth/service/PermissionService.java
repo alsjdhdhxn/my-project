@@ -119,7 +119,8 @@ public class PermissionService {
 
     /**
      * 解析列权限 JSON
-     * 格式：{"fieldName": {"visible": true, "editable": false}, ...}
+     * 新格式：{"masterGrid": {"fieldName": {"visible": true, "editable": false}}, "material": {...}}
+     * 旧格式：{"fieldName": {"visible": true, "editable": false}, ...}
      */
     private Map<String, ColumnPermission> parseColumns(String columnPolicy) {
         if (StrUtil.isBlank(columnPolicy)) {
@@ -128,11 +129,44 @@ public class PermissionService {
         try {
             JSONObject json = JSONUtil.parseObj(columnPolicy);
             Map<String, ColumnPermission> result = new HashMap<>();
-            for (String fieldName : json.keySet()) {
-                JSONObject colConfig = json.getJSONObject(fieldName);
-                boolean visible = colConfig.getBool("visible", true);
-                boolean editable = colConfig.getBool("editable", true);
-                result.put(fieldName, new ColumnPermission(visible, editable));
+            
+            for (String key : json.keySet()) {
+                Object value = json.get(key);
+                if (value instanceof JSONObject colOrTable) {
+                    // 检查是否是新格式（按表格分组）
+                    // 新格式的第一层 key 是表格名（如 masterGrid），第二层才是字段名
+                    boolean isNewFormat = false;
+                    for (String subKey : colOrTable.keySet()) {
+                        Object subValue = colOrTable.get(subKey);
+                        if (subValue instanceof JSONObject subObj) {
+                            // 如果子对象包含 visible 或 editable，说明是旧格式
+                            if (subObj.containsKey("visible") || subObj.containsKey("editable")) {
+                                isNewFormat = true;
+                                break;
+                            }
+                        }
+                    }
+                    
+                    if (isNewFormat) {
+                        // 新格式：key 是表格名，colOrTable 是字段映射
+                        for (String fieldName : colOrTable.keySet()) {
+                            JSONObject fieldConfig = colOrTable.getJSONObject(fieldName);
+                            if (fieldConfig != null) {
+                                boolean visible = fieldConfig.getBool("visible", true);
+                                boolean editable = fieldConfig.getBool("editable", true);
+                                // 使用 tableKey:fieldName 作为完整 key
+                                result.put(key + ":" + fieldName, new ColumnPermission(visible, editable));
+                                // 同时也存储不带前缀的（兼容旧逻辑）
+                                result.put(fieldName, new ColumnPermission(visible, editable));
+                            }
+                        }
+                    } else {
+                        // 旧格式：key 是字段名，colOrTable 是权限配置
+                        boolean visible = colOrTable.getBool("visible", true);
+                        boolean editable = colOrTable.getBool("editable", true);
+                        result.put(key, new ColumnPermission(visible, editable));
+                    }
+                }
             }
             return result;
         } catch (Exception e) {

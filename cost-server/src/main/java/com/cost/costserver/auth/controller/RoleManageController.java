@@ -111,6 +111,14 @@ public class RoleManageController {
         return Result.ok(roleManageService.listPageButtons(pageCode));
     }
 
+    /**
+     * 获取页面的所有表格及其列信息（用于列权限配置）
+     */
+    @GetMapping("/page/{pageCode}/columns")
+    public Result<List<PageTableColumnsVO>> listPageColumns(@PathVariable String pageCode) {
+        return Result.ok(roleManageService.listPageColumns(pageCode));
+    }
+
     // ==================== 高级查询 ====================
 
     @PostMapping("/roles/search")
