@@ -9,6 +9,8 @@ import type {
   LookupRuleConfig,
   RoleBindingRule,
   RelationRule,
+  ButtonRule,
+  ButtonItemRule,
   ContextMenuRule,
   RowEditableRule,
   RowClassRule,
@@ -206,8 +208,12 @@ export function parseGridOptionsRule(componentKey: string, rules: PageRule[]): G
   return parseRuleObject<GridOptionsRule>(rule, `${componentKey}.${rule.ruleType || 'GRID_OPTIONS'}`);
 }
 
-export function parseContextMenuRule(componentKey: string, rules: PageRule[]): ContextMenuRule | null {
-  const rule = getRuleByType(rules, 'CONTEXT_MENU');
+/**
+ * 解析统一的 BUTTON 规则
+ * 新格式：RULE_TYPE='BUTTON'，items 中每个按钮有 position 字段
+ */
+export function parseButtonRule(componentKey: string, rules: PageRule[]): ButtonRule | null {
+  const rule = getRuleByType(rules, 'BUTTON');
   if (!rule?.rules) return null;
   try {
     const raw = typeof rule.rules === 'string' ? JSON.parse(rule.rules) : rule.rules;
@@ -220,12 +226,41 @@ export function parseContextMenuRule(componentKey: string, rules: PageRule[]): C
         return { items: obj.items };
       }
     }
-    console.warn(`[PageRule] ${componentKey}.CONTEXT_MENU is not a valid object`);
+    console.warn(`[PageRule] ${componentKey}.BUTTON is not a valid object`);
     return null;
   } catch (error) {
-    console.warn(`[PageRule] Failed to parse ${componentKey}.CONTEXT_MENU`, error);
+    console.warn(`[PageRule] Failed to parse ${componentKey}.BUTTON`, error);
     return null;
   }
+}
+
+/**
+ * 从按钮项中过滤出指定位置的按钮
+ */
+function filterButtonsByPosition(items: ButtonItemRule[], position: 'context' | 'toolbar'): ButtonItemRule[] {
+  return items.filter(item => {
+    // separator 跟随上下文
+    if (item.type === 'separator') return true;
+    // 检查 position
+    const pos = item.position || 'context'; // 默认是 context
+    return pos === position || pos === 'both';
+  }).map(item => {
+    // 递归处理子菜单
+    if (item.items && item.items.length > 0) {
+      return { ...item, items: filterButtonsByPosition(item.items, position) };
+    }
+    return item;
+  });
+}
+
+/**
+ * 解析右键菜单规则（从 BUTTON 规则中提取 position='context' 的按钮）
+ */
+export function parseContextMenuRule(componentKey: string, rules: PageRule[]): ContextMenuRule | null {
+  const buttonRule = parseButtonRule(componentKey, rules);
+  if (!buttonRule) return null;
+  const contextItems = filterButtonsByPosition(buttonRule.items, 'context');
+  return contextItems.length > 0 ? { items: contextItems } : null;
 }
 
 export function applyColumnOverrides(columns: ColDef[], overrides: ColumnOverrideRule[]): ColDef[] {
@@ -433,25 +468,12 @@ export function buildRowClassCallback(rules: RowClassRule[]): ((params: any) => 
   };
 }
 
-/** 解析 TOOLBAR 规则 */
+/**
+ * 解析工具栏规则（从 BUTTON 规则中提取 position='toolbar' 的按钮）
+ */
 export function parseToolbarRule(componentKey: string, rules: PageRule[]): ToolbarRule | null {
-  const rule = rules.find(r => r.ruleType === 'TOOLBAR');
-  if (!rule?.rules) return null;
-  try {
-    const raw = typeof rule.rules === 'string' ? JSON.parse(rule.rules) : rule.rules;
-    if (Array.isArray(raw)) {
-      return { items: raw };
-    }
-    if (raw && typeof raw === 'object') {
-      const obj = raw as { items?: unknown };
-      if (Array.isArray(obj.items)) {
-        return { items: obj.items };
-      }
-    }
-    console.warn(`[PageRule] ${componentKey}.TOOLBAR is not a valid object`);
-    return null;
-  } catch (error) {
-    console.warn(`[PageRule] Failed to parse ${componentKey}.TOOLBAR`, error);
-    return null;
-  }
+  const buttonRule = parseButtonRule(componentKey, rules);
+  if (!buttonRule) return null;
+  const toolbarItems = filterButtonsByPosition(buttonRule.items, 'toolbar');
+  return toolbarItems.length > 0 ? { items: toolbarItems } : null;
 }

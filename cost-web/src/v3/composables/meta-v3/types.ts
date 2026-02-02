@@ -93,21 +93,38 @@ export type RelationRule = {
   splitConfig?: SplitLayoutConfig;
 };
 
-export type ContextMenuItemRule = {
+/** 统一按钮规则项（支持 position 区分显示位置） */
+export type ButtonItemRule = {
   type?: 'action' | 'separator' | 'group';
   action?: string;
   label?: string;
-  items?: ContextMenuItemRule[];
+  /** 显示位置：context=右键菜单, toolbar=页面工具栏, both=两处都显示 */
+  position?: 'context' | 'toolbar' | 'both';
+  items?: ButtonItemRule[];
   visible?: boolean;
   disabled?: boolean;
   requiresRow?: boolean;
   requiresSelection?: boolean;
   permission?: string;
+  /** 工具栏按钮类型 */
+  buttonType?: 'default' | 'primary' | 'info' | 'success' | 'warning' | 'error';
+  sql?: string;
+  script?: string;
+  procedure?: string;
+  params?: any[];
+  confirm?: string;
 };
 
-export type ContextMenuRule = {
-  items: ContextMenuItemRule[];
+/** 统一按钮规则 */
+export type ButtonRule = {
+  items: ButtonItemRule[];
 };
+
+/** @deprecated 使用 ButtonItemRule 代替 */
+export type ContextMenuItemRule = ButtonItemRule;
+
+/** @deprecated 使用 ButtonRule 代替 */
+export type ContextMenuRule = ButtonRule;
 
 /** 行级可编辑规则 */
 export type RowEditableRule = {
@@ -136,19 +153,8 @@ export type RowClassRule = {
   className: string;
 };
 
-/** 工具栏按钮规则 */
-export type ToolbarItemRule = {
-  action: string;
-  label: string;
-  type?: 'default' | 'primary' | 'info' | 'success' | 'warning' | 'error';
-  sql?: string;
-  script?: string;
-  disabled?: boolean;
-  visible?: boolean;
-  requiresRow?: boolean;
-  confirm?: string;
-};
+/** @deprecated 使用 ButtonItemRule 代替 */
+export type ToolbarItemRule = ButtonItemRule;
 
-export type ToolbarRule = {
-  items: ToolbarItemRule[];
-};
+/** @deprecated 使用 ButtonRule 代替 */
+export type ToolbarRule = ButtonRule;

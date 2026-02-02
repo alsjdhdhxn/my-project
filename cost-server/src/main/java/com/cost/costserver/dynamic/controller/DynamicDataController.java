@@ -155,7 +155,7 @@ public class DynamicDataController {
         return Result.ok(validationService.validate(tableCode, group, data));
     }
 
-    @Operation(summary = "执行页面规则中的Action（TOOLBAR/CONTEXT_MENU）")
+    @Operation(summary = "执行页面规则中的Action（BUTTON）")
     @PostMapping("/page/{pageCode}/execute")
     public Result<ActionExecutionReport> executePageRuleAction(
             @PathVariable String pageCode,

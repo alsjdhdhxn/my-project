@@ -333,30 +333,26 @@ public class RoleManageService {
     }
 
     public List<PageButtonVO> listPageButtons(String pageCode) {
-        // 从页面规则表查询 TOOLBAR 和 CONTEXT_MENU 类型的按钮配置
+        // 从页面规则表查询 BUTTON 类型的按钮配置
         List<Map<String, Object>> rules = dynamicMapper.selectList(
-            "SELECT COMPONENT_KEY, RULE_TYPE, RULES FROM T_COST_PAGE_RULE " +
+            "SELECT COMPONENT_KEY, RULES FROM T_COST_PAGE_RULE " +
             "WHERE PAGE_CODE = '" + pageCode.replace("'", "''") + "' " +
-            "AND RULE_TYPE IN ('TOOLBAR', 'CONTEXT_MENU') AND DELETED = 0 " +
-            "ORDER BY RULE_TYPE, SORT_ORDER"
+            "AND RULE_TYPE = 'BUTTON' AND DELETED = 0 " +
+            "ORDER BY SORT_ORDER"
         );
         
         List<PageButtonVO> result = new ArrayList<>();
         for (Map<String, Object> rule : rules) {
-            String ruleType = (String) rule.get("RULE_TYPE");
-            String buttonType = "TOOLBAR".equals(ruleType) ? "页面按钮" : "菜单按钮";
-            
             Object rulesObj = rule.get("RULES");
             String rulesJson = rulesObj != null ? rulesObj.toString() : null;
             if (rulesJson == null || rulesJson.isEmpty()) continue;
             
             try {
-                // 解析 {"items": [...]} 结构
                 cn.hutool.json.JSONObject json = cn.hutool.json.JSONUtil.parseObj(rulesJson);
                 cn.hutool.json.JSONArray items = json.getJSONArray("items");
                 if (items == null) continue;
                 
-                extractButtons(items, buttonType, result);
+                extractButtonsWithPosition(items, result);
             } catch (Exception e) {
                 // ignore parse error
             }
@@ -365,14 +361,15 @@ public class RoleManageService {
     }
     
     /**
-     * 递归提取按钮（处理嵌套的子菜单）
+     * 从新格式 BUTTON 规则中提取按钮（根据 position 字段）
      */
-    private void extractButtons(cn.hutool.json.JSONArray items, String buttonType, List<PageButtonVO> result) {
+    private void extractButtonsWithPosition(cn.hutool.json.JSONArray items, List<PageButtonVO> result) {
         for (int i = 0; i < items.size(); i++) {
             cn.hutool.json.JSONObject item = items.getJSONObject(i);
             String action = item.getStr("action");
             String type = item.getStr("type");
             String label = item.getStr("label");
+            String position = item.getStr("position");
             
             // 跳过分隔符
             if ("separator".equals(type)) continue;
@@ -381,21 +378,30 @@ public class RoleManageService {
             cn.hutool.json.JSONArray subItems = item.getJSONArray("items");
             if (subItems != null && !subItems.isEmpty()) {
                 // 递归处理子菜单
-                extractButtons(subItems, buttonType, result);
+                extractButtonsWithPosition(subItems, result);
                 continue;
             }
             
             // 有 action 的才是按钮
             if (action == null) continue;
             
+            // 根据 position 确定按钮类型，默认是 context
+            String buttonType;
+            if ("toolbar".equals(position)) {
+                buttonType = "页面按钮";
+            } else if ("both".equals(position)) {
+                buttonType = "通用按钮";
+            } else {
+                buttonType = "菜单按钮";
+            }
+            
             PageButtonVO vo = new PageButtonVO();
             vo.setButtonKey(action);
-            // 显示格式：[页面按钮] 同步ERP汇率  或  [菜单按钮] 新增
             vo.setButtonLabel("[" + buttonType + "] " + (label != null ? label : action));
             result.add(vo);
         }
     }
-
+    
     // ==================== 高级查询 ====================
 
     public List<RoleVO> searchRoles(List<SearchConditionDTO> conditions) {

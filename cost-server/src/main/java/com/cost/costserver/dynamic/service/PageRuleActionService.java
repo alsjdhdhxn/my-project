@@ -39,12 +39,12 @@ public class PageRuleActionService {
             throw new BusinessException(400, "actionCode不能为空");
         }
 
-        // 查询 TOOLBAR 和 CONTEXT_MENU 规则
+        // 查询 BUTTON 规则
         List<PageRule> rules = pageRuleMapper.selectList(
             new LambdaQueryWrapper<PageRule>()
                 .eq(PageRule::getPageCode, pageCode)
                 .eq(StrUtil.isNotBlank(componentKey), PageRule::getComponentKey, componentKey)
-                .in(PageRule::getRuleType, "TOOLBAR", "CONTEXT_MENU")
+                .eq(PageRule::getRuleType, "BUTTON")
                 .eq(PageRule::getDeleted, 0)
         );
 
