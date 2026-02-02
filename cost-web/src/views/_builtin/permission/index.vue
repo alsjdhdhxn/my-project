@@ -467,6 +467,11 @@ const groupedButtons = computed(() => {
   return Array.from(groups.entries()).map(([groupName, buttons]) => ({ groupName, buttons }));
 });
 
+// 生成按钮唯一标识（groupName:buttonKey）
+function getButtonUniqueKey(groupName: string, buttonKey: string): string {
+  return groupName ? `${groupName}:${buttonKey}` : buttonKey;
+}
+
 // 编辑列权限弹窗
 const showEditColumnModal = ref(false);
 const editColumnForm = ref<{ id?: number; pageCode: string; pageName?: string; columnPolicy?: string }>({ pageCode: '' });
@@ -803,7 +808,7 @@ loadRoles();
     </NModal>
 
     <!-- 编辑按钮权限弹窗 -->
-    <NModal v-model:show="showEditButtonModal" preset="card" title="配置按钮权限" class="w-500px">
+    <NModal v-model:show="showEditButtonModal" preset="card" title="配置按钮权限" style="width: 1000px;">
       <NForm label-placement="left" label-width="70" size="small">
         <NFormItem label="页面">
           <NInput :value="editButtonForm.pageName || editButtonForm.pageCode" disabled />
@@ -820,13 +825,14 @@ loadRoles();
                   <div class="button-group-items">
                     <NCheckbox 
                       v-for="btn in group.buttons" 
-                      :key="btn.buttonKey" 
-                      :checked="selectedButtons.includes(btn.buttonKey)" 
+                      :key="getButtonUniqueKey(group.groupName, btn.buttonKey)" 
+                      :checked="selectedButtons.includes(getButtonUniqueKey(group.groupName, btn.buttonKey))" 
                       @update:checked="(checked: boolean) => { 
+                        const uniqueKey = getButtonUniqueKey(group.groupName, btn.buttonKey);
                         if (checked) { 
-                          selectedButtons.push(btn.buttonKey); 
+                          selectedButtons.push(uniqueKey); 
                         } else { 
-                          selectedButtons = selectedButtons.filter(k => k !== btn.buttonKey); 
+                          selectedButtons = selectedButtons.filter(k => k !== uniqueKey); 
                         } 
                       }"
                     >{{ btn.buttonLabel }}</NCheckbox>
