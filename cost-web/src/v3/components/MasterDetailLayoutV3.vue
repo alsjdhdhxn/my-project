@@ -33,6 +33,7 @@
             :defaultColDef="defaultColDef"
             :getRowId="getMasterRowId"
             :getRowClass="getRowClass"
+            :getRowStyle="getRowStyle"
             :rowSelection="rowSelection"
             :autoSizeStrategy="autoSizeStrategy"
             :getContextMenuItems="getMasterContextMenuItems"
@@ -92,6 +93,7 @@
         :defaultColDef="defaultColDef"
         :getRowId="getMasterRowId"
         :getRowClass="getRowClass"
+        :getRowStyle="getRowStyle"
         :rowSelection="rowSelection"
         :autoSizeStrategy="autoSizeStrategy"
         :getContextMenuItems="getMasterContextMenuItems"
@@ -285,6 +287,7 @@ const {
   headerHeight,
   getRowId: getMasterRowId,
   getRowClass,
+  getRowStyle,
   getContextMenuItems: getMasterContextMenuItems,
   onGridReady: onMasterGridReady,
   onCellEditingStarted,

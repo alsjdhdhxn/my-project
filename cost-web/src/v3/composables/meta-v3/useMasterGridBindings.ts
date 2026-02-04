@@ -2,7 +2,7 @@
 import type { ColDef, GridReadyEvent, CellValueChangedEvent } from 'ag-grid-community';
 import { useGridContextMenu } from '@/v3/composables/meta-v3/useGridContextMenu';
 import type { ContextMenuRule, RowEditableRule, RowClassRule, CellEditableRule } from '@/v3/composables/meta-v3/types';
-import { buildRowEditableCallback, buildRowClassCallback, buildCellEditableCallback } from '@/v3/composables/meta-v3/usePageRules';
+import { buildRowEditableCallback, buildRowClassCallback, buildRowStyleCallback, buildCellEditableCallback } from '@/v3/composables/meta-v3/usePageRules';
 import {
   buildGridRuntimeOptions,
   autoSizeColumnsOnReady,
@@ -123,6 +123,7 @@ export function useMasterGridBindings(params: {
   // Row class rules (from ROW_CLASS config).
   const rowClassRules = params.rowClassRules ?? (runtime as any).masterRowClassRules?.value ?? [];
   const rowClassCallback = buildRowClassCallback(rowClassRules);
+  const rowStyleCallback = buildRowStyleCallback(rowClassRules);
   const dataSource = params.dataSource;
 
   function getRowClass(params: any): string | undefined {
@@ -136,6 +137,10 @@ export function useMasterGridBindings(params: {
     const metaClass = metaRowClassGetter?.(params);
     if (metaClass) classes.push(metaClass);
     return classes.length > 0 ? classes.join(' ') : undefined;
+  }
+
+  function getRowStyle(params: any): Record<string, string> | undefined {
+    return rowStyleCallback?.(params);
   }
 
   const resolveGridKey = (key?: string | null) => key && key.trim().length > 0 ? key : 'masterGrid';
@@ -229,6 +234,7 @@ export function useMasterGridBindings(params: {
     headerHeight,
     getRowId,
     getRowClass,
+    getRowStyle,
     getContextMenuItems: getMasterContextMenuItems,
     onGridReady,
     onCellEditingStarted,

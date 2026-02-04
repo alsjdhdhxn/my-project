@@ -606,6 +606,49 @@ export function buildRowClassCallback(rules: RowClassRule[]): ((params: any) => 
   };
 }
 
+/** 根据 ROW_CLASS 规则生成 getRowStyle 回调（支持直接配置颜色） */
+export function buildRowStyleCallback(rules: RowClassRule[]): ((params: any) => Record<string, string> | undefined) | undefined {
+  if (!rules || rules.length === 0) return undefined;
+  // 检查是否有任何规则配置了 style
+  const hasStyleRules = rules.some(r => r.style);
+  if (!hasStyleRules) return undefined;
+  
+  return (params: any) => {
+    const data = params.data;
+    if (!data) return undefined;
+    const mergedStyle: Record<string, string> = {};
+    for (const rule of rules) {
+      if (!rule.style) continue;
+      const fieldValue = data[rule.field];
+      let matched = false;
+      switch (rule.operator) {
+        case 'notNull':
+          matched = fieldValue != null;
+          break;
+        case 'eq':
+          matched = fieldValue === rule.value;
+          break;
+        case 'ne':
+          matched = fieldValue !== rule.value;
+          break;
+        case 'in':
+          matched = Array.isArray(rule.value) && rule.value.includes(fieldValue);
+          break;
+        case 'notIn':
+          matched = !Array.isArray(rule.value) || !rule.value.includes(fieldValue);
+          break;
+      }
+      if (matched && rule.style) {
+        if (rule.style.backgroundColor) mergedStyle.backgroundColor = rule.style.backgroundColor;
+        if (rule.style.color) mergedStyle.color = rule.style.color;
+        if (rule.style.fontWeight) mergedStyle.fontWeight = rule.style.fontWeight;
+        if (rule.style.fontStyle) mergedStyle.fontStyle = rule.style.fontStyle;
+      }
+    }
+    return Object.keys(mergedStyle).length > 0 ? mergedStyle : undefined;
+  };
+}
+
 /**
  * 解析工具栏规则（从按钮配置中提取 position='toolbar' 的按钮）
  */

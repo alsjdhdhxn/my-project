@@ -31,6 +31,7 @@
       :defaultColDef="defaultColDef"
       :getRowId="getRowId"
       :getRowClass="getRowClass"
+      :getRowStyle="getRowStyle"
       :rowSelection="rowSelection"
       :autoSizeStrategy="autoSizeStrategy"
       :getContextMenuItems="getContextMenuItems"
@@ -152,6 +153,7 @@ const rowSelection = computed(() => unwrap(state.value.rowSelection));
 const autoSizeStrategy = computed(() => unwrap(state.value.autoSizeStrategy));
 const getRowId = computed(() => unwrap(state.value.getRowId));
 const getRowClass = computed(() => unwrap(state.value.getRowClass));
+const getRowStyle = computed(() => unwrap(state.value.getRowStyle));
 const getContextMenuItems = computed(() => unwrap(state.value.getContextMenuItems));
 const rowHeight = computed(() => unwrap(state.value.rowHeight));
 const headerHeight = computed(() => unwrap(state.value.headerHeight));

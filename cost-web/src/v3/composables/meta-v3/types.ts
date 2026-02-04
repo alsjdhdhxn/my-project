@@ -161,7 +161,13 @@ export type RowClassRule = {
   field: string;
   operator: 'notNull' | 'eq' | 'ne' | 'in' | 'notIn';
   value?: any;
-  className: string;
+  className?: string;
+  style?: {
+    backgroundColor?: string;
+    color?: string;
+    fontWeight?: string;
+    fontStyle?: string;
+  };
 };
 
 /** @deprecated 使用 ButtonItemRule 代替 */
