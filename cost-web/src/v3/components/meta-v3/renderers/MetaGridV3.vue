@@ -54,6 +54,7 @@ import { NSpace, NButton, useDialog } from 'naive-ui';
 import type { ColDef, GridReadyEvent } from 'ag-grid-community';
 import type { PageComponentWithRules, ToolbarRule } from '@/v3/composables/meta-v3/types';
 import type { ComponentStateByKey, MetaRuntime } from '@/v3/composables/meta-v3/runtime/types';
+import { handleToolbarAction } from '@/v3/composables/meta-v3/useToolbarAction';
 
 type GridConfig = {
   width?: string | number;
@@ -101,38 +102,21 @@ const toolbarItems = computed(() => {
 });
 
 async function handleToolbarClick(item: any) {
-  if (!item.action) return;
-  
   const executeAction = (props.runtime as any)?.executeAction;
   if (!executeAction) {
     console.warn('[MetaGridV3] executeAction not found in runtime');
     return;
   }
 
-  // 获取选中行（和右键菜单一样）
-  const api = (props.runtime as any)?.masterGridApi?.value;
-  const selectedRows = api?.getSelectedRows?.() || [];
-  const row = selectedRows[0] || null;
-  
-  // 默认刷新模式：需要选中行时刷新行，否则刷新全部
-  const defaultRefreshMode = item.requiresRow ? 'row' : 'all';
-  const refreshMode = item.refreshMode ?? defaultRefreshMode;
-  
-  // 如果有确认提示
-  if (item.confirm) {
-    dialog.warning({
-      title: '确认',
-      content: item.confirm,
-      positiveText: '确定',
-      negativeText: '取消',
-      onPositiveClick: async () => {
-        await executeAction(item.action, { data: row || {}, selectedRow: row, refreshMode });
-      }
-    });
-    return;
-  }
-  
-  await executeAction(item.action, { data: row || {}, selectedRow: row, refreshMode });
+  await handleToolbarAction(item, {
+    getSelectedRow: () => {
+      const api = (props.runtime as any)?.masterGridApi?.value;
+      const selectedRows = api?.getSelectedRows?.() || [];
+      return selectedRows[0] || null;
+    },
+    executeAction,
+    dialog
+  });
 }
 
 function toCssSize(value: string | number | undefined) {

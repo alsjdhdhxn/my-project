@@ -1,5 +1,6 @@
 import type { ContextMenuItemRule, ContextMenuRule } from '@/v3/composables/meta-v3/types';
 import type { CustomExportConfig } from '@/service/api/export-config';
+import { resolveRefreshMode } from '@/v3/composables/meta-v3/useToolbarAction';
 
 const LABEL_ADD = '新增';
 const LABEL_COPY = '复制';
@@ -324,9 +325,7 @@ export function useGridContextMenu(params: {
         const needsSelection = item.requiresSelection ?? false;
         const disabled = item.disabled || (needsSelection && !hasSelection(ctx.params));
 
-        // 默认刷新模式：需要选中行时刷新行，否则刷新全部
-        const defaultRefreshMode = needsRow ? 'row' : 'all';
-        const refreshMode = item.refreshMode ?? defaultRefreshMode;
+        const refreshMode = resolveRefreshMode(item);
 
         built.push({
           name: item.label || actionKey,

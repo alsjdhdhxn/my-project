@@ -126,6 +126,7 @@ import DetailRowRendererV3 from '@/v3/components/detail/DetailRowRendererV3.vue'
 import DetailPanelV3 from '@/v3/components/detail/DetailPanelV3.vue';
 import { useMasterGridBindings } from '@/v3/composables/meta-v3/useMasterGridBindings';
 import { useGridContextMenu } from '@/v3/composables/meta-v3/useGridContextMenu';
+import { handleToolbarAction } from '@/v3/composables/meta-v3/useToolbarAction';
 import { useThemeStore } from '@/store/modules/theme';
 import { ensureRowKey } from '@/v3/logic/calc-engine';
 import { buildRowClassCallback, buildRowEditableCallback } from '@/v3/composables/meta-v3/usePageRules';
@@ -190,32 +191,15 @@ const toolbarItems = computed(() => {
 });
 
 async function handleToolbarClick(item: any) {
-  if (!item.action) return;
-  
-  // 获取选中行
-  const api = masterGridApi?.value;
-  const selectedRows = api?.getSelectedRows?.() || [];
-  const row = selectedRows[0] || null;
-  
-  // 默认刷新模式：需要选中行时刷新行，否则刷新全部
-  const defaultRefreshMode = item.requiresRow ? 'row' : 'all';
-  const refreshMode = item.refreshMode ?? defaultRefreshMode;
-  
-  // 如果有确认提示
-  if (item.confirm) {
-    dialog.warning({
-      title: '确认',
-      content: item.confirm,
-      positiveText: '确定',
-      negativeText: '取消',
-      onPositiveClick: async () => {
-        await executeAction(item.action, { data: row || {}, selectedRow: row, refreshMode });
-      }
-    });
-    return;
-  }
-  
-  await executeAction(item.action, { data: row || {}, selectedRow: row, refreshMode });
+  await handleToolbarAction(item, {
+    getSelectedRow: () => {
+      const api = masterGridApi?.value;
+      const selectedRows = api?.getSelectedRows?.() || [];
+      return selectedRows[0] || null;
+    },
+    executeAction,
+    dialog
+  });
 }
 
 // 使用全局主题设置的detailViewMode
