@@ -11,7 +11,7 @@ public record PagePermission(
     String pageCode,
     Set<String> buttons,                      // 允许的按钮，["*"] 表示全部
     Map<String, ColumnPermission> columns,    // fieldName -> 列权限
-    List<DataRule> dataRules                  // 数据权限规则
+    String rowFilter                          // 行权限SQL条件，如 "DEPT_ID = 1" 或 "CREATE_BY = '${username}'"
 ) {
     /**
      * 是否有某个按钮权限

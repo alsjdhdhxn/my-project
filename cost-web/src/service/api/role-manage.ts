@@ -180,6 +180,19 @@ export async function fetchPageColumns(pageCode: string) {
   return data || [];
 }
 
+// ==================== 行权限配置 ====================
+
+export interface RowFilterFieldVO {
+  field: string;
+  label: string;
+  dataType: 'string' | 'number' | 'date';
+}
+
+export async function fetchRowFilterFields(pageCode: string) {
+  const { data } = await request<RowFilterFieldVO[]>({ url: `/role-manage/page/${pageCode}/row-filter-fields` });
+  return data || [];
+}
+
 // ==================== 高级查询 ====================
 
 export interface SearchCondition {

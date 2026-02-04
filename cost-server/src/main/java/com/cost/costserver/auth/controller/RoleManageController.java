@@ -119,6 +119,14 @@ public class RoleManageController {
         return Result.ok(roleManageService.listPageColumns(pageCode));
     }
 
+    /**
+     * 获取页面主表的字段列表（用于行权限可视化配置）
+     */
+    @GetMapping("/page/{pageCode}/row-filter-fields")
+    public Result<List<RowFilterFieldVO>> listRowFilterFields(@PathVariable String pageCode) {
+        return Result.ok(roleManageService.listRowFilterFields(pageCode));
+    }
+
     // ==================== 高级查询 ====================
 
     @PostMapping("/roles/search")

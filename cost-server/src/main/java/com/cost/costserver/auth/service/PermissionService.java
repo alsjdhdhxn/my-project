@@ -1,7 +1,6 @@
 package com.cost.costserver.auth.service;
 
 import cn.hutool.core.util.StrUtil;
-import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import com.cost.costserver.auth.dto.*;
@@ -48,15 +47,15 @@ public class PermissionService {
             // 解析列权限
             Map<String, ColumnPermission> columns = parseColumns(rp.getColumnPolicy());
             
-            // 解析行权限规则（从 rowPolicy 字段）
-            List<DataRule> rules = parseRowPolicy(rp.getRowPolicy());
+            // 行权限直接使用 SQL 条件字符串
+            String rowFilter = parseRowFilter(rp.getRowPolicy());
             
             // 合并权限（多角色取并集）
             PagePermission existing = pagePermissions.get(pageCode);
             if (existing == null) {
-                pagePermissions.put(pageCode, new PagePermission(pageCode, buttons, columns, rules));
+                pagePermissions.put(pageCode, new PagePermission(pageCode, buttons, columns, rowFilter));
             } else {
-                pagePermissions.put(pageCode, mergePagePermission(existing, buttons, columns, rules));
+                pagePermissions.put(pageCode, mergePagePermission(existing, buttons, columns, rowFilter));
             }
         }
         
@@ -70,7 +69,7 @@ public class PermissionService {
     public PagePermission getPagePermission(Long userId, String pageCode) {
         // admin 用户直接放行，返回全权限
         if (isSuperAdmin()) {
-            return new PagePermission(pageCode, Set.of("*"), Collections.emptyMap(), Collections.emptyList());
+            return new PagePermission(pageCode, Set.of("*"), Collections.emptyMap(), null);
         }
         
         List<RolePage> rolePages = rolePageMapper.selectByUserId(userId);
@@ -78,7 +77,7 @@ public class PermissionService {
         boolean hasPage = false;
         Set<String> mergedButtons = new HashSet<>();
         Map<String, ColumnPermission> mergedColumns = new HashMap<>();
-        List<DataRule> mergedRules = new ArrayList<>();
+        StringBuilder mergedRowFilter = new StringBuilder();
         
         for (RolePage rp : rolePages) {
             if (!pageCode.equals(rp.getPageCode())) continue;
@@ -90,15 +89,21 @@ public class PermissionService {
             Map<String, ColumnPermission> columns = parseColumns(rp.getColumnPolicy());
             mergeColumns(mergedColumns, columns);
             
-            List<DataRule> rules = parseRowPolicy(rp.getRowPolicy());
-            mergedRules.addAll(rules);
+            String rowFilter = parseRowFilter(rp.getRowPolicy());
+            if (StrUtil.isNotBlank(rowFilter)) {
+                if (mergedRowFilter.length() > 0) {
+                    mergedRowFilter.append(" OR ");
+                }
+                mergedRowFilter.append("(").append(rowFilter).append(")");
+            }
         }
         
         if (!hasPage) {
             return null; // 无页面权限
         }
         
-        return new PagePermission(pageCode, mergedButtons, mergedColumns, mergedRules);
+        String finalRowFilter = mergedRowFilter.length() > 0 ? mergedRowFilter.toString() : null;
+        return new PagePermission(pageCode, mergedButtons, mergedColumns, finalRowFilter);
     }
 
     /**
@@ -176,38 +181,52 @@ public class PermissionService {
     }
 
     /**
-     * 解析行权限 JSON
-     * 格式：[{"fieldName":"DEPT_ID","operator":"eq","value":"${userDeptId}","valueType":"placeholder"}, ...]
+     * 解析行权限 SQL 条件
+     * 支持两种格式：
+     * 1. 可视化模式 JSON：{"mode":"visual","conditions":[...],"sql":"..."}
+     * 2. 自定义 SQL 模式：直接是 SQL 字符串
+     * 支持占位符：${userId}, ${username}
      */
-    private List<DataRule> parseRowPolicy(String rowPolicy) {
+    private String parseRowFilter(String rowPolicy) {
         if (StrUtil.isBlank(rowPolicy)) {
-            return Collections.emptyList();
+            return null;
         }
-        try {
-            JSONArray arr = JSONUtil.parseArray(rowPolicy);
-            List<DataRule> rules = new ArrayList<>();
-            for (int i = 0; i < arr.size(); i++) {
-                JSONObject obj = arr.getJSONObject(i);
-                DataRule rule = new DataRule(
-                    obj.getStr("fieldName"),
-                    obj.getStr("operator"),
-                    obj.getStr("value"),
-                    obj.getStr("valueType")
-                );
-                rules.add(rule);
+        
+        String sql = rowPolicy;
+        
+        // 如果是 JSON 格式，提取 sql 字段
+        if (rowPolicy.trim().startsWith("{")) {
+            try {
+                JSONObject json = JSONUtil.parseObj(rowPolicy);
+                sql = json.getStr("sql");
+                if (StrUtil.isBlank(sql)) {
+                    return null;
+                }
+            } catch (Exception e) {
+                log.warn("解析行权限JSON失败，尝试作为SQL处理: {}", rowPolicy);
+                sql = rowPolicy;
             }
-            return rules;
-        } catch (Exception e) {
-            log.warn("解析行权限失败: {}", rowPolicy, e);
-            return Collections.emptyList();
         }
+        
+        // 解析占位符
+        Long userId = SecurityUtils.getCurrentUserId();
+        String username = SecurityUtils.getCurrentUsername();
+        
+        if (userId != null) {
+            sql = sql.replace("${userId}", userId.toString());
+        }
+        if (username != null) {
+            sql = sql.replace("${username}", "'" + username.replace("'", "''") + "'");
+        }
+        
+        return sql;
     }
 
     /**
      * 合并页面权限（多角色取并集）
      */
     private PagePermission mergePagePermission(PagePermission existing, Set<String> buttons, 
-                                                Map<String, ColumnPermission> columns, List<DataRule> rules) {
+                                                Map<String, ColumnPermission> columns, String rowFilter) {
         // 按钮取并集
         Set<String> mergedButtons = new HashSet<>(existing.buttons());
         mergedButtons.addAll(buttons);
@@ -216,11 +235,17 @@ public class PermissionService {
         Map<String, ColumnPermission> mergedColumns = new HashMap<>(existing.columns());
         mergeColumns(mergedColumns, columns);
         
-        // 数据规则取并集
-        List<DataRule> mergedRules = new ArrayList<>(existing.dataRules());
-        mergedRules.addAll(rules);
+        // 行权限用 OR 合并
+        String mergedRowFilter = existing.rowFilter();
+        if (StrUtil.isNotBlank(rowFilter)) {
+            if (StrUtil.isNotBlank(mergedRowFilter)) {
+                mergedRowFilter = "(" + mergedRowFilter + ") OR (" + rowFilter + ")";
+            } else {
+                mergedRowFilter = rowFilter;
+            }
+        }
         
-        return new PagePermission(existing.pageCode(), mergedButtons, mergedColumns, mergedRules);
+        return new PagePermission(existing.pageCode(), mergedButtons, mergedColumns, mergedRowFilter);
     }
 
     /**

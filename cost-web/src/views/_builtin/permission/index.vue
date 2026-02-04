@@ -1,16 +1,16 @@
 <script setup lang="ts">
 import { ref, computed, watch, h } from 'vue';
-import { NButton, NTabs, NTabPane, NEmpty, NTag, NPopconfirm, NModal, NForm, NFormItem, NInput, NSelect, useMessage, NScrollbar, NCheckbox, NSpace, NPopover, NDataTable, NTree } from 'naive-ui';
-import type { TreeOption, TreeRenderProps } from 'naive-ui';
+import { NButton, NTabs, NTabPane, NEmpty, NTag, NPopconfirm, NModal, NForm, NFormItem, NInput, NSelect, useMessage, NScrollbar, NCheckbox, NSpace, NPopover, NDataTable, NTree, NRadioGroup, NRadio, NDivider } from 'naive-ui';
+import type { TreeOption, TreeRenderProps, SelectOption } from 'naive-ui';
 import { Icon } from '@iconify/vue';
 import {
   fetchRoles, createRole, updateRole, deleteRole,
   fetchUsersByRole, addUserToRole, removeUserFromRole,
   addPageToRole, updateRolePage, removePageFromRole,
   fetchAllUsers, searchRoles, fetchPageButtons, fetchResourcePermissionTree,
-  fetchPageColumns
+  fetchPageColumns, fetchRowFilterFields
 } from '@/service/api/role-manage';
-import type { RoleVO, UserRoleVO, RolePageVO, UserSimpleVO, PageButtonVO, ResourcePermissionVO, PageTableColumnsVO, PageColumnVO } from '@/service/api/role-manage';
+import type { RoleVO, UserRoleVO, RolePageVO, UserSimpleVO, PageButtonVO, ResourcePermissionVO, PageTableColumnsVO, PageColumnVO, RowFilterFieldVO } from '@/service/api/role-manage';
 
 const message = useMessage();
 
@@ -487,6 +487,134 @@ const columnPermissions = ref<Record<string, Record<string, { visible: boolean; 
 const showEditRowModal = ref(false);
 const editRowForm = ref<{ id?: number; pageCode: string; pageName?: string; rowPolicy?: string }>({ pageCode: '' });
 const editingRow = ref(false);
+const loadingRowFields = ref(false);
+const rowFilterFields = ref<RowFilterFieldVO[]>([]);
+
+// 行权限配置模式：visual 或 sql
+const rowConfigMode = ref<'visual' | 'sql'>('visual');
+
+// 切换模式时清空另一个模式的内容
+watch(rowConfigMode, (newMode, oldMode) => {
+  if (newMode === 'visual' && oldMode === 'sql') {
+    // 切换到可视化模式，清空自定义SQL
+    rowCustomSql.value = '';
+  } else if (newMode === 'sql' && oldMode === 'visual') {
+    // 切换到自定义SQL模式，把可视化生成的SQL填入，然后清空可视化条件
+    if (rowConditions.value.length > 0) {
+      rowCustomSql.value = generateSqlFromConditions();
+    }
+    rowConditions.value = [];
+    rowConditionLogic.value = 'AND';
+  }
+});
+
+// 可视化条件
+interface RowCondition {
+  field: string;
+  op: string;
+  valueType: 'static' | 'dynamic';
+  value: string;
+}
+const rowConditions = ref<RowCondition[]>([]);
+const rowConditionLogic = ref<'AND' | 'OR'>('AND');
+
+// 自定义 SQL
+const rowCustomSql = ref('');
+
+// 操作符选项
+const rowOperatorOptions = [
+  { label: '等于', value: 'eq' },
+  { label: '不等于', value: 'ne' },
+  { label: '大于', value: 'gt' },
+  { label: '大于等于', value: 'ge' },
+  { label: '小于', value: 'lt' },
+  { label: '小于等于', value: 'le' },
+  { label: '包含', value: 'like' },
+  { label: '属于', value: 'in' },
+  { label: '为空', value: 'isNull' },
+  { label: '不为空', value: 'isNotNull' },
+];
+
+// 动态值选项
+const dynamicValueOptions = [
+  { label: '当前用户', value: '${username}' },
+  { label: '当前用户ID', value: '${userId}' },
+];
+
+// 字段选项（computed）
+const fieldOptions = computed(() => {
+  return rowFilterFields.value.map(f => ({
+    label: f.label,
+    value: f.field
+  }));
+});
+
+// 根据条件生成 SQL
+function generateSqlFromConditions(): string {
+  if (rowConditions.value.length === 0) return '';
+  
+  const parts = rowConditions.value.map(cond => {
+    const field = cond.field;
+    const value = cond.value;
+    
+    switch (cond.op) {
+      case 'eq':
+        return `${field} = ${formatSqlValue(value, cond.valueType)}`;
+      case 'ne':
+        return `${field} <> ${formatSqlValue(value, cond.valueType)}`;
+      case 'gt':
+        return `${field} > ${formatSqlValue(value, cond.valueType)}`;
+      case 'ge':
+        return `${field} >= ${formatSqlValue(value, cond.valueType)}`;
+      case 'lt':
+        return `${field} < ${formatSqlValue(value, cond.valueType)}`;
+      case 'le':
+        return `${field} <= ${formatSqlValue(value, cond.valueType)}`;
+      case 'like':
+        return `${field} LIKE '%${value.replace(/'/g, "''")}%'`;
+      case 'in':
+        const inValues = value.split(',').map(v => formatSqlValue(v.trim(), cond.valueType)).join(', ');
+        return `${field} IN (${inValues})`;
+      case 'isNull':
+        return `${field} IS NULL`;
+      case 'isNotNull':
+        return `${field} IS NOT NULL`;
+      default:
+        return '';
+    }
+  }).filter(Boolean);
+  
+  return parts.join(` ${rowConditionLogic.value} `);
+}
+
+function formatSqlValue(value: string, valueType: 'static' | 'dynamic'): string {
+  if (valueType === 'dynamic') {
+    return value; // ${username} 等占位符直接返回
+  }
+  // 静态值：数字不加引号，字符串加引号
+  if (/^-?\d+(\.\d+)?$/.test(value)) {
+    return value;
+  }
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
+// 生成的 SQL（computed）
+const generatedSql = computed(() => generateSqlFromConditions());
+
+// 添加条件
+function addRowCondition() {
+  rowConditions.value.push({
+    field: rowFilterFields.value[0]?.field || '',
+    op: 'eq',
+    valueType: 'static',
+    value: ''
+  });
+}
+
+// 删除条件
+function removeRowCondition(index: number) {
+  rowConditions.value.splice(index, 1);
+}
 
 // 打开按钮权限配置
 async function openEditButton(resource: ResourcePermissionVO) {
@@ -570,13 +698,64 @@ async function openEditColumn(resource: ResourcePermissionVO) {
 }
 
 // 打开行权限配置
-function openEditRow(resource: ResourcePermissionVO) {
+async function openEditRow(resource: ResourcePermissionVO) {
   editRowForm.value = {
     id: resource.rolePageId,
     pageCode: resource.pageCode || '',
     pageName: resource.resourceName,
     rowPolicy: resource.rowPolicy
   };
+  
+  // 加载字段列表
+  loadingRowFields.value = true;
+  try {
+    rowFilterFields.value = await fetchRowFilterFields(resource.pageCode || '');
+  } catch (e) {
+    rowFilterFields.value = [];
+  } finally {
+    loadingRowFields.value = false;
+  }
+  
+  // 解析已有的行权限配置
+  rowConditions.value = [];
+  rowConditionLogic.value = 'AND';
+  rowCustomSql.value = '';
+  
+  if (resource.rowPolicy) {
+    const policy = resource.rowPolicy.trim();
+    if (policy.startsWith('{')) {
+      // JSON 格式（可视化模式）
+      try {
+        const json = JSON.parse(policy);
+        if (json.mode === 'visual' && json.conditions) {
+          rowConfigMode.value = 'visual';
+          rowConditionLogic.value = json.logic || 'AND';
+          rowConditions.value = json.conditions.map((c: any) => ({
+            field: c.field,
+            op: c.op,
+            valueType: c.valueType || 'static',
+            value: c.value
+          }));
+        } else {
+          // 有 sql 字段但不是 visual 模式
+          rowConfigMode.value = 'sql';
+          rowCustomSql.value = json.sql || '';
+        }
+      } catch {
+        // JSON 解析失败，当作 SQL
+        rowConfigMode.value = 'sql';
+        rowCustomSql.value = policy;
+      }
+    } else {
+      // 纯 SQL 字符串
+      rowConfigMode.value = 'sql';
+      rowCustomSql.value = policy;
+    }
+  } else {
+    // 空配置，默认可视化模式
+    rowConfigMode.value = 'visual';
+  }
+  
   showEditRowModal.value = true;
 }
 
@@ -763,7 +942,31 @@ async function handleUpdateRow() {
   if (!editRowForm.value.id) return;
   editingRow.value = true;
   try {
-    await updateRolePage(editRowForm.value.id, { rowPolicy: editRowForm.value.rowPolicy });
+    let rowPolicy = '';
+    
+    if (rowConfigMode.value === 'visual') {
+      if (rowConditions.value.length > 0) {
+        // 可视化模式：保存 JSON + SQL
+        const sql = generateSqlFromConditions();
+        rowPolicy = JSON.stringify({
+          mode: 'visual',
+          logic: rowConditionLogic.value,
+          conditions: rowConditions.value.map(c => ({
+            field: c.field,
+            fieldLabel: rowFilterFields.value.find(f => f.field === c.field)?.label || c.field,
+            op: c.op,
+            valueType: c.valueType,
+            value: c.value
+          })),
+          sql
+        });
+      }
+    } else {
+      // 自定义 SQL 模式：直接保存 SQL
+      rowPolicy = rowCustomSql.value.trim();
+    }
+    
+    await updateRolePage(editRowForm.value.id, { rowPolicy });
     message.success('行权限更新成功');
     showEditRowModal.value = false;
     await loadResourcePermissionTree();
@@ -1115,15 +1318,110 @@ loadRoles();
     </NModal>
 
     <!-- 编辑行权限弹窗 -->
-    <NModal v-model:show="showEditRowModal" preset="card" title="配置行权限" class="w-500px">
-      <NForm label-placement="left" label-width="70" size="small">
-        <NFormItem label="页面">
-          <NInput :value="editRowForm.pageName || editRowForm.pageCode" disabled />
-        </NFormItem>
-        <NFormItem label="行权限">
-          <NInput v-model:value="editRowForm.rowPolicy" type="textarea" placeholder="JSON格式，留空表示全部行可见" :rows="4" />
-        </NFormItem>
-      </NForm>
+    <NModal v-model:show="showEditRowModal" preset="card" title="配置行权限" style="width: 700px;">
+      <div class="row-modal-header">
+        <span class="page-label">页面：{{ editRowForm.pageName || editRowForm.pageCode }}</span>
+      </div>
+      
+      <div class="row-config-mode">
+        <span class="mode-label">配置方式：</span>
+        <NRadioGroup v-model:value="rowConfigMode" size="small">
+          <NRadio value="visual">可视化配置</NRadio>
+          <NRadio value="sql">自定义SQL</NRadio>
+        </NRadioGroup>
+      </div>
+      
+      <!-- 可视化配置模式 -->
+      <template v-if="rowConfigMode === 'visual'">
+        <div class="row-visual-section">
+          <div class="condition-header">
+            <span>满足</span>
+            <NSelect v-model:value="rowConditionLogic" :options="[{ label: '全部', value: 'AND' }, { label: '任一', value: 'OR' }]" size="small" style="width: 80px;" />
+            <span>条件时可见：</span>
+          </div>
+          
+          <template v-if="loadingRowFields">
+            <div class="loading-container">加载中...</div>
+          </template>
+          <template v-else>
+            <div class="condition-list">
+              <div v-for="(cond, index) in rowConditions" :key="index" class="condition-row">
+                <NSelect 
+                  v-model:value="cond.field" 
+                  :options="fieldOptions" 
+                  size="small" 
+                  style="width: 140px;" 
+                  placeholder="选择字段"
+                  filterable
+                />
+                <NSelect 
+                  v-model:value="cond.op" 
+                  :options="rowOperatorOptions" 
+                  size="small" 
+                  style="width: 100px;" 
+                />
+                <template v-if="cond.op !== 'isNull' && cond.op !== 'isNotNull'">
+                  <NSelect 
+                    v-model:value="cond.valueType" 
+                    :options="[{ label: '固定值', value: 'static' }, { label: '动态值', value: 'dynamic' }]" 
+                    size="small" 
+                    style="width: 90px;" 
+                  />
+                  <template v-if="cond.valueType === 'dynamic'">
+                    <NSelect 
+                      v-model:value="cond.value" 
+                      :options="dynamicValueOptions" 
+                      size="small" 
+                      style="flex: 1;" 
+                      placeholder="选择动态值"
+                    />
+                  </template>
+                  <template v-else>
+                    <NInput 
+                      v-model:value="cond.value" 
+                      size="small" 
+                      style="flex: 1;" 
+                      :placeholder="cond.op === 'in' ? '多个值用逗号分隔' : '输入值'"
+                    />
+                  </template>
+                </template>
+                <NButton quaternary circle size="small" @click="removeRowCondition(index)">
+                  <template #icon><Icon icon="mdi:close" /></template>
+                </NButton>
+              </div>
+              
+              <NButton dashed size="small" style="width: 100%;" @click="addRowCondition">
+                <template #icon><Icon icon="mdi:plus" /></template>
+                添加条件
+              </NButton>
+            </div>
+            
+            <div v-if="generatedSql" class="generated-sql">
+              <div class="sql-label">生成的SQL（只读）：</div>
+              <div class="sql-content">{{ generatedSql }}</div>
+            </div>
+          </template>
+        </div>
+      </template>
+      
+      <!-- 自定义SQL模式 -->
+      <template v-else>
+        <div class="row-sql-section">
+          <NInput 
+            v-model:value="rowCustomSql" 
+            type="textarea" 
+            placeholder="SQL WHERE 条件，如：DEPT_ID = 1 或 CREATE_BY = ${username}" 
+            :rows="5" 
+          />
+          <div class="row-policy-tip">
+            <div>支持占位符：</div>
+            <div class="tip-item"><code>${userId}</code> - 当前用户ID</div>
+            <div class="tip-item"><code>${username}</code> - 当前用户名</div>
+            <div class="tip-item warning">⚠️ 请确保SQL语法正确，避免使用 1=2、1=0 等永假条件</div>
+          </div>
+        </div>
+      </template>
+      
       <template #footer>
         <div class="modal-footer">
           <NButton size="small" @click="showEditRowModal = false">取消</NButton>
@@ -1563,6 +1861,109 @@ loadRoles();
   display: flex;
   align-items: center;
   gap: 4px;
+}
+
+.row-policy-tip {
+  font-size: 12px;
+  color: #9ca3af;
+  margin-top: 8px;
+  padding: 8px;
+  background: #f9fafb;
+  border-radius: 4px;
+}
+
+.row-policy-tip .tip-item {
+  margin-top: 4px;
+}
+
+.row-policy-tip .tip-item.warning {
+  color: #f59e0b;
+  margin-top: 8px;
+}
+
+.row-policy-tip code {
+  background: #e5e7eb;
+  padding: 1px 4px;
+  border-radius: 2px;
+  font-family: monospace;
+}
+
+/* 行权限弹窗 */
+.row-modal-header {
+  margin-bottom: 16px;
+}
+
+.row-config-mode {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.mode-label {
+  font-size: 14px;
+  color: #333;
+}
+
+.row-visual-section {
+  border: 1px solid #e8e8e8;
+  border-radius: 8px;
+  padding: 16px;
+  background: #fafafa;
+}
+
+.condition-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  font-size: 14px;
+  color: #333;
+}
+
+.condition-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.condition-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  background: #fff;
+  border: 1px solid #e8e8e8;
+  border-radius: 4px;
+}
+
+.generated-sql {
+  margin-top: 16px;
+  padding: 12px;
+  background: #fff;
+  border: 1px solid #e8e8e8;
+  border-radius: 4px;
+}
+
+.sql-label {
+  font-size: 12px;
+  color: #9ca3af;
+  margin-bottom: 4px;
+}
+
+.sql-content {
+  font-family: monospace;
+  font-size: 13px;
+  color: #333;
+  word-break: break-all;
+}
+
+.row-sql-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 /* 工具类 */

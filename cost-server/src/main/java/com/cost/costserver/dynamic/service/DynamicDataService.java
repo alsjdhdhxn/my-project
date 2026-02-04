@@ -1,7 +1,6 @@
 package com.cost.costserver.dynamic.service;
 
 import cn.hutool.core.util.StrUtil;
-import com.cost.costserver.auth.dto.DataRule;
 import com.cost.costserver.auth.dto.PagePermission;
 import com.cost.costserver.auth.service.PermissionService;
 import com.cost.costserver.common.BusinessException;
@@ -149,76 +148,11 @@ public class DynamicDataService {
     }
 
     private String buildDataRuleClause(PagePermission permission, Map<String, ColumnMetadataDTO> columnMap) {
-        if (permission == null || permission.dataRules() == null || permission.dataRules().isEmpty()) {
+        if (permission == null || StrUtil.isBlank(permission.rowFilter())) {
             return "";
         }
-
-        StringBuilder sb = new StringBuilder();
-        for (DataRule rule : permission.dataRules()) {
-            if (StrUtil.isBlank(rule.fieldName()) || StrUtil.isBlank(rule.operator())) {
-                continue;
-            }
-
-            ColumnMetadataDTO col = columnMap.get(rule.fieldName());
-            String columnName = col != null ? col.columnName() : camelToUnderscore(rule.fieldName());
-
-            // 解析值（支持占位符）
-            String value = resolveValue(rule.value(), rule.valueType());
-            if (value == null) {
-                continue;
-            }
-
-            sb.append(" AND ");
-            switch (rule.operator()) {
-                case "eq" -> sb.append(columnName).append(" = ").append(formatRuleValue(value, col));
-                case "ne" -> sb.append(columnName).append(" <> ").append(formatRuleValue(value, col));
-                case "in" -> sb.append(columnName).append(" IN (").append(value).append(")");
-                case "like" -> sb.append(columnName).append(" LIKE '%").append(escapeSql(value)).append("%'");
-                case "gt" -> sb.append(columnName).append(" > ").append(formatRuleValue(value, col));
-                case "ge" -> sb.append(columnName).append(" >= ").append(formatRuleValue(value, col));
-                case "lt" -> sb.append(columnName).append(" < ").append(formatRuleValue(value, col));
-                case "le" -> sb.append(columnName).append(" <= ").append(formatRuleValue(value, col));
-                default -> log.warn("不支持的数据权限操作符: {}", rule.operator());
-            }
-        }
-        return sb.toString();
-    }
-
-    /**
-     * 解析数据权限值（支持占位符）
-     */
-    private String resolveValue(String value, String valueType) {
-        if (value == null) {
-            return null;
-        }
-
-        if ("placeholder".equals(valueType)) {
-            // 解析占位符
-            Long userId = SecurityUtils.getCurrentUserId();
-            String username = SecurityUtils.getCurrentUsername();
-
-            return switch (value) {
-                case "${userId}" -> userId != null ? userId.toString() : null;
-                case "${username}" -> username;
-                case "${deptId}" -> null; // TODO: 后续实现部门ID获取
-                default -> {
-                    log.warn("未知的占位符: {}", value);
-                    yield null;
-                }
-            };
-        }
-
-        return value;
-    }
-
-    /**
-     * 格式化数据权限值
-     */
-    private String formatRuleValue(String value, ColumnMetadataDTO col) {
-        if (col != null && "number".equals(col.dataType())) {
-            return validateAndFormatNumber(value);
-        }
-        return "'" + escapeSql(value) + "'";
+        // 直接返回 SQL 条件（占位符已在 PermissionService 中解析）
+        return " AND (" + permission.rowFilter() + ")";
     }
 
     /**

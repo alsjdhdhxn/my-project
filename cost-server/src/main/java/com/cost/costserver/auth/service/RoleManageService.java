@@ -190,6 +190,8 @@ public class RoleManageService {
             rolePage.setColumnPolicy(vo.getColumnPolicy());
         }
         if (vo.getRowPolicy() != null) {
+            // 校验行权限格式
+            validateRowPolicy(vo.getRowPolicy());
             rolePage.setRowPolicy(vo.getRowPolicy());
         }
         rolePageMapper.updateById(rolePage);
@@ -200,6 +202,60 @@ public class RoleManageService {
             .filter(rp -> rp.getId().equals(vo.getId()))
             .findFirst()
             .orElse(vo);
+    }
+    
+    /**
+     * 校验行权限格式
+     * 只允许两种格式：
+     * 1. 可视化模式 JSON：必须包含 mode=visual 和 sql 字段
+     * 2. 自定义 SQL 模式：纯 SQL 字符串（不以 { 开头）
+     */
+    private void validateRowPolicy(String rowPolicy) {
+        if (rowPolicy == null || rowPolicy.trim().isEmpty()) {
+            return; // 空值允许
+        }
+        
+        String trimmed = rowPolicy.trim();
+        
+        if (trimmed.startsWith("{")) {
+            // JSON 格式，必须是可视化模式
+            try {
+                cn.hutool.json.JSONObject json = cn.hutool.json.JSONUtil.parseObj(trimmed);
+                String mode = json.getStr("mode");
+                if (!"visual".equals(mode)) {
+                    throw new BusinessException("行权限JSON格式错误：mode必须为visual");
+                }
+                String sql = json.getStr("sql");
+                if (sql == null) {
+                    throw new BusinessException("行权限JSON格式错误：缺少sql字段");
+                }
+                // 校验 SQL 不能包含危险条件
+                validateSqlCondition(sql);
+            } catch (cn.hutool.json.JSONException e) {
+                throw new BusinessException("行权限JSON格式错误：" + e.getMessage());
+            }
+        } else {
+            // 纯 SQL 字符串
+            validateSqlCondition(trimmed);
+        }
+    }
+    
+    /**
+     * 校验 SQL 条件，防止危险条件
+     */
+    private void validateSqlCondition(String sql) {
+        if (sql == null || sql.trim().isEmpty()) {
+            return;
+        }
+        String lower = sql.toLowerCase().replaceAll("\\s+", "");
+        // 禁止永假条件
+        if (lower.contains("1=2") || lower.contains("1=0") || lower.contains("0=1") || lower.contains("2=1")) {
+            throw new BusinessException("行权限不允许使用永假条件（如1=2），如需禁止访问请取消页面授权");
+        }
+        // 禁止永真条件
+        if (lower.contains("1=1") || lower.contains("0=0")) {
+            throw new BusinessException("行权限不允许使用永真条件（如1=1），如需全部访问请清空行权限");
+        }
     }
 
     @Transactional
@@ -624,6 +680,83 @@ public class RoleManageService {
             log.warn("解析COLUMN_OVERRIDE规则失败: {}", e.getMessage());
         }
         return columns;
+    }
+    
+    /**
+     * 获取页面主表的字段列表（用于行权限可视化配置）
+     */
+    public List<RowFilterFieldVO> listRowFilterFields(String pageCode) {
+        List<RowFilterFieldVO> result = new ArrayList<>();
+        
+        // 1. 查询页面的主表组件（GRID 类型，componentKey 为 masterGrid 或 master）
+        List<Map<String, Object>> components = dynamicMapper.selectList(
+            "SELECT c.COMPONENT_KEY, c.REF_TABLE_CODE " +
+            "FROM T_COST_PAGE_COMPONENT c " +
+            "WHERE c.PAGE_CODE = '" + pageCode.replace("'", "''") + "' " +
+            "AND c.COMPONENT_TYPE = 'GRID' " +
+            "AND c.COMPONENT_KEY IN ('masterGrid', 'master') " +
+            "AND c.DELETED = 0"
+        );
+        
+        if (components.isEmpty()) {
+            return result;
+        }
+        
+        String refTableCode = (String) components.get(0).get("REF_TABLE_CODE");
+        if (refTableCode == null) {
+            return result;
+        }
+        
+        // 2. 查询该表的列元数据
+        List<Map<String, Object>> columns = dynamicMapper.selectList(
+            "SELECT c.COLUMN_NAME, c.FIELD_NAME, c.HEADER_TEXT, c.DATA_TYPE " +
+            "FROM T_COST_COLUMN_METADATA c " +
+            "JOIN T_COST_TABLE_METADATA m ON c.TABLE_METADATA_ID = m.ID " +
+            "WHERE m.TABLE_CODE = '" + refTableCode.replace("'", "''") + "' " +
+            "AND c.DELETED = 0 " +
+            "ORDER BY c.DISPLAY_ORDER"
+        );
+        
+        // 3. 添加常用审计字段
+        result.add(createRowFilterField("CREATE_BY", "创建人", "string"));
+        result.add(createRowFilterField("CREATE_TIME", "创建时间", "date"));
+        result.add(createRowFilterField("UPDATE_BY", "更新人", "string"));
+        result.add(createRowFilterField("UPDATE_TIME", "更新时间", "date"));
+        
+        // 4. 添加业务字段
+        for (Map<String, Object> col : columns) {
+            String columnName = (String) col.get("COLUMN_NAME");
+            String headerText = (String) col.get("HEADER_TEXT");
+            String dataType = (String) col.get("DATA_TYPE");
+            
+            // 跳过已添加的审计字段
+            if ("CREATE_BY".equals(columnName) || "CREATE_TIME".equals(columnName) ||
+                "UPDATE_BY".equals(columnName) || "UPDATE_TIME".equals(columnName) ||
+                "DELETED".equals(columnName) || "ID".equals(columnName)) {
+                continue;
+            }
+            
+            result.add(createRowFilterField(columnName, headerText, mapDataType(dataType)));
+        }
+        
+        return result;
+    }
+    
+    private RowFilterFieldVO createRowFilterField(String field, String label, String dataType) {
+        RowFilterFieldVO vo = new RowFilterFieldVO();
+        vo.setField(field);
+        vo.setLabel(label != null ? label : field);
+        vo.setDataType(dataType);
+        return vo;
+    }
+    
+    private String mapDataType(String dataType) {
+        if (dataType == null) return "string";
+        return switch (dataType.toLowerCase()) {
+            case "number", "integer", "decimal", "float", "double" -> "number";
+            case "date", "datetime", "timestamp" -> "date";
+            default -> "string";
+        };
     }
     
     // ==================== 高级查询 ====================
