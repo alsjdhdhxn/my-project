@@ -194,8 +194,12 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     runMasterCalc: calc.runMasterCalc,
     runDetailCalc: calc.runDetailCalc,
     recalcAggregates: recalcAggregatesProxy,
+    broadcastToDetail: calc.broadcastToDetail,
+    broadcastFields: meta.broadcastFields,
     detailGridApisByTab,
-    isRowEditable
+    isRowEditable,
+    masterCalcRules: meta.compiledMasterCalcRules,
+    detailCalcRulesByTab: meta.detailCalcRulesByTab
   });
 
   const { save, isSaving } = useSave({

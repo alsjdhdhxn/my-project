@@ -11,7 +11,29 @@ type RunDetailCalc = (node: any, api: any, row: RowData, masterId: number, tabKe
 
 type RecalcAggregates = (masterId: number, masterRowKey?: string) => void;
 
+type BroadcastToDetail = (masterId: number, row: RowData, changedFields?: string | string[]) => Promise<void>;
+
 type LookupDialogExpose = { open: () => void };
+
+/** 检查回填字段是否会触发计算规则 */
+function shouldTriggerCalc(changedFields: string[], calcRules: any[]): boolean {
+  if (!calcRules || calcRules.length === 0) return false;
+  for (const rule of calcRules) {
+    // 单公式模式
+    if (rule.triggerFields?.some((f: string) => changedFields.includes(f))) {
+      return true;
+    }
+    // 多公式模式
+    if (rule.formulas) {
+      for (const formula of Object.values(rule.formulas) as any[]) {
+        if (formula.triggerFields?.some((f: string) => changedFields.includes(f))) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
 
 export function useLookupDialog(params: {
   getMasterRowById: (masterId: number) => RowData | null;
@@ -24,9 +46,13 @@ export function useLookupDialog(params: {
   runMasterCalc: RunMasterCalc;
   runDetailCalc: RunDetailCalc;
   recalcAggregates: RecalcAggregates;
+  broadcastToDetail?: BroadcastToDetail;
+  broadcastFields?: Ref<string[]>;
   detailGridApisByTab?: Ref<Record<string, any>>;
   isRowEditable?: (row: RowData) => boolean;
   isDetailRowEditable?: (row: RowData, tabKey: string) => boolean;
+  masterCalcRules?: Ref<any[]>;
+  detailCalcRulesByTab?: Ref<Record<string, any[]>>;
 }) {
   const {
     getMasterRowById,
@@ -39,9 +65,13 @@ export function useLookupDialog(params: {
     runMasterCalc,
     runDetailCalc,
     recalcAggregates,
+    broadcastToDetail,
+    broadcastFields,
     detailGridApisByTab,
     isRowEditable,
-    isDetailRowEditable
+    isDetailRowEditable,
+    masterCalcRules,
+    detailCalcRulesByTab
   } = params;
 
   const lookupDialogRef = ref<LookupDialogExpose | null>(null);
@@ -110,16 +140,31 @@ export function useLookupDialog(params: {
       if (row) {
         const rowKey = ensureRowKey(row);
         const node = masterGridApi.value?.getRowNode(String(rowKey));
+        // 收集实际变化的字段
+        const changedFields: string[] = [];
         for (const [field, value] of Object.entries(fillData)) {
           if (row[field] !== value) {
             const oldValue = row[field];
             row[field] = value;
             markFieldChange(row, field, oldValue, value, 'user');
+            changedFields.push(field);
           }
         }
         if (node) {
           masterGridApi.value?.refreshCells({ rowNodes: [node], force: true });
-          runMasterCalc(node, row);
+          // 只有当回填字段会触发计算时才调用计算
+          const calcRules = masterCalcRules?.value || [];
+          if (changedFields.length > 0 && shouldTriggerCalc(changedFields, calcRules)) {
+            runMasterCalc(node, row);
+          }
+          // 检查是否需要广播到明细（回填字段在 broadcastFields 中）
+          if (changedFields.length > 0 && broadcastToDetail && broadcastFields && row.id != null) {
+            const broadcastList = broadcastFields.value || [];
+            const needBroadcast = changedFields.some(f => broadcastList.includes(f));
+            if (needBroadcast) {
+              broadcastToDetail(row.id, row, changedFields);
+            }
+          }
         }
       }
     } else {
@@ -132,17 +177,24 @@ export function useLookupDialog(params: {
           const masterRow = getMasterRowByRowKey(masterRowKey);
           const masterId = masterRow?.id;
           if (masterId == null) break;
+          // 收集实际变化的字段
+          const changedFields: string[] = [];
           for (const [field, value] of Object.entries(fillData)) {
             if (row[field] !== value) {
               const oldValue = row[field];
               row[field] = value;
               markFieldChange(row, field, oldValue, value, 'user');
+              changedFields.push(field);
             }
           }
+          // 获取当前 tab 的计算规则
+          const calcRules = detailCalcRulesByTab?.value?.[tabKey] || [];
+          const needCalc = changedFields.length > 0 && shouldTriggerCalc(changedFields, calcRules);
+          
           const splitDetailApi = detailGridApisByTab?.value?.[tabKey];
           if (splitDetailApi) {
             const node = splitDetailApi.getRowNode?.(String(rowId));
-            if (node) {
+            if (node && needCalc) {
               runDetailCalc(node, splitDetailApi, row, masterId, tabKey, masterRowKey);
             }
             splitDetailApi.refreshCells?.({ force: true });
@@ -152,7 +204,7 @@ export function useLookupDialog(params: {
               secondLevelInfo.api.forEachDetailGridInfo((detailInfo: any) => {
                 if (detailInfo.id?.includes(tabKey)) {
                   detailInfo.api.forEachNode((node: any) => {
-                    if (node.data?.id === rowId) {
+                    if (node.data?.id === rowId && needCalc) {
                       runDetailCalc(node, detailInfo.api, row, masterId, tabKey, masterRowKey);
                     }
                   });
@@ -161,7 +213,10 @@ export function useLookupDialog(params: {
               });
             }
           }
-          recalcAggregates(masterId, masterRowKey);
+          // 只有触发了从表计算才需要重新计算聚合
+          if (needCalc) {
+            recalcAggregates(masterId, masterRowKey);
+          }
           break;
         }
       }
