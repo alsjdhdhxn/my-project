@@ -24,6 +24,17 @@ export type ColumnOverrideRule = {
   required?: boolean;
   cellEditor?: string;
   cellEditorParams?: Record<string, any>;
+  rulesConfig?: {
+    compare?: {
+      enabled: boolean;
+      mode?: 'viewField' | 'dynamicQuery';
+      compareField: string;
+      format?: 'value' | 'percent' | 'both';
+      upColor?: string;
+      downColor?: string;
+    };
+    [key: string]: any;
+  };
 };
 
 /**

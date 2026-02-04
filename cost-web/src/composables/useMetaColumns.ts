@@ -133,9 +133,13 @@ export function metaToColDef(col: ColumnMetadata): ColDef {
       
       // 2. 对比值渲染
       if (config.compare?.enabled) {
-        const format = config.compare.format || 'value'; // value/percent/both
+        const compareConfig = {
+          format: config.compare.format || 'value', // value/percent/both
+          upColor: config.compare.upColor || '#e53935', // 上涨颜色（默认红色）
+          downColor: config.compare.downColor || '#43a047' // 下跌颜色（默认绿色）
+        };
         colDef.cellRenderer = (params: any) => {
-          return renderCompareValue(params, col.fieldName, format);
+          return renderCompareValue(params, col.fieldName, compareConfig);
         };
       }
     } catch (e) {
@@ -232,13 +236,20 @@ export function matchStyleRule(value: any, condition: StyleCondition): boolean {
   }
 }
 
+/** 对比值渲染配置 */
+interface CompareRenderConfig {
+  format: string;
+  upColor: string;
+  downColor: string;
+}
+
 /**
  * 渲染对比值（带箭头和颜色）
  * @param params AG Grid cellRenderer 参数
  * @param fieldName 字段名
- * @param format 格式：value=数值差, percent=百分比, both=两者
+ * @param config 对比配置
  */
-function renderCompareValue(params: any, fieldName: string, format: string): string {
+function renderCompareValue(params: any, fieldName: string, config: CompareRenderConfig): string {
   const value = params.value;
   const data = params.data;
   
@@ -247,7 +258,7 @@ function renderCompareValue(params: any, fieldName: string, format: string): str
   const diff = data?.[`${fieldName}Diff`];
   const diffPercent = data?.[`${fieldName}DiffPercent`];
   
-  // 没有历史数据，直接显示当前值
+  // 没有对比数据，直接显示当前值
   if (diff == null && diffPercent == null) {
     return String(value);
   }
@@ -257,15 +268,15 @@ function renderCompareValue(params: any, fieldName: string, format: string): str
   if (diff != null && diff !== 0) {
     const isUp = diff > 0;
     const arrow = isUp ? '↑' : '↓';
-    const color = isUp ? '#43a047' : '#e53935'; // 成本：涨绿跌红（涨是坏事）
+    const color = isUp ? config.upColor : config.downColor;
     
     let diffText = '';
-    if (format === 'value' || format === 'both') {
+    if (config.format === 'value' || config.format === 'both') {
       diffText = Math.abs(diff).toFixed(2);
     }
-    if ((format === 'percent' || format === 'both') && diffPercent != null) {
+    if ((config.format === 'percent' || config.format === 'both') && diffPercent != null) {
       const percentText = Math.abs(diffPercent).toFixed(1) + '%';
-      diffText = format === 'both' ? `${diffText} (${percentText})` : percentText;
+      diffText = config.format === 'both' ? `${diffText} (${percentText})` : percentText;
     }
     
     diffHtml = `<span style="color:${color};font-size:11px;margin-left:4px">${arrow}${diffText}</span>`;

@@ -922,117 +922,282 @@ public class DynamicDataService {
     }
 
     /**
-     * 合并历史对比数据
-     * 1. 从列元数据中找出配置了 compare.enabled=true 的列
-     * 2. 查询历史表（表名_HIS）中昨天的数据
-     * 3. 按 ID 合并，添加 xxxHis 字段
+     * 合并对比数据
+     * 支持两种模式：
+     * 1. viewField 模式：对比字段已在当前视图中（通过 SQL JOIN 预先关联）
+     * 2. dynamicQuery 模式：运行时动态 LEFT JOIN 对比数据源
      */
     private void mergeHistoryData(List<Map<String, Object>> list, TableMetadataDTO metadata,
             Map<String, ColumnMetadataDTO> columnMap) {
         if (list == null || list.isEmpty())
             return;
 
-        // 1. 找出需要对比的列
-        List<CompareColumn> compareColumns = new ArrayList<>();
+        // 1. 找出需要对比的列，按模式分组
+        List<CompareConfig> viewFieldConfigs = new ArrayList<>();
+        List<CompareConfig> dynamicQueryConfigs = new ArrayList<>();
+
         for (ColumnMetadataDTO col : metadata.columns()) {
             if (StrUtil.isBlank(col.rulesConfig()))
                 continue;
             try {
                 cn.hutool.json.JSONObject config = cn.hutool.json.JSONUtil.parseObj(col.rulesConfig());
                 cn.hutool.json.JSONObject compare = config.getJSONObject("compare");
-                if (compare != null && compare.getBool("enabled", false)) {
-                    compareColumns.add(new CompareColumn(
-                            col.fieldName(),
-                            col.columnName(),
-                            compare.getStr("format", "value") // value/percent/both
-                    ));
+                if (compare == null || !compare.getBool("enabled", false))
+                    continue;
+
+                String mode = compare.getStr("mode", "viewField");
+                CompareConfig compareConfig = new CompareConfig(
+                        col.fieldName(),
+                        col.columnName(),
+                        compare.getStr("compareField"),
+                        compare.getStr("compareDataSource"),
+                        parseJoinConditions(compare.getJSONArray("joinConditions")),
+                        compare.getStr("format", "value")
+                );
+
+                if ("dynamicQuery".equals(mode)) {
+                    dynamicQueryConfigs.add(compareConfig);
+                } else {
+                    viewFieldConfigs.add(compareConfig);
                 }
             } catch (Exception e) {
                 log.warn("解析 compare 配置失败: {}", col.fieldName(), e);
             }
         }
 
-        if (compareColumns.isEmpty())
-            return;
-
-        // 2. 构建历史表名（约定：TARGET_TABLE + _HIS）
-        String historyTable = metadata.targetTable() + "_HIS";
-
-        // 3. 收集所有 ID
-        List<Long> ids = list.stream()
-                .map(row -> {
-                    Object id = row.get("id");
-                    if (id instanceof Number)
-                        return ((Number) id).longValue();
-                    if (id instanceof String)
-                        return Long.parseLong((String) id);
-                    return null;
-                })
-                .filter(Objects::nonNull)
-                .collect(Collectors.toList());
-
-        if (ids.isEmpty())
-            return;
-
-        // 4. 构建查询历史数据的 SQL
-        String idList = ids.stream().map(String::valueOf).collect(Collectors.joining(","));
-        String columnList = compareColumns.stream()
-                .map(c -> c.columnName)
-                .collect(Collectors.joining(", "));
-
-        String historySql = String.format(
-                "SELECT ID, %s FROM %s WHERE ID IN (%s) AND TRUNC(HIS_TIME) = TRUNC(SYSDATE - 1)",
-                columnList, historyTable, idList);
-
-        // 5. 查询历史数据
-        Map<Long, Map<String, Object>> historyMap = new HashMap<>();
-        try {
-            List<Map<String, Object>> historyList = dynamicMapper.selectList(historySql);
-            for (Map<String, Object> row : historyList) {
-                Object idObj = row.get("ID");
-                Long id = idObj instanceof Number ? ((Number) idObj).longValue() : Long.parseLong(idObj.toString());
-                historyMap.put(id, row);
-            }
-        } catch (Exception e) {
-            log.warn("查询历史表失败: {}, SQL: {}", e.getMessage(), historySql);
-            return; // 历史表不存在或查询失败，静默跳过
+        // 2. 处理 viewField 模式（对比字段已在数据中）
+        if (!viewFieldConfigs.isEmpty()) {
+            processViewFieldCompare(list, viewFieldConfigs, columnMap);
         }
 
-        // 6. 合并到主数据
+        // 3. 处理 dynamicQuery 模式（需要动态查询）
+        if (!dynamicQueryConfigs.isEmpty()) {
+            processDynamicQueryCompare(list, dynamicQueryConfigs, columnMap);
+        }
+    }
+
+    /**
+     * 解析 joinConditions 配置
+     */
+    private List<JoinCondition> parseJoinConditions(cn.hutool.json.JSONArray jsonArray) {
+        if (jsonArray == null || jsonArray.isEmpty())
+            return Collections.emptyList();
+        List<JoinCondition> conditions = new ArrayList<>();
+        for (int i = 0; i < jsonArray.size(); i++) {
+            cn.hutool.json.JSONObject item = jsonArray.getJSONObject(i);
+            if (item != null) {
+                conditions.add(new JoinCondition(
+                        item.getStr("currentField"),
+                        item.getStr("compareField")));
+            }
+        }
+        return conditions;
+    }
+
+    /**
+     * 处理 viewField 模式的对比
+     * 对比字段已在当前数据中，直接计算差值
+     */
+    private void processViewFieldCompare(List<Map<String, Object>> list, List<CompareConfig> configs,
+            Map<String, ColumnMetadataDTO> columnMap) {
         for (Map<String, Object> row : list) {
-            Object idObj = row.get("id");
-            Long id = idObj instanceof Number ? ((Number) idObj).longValue()
-                    : idObj instanceof String ? Long.parseLong((String) idObj) : null;
-            if (id == null)
+            for (CompareConfig config : configs) {
+                Object currentValue = row.get(config.fieldName);
+                
+                // 获取对比字段的值（可能是驼峰或下划线格式）
+                String compareFieldName = config.compareField;
+                Object compareValue = row.get(compareFieldName);
+                if (compareValue == null) {
+                    // 尝试下划线转驼峰
+                    compareValue = row.get(underscoreToCamel(compareFieldName));
+                }
+
+                // 计算差值
+                calculateAndSetDiff(row, config.fieldName, currentValue, compareValue);
+            }
+        }
+    }
+
+    /**
+     * 处理 dynamicQuery 模式的对比
+     * 动态查询对比数据源，然后合并
+     */
+    private void processDynamicQueryCompare(List<Map<String, Object>> list, List<CompareConfig> configs,
+            Map<String, ColumnMetadataDTO> columnMap) {
+        // 按数据源分组（同一数据源的配置合并查询）
+        Map<String, List<CompareConfig>> configsByDataSource = configs.stream()
+                .filter(c -> StrUtil.isNotBlank(c.compareDataSource) && !c.joinConditions.isEmpty())
+                .collect(Collectors.groupingBy(c -> c.compareDataSource));
+
+        for (Map.Entry<String, List<CompareConfig>> entry : configsByDataSource.entrySet()) {
+            String dataSource = entry.getKey();
+            List<CompareConfig> dataSourceConfigs = entry.getValue();
+
+            // 使用第一个配置的 joinConditions（同一数据源应该用相同的关联条件）
+            List<JoinCondition> joinConditions = dataSourceConfigs.get(0).joinConditions;
+            if (joinConditions.isEmpty())
                 continue;
 
-            Map<String, Object> historyRow = historyMap.get(id);
+            // 收集需要查询的对比字段
+            Set<String> compareFields = dataSourceConfigs.stream()
+                    .map(c -> c.compareField)
+                    .filter(StrUtil::isNotBlank)
+                    .collect(Collectors.toSet());
+            if (compareFields.isEmpty())
+                continue;
 
-            for (CompareColumn col : compareColumns) {
-                Object currentValue = row.get(col.fieldName);
-                Object historyValue = historyRow != null ? historyRow.get(col.columnName.toUpperCase()) : null;
-
-                // 添加历史值字段
-                row.put(col.fieldName + "His", historyValue);
-
-                // 计算差值（仅数值类型）
-                if (currentValue instanceof Number && historyValue instanceof Number) {
-                    double current = ((Number) currentValue).doubleValue();
-                    double history = ((Number) historyValue).doubleValue();
-                    double diff = current - history;
-
-                    row.put(col.fieldName + "Diff", diff);
-
-                    if (history != 0) {
-                        double percent = (diff / history) * 100;
-                        row.put(col.fieldName + "DiffPercent", Math.round(percent * 100) / 100.0); // 保留2位小数
+            // 收集关联字段的值（用于 IN 查询）
+            // 支持多字段关联，构建复合键
+            Map<String, Map<String, Object>> rowKeyMap = new LinkedHashMap<>();
+            for (Map<String, Object> row : list) {
+                StringBuilder keyBuilder = new StringBuilder();
+                Map<String, Object> keyValues = new LinkedHashMap<>();
+                boolean valid = true;
+                
+                for (JoinCondition jc : joinConditions) {
+                    Object value = row.get(jc.currentField);
+                    if (value == null) {
+                        valid = false;
+                        break;
                     }
+                    if (keyBuilder.length() > 0) keyBuilder.append("_");
+                    keyBuilder.append(value);
+                    keyValues.put(jc.compareField, value);
+                }
+                
+                if (valid) {
+                    rowKeyMap.put(keyBuilder.toString(), keyValues);
+                }
+            }
+
+            if (rowKeyMap.isEmpty())
+                continue;
+
+            // 构建查询 SQL
+            String compareFieldList = String.join(", ", compareFields);
+            String joinFieldList = joinConditions.stream()
+                    .map(JoinCondition::compareField)
+                    .collect(Collectors.joining(", "));
+
+            // 构建 WHERE 条件
+            String whereClause;
+            if (joinConditions.size() == 1) {
+                // 单字段关联，使用 IN
+                JoinCondition jc = joinConditions.get(0);
+                String inValues = rowKeyMap.values().stream()
+                        .map(m -> formatSqlValue(m.get(jc.compareField)))
+                        .collect(Collectors.joining(", "));
+                whereClause = String.format("%s IN (%s)", jc.compareField, inValues);
+            } else {
+                // 多字段关联，使用 OR 组合
+                List<String> conditions = new ArrayList<>();
+                for (Map<String, Object> keyValues : rowKeyMap.values()) {
+                    String condition = keyValues.entrySet().stream()
+                            .map(e -> e.getKey() + " = " + formatSqlValue(e.getValue()))
+                            .collect(Collectors.joining(" AND "));
+                    conditions.add("(" + condition + ")");
+                }
+                whereClause = String.join(" OR ", conditions);
+            }
+
+            String sql = String.format("SELECT %s, %s FROM %s WHERE %s",
+                    joinFieldList, compareFieldList, dataSource, whereClause);
+
+            // 执行查询
+            Map<String, Map<String, Object>> compareDataMap = new HashMap<>();
+            try {
+                List<Map<String, Object>> compareList = dynamicMapper.selectList(sql);
+                for (Map<String, Object> compareRow : compareList) {
+                    // 构建复合键
+                    StringBuilder keyBuilder = new StringBuilder();
+                    for (JoinCondition jc : joinConditions) {
+                        Object value = compareRow.get(jc.compareField.toUpperCase());
+                        if (value == null) value = compareRow.get(jc.compareField);
+                        if (keyBuilder.length() > 0) keyBuilder.append("_");
+                        keyBuilder.append(value);
+                    }
+                    compareDataMap.put(keyBuilder.toString(), compareRow);
+                }
+            } catch (Exception e) {
+                log.warn("查询对比数据源失败: {}, SQL: {}", e.getMessage(), sql);
+                continue;
+            }
+
+            // 合并对比数据
+            for (Map<String, Object> row : list) {
+                // 构建当前行的复合键
+                StringBuilder keyBuilder = new StringBuilder();
+                boolean valid = true;
+                for (JoinCondition jc : joinConditions) {
+                    Object value = row.get(jc.currentField);
+                    if (value == null) {
+                        valid = false;
+                        break;
+                    }
+                    if (keyBuilder.length() > 0) keyBuilder.append("_");
+                    keyBuilder.append(value);
+                }
+                if (!valid) continue;
+
+                Map<String, Object> compareRow = compareDataMap.get(keyBuilder.toString());
+
+                for (CompareConfig config : dataSourceConfigs) {
+                    Object currentValue = row.get(config.fieldName);
+                    Object compareValue = null;
+                    if (compareRow != null) {
+                        compareValue = compareRow.get(config.compareField.toUpperCase());
+                        if (compareValue == null) {
+                            compareValue = compareRow.get(config.compareField);
+                        }
+                    }
+                    calculateAndSetDiff(row, config.fieldName, currentValue, compareValue);
                 }
             }
         }
     }
 
-    /** 对比列配置 */
-    private record CompareColumn(String fieldName, String columnName, String format) {
+    /**
+     * 计算并设置差值字段
+     */
+    private void calculateAndSetDiff(Map<String, Object> row, String fieldName, Object currentValue, Object compareValue) {
+        // 添加对比值字段
+        row.put(fieldName + "Compare", compareValue);
+
+        // 计算差值（仅数值类型）
+        if (currentValue instanceof Number && compareValue instanceof Number) {
+            double current = ((Number) currentValue).doubleValue();
+            double compare = ((Number) compareValue).doubleValue();
+            double diff = current - compare;
+
+            row.put(fieldName + "Diff", diff);
+
+            if (compare != 0) {
+                double percent = (diff / compare) * 100;
+                row.put(fieldName + "DiffPercent", Math.round(percent * 100) / 100.0);
+            }
+        }
+    }
+
+    /**
+     * 格式化 SQL 值
+     */
+    private String formatSqlValue(Object value) {
+        if (value == null) return "NULL";
+        if (value instanceof Number) return value.toString();
+        return "'" + escapeSql(value.toString()) + "'";
+    }
+
+    /** 对比配置 */
+    private record CompareConfig(
+            String fieldName,
+            String columnName,
+            String compareField,
+            String compareDataSource,
+            List<JoinCondition> joinConditions,
+            String format) {
+    }
+
+    /** 关联条件 */
+    private record JoinCondition(String currentField, String compareField) {
     }
 }

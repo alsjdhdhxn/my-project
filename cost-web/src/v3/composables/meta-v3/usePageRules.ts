@@ -356,8 +356,75 @@ export function applyColumnOverrides(columns: ColDef[], overrides: ColumnOverrid
     // 支持下拉框编辑器
     if (override.cellEditor) updated.cellEditor = override.cellEditor;
     if (override.cellEditorParams) updated.cellEditorParams = override.cellEditorParams;
+    // 支持对比值渲染
+    if (override.rulesConfig?.compare?.enabled) {
+      const compare = override.rulesConfig.compare;
+      updated.cellRenderer = createCompareRenderer(field, {
+        compareField: compare.compareField,
+        format: compare.format || 'percent',
+        upColor: compare.upColor || '#e53935',
+        downColor: compare.downColor || '#43a047'
+      });
+    }
     return updated;
   });
+}
+
+/** 对比渲染配置 */
+interface CompareRendererConfig {
+  compareField: string;
+  format: 'value' | 'percent' | 'both';
+  upColor: string;
+  downColor: string;
+}
+
+/** 创建对比值渲染器 */
+function createCompareRenderer(field: string, config: CompareRendererConfig) {
+  return (params: any) => {
+    const value = params.value;
+    const data = params.data;
+    
+    if (value == null) return '';
+    
+    // 获取对比值
+    const compareValue = data?.[config.compareField];
+    
+    // 没有对比数据，直接显示当前值
+    if (compareValue == null) {
+      return String(value);
+    }
+    
+    // 计算差值
+    const current = Number(value);
+    const compare = Number(compareValue);
+    if (isNaN(current) || isNaN(compare)) {
+      return String(value);
+    }
+    
+    const diff = current - compare;
+    const diffPercent = compare !== 0 ? (diff / compare) * 100 : 0;
+    
+    // 没有变化
+    if (diff === 0) {
+      return String(value);
+    }
+    
+    // 构建差值显示
+    const isUp = diff > 0;
+    const arrow = isUp ? '↑' : '↓';
+    const color = isUp ? config.upColor : config.downColor;
+    
+    let diffText = '';
+    if (config.format === 'value' || config.format === 'both') {
+      diffText = Math.abs(diff).toFixed(2);
+    }
+    if ((config.format === 'percent' || config.format === 'both') && diffPercent !== 0) {
+      const percentText = Math.abs(diffPercent).toFixed(1) + '%';
+      diffText = config.format === 'both' ? `${diffText} (${percentText})` : percentText;
+    }
+    
+    return `<span>${value}</span><span style="color:${color};font-size:11px;margin-left:4px">${arrow}${diffText}</span>`;
+  };
 }
 
 export function attachGroupCellRenderer(columns: ColDef[]): ColDef[] {
