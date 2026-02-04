@@ -192,6 +192,15 @@ const toolbarItems = computed(() => {
 async function handleToolbarClick(item: any) {
   if (!item.action) return;
   
+  // 获取选中行
+  const api = masterGridApi?.value;
+  const selectedRows = api?.getSelectedRows?.() || [];
+  const row = selectedRows[0] || null;
+  
+  // 默认刷新模式：需要选中行时刷新行，否则刷新全部
+  const defaultRefreshMode = item.requiresRow ? 'row' : 'all';
+  const refreshMode = item.refreshMode ?? defaultRefreshMode;
+  
   // 如果有确认提示
   if (item.confirm) {
     dialog.warning({
@@ -200,13 +209,13 @@ async function handleToolbarClick(item: any) {
       positiveText: '确定',
       negativeText: '取消',
       onPositiveClick: async () => {
-        await executeAction(item.action);
+        await executeAction(item.action, { data: row || {}, selectedRow: row, refreshMode });
       }
     });
     return;
   }
   
-  await executeAction(item.action);
+  await executeAction(item.action, { data: row || {}, selectedRow: row, refreshMode });
 }
 
 // 使用全局主题设置的detailViewMode

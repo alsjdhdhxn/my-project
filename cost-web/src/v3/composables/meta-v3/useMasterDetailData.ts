@@ -414,8 +414,14 @@ export function useMasterDetailData(params: {
     recalcAggregates(masterId, resolvedRowKey);
   }
 
+  /** 清空所有业务数据缓存 */
+  function clearAllCache() {
+    detailCache.clear();
+  }
+
   return {
     detailCache,
+    clearAllCache,
     getMasterRowByRowKey,
     getMasterRowById,
     resolveMasterRowKey,

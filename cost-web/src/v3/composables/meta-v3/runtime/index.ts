@@ -269,6 +269,8 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     
     // 根据 refreshMode 决定刷新方式
     const refreshMode = options?.refreshMode ?? 'detail';
+    console.log('[executeAction] refreshMode:', refreshMode, 'detailCache size:', data.detailCache?.size);
+    
     if (refreshMode === 'none') {
       return;
     }
@@ -277,8 +279,11 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     const rowId = options?.selectedRow?.id;
     const rowKey = options?.selectedRow?._rowKey;
     
-    // 清空当前行的明细缓存
-    if (rowKey && data.detailCache) {
+    // refreshMode === 'all' 时清空所有缓存，否则只清当前行
+    if (refreshMode === 'all') {
+      console.log('[executeAction] clearing all cache');
+      data.clearAllCache();
+    } else if (rowKey && data.detailCache) {
       data.detailCache.delete(rowKey);
     }
     

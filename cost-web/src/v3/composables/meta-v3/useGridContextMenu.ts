@@ -324,11 +324,15 @@ export function useGridContextMenu(params: {
         const needsSelection = item.requiresSelection ?? false;
         const disabled = item.disabled || (needsSelection && !hasSelection(ctx.params));
 
+        // 默认刷新模式：需要选中行时刷新行，否则刷新全部
+        const defaultRefreshMode = needsRow ? 'row' : 'all';
+        const refreshMode = item.refreshMode ?? defaultRefreshMode;
+
         built.push({
           name: item.label || actionKey,
           action: () => {
             const row = resolveRow(ctx.params);
-            executeAction(actionKey, { data: row || {}, selectedRow: row });
+            executeAction(actionKey, { data: row || {}, selectedRow: row, refreshMode });
           },
           disabled: Boolean(disabled)
         });
