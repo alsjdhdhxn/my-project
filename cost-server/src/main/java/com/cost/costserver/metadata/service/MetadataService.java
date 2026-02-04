@@ -119,34 +119,6 @@ public class MetadataService {
         return result;
     }
 
-    private List<ColumnMetadataDTO> applyColumnOverrides(List<ColumnMetadataDTO> columns, String pageCode,
-            String gridKey) {
-        Map<String, ColumnOverride> overrides = loadColumnOverrides(pageCode, gridKey);
-        if (overrides.isEmpty()) {
-            return columns;
-        }
-        List<ColumnMetadataDTO> result = new ArrayList<>();
-        for (ColumnMetadataDTO col : columns) {
-            ColumnOverride override = overrides.get(col.fieldName());
-            if (override == null) {
-                result.add(col);
-                continue;
-            }
-            Integer displayOrder = override.order() != null ? override.order() : col.displayOrder();
-            Integer width = override.width() != null ? override.width() : col.width();
-            Boolean visible = override.visible() != null ? override.visible() : col.visible();
-            Boolean editable = override.editable() != null ? override.editable() : col.editable();
-            Boolean required = override.required() != null ? override.required() : col.required();
-            Boolean searchable = override.searchable() != null ? override.searchable() : col.searchable();
-            Boolean sortable = override.sortable() != null ? override.sortable() : col.sortable();
-            String pinned = override.pinned() != null ? override.pinned() : col.pinned();
-            String rulesConfig = mergeRulesConfig(col.rulesConfig(), override, col.fieldName());
-            result.add(copyColumn(col, displayOrder, width, visible, editable, required, searchable, sortable, pinned,
-                    rulesConfig));
-        }
-        return result;
-    }
-
     private List<ColumnMetadataDTO> applyUserPreferences(
             List<ColumnMetadataDTO> columns,
             Long userId,
@@ -337,60 +309,6 @@ public class MetadataService {
             }
         }
         return null;
-    }
-
-    private String mergeRulesConfig(String baseConfig, ColumnOverride override, String fieldName) {
-        if (override == null)
-            return baseConfig;
-        if (override.format() == null && override.precision() == null && override.trimZeros() == null
-                && override.rulesConfig() == null) {
-            return baseConfig;
-        }
-
-        ObjectNode root = parseRulesConfig(baseConfig, fieldName);
-        if (override.rulesConfig() instanceof ObjectNode overrideNode) {
-            mergeObjectNode(root, overrideNode);
-        }
-
-        if (override.format() instanceof ObjectNode formatNode) {
-            root.set("format", formatNode);
-        }
-
-        if (override.precision() != null || override.trimZeros() != null) {
-            ObjectNode format = root.with("format");
-            if (override.precision() != null) {
-                format.put("precision", override.precision());
-            }
-            if (override.trimZeros() != null) {
-                format.put("trimZeros", override.trimZeros());
-            }
-        }
-
-        return root.toString();
-    }
-
-    private ObjectNode parseRulesConfig(String raw, String fieldName) {
-        if (StrUtil.isBlank(raw)) {
-            return objectMapper.createObjectNode();
-        }
-        try {
-            JsonNode parsed = objectMapper.readTree(raw);
-            if (parsed instanceof ObjectNode objectNode) {
-                return objectNode;
-            }
-            log.warn("rulesConfig is not an object: {}", fieldName);
-        } catch (Exception e) {
-            log.warn("Failed to parse rulesConfig for {}: {}", fieldName, e.getMessage());
-        }
-        return objectMapper.createObjectNode();
-    }
-
-    private void mergeObjectNode(ObjectNode target, ObjectNode override) {
-        Iterator<Map.Entry<String, JsonNode>> fields = override.fields();
-        while (fields.hasNext()) {
-            Map.Entry<String, JsonNode> entry = fields.next();
-            target.set(entry.getKey(), entry.getValue());
-        }
     }
 
     private ColumnMetadataDTO copyColumn(
