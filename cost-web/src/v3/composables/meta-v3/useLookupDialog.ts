@@ -35,6 +35,26 @@ function shouldTriggerCalc(changedFields: string[], calcRules: any[]): boolean {
   return false;
 }
 
+/** 检查回填字段是否会触发聚合规则（需要广播到主表） */
+function shouldTriggerAgg(changedFields: string[], aggRules: any[]): boolean {
+  if (!aggRules || aggRules.length === 0) return false;
+  for (const rule of aggRules) {
+    // 检查 sourceField 是否在变化字段中
+    if (rule.sourceField && changedFields.includes(rule.sourceField)) {
+      return true;
+    }
+    // 检查 expression 中是否包含变化字段（简单检查）
+    if (rule.expression) {
+      for (const field of changedFields) {
+        if (rule.expression.includes(field)) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
 export function useLookupDialog(params: {
   getMasterRowById: (masterId: number) => RowData | null;
   getMasterRowByRowKey: (rowKey: string) => RowData | null;
@@ -53,6 +73,7 @@ export function useLookupDialog(params: {
   isDetailRowEditable?: (row: RowData, tabKey: string) => boolean;
   masterCalcRules?: Ref<any[]>;
   detailCalcRulesByTab?: Ref<Record<string, any[]>>;
+  compiledAggRules?: Ref<any[]>;
 }) {
   const {
     getMasterRowById,
@@ -71,7 +92,8 @@ export function useLookupDialog(params: {
     isRowEditable,
     isDetailRowEditable,
     masterCalcRules,
-    detailCalcRulesByTab
+    detailCalcRulesByTab,
+    compiledAggRules
   } = params;
 
   const lookupDialogRef = ref<LookupDialogExpose | null>(null);
@@ -190,6 +212,9 @@ export function useLookupDialog(params: {
           // 获取当前 tab 的计算规则
           const calcRules = detailCalcRulesByTab?.value?.[tabKey] || [];
           const needCalc = changedFields.length > 0 && shouldTriggerCalc(changedFields, calcRules);
+          // 检查是否需要触发聚合（广播到主表）
+          const aggRules = compiledAggRules?.value || [];
+          const needAgg = changedFields.length > 0 && shouldTriggerAgg(changedFields, aggRules);
           
           const splitDetailApi = detailGridApisByTab?.value?.[tabKey];
           if (splitDetailApi) {
@@ -213,8 +238,8 @@ export function useLookupDialog(params: {
               });
             }
           }
-          // 只有触发了从表计算才需要重新计算聚合
-          if (needCalc) {
+          // 触发了从表计算或聚合规则时，重新计算聚合
+          if (needCalc || needAgg) {
             recalcAggregates(masterId, masterRowKey);
           }
           break;

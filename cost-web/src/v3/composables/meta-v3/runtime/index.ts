@@ -199,7 +199,8 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     detailGridApisByTab,
     isRowEditable,
     masterCalcRules: meta.compiledMasterCalcRules,
-    detailCalcRulesByTab: meta.detailCalcRulesByTab
+    detailCalcRulesByTab: meta.detailCalcRulesByTab,
+    compiledAggRules: meta.compiledAggRules
   });
 
   const { save, isSaving } = useSave({
