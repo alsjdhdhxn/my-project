@@ -1,11 +1,11 @@
 ﻿-- =====================================================
 -- 成本管理系统数据库初始化脚本
--- 用途：创建所有表结构、视图、序列、存储过�?
+-- 用途：创建所有表结构、视图、序列、存储过程
 -- 导出时间: 2026-02-05
 -- =====================================================
 
 -- =====================================================
--- 第一部分：清理现有对�?
+-- 第一部分：清理现有对象
 -- =====================================================
 
 -- 清理视图
@@ -16,7 +16,7 @@ BEGIN
 END;
 /
 
--- 清理�?
+-- 清理表
 BEGIN
   FOR t IN (
     SELECT table_name
@@ -45,7 +45,7 @@ END;
 /
 
 -- =====================================================
--- 第二部分：创建序�?
+-- 第二部分：创建序列
 -- =====================================================
 
 CREATE SEQUENCE SEQ_COST_AUDIT_LOG
@@ -333,7 +333,7 @@ CREATE TABLE T_COST_COLUMN_METADATA (
 );
 CREATE INDEX IDX_COLUMN_TABLE_ID ON T_COST_COLUMN_METADATA(TABLE_METADATA_ID);
 
--- 页面规则�?
+-- 页面规则表
 CREATE TABLE T_COST_PAGE_RULE (
   ID NUMBER(19) NOT NULL,
   PAGE_CODE VARCHAR2(64) NOT NULL,
@@ -351,7 +351,7 @@ CREATE TABLE T_COST_PAGE_RULE (
 );
 CREATE INDEX IDX_PAGE_RULE_PAGE ON T_COST_PAGE_RULE(PAGE_CODE);
 
--- 页面组件�?
+-- 页面组件表
 CREATE TABLE T_COST_PAGE_COMPONENT (
   ID NUMBER(19) NOT NULL,
   PAGE_CODE VARCHAR2(64) NOT NULL,
@@ -373,7 +373,7 @@ CREATE TABLE T_COST_PAGE_COMPONENT (
 CREATE INDEX IDX_PAGE_COMP_PAGE ON T_COST_PAGE_COMPONENT(PAGE_CODE);
 CREATE UNIQUE INDEX UK_PAGE_COMP_KEY ON T_COST_PAGE_COMPONENT(PAGE_CODE, COMPONENT_KEY);
 
--- Lookup配置�?
+-- Lookup配置表
 CREATE TABLE T_COST_LOOKUP_CONFIG (
   ID NUMBER(19) NOT NULL,
   LOOKUP_CODE VARCHAR2(64) NOT NULL,
@@ -390,7 +390,7 @@ CREATE TABLE T_COST_LOOKUP_CONFIG (
   CONSTRAINT PK_T_COST_LOOKUP_CONFIG PRIMARY KEY (ID)
 );
 
--- 字典类型�?
+-- 字典类型表
 CREATE TABLE T_COST_DICTIONARY_TYPE (
   ID NUMBER(19) NOT NULL,
   TYPE_CODE VARCHAR2(64) NOT NULL,
@@ -437,7 +437,7 @@ CREATE TABLE T_COST_DEPARTMENT (
   CONSTRAINT PK_T_COST_DEPARTMENT PRIMARY KEY (ID)
 );
 
--- 用户�?
+-- 用户表
 CREATE TABLE T_COST_USER (
   ID NUMBER(19) NOT NULL,
   USERNAME VARCHAR2(64) NOT NULL,
@@ -455,7 +455,7 @@ CREATE TABLE T_COST_USER (
   CONSTRAINT PK_T_COST_USER PRIMARY KEY (ID)
 );
 
--- 角色�?
+-- 角色表
 CREATE TABLE T_COST_ROLE (
   ID NUMBER(19) NOT NULL,
   ROLE_CODE VARCHAR2(64) NOT NULL,
@@ -464,7 +464,7 @@ CREATE TABLE T_COST_ROLE (
   CONSTRAINT PK_T_COST_ROLE PRIMARY KEY (ID)
 );
 
--- 用户角色关联�?
+-- 用户角色关联表
 CREATE TABLE T_COST_USER_ROLE (
   ID NUMBER(19) NOT NULL,
   USER_ID NUMBER(19) NOT NULL,
@@ -473,7 +473,7 @@ CREATE TABLE T_COST_USER_ROLE (
 );
 CREATE UNIQUE INDEX UK_USER_ROLE ON T_COST_USER_ROLE(USER_ID, ROLE_ID);
 
--- 角色页面权限�?
+-- 角色页面权限表
 CREATE TABLE T_COST_ROLE_PAGE (
   ID NUMBER(19) NOT NULL,
   ROLE_ID NUMBER(19) NOT NULL,
@@ -485,7 +485,7 @@ CREATE TABLE T_COST_ROLE_PAGE (
 );
 CREATE UNIQUE INDEX UK_ROLE_PAGE ON T_COST_ROLE_PAGE(ROLE_ID, PAGE_CODE);
 
--- 资源菜单�?
+-- 资源菜单表
 CREATE TABLE T_COST_RESOURCE (
   ID NUMBER(19) NOT NULL,
   RESOURCE_NAME VARCHAR2(128) NOT NULL,
@@ -499,7 +499,7 @@ CREATE TABLE T_COST_RESOURCE (
   CONSTRAINT PK_T_COST_RESOURCE PRIMARY KEY (ID)
 );
 
--- 用户表格配置�?
+-- 用户表格配置表
 CREATE TABLE T_COST_USER_GRID_CONFIG (
   ID NUMBER(19) NOT NULL,
   USER_ID NUMBER(19) NOT NULL,
@@ -553,10 +553,10 @@ CREATE TABLE T_COST_EXPORT_CONFIG_DETAIL (
 CREATE INDEX IDX_EXPORT_DTL_CONFIG ON T_COST_EXPORT_CONFIG_DETAIL(EXPORT_CONFIG_ID);
 
 -- =====================================================
--- 业务�?
+-- 业务表
 -- =====================================================
 
--- 客户�?
+-- 客户表
 CREATE TABLE T_COST_CUSTOMER (
   CUSTOMID NUMBER(19) NOT NULL,
   ZONE VARCHAR2(500),
@@ -584,7 +584,7 @@ CREATE TABLE T_COST_TRANPOSER (
   CONSTRAINT PK_T_COST_TRANPOSER PRIMARY KEY (TRANPOSID)
 );
 
--- 外币汇率�?
+-- 外币汇率表
 CREATE TABLE T_COST_FORMONEY (
   FMID NUMBER(10) NOT NULL,
   FMOPCODE VARCHAR2(60),
@@ -601,14 +601,14 @@ CREATE TABLE T_COST_FORMONEY (
   CONSTRAINT PK_T_COST_FORMONEY PRIMARY KEY (FMID)
 );
 
--- 产品信息�?
+-- 产品信息表
 CREATE TABLE T_COST_GOODS (
   GOODSID NUMBER(19) NOT NULL,
   GOODSNO VARCHAR2(100),
   GOODSNAME VARCHAR2(1000),
   PRICE NUMBER,
   SUQTY NUMBER,
-  USEFLAG VARCHAR2(100) DEFAULT '产成�?,
+  USEFLAG VARCHAR2(100) DEFAULT '产成品',
   FACTORYNAME VARCHAR2(1500),
   STANDARDTYPE VARCHAR2(500),
   ZX_PL NUMBER,
@@ -632,7 +632,7 @@ CREATE TABLE T_COST_GOODS (
   CONSTRAINT PK_T_COST_GOODS PRIMARY KEY (GOODSID)
 );
 
--- 物料价格�?
+-- 物料价格表
 CREATE TABLE T_COST_GOODS_PRICE (
   GOODSID NUMBER(10) NOT NULL,
   GOODSNAME VARCHAR2(300),
@@ -690,7 +690,7 @@ CREATE TABLE T_COST_PINGGU (
   USEFLAG NUMBER DEFAULT 0,
   YIELD_TIME DATE DEFAULT SYSDATE,
   APEX_PL_TIME DATE DEFAULT SYSDATE,
-  FMNAME VARCHAR2(100) DEFAULT '人民�?,
+  FMNAME VARCHAR2(100) DEFAULT '人民币',
   FMRATE NUMBER DEFAULT 1,
   GOODSNAME_EN VARCHAR2(2000),
   LIVERY VARCHAR2(100),
@@ -703,7 +703,7 @@ CREATE TABLE T_COST_PINGGU (
   CONSTRAINT PK_T_COST_PINGGU PRIMARY KEY (DOCID)
 );
 
--- 物料成本核算明细�?
+-- 物料成本核算明细表
 CREATE TABLE T_COST_PINGGU_DTL (
   DOCID NUMBER(10) NOT NULL,
   APEX_GOODSID NUMBER(10),
@@ -732,7 +732,7 @@ CREATE TABLE T_COST_PINGGU_DTL (
   CONSTRAINT PK_T_COST_PINGGU_DTL PRIMARY KEY (DTLID)
 );
 
--- 物料成本核算历史�?
+-- 物料成本核算历史表
 CREATE TABLE T_COST_PINGGU_HIS (
   GOODSID NUMBER,
   GOODSNAME VARCHAR2(100),
@@ -786,7 +786,7 @@ CREATE TABLE T_COST_PINGGU_HIS (
   COST_PERBOX NUMBER
 );
 
--- 物料成本核算明细历史�?
+-- 物料成本核算明细历史表
 CREATE TABLE T_COST_PINGGU_DTL_HIS (
   DOCID NUMBER(10) NOT NULL,
   APEX_GOODSID NUMBER(10),
@@ -816,7 +816,7 @@ CREATE TABLE T_COST_PINGGU_DTL_HIS (
   BACKUP_TIME DATE
 );
 
--- 物料成本核算计算历史�?
+-- 物料成本核算计算历史表
 CREATE TABLE T_COST_PINGGU_COMPUTE_HIS (
   GOODSID NUMBER,
   GOODSNAME VARCHAR2(100),
@@ -870,7 +870,7 @@ CREATE TABLE T_COST_PINGGU_COMPUTE_HIS (
   COMPUTE_DATE DATE
 );
 
--- 物料成本核算明细计算历史�?
+-- 物料成本核算明细计算历史表
 CREATE TABLE T_COST_PINGGU_DTL_COMPUTE_HIS (
   DOCID NUMBER(10) NOT NULL,
   APEX_GOODSID NUMBER(10),
@@ -900,7 +900,7 @@ CREATE TABLE T_COST_PINGGU_DTL_COMPUTE_HIS (
   COMPUTE_DATE DATE
 );
 
--- 审计日志�?
+-- 审计日志表
 CREATE TABLE T_COST_AUDIT_LOG (
   ID NUMBER(19) NOT NULL,
   USER_NAME VARCHAR2(100),
@@ -915,7 +915,7 @@ CREATE TABLE T_COST_AUDIT_LOG (
   CONSTRAINT PK_T_COST_AUDIT_LOG PRIMARY KEY (ID)
 );
 
--- 操作日志�?
+-- 操作日志表
 CREATE TABLE T_COST_OPERATION_LOG (
   ID NUMBER(19) NOT NULL,
   USER_ID NUMBER(19),
@@ -932,7 +932,7 @@ CREATE TABLE T_COST_OPERATION_LOG (
   CONSTRAINT PK_T_COST_OPERATION_LOG PRIMARY KEY (ID)
 );
 
--- 操作日志明细�?
+-- 操作日志明细表
 CREATE TABLE T_COST_OPERATION_LOG_DETAIL (
   ID NUMBER(19) NOT NULL,
   LOG_ID NUMBER(19) NOT NULL,
@@ -947,7 +947,7 @@ CREATE TABLE T_COST_OPERATION_LOG_DETAIL (
   CONSTRAINT PK_T_COST_OPERATION_LOG_DETAIL PRIMARY KEY (ID)
 );
 
--- WMS库存�?
+-- WMS库存表
 CREATE TABLE T_WMS_GOODS_QTY (
   ID NUMBER DEFAULT SEQ_WMS_QTY.NEXTVAL NOT NULL,
   GOODSOWNID VARCHAR2(50),
@@ -964,7 +964,7 @@ CREATE TABLE T_WMS_GOODS_QTY (
   CONSTRAINT PK_T_WMS_GOODS_QTY PRIMARY KEY (ID)
 );
 
--- 物化视图�?
+-- 物化视图表
 CREATE TABLE MV_COST_PINGGU_DTL_HIS_LATEST (
   DTLID NUMBER(10) NOT NULL,
   PRICE NUMBER
@@ -984,10 +984,11 @@ COMMIT;
 
 
 -- =====================================================
--- 第四部分：创建视�?
+-- 第四部分：创建视图
 -- =====================================================
 
--- BOM树视图（ERP�?CREATE OR REPLACE VIEW T_COST_BOM_GOODS_TREE_V AS
+-- BOM树视图（ERP）
+CREATE OR REPLACE VIEW T_COST_BOM_GOODS_TREE_V AS
 select a.treeid,
        a.pid,
        a.goodsid,
@@ -1026,11 +1027,11 @@ SELECT B.GOODSID ,
               b.goodsno like '%A%' then
           '原料'
          when b.zx_wms_goodsclass in (10) and b.gspflag = 1 then
-          '产成�?
+          '产成品'
          when b.zx_wms_goodsclass in (7, 8, 9) and b.gspflag = 1 then
-          '半成�?
+          '半成品'
          when b.zx_wms_goodsclass in (5, 13) and b.gspflag = 1 then
-          '非印字包�?
+          '非印字包材'
          when b.zx_wms_goodsclass in (6) and b.gspflag = 1 then
           '印字包材'
          when b.zx_wms_goodsclass in (1, 2, 3, 4) and b.gspflag = 1 and
@@ -1106,7 +1107,8 @@ SELECT a.conid,
   FROM bms_sa_con_doc_v@hyerp a
 ;
 
--- WMS库存汇总视�?CREATE OR REPLACE VIEW T_WMS_QTY_V AS
+-- WMS库存汇总视图
+CREATE OR REPLACE VIEW T_WMS_QTY_V AS
 SELECT
     NVL(TO_CHAR(a.conid), '-') || '-' || NVL(TO_CHAR(a.goodsid), '-') || '-' || NVL(a.lotno, '-') || '-' || NVL(TO_CHAR(a.packtype), '-') AS ID,
     a.conid,
@@ -1119,15 +1121,15 @@ SELECT
     b.goodsqty_oddtray1,
     b.packname,
 
-    /* 最终显示字�?*/
+    /* 最终显示字段 */
     TO_CHAR(NVL(b.goodsqty_total, 0)) || b.packname
-    || '�?
+    || '（'
     || CASE
          WHEN NVL(b.goodsqty_oddtray1, 0) > 0
-         THEN '含零�? || TO_CHAR(b.goodsqty_oddtray1) || b.packname || '�?
+         THEN '含零托' || TO_CHAR(b.goodsqty_oddtray1) || b.packname || '）'
        END
     || '样品__' || b.packname
-    || '�? AS QTY_SHOW,
+    || '）' AS QTY_SHOW,
     0 AS DELETED,
     NULL AS CREATE_TIME,
     NULL AS UPDATE_TIME,
@@ -1209,7 +1211,7 @@ CREATE OR REPLACE VIEW T_COST_CUSTOMER_V AS
 SELECT CUSTOMID, CUSTOMNAME, ZONE, ISERP, DELETED, CREATE_TIME, UPDATE_TIME, CREATE_BY, UPDATE_BY
 FROM T_COST_CUSTOMER WHERE DELETED = 0;
 
--- 分销商视�?
+-- 分销商视图
 CREATE OR REPLACE VIEW T_COST_TRANPOSER_V AS
 SELECT CUSTOMID, TRANPOSID, TRANPOSNAME, ISERP, DELETED, CREATE_TIME, UPDATE_TIME, CREATE_BY, UPDATE_BY
 FROM T_COST_TRANPOSER WHERE DELETED = 0;
@@ -1229,7 +1231,7 @@ SELECT a.GOODSID, a.GOODSNO, a.GOODSNAME, a.PRICE, a.SUQTY, a.USEFLAG, a.FACTORY
        a.HOLDERSNAME, a.ISERP, a.GOODSTYPE, a.PACKTYPE, c.TRANPOSNAME, a.BOMID, a.LASTSUQTY, a.TRANPOSID,
        b.ZONE, a.DELETED, a.CREATE_TIME, a.UPDATE_TIME, a.CREATE_BY, a.UPDATE_BY
 FROM T_COST_GOODS a, T_COST_CUSTOMER b, T_COST_TRANPOSER c
-WHERE a.USEFLAG = '产成�? AND a.DELETED = 0 AND a.ZX_CUSTOMERID = b.CUSTOMID(+) AND a.TRANPOSID = c.TRANPOSID(+);
+WHERE a.USEFLAG = '产成品' AND a.DELETED = 0 AND a.ZX_CUSTOMERID = b.CUSTOMID(+) AND a.TRANPOSID = c.TRANPOSID(+);
 
 -- 物料价格视图
 CREATE OR REPLACE VIEW T_COST_GOODS_PRICE_V AS
@@ -1264,9 +1266,9 @@ SELECT a.GOODSID, a.GOODSNAME, a.APPROVEDOCNO AS MA_NO, a.ZX_PL AS APEX_PL, a.HO
        CASE WHEN a.ISERP = 0 AND b.PGOODSID IS NULL THEN 'ERP未搭建BOM' ELSE 'ERP已搭建BOM' END AS MEMO,
        a.GOODSTYPE AS STRENGTH, a.TRANPOSNAME AS LIVERY, a.DELETED
 FROM T_COST_GOODS_V a LEFT JOIN mpcs_pr_bom_doc@hyerp b ON a.GOODSID = b.PGOODSID AND b.USESTATUS = 1 AND a.ISERP = 1
-WHERE a.USEFLAG = '产成�? AND (a.DELETED = 0 OR a.DELETED IS NULL);
+WHERE a.USEFLAG = '产成品' AND (a.DELETED = 0 OR a.DELETED IS NULL);
 
--- 原辅料明细视�?
+-- 原辅料明细视图
 CREATE OR REPLACE VIEW V_COST_PINGGU_MATERIAL AS
 SELECT d.DTLID AS ID, d.DOCID AS MASTER_ID, d.APEX_GOODSID, d.APEX_GOODSNAME, d.DTL_USEFLAG,
        d.SPEC, d.PER_HL, d.PRICE, d.BATCH_QTY, d.COST_BATCH, d.APEX_FACTORYNAME, d.BASE_PRICE,
@@ -1280,11 +1282,11 @@ CREATE OR REPLACE VIEW V_COST_PINGGU_PACKAGE AS
 SELECT d.DTLID AS ID, d.DOCID AS MASTER_ID, d.APEX_GOODSID, d.APEX_GOODSNAME, d.DTL_USEFLAG,
        d.SPEC, d.PER_HL, d.EXADD_MATER, d.PRICE, d.BATCH_QTY, d.COST_BATCH, d.SUQTY, d.APEX_FACTORYNAME,
        d.MEMO, d.DELETED, d.CREATE_TIME, d.UPDATE_TIME, d.CREATE_BY, d.UPDATE_BY,
-       CASE WHEN REGEXP_LIKE(d.APEX_GOODSNAME, '桶|说明书|小盒|标签|瓶|�?) THEN 'A'
-            WHEN REGEXP_LIKE(d.APEX_GOODSNAME, '硬片|铝箔|复合�?) THEN 'D'
-            WHEN REGEXP_LIKE(d.APEX_GOODSNAME, '大纸�?) THEN 'E'
+       CASE WHEN REGEXP_LIKE(d.APEX_GOODSNAME, '桶|说明书|小盒|标签|瓶|盖') THEN 'A'
+            WHEN REGEXP_LIKE(d.APEX_GOODSNAME, '硬片|铝箔|复合膜') THEN 'D'
+            WHEN REGEXP_LIKE(d.APEX_GOODSNAME, '大纸箱') THEN 'E'
             WHEN REGEXP_LIKE(d.APEX_GOODSNAME, '托盘') THEN 'F' ELSE NULL END AS FORMULA_TYPE
-FROM T_COST_PINGGU_DTL d WHERE d.DTL_USEFLAG IN ('非印字包�?, '印字包材') AND (d.DELETED = 0 OR d.DELETED IS NULL);
+FROM T_COST_PINGGU_DTL d WHERE d.DTL_USEFLAG IN ('非印字包材', '印字包材') AND (d.DELETED = 0 OR d.DELETED IS NULL);
 
 -- 角色视图
 CREATE OR REPLACE VIEW V_COST_ROLE AS
@@ -1318,7 +1320,7 @@ SELECT c.GOODSID AS P_GOODSID, c.GOODSNAME, c.GOODSTYPE, c.PACKTYPE, c.TRANPOSID
 FROM T_COST_PINGGU_DTL a, T_COST_PINGGU b, T_COST_GOODS_V c
 WHERE a.DOCID = b.DOCID AND b.GOODSID = c.GOODSID;
 
--- 按物料查产品视图(带价�?
+-- 按物料查产品视图(带价格)
 CREATE OR REPLACE VIEW V_COST_PGOODS_BY_MGOODS AS
 SELECT a.apex_goodsid goodsid, a.apex_goodsname, a.dtl_useflag, b.factoryname, a.price, b.goodsno,
        d.goodsid pgoodsid, d.goodsno pgoodsno, d.goodsname, c.apex_pl, a.batch_qty, a.deleted
@@ -1327,7 +1329,7 @@ WHERE a.apex_goodsid = b.goodsid AND a.docid = c.docid AND c.goodsid = d.goodsid
   AND a.deleted = 0 AND b.deleted = 0 AND c.deleted = 0 AND d.deleted = 0;
 
 -- =====================================================
--- 第五部分：创建存储过�?
+-- 第五部分：创建存储过程
 -- =====================================================
 
 -- 同步客户数据存储过程
@@ -1355,7 +1357,7 @@ CREATE OR REPLACE PROCEDURE PROC_SYNC_GOODS_PRICE AS
 BEGIN
   MERGE INTO T_COST_GOODS_PRICE T
   USING (SELECT a.GOODSID, a.GOODSNAME, a.price AS NEW_PRICE, a.USEFLAG, a.goodstype, a.packtype, a.FACTORYNAME
-         FROM pub_goods_v a WHERE a.USEFLAG NOT IN ('产成�?,'半成�?)) S
+         FROM pub_goods_v a WHERE a.USEFLAG NOT IN ('产成品','半成品')) S
   ON (T.GOODSID = S.GOODSID)
   WHEN MATCHED THEN UPDATE SET T.GOODSNAME = S.GOODSNAME, T.USEFLAG = S.USEFLAG, T.GOODSTYPE = S.goodstype,
        T.PACKTYPE = S.packtype, T.FACTORYNAME = S.FACTORYNAME, T.ISERP = 1, T.UPDATE_TIME = SYSTIMESTAMP,
@@ -1371,9 +1373,10 @@ END;
 -- 同步WMS库存数据存储过程
 CREATE OR REPLACE PROCEDURE PROC_SYNC_WMS_GOODS_QTY AS
 BEGIN
-    -- 清空旧数据（全量同步�?    DELETE FROM t_wms_goods_qty;
+    -- 清空旧数据（全量同步）
+    DELETE FROM t_wms_goods_qty;
 
-    -- 插入新数�?    INSERT INTO t_wms_goods_qty (
+    -- 插入新数据    INSERT INTO t_wms_goods_qty (
         goodsownid,
         lotno,
         packname,
@@ -1417,9 +1420,9 @@ BEGIN
     MERGE INTO T_COST_GOODS T
     USING (SELECT B.GOODSID, B.GOODSNO, B.GOODSNAME, C.LASTPRICE AS PRICE, C.LASTSUQTY AS SUQTY,
            (CASE WHEN B.ZX_WMS_GOODSCLASS IN (1, 12) AND B.GSPFLAG = 1 AND B.GOODSNO LIKE '%A%' THEN '原料'
-                 WHEN B.ZX_WMS_GOODSCLASS IN (10) AND B.GSPFLAG = 1 THEN '产成�?
-                 WHEN B.ZX_WMS_GOODSCLASS IN (7, 8, 9) AND B.GSPFLAG = 1 THEN '半成�?
-                 WHEN B.ZX_WMS_GOODSCLASS IN (5, 13) AND B.GSPFLAG = 1 THEN '非印字包�?
+                 WHEN B.ZX_WMS_GOODSCLASS IN (10) AND B.GSPFLAG = 1 THEN '产成品'
+                 WHEN B.ZX_WMS_GOODSCLASS IN (7, 8, 9) AND B.GSPFLAG = 1 THEN '半成品'
+                 WHEN B.ZX_WMS_GOODSCLASS IN (5, 13) AND B.GSPFLAG = 1 THEN '非印字包材'
                  WHEN B.ZX_WMS_GOODSCLASS IN (6) AND B.GSPFLAG = 1 THEN '印字包材'
                  WHEN B.ZX_WMS_GOODSCLASS IN (1, 2, 3, 4) AND B.GSPFLAG = 1 AND B.GOODSNO NOT LIKE '%A%' THEN '辅料' END) AS USEFLAG,
            B.FACTORYNAME, B.STANDARDTYPE, B.ZX_PL, B.ZX_MINIMUM, B.APPROVEDOCNO, E.BASEUNITQTY, B.ZX_CUSTOMERID,
@@ -1454,13 +1457,13 @@ BEGIN
     UPDATE T_COST_USER SET PASSWORD = v_new_password, UPDATE_TIME = SYSDATE, UPDATE_BY = v_operator
     WHERE ID IN (SELECT TO_NUMBER(TRIM(REGEXP_SUBSTR(p_ids, '[^,]+', 1, LEVEL))) FROM DUAL CONNECT BY LEVEL <= REGEXP_COUNT(p_ids, ',') + 1);
     v_count := SQL%ROWCOUNT;
-    IF v_count > 0 THEN p_result := 0; p_message := '已重�?' || v_count || ' 个用户的密码�?admin'; COMMIT;
-    ELSE p_result := 1; p_message := '未找到要重置的用�?; END IF;
+    IF v_count > 0 THEN p_result := 0; p_message := '已重置' || v_count || ' 个用户的密码为admin'; COMMIT;
+    ELSE p_result := 1; p_message := '未找到要重置的用户'; END IF;
 EXCEPTION WHEN OTHERS THEN ROLLBACK; p_result := 1; p_message := '重置密码失败: ' || SQLERRM;
 END P_RESET_PASSWORD;
 /
 
--- 备份评估表存储过�?
+-- 备份评估表存储过程
 CREATE OR REPLACE PROCEDURE sp_backup_pinggu_tables AS
 BEGIN
   INSERT INTO t_cost_pinggu_his SELECT t.*, SYSDATE FROM t_cost_pinggu t;
@@ -1485,12 +1488,12 @@ BEGIN
     IF v_sum_yl > 0 THEN
       SELECT NVL(SUM(CASE WHEN dtl_useflag = '原料' THEN cost_batch / 1.13 ELSE 0 END), 0),
              NVL(SUM(CASE WHEN dtl_useflag = '辅料' THEN cost_batch / 1.13 ELSE 0 END), 0),
-             NVL(SUM(CASE WHEN dtl_useflag IN ('非印字包�?, '印字包材') THEN cost_batch / 1.13 ELSE 0 END), 0)
+             NVL(SUM(CASE WHEN dtl_useflag IN ('非印字包材', '印字包材') THEN cost_batch / 1.13 ELSE 0 END), 0)
       INTO v_total_yl, v_total_fl, v_total_bc FROM t_cost_pinggu_dtl WHERE docid = p_docid;
     ELSE
       SELECT NVL(SUM(CASE WHEN dtl_useflag = '原料' THEN cost_batch ELSE 0 END), 0),
              NVL(SUM(CASE WHEN dtl_useflag = '辅料' THEN cost_batch ELSE 0 END), 0),
-             NVL(SUM(CASE WHEN dtl_useflag IN ('非印字包�?, '印字包材') THEN cost_batch ELSE 0 END), 0)
+             NVL(SUM(CASE WHEN dtl_useflag IN ('非印字包材', '印字包材') THEN cost_batch ELSE 0 END), 0)
       INTO v_total_yl, v_total_fl, v_total_bc FROM t_cost_pinggu_dtl WHERE docid = p_docid;
     END IF;
     v_total_cost := v_total_fl + v_total_bc + v_total_yl;
@@ -1524,7 +1527,7 @@ BEGIN
     UPDATE t_cost_pinggu_dtl a SET a.per_hl = a.batch_qty / v_apex_pl * 1000000
     WHERE a.docid = p_docid AND a.dtl_useflag IN ('原料', '辅料');
     UPDATE t_cost_pinggu_dtl a SET a.per_hl = a.batch_qty / v_apex_pl * 1000000
-    WHERE a.docid = p_docid AND a.dtl_useflag IN ('印字包材', '非印字包�?) AND REGEXP_LIKE(a.apex_goodsname, '硬片|铝箔');
+    WHERE a.docid = p_docid AND a.dtl_useflag IN ('印字包材', '非印字包材') AND REGEXP_LIKE(a.apex_goodsname, '硬片|铝箔');
   END IF;
   UPDATE t_cost_pinggu_dtl a SET a.cost_batch = a.batch_qty * a.price WHERE a.docid = p_docid;
 END;
@@ -1535,7 +1538,7 @@ CREATE OR REPLACE PROCEDURE p_pinggu_compute_all AS
 BEGIN
   INSERT INTO t_cost_pinggu_compute_his SELECT a.*, SYSDATE compute_date FROM t_cost_pinggu a;
   INSERT INTO t_cost_pinggu_dtl_compute_his SELECT a.*, SYSDATE compute_date FROM t_cost_pinggu_dtl a;
-  UPDATE t_cost_pinggu_dtl a SET a.price = (SELECT PRICE FROM t_cost_goods_price x WHERE x.GOODSID = a.apex_goodsid AND x.USEFLAG NOT IN ('产成�?));
+  UPDATE t_cost_pinggu_dtl a SET a.price = (SELECT PRICE FROM t_cost_goods_price x WHERE x.GOODSID = a.apex_goodsid AND x.USEFLAG NOT IN ('产成品'));
   FOR i IN (SELECT DOCID FROM t_cost_pinggu) LOOP
     p_pinggu_dtl_compute(i.docid, 1);
     p_pinggu_compute(i.docid);
@@ -1553,7 +1556,7 @@ BEGIN
     DELETE FROM t_cost_pinggu_dtl WHERE docid = p_docid;
     INSERT INTO t_cost_pinggu_dtl (dtlid, docid, apex_goodsid, spec, batch_qty, price, BASE_PRICE, modifydate, cost_batch, DTL_USEFLAG, APEX_GOODSNAME, APEX_FACTORYNAME, GOODSTYPE, zx_source)
     SELECT SEQ_COST_PINGGU_DTL.NEXTVAL, p_docid, v.goodsid, v.standardtype, v.useqty, f.PRICE, f.PRICE, SYSDATE, NVL(v.useqty,0)*NVL(f.price,0),
-           DECODE(v.useflag,4,'原料',2,'辅料',3,'非印字包�?,5,'印字包材'), f.GOODSNAME, f.FACTORYNAME, f.GOODSTYPE, 'ERP'
+           DECODE(v.useflag,4,'原料',2,'辅料',3,'非印字包材',5,'印字包材'), f.GOODSNAME, f.FACTORYNAME, f.GOODSTYPE, 'ERP'
     FROM t_cost_bom_goods_tree_v v, PUB_GOODS_V f WHERE v.treeid LIKE v_goodsid||'%' AND v.pid<>'-1' AND v.USEFLAG NOT IN (0,1) AND v.goodsid=f.goodsid(+);
     p_pinggu_dtl_compute(p_docid, 0);
     p_pinggu_compute(p_docid);

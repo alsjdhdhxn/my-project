@@ -1,5 +1,5 @@
 -- =====================================================
--- 人员管理初始化脚�?
+-- 人员管理初始化脚本
 -- 用途：初始化人员管理页面的元数据和业务数据（先删后插）
 -- 页面编码：user-manage
 -- 表编码：CostUser
@@ -24,7 +24,7 @@ INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NA
 VALUES (27, 5, 'id', 'ID', NULL, NULL, 'ID', 'number', 1, 1, 1, 0, NULL, 0, SYSDATE, SYSDATE, 'system', NULL);
 
 INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, QUERY_COLUMN, TARGET_COLUMN, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, SORTABLE, FILTERABLE, IS_VIRTUAL, DICT_TYPE, DELETED, CREATE_TIME, UPDATE_TIME, CREATE_BY, UPDATE_BY) 
-VALUES (28, 5, 'username', 'USERNAME', NULL, NULL, '用户�?, 'text', 2, 1, 1, 0, NULL, 0, SYSDATE, SYSDATE, 'system', NULL);
+VALUES (28, 5, 'username', 'USERNAME', NULL, NULL, '用户名', 'text', 2, 1, 1, 0, NULL, 0, SYSDATE, SYSDATE, 'system', NULL);
 
 INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, QUERY_COLUMN, TARGET_COLUMN, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, SORTABLE, FILTERABLE, IS_VIRTUAL, DICT_TYPE, DELETED, CREATE_TIME, UPDATE_TIME, CREATE_BY, UPDATE_BY) 
 VALUES (29, 5, 'realName', 'REAL_NAME', NULL, NULL, '姓名', 'text', 3, 1, 1, 0, NULL, 0, SYSDATE, SYSDATE, 'system', NULL);
@@ -42,7 +42,7 @@ INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NA
 VALUES (33, 5, 'deptName', 'DEPT_NAME', NULL, NULL, '部门名称', 'text', 7, 1, 1, 1, NULL, 0, SYSDATE, SYSDATE, 'system', NULL);
 
 INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, QUERY_COLUMN, TARGET_COLUMN, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, SORTABLE, FILTERABLE, IS_VIRTUAL, DICT_TYPE, DELETED, CREATE_TIME, UPDATE_TIME, CREATE_BY, UPDATE_BY) 
-VALUES (34, 5, 'status', 'STATUS', NULL, NULL, '状�?, 'text', 8, 1, 1, 0, NULL, 0, SYSDATE, SYSDATE, 'system', NULL);
+VALUES (34, 5, 'status', 'STATUS', NULL, NULL, '状态', 'text', 8, 1, 1, 0, NULL, 0, SYSDATE, SYSDATE, 'system', NULL);
 
 
 -- =====================================================
@@ -51,7 +51,7 @@ VALUES (34, 5, 'status', 'STATUS', NULL, NULL, '状�?, 'text', 8, 1, 1, 0, NUL
 DELETE FROM T_COST_PAGE_COMPONENT WHERE PAGE_CODE = 'user-manage';
 
 INSERT INTO T_COST_PAGE_COMPONENT (ID, PAGE_CODE, COMPONENT_KEY, COMPONENT_TYPE, PARENT_KEY, COMPONENT_CONFIG, REF_TABLE_CODE, SLOT_NAME, SORT_ORDER, DELETED, DESCRIPTION, CREATE_TIME, UPDATE_TIME, CREATE_BY, UPDATE_BY) 
-VALUES (5, 'user-manage', 'masterGrid', 'GRID', NULL, '{"buttons":[{"action":"addRow","label":"新增"},{"action":"deleteRow","label":"删除","requiresRow":true},{"action":"resetPassword","label":"初始化密�?,"position":"toolbar","requiresRow":true,"method":"userService.resetPassword"},{"action":"save","label":"保存"}]}', 'CostUser', NULL, 0, 0, NULL, SYSDATE, SYSDATE, 'system', NULL);
+VALUES (5, 'user-manage', 'masterGrid', 'GRID', NULL, '{"buttons":[{"action":"addRow","label":"新增"},{"action":"deleteRow","label":"删除","requiresRow":true},{"action":"resetPassword","label":"初始化密码","position":"toolbar","requiresRow":true,"method":"userService.resetPassword"},{"action":"save","label":"保存"}]}', 'CostUser', NULL, 0, 0, NULL, SYSDATE, SYSDATE, 'system', NULL);
 
 -- =====================================================
 -- 4. 页面规则 (T_COST_PAGE_RULE)
