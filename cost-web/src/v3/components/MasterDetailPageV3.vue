@@ -20,6 +20,11 @@
       @select="onLookupSelect"
       @cancel="onLookupCancel"
     />
+    <BatchSelectDialog
+      ref="batchSelectDialogRef"
+      @select="onBatchSelectConfirm"
+      @cancel="onBatchSelectCancel"
+    />
   </div>
 </template>
 
@@ -28,6 +33,7 @@ import { onMounted } from 'vue';
 import { NEmpty, NSpin, useMessage } from 'naive-ui';
 import MetaPageRendererV3 from '@/v3/components/meta-v3/renderers/MetaPageRendererV3.vue';
 import LookupDialog from '@/v3/components/LookupDialog.vue';
+import BatchSelectDialog from '@/v3/components/BatchSelectDialog.vue';
 import { useMetaRuntime } from '@/v3/composables/meta-v3/useMetaRuntime';
 
 const props = defineProps<{ pageCode: string }>();
@@ -42,6 +48,7 @@ const runtime = useMetaRuntime({
 
 const { isReady, pageComponents, init } = runtime;
 const { lookupDialogRef, currentLookupRule, currentLookupRowData, currentLookupCellValue, onLookupSelect, onLookupCancel } = runtime as any;
+const { batchSelectDialogRef, onBatchSelectConfirm, onBatchSelectCancel } = runtime as any;
 const pageError = (runtime as any).pageError;
 
 onMounted(async () => {

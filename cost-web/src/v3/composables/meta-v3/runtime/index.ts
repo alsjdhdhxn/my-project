@@ -4,6 +4,7 @@ import { useMetaConfig } from '@/v3/composables/meta-v3/useMetaConfig';
 import { useMasterDetailData } from '@/v3/composables/meta-v3/useMasterDetailData';
 import { useCalcBroadcast } from '@/v3/composables/meta-v3/useCalcBroadcast';
 import { useLookupDialog } from '@/v3/composables/meta-v3/useLookupDialog';
+import { useBatchSelect } from '@/v3/composables/meta-v3/useBatchSelect';
 import { useSave } from '@/v3/composables/meta-v3/useSave';
 import { useUserGridConfig } from '@/v3/composables/meta-v3/useUserGridConfig';
 import { useCustomExport } from '@/v3/composables/meta-v3/useCustomExport';
@@ -203,6 +204,22 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     compiledAggRules: meta.compiledAggRules
   });
 
+  // 批量选择弹窗
+  const batchSelect = useBatchSelect({
+    detailCache: data.detailCache,
+    detailFkColumnByTab: meta.detailFkColumnByTab,
+    detailGridApisByTab,
+    afterAddDetailRows: (masterId, tabKey, rows) => {
+      // 对每个新增行执行计算
+      rows.forEach(row => {
+        const api = detailGridApisByTab.value?.[tabKey];
+        calc.runDetailCalc(null, api, row, masterId, tabKey);
+      });
+      // 重新计算汇总
+      recalcAggregatesProxy(masterId);
+    }
+  });
+
   const { save, isSaving } = useSave({
     pageCode,
     pageConfig: meta.pageConfig,
@@ -358,6 +375,8 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
       if (!resolvedFeatures.value.lookup) return;
       lookup.onLookupCancel();
     },
+    // 批量选择
+    ...batchSelect,
     executeAction,
     registerActionHandler,
     resolveActionHandler,

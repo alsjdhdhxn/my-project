@@ -1,5 +1,6 @@
 import type { ContextMenuItemRule, ContextMenuRule } from '@/v3/composables/meta-v3/types';
 import type { CustomExportConfig } from '@/service/api/export-config';
+import type { BatchSelectConfig } from '@/v3/components/BatchSelectDialog.vue';
 import { resolveRefreshMode } from '@/v3/composables/meta-v3/useToolbarAction';
 
 const LABEL_ADD = '新增';
@@ -8,6 +9,7 @@ const LABEL_DELETE = '删除';
 const LABEL_SAVE = '保存';
 const LABEL_SAVE_GRID = '保存列配置';
 const LABEL_CUSTOM_EXPORT = '自定义导出';
+const LABEL_BATCH_SELECT = '批量选择';
 
 type MenuConfigInput = ContextMenuRule | { value?: ContextMenuRule | null } | null | undefined;
 
@@ -37,6 +39,10 @@ export function useGridContextMenu(params: {
   executeCustomExport?: (exportCode: string, mode: 'all' | 'current') => void;
   /** 执行后端 action */
   executeAction?: (actionCode: string, options?: { data?: Record<string, any>; selectedRow?: Record<string, any> | null }) => Promise<void>;
+  /** 打开批量选择弹窗 */
+  openBatchSelect?: (config: BatchSelectConfig, context: { masterId: number | null; masterRowKey: string | null; tabKey: string }, filterValue?: any) => void;
+  /** 获取当前主表选中行 */
+  getActiveMaster?: () => { id: number | null; rowKey: string | null };
   /** 主表行是否可编辑的回调（用于控制删除权限） */
   isRowEditable?: (row: any) => boolean;
   /** 从表行是否可编辑的回调（按tabKey） */
@@ -59,6 +65,8 @@ export function useGridContextMenu(params: {
     customExportConfigs,
     executeCustomExport,
     executeAction,
+    openBatchSelect,
+    getActiveMaster,
     isRowEditable,
     isDetailRowEditableByTab,
     notifyError
@@ -116,6 +124,9 @@ export function useGridContextMenu(params: {
       case 'clipboard.paste':
       case 'clipboard_paste':
         return 'clipboardPaste';
+      case 'batchSelect':
+      case 'batch_select':
+        return 'batchSelect';
       case 'separator':
         return 'separator';
       default:
@@ -249,6 +260,52 @@ export function useGridContextMenu(params: {
     }
   }
 
+  /**
+   * 解析 batchSelect action 配置
+   * 配置格式：action: "batchSelect", batchSelectConfig: { lookupCode, mapping, filterColumn, filterField, title }
+   */
+  function resolveBatchSelectAction(item: ContextMenuItemRule, ctx: MenuScope): {
+    label: string;
+    handler: () => void;
+  } | null {
+    if (!openBatchSelect) return null;
+    
+    const batchConfig = (item as any).batchSelectConfig as BatchSelectConfig | undefined;
+    if (!batchConfig?.lookupCode) {
+      console.warn('[useGridContextMenu] batchSelect action 缺少 batchSelectConfig.lookupCode');
+      return null;
+    }
+    
+    return {
+      label: item.label || batchConfig.title || LABEL_BATCH_SELECT,
+      handler: () => {
+        // 获取当前主表选中行
+        const master = getActiveMaster?.() || { id: ctx.masterId ?? null, rowKey: ctx.masterRowKey ?? null };
+        if (master.id == null || !master.rowKey) {
+          notifyError?.('请先选择主表记录');
+          return;
+        }
+        
+        // 获取筛选值
+        let filterValue: any = null;
+        if (batchConfig.filterField) {
+          // 从主表行数据获取筛选值
+          const masterRow = ctx.params?.api?.getSelectedRows?.()?.[0];
+          if (masterRow) {
+            filterValue = masterRow[batchConfig.filterField];
+          }
+        }
+        
+        // 打开批量选择弹窗
+        openBatchSelect(
+          { ...batchConfig, targetTab: ctx.tabKey },
+          { masterId: master.id, masterRowKey: master.rowKey, tabKey: ctx.tabKey || batchConfig.targetTab || '' },
+          filterValue
+        );
+      }
+    };
+  }
+
   function resolveChildren(item: ContextMenuItemRule): ContextMenuItemRule[] {
     if (Array.isArray(item.items)) return item.items;
     const raw = (item as any).children ?? (item as any).subMenu;
@@ -264,7 +321,7 @@ export function useGridContextMenu(params: {
   // 内置前端 action 列表
   const BUILTIN_ACTIONS = [
     'addRow', 'copyRow', 'deleteRow', 'save', 'saveGridConfig',
-    'clipboardCopy', 'clipboardPaste'
+    'clipboardCopy', 'clipboardPaste', 'batchSelect'
   ];
 
   function buildMenuItems(items: ContextMenuItemRule[], ctx: MenuScope): any[] {
@@ -288,6 +345,19 @@ export function useGridContextMenu(params: {
 
       const actionKey = normalizeAction(item.action);
       if (!actionKey || actionKey === 'separator') continue;
+      
+      // 特殊处理 batchSelect action
+      if (actionKey === 'batchSelect') {
+        const batchAction = resolveBatchSelectAction(item, ctx);
+        if (batchAction) {
+          built.push({
+            name: batchAction.label,
+            action: batchAction.handler,
+            disabled: Boolean(item.disabled)
+          });
+        }
+        continue;
+      }
       
       const resolved = resolveAction(actionKey, ctx);
       if (resolved) {

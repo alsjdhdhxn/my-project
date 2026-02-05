@@ -180,6 +180,7 @@ const {
   save,
   saveGridConfig,
   executeAction,
+  openBatchSelect,
   activeMasterRowKey: runtimeActiveMasterRowKey
 } = runtime;
 
@@ -339,6 +340,11 @@ const { getDetailContextMenuItems } = useGridContextMenu({
   saveGridConfig,
   detailMenuByTab: detailContextMenuByTab,
   isDetailRowEditableByTab: detailRowEditableByTab,
+  openBatchSelect,
+  getActiveMaster: () => ({
+    id: activeMasterId.value,
+    rowKey: activeMasterRowKey.value
+  }),
   notifyError: (msg: string) => window.$message?.error(msg)
 });
 
