@@ -1123,12 +1123,8 @@ SELECT
 
     /* 最终显示字段 */
     TO_CHAR(NVL(b.goodsqty_total, 0)) || b.packname
-    || '（'
-    || CASE
-         WHEN NVL(b.goodsqty_oddtray1, 0) > 0
-         THEN '含零托' || TO_CHAR(b.goodsqty_oddtray1) || b.packname || '）'
-       END
-    || '样品__' || b.packname
+    || '（含零头' || TO_CHAR(NVL(b.goodsqty_oddtray1, 0)) || b.packname
+    || '，样品__' || b.packname
     || '）' AS QTY_SHOW,
     0 AS DELETED,
     NULL AS CREATE_TIME,
@@ -1373,42 +1369,17 @@ END;
 -- 同步WMS库存数据存储过程
 CREATE OR REPLACE PROCEDURE PROC_SYNC_WMS_GOODS_QTY AS
 BEGIN
-    -- 清空旧数据（全量同步）
-    DELETE FROM t_wms_goods_qty;
-
-    -- 插入新数据    INSERT INTO t_wms_goods_qty (
-        goodsownid,
-        lotno,
-        packname,
-        goodsqty,
-        oddtray,
-        goodsname,
-        goodsno,
-        packsize,
-        basepackname,
-        validdate,
-        createdate
+    INSERT INTO t_wms_goods_qty (
+        goodsownid, lotno, packname, goodsqty, oddtray, goodsname, 
+        goodsno, packsize, basepackname, validdate, createdate
     )
-    SELECT
-        goodsownid,
-        lotno,
-        packname,
-        goodsqty,
-        oddtray,
-        goodsname,
-        goodsno,
-        packsize,
-        basepackname,
-        validdate,
-        SYSDATE
+    SELECT goodsownid, lotno, packname, goodsqty, oddtray, goodsname,
+           goodsno, packsize, basepackname, validdate, SYSDATE
     FROM t_wms_goods_qty_v@to_wms;
-
     COMMIT;
-
 EXCEPTION
     WHEN OTHERS THEN
         ROLLBACK;
-        -- 记录错误日志（可选）
         DBMS_OUTPUT.PUT_LINE('同步失败: ' || SQLERRM);
         RAISE;
 END PROC_SYNC_WMS_GOODS_QTY;
