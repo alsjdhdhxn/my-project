@@ -1,0 +1,35 @@
+-- =====================================================
+-- 04_外币管理初始化.sql
+-- 成本管理系统 - 外币汇率管理功能初始化
+-- 页面: formoney-manage
+-- =====================================================
+
+-- 1. 表元数据
+DELETE FROM T_COST_TABLE_METADATA WHERE TABLE_CODE = 'CostFormoney';
+INSERT INTO T_COST_TABLE_METADATA (ID, TABLE_CODE, TABLE_NAME, QUERY_VIEW, TARGET_TABLE, SEQUENCE_NAME, PK_COLUMN, PARENT_TABLE_CODE, PARENT_FK_COLUMN, AUDIT_ENABLED, VALIDATION_RULES, ACTION_RULES, DESCRIPTION, DELETED, CREATE_TIME, UPDATE_TIME, CREATE_BY, UPDATE_BY) 
+VALUES (41, 'CostFormoney', '外币管理', 'T_COST_FORMONEY_V', 'T_COST_FORMONEY', 'SEQ_COST_FORMONEY', 'FMID', NULL, NULL, 0, NULL, NULL, NULL, 0, SYSDATE, SYSDATE, 'system', NULL);
+
+-- 2. 列元数据
+DELETE FROM T_COST_COLUMN_METADATA WHERE TABLE_METADATA_ID = 41;
+INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, QUERY_COLUMN, TARGET_COLUMN, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, SORTABLE, FILTERABLE, IS_VIRTUAL, DICT_TYPE, DELETED, CREATE_TIME, UPDATE_TIME, CREATE_BY, UPDATE_BY) VALUES (341, 41, 'id', 'FMID', NULL, NULL, '外币ID', 'number', 0, 1, 1, 0, NULL, 0, SYSDATE, SYSDATE, 'system', NULL);
+INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, QUERY_COLUMN, TARGET_COLUMN, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, SORTABLE, FILTERABLE, IS_VIRTUAL, DICT_TYPE, DELETED, CREATE_TIME, UPDATE_TIME, CREATE_BY, UPDATE_BY) VALUES (342, 41, 'fmopcode', 'FMOPCODE', NULL, NULL, '外币编码', 'text', 1, 1, 1, 0, NULL, 0, SYSDATE, SYSDATE, 'system', NULL);
+INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, QUERY_COLUMN, TARGET_COLUMN, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, SORTABLE, FILTERABLE, IS_VIRTUAL, DICT_TYPE, DELETED, CREATE_TIME, UPDATE_TIME, CREATE_BY, UPDATE_BY) VALUES (343, 41, 'fmname', 'FMNAME', NULL, NULL, '外币名称', 'text', 2, 1, 1, 0, NULL, 0, SYSDATE, SYSDATE, 'system', NULL);
+INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, QUERY_COLUMN, TARGET_COLUMN, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, SORTABLE, FILTERABLE, IS_VIRTUAL, DICT_TYPE, DELETED, CREATE_TIME, UPDATE_TIME, CREATE_BY, UPDATE_BY) VALUES (344, 41, 'fmsign', 'FMSIGN', NULL, NULL, '外币符号', 'text', 3, 1, 1, 0, NULL, 0, SYSDATE, SYSDATE, 'system', NULL);
+INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, QUERY_COLUMN, TARGET_COLUMN, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, SORTABLE, FILTERABLE, IS_VIRTUAL, DICT_TYPE, DELETED, CREATE_TIME, UPDATE_TIME, CREATE_BY, UPDATE_BY) VALUES (345, 41, 'fmunit', 'FMUNIT', NULL, NULL, '外币单位', 'text', 4, 1, 1, 0, NULL, 0, SYSDATE, SYSDATE, 'system', NULL);
+INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, QUERY_COLUMN, TARGET_COLUMN, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, SORTABLE, FILTERABLE, IS_VIRTUAL, DICT_TYPE, DELETED, CREATE_TIME, UPDATE_TIME, CREATE_BY, UPDATE_BY) VALUES (346, 41, 'fmrate', 'FMRATE', NULL, NULL, '汇率', 'number', 5, 1, 1, 0, NULL, 0, SYSDATE, SYSDATE, 'system', NULL);
+INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, QUERY_COLUMN, TARGET_COLUMN, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, SORTABLE, FILTERABLE, IS_VIRTUAL, DICT_TYPE, DELETED, CREATE_TIME, UPDATE_TIME, CREATE_BY, UPDATE_BY) VALUES (347, 41, 'usestatus', 'USESTATUS', NULL, NULL, '使用状态', 'number', 6, 1, 1, 0, NULL, 0, SYSDATE, SYSDATE, 'system', NULL);
+
+-- 3. 页面组件
+DELETE FROM T_COST_PAGE_COMPONENT WHERE PAGE_CODE = 'formoney-manage';
+INSERT INTO T_COST_PAGE_COMPONENT (ID, PAGE_CODE, COMPONENT_KEY, COMPONENT_TYPE, PARENT_KEY, COMPONENT_CONFIG, REF_TABLE_CODE, SLOT_NAME, SORT_ORDER, DELETED, DESCRIPTION, CREATE_TIME, UPDATE_TIME, CREATE_BY, UPDATE_BY) VALUES (61, 'formoney-manage', 'root', 'LAYOUT', NULL, '{"direction":"vertical","gap":8}', NULL, NULL, 0, 0, NULL, SYSDATE, SYSDATE, 'system', NULL);
+INSERT INTO T_COST_PAGE_COMPONENT (ID, PAGE_CODE, COMPONENT_KEY, COMPONENT_TYPE, PARENT_KEY, COMPONENT_CONFIG, REF_TABLE_CODE, SLOT_NAME, SORT_ORDER, DELETED, DESCRIPTION, CREATE_TIME, UPDATE_TIME, CREATE_BY, UPDATE_BY) VALUES (62, 'formoney-manage', 'grid', 'GRID', 'root', '{"height":"100%","selectionMode":"single","buttons":[{"action":"addRow","label":"新增"},{"action":"copyRow","label":"复制","requiresRow":true},{"action":"deleteRow","label":"删除","requiresRow":true},{"action":"saveGridConfig","label":"保存列配置"},{"label":"导出","items":[{"action":"exportSelected","label":"导出选中","requiresSelection":true},{"action":"exportCurrent","label":"导出当前页"},{"action":"exportAll","label":"导出全部"},{"action":"resetExportConfig","label":"重置导出配置"},{"action":"openHeaderConfig","label":"配置导出表头"}]},{"action":"save","label":"保存"},{"action":"clipboard.copy","label":"复制"},{"action":"clipboard.paste","label":"粘贴"},{"action":"SYNC_ERP_RATE","label":"同步ERP汇率","position":"toolbar","type":"primary"}]}', 'CostFormoney', NULL, 1, 0, NULL, SYSDATE, SYSDATE, 'system', NULL);
+
+-- 4. 页面规则
+DELETE FROM T_COST_PAGE_RULE WHERE PAGE_CODE = 'formoney-manage';
+INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, SORT_ORDER, DESCRIPTION, DELETED, CREATE_TIME, UPDATE_TIME, CREATE_BY, UPDATE_BY) VALUES (141, 'formoney-manage', 'grid', 'COLUMN_OVERRIDE', '[{"field":"id","visible":false,"editable":false},{"field":"fmopcode","width":null,"editable":true,"searchable":true},{"field":"fmname","width":null,"editable":true,"searchable":true},{"field":"fmsign","width":null,"editable":true},{"field":"fmunit","width":null,"editable":true},{"field":"fmrate","width":null,"editable":true},{"field":"usestatus","width":null,"editable":true}]', 0, NULL, 0, SYSDATE, SYSDATE, 'system', NULL);
+
+-- 5. Lookup配置
+DELETE FROM T_COST_LOOKUP_CONFIG WHERE LOOKUP_CODE = 'formoney';
+INSERT INTO T_COST_LOOKUP_CONFIG (ID, LOOKUP_CODE, LOOKUP_NAME, DATA_SOURCE, DISPLAY_COLUMNS, VALUE_FIELD, LABEL_FIELD, DELETED, CREATE_TIME, UPDATE_TIME, CREATE_BY, UPDATE_BY) VALUES (79, 'formoney', '币种选择', 'T_COST_FORMONEY_V', '[{"field":"fmname","header":"币种名称","width":150},{"field":"fmrate","header":"汇率","width":100},{"field":"fmsign","header":"符号","width":80}]', 'fmid', 'fmname', 0, SYSDATE, SYSDATE, 'system', NULL);
+
+COMMIT;
