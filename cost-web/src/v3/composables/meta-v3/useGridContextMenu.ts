@@ -279,9 +279,19 @@ export function useGridContextMenu(params: {
     return {
       label: item.label || batchConfig.title || LABEL_BATCH_SELECT,
       handler: () => {
-        // 获取当前主表选中行
-        const master = getActiveMaster?.() || { id: ctx.masterId ?? null, rowKey: ctx.masterRowKey ?? null };
-        if (master.id == null || !master.rowKey) {
+        // 从表右键菜单时，ctx 中已经有 masterId 和 masterRowKey
+        // 主表右键菜单时，需要从 getActiveMaster 获取
+        let masterId: number | null = ctx.masterId ?? null;
+        let masterRowKey: string | null = ctx.masterRowKey ?? null;
+        
+        // 如果 ctx 中没有（主表场景），则从 getActiveMaster 获取
+        if (masterId == null || !masterRowKey) {
+          const master = getActiveMaster?.();
+          masterId = master?.id ?? null;
+          masterRowKey = master?.rowKey ?? null;
+        }
+        
+        if (masterId == null || !masterRowKey) {
           notifyError?.('请先选择主表记录');
           return;
         }
@@ -299,7 +309,7 @@ export function useGridContextMenu(params: {
         // 打开批量选择弹窗
         openBatchSelect(
           { ...batchConfig, targetTab: ctx.tabKey },
-          { masterId: master.id, masterRowKey: master.rowKey, tabKey: ctx.tabKey || batchConfig.targetTab || '' },
+          { masterId, masterRowKey, tabKey: ctx.tabKey || batchConfig.targetTab || '' },
           filterValue
         );
       }

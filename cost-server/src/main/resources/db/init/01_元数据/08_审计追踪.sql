@@ -1,0 +1,57 @@
+-- ============================================================
+-- 审计追踪元数据初始化
+-- 包含: auditLog
+-- ============================================================
+
+-- ============================================================
+-- 1. 表元数据
+-- ============================================================
+INSERT INTO T_COST_TABLE_METADATA (ID, TABLE_CODE, TABLE_NAME, QUERY_VIEW, TARGET_TABLE, SEQUENCE_NAME, PK_COLUMN, PARENT_TABLE_CODE, PARENT_FK_COLUMN, AUDIT_ENABLED, DESCRIPTION, DELETED, CREATE_TIME, UPDATE_TIME, CREATE_BY)
+VALUES (146, 'auditLog', '审计追踪', 'V_COST_AUDIT_LOG', 'T_COST_AUDIT_LOG', 'SEQ_COST_AUDIT_LOG', 'ID', NULL, NULL, 0, '系统审计日志', 0, SYSTIMESTAMP, SYSTIMESTAMP, 'system');
+
+-- ============================================================
+-- 2. 列元数据
+-- ============================================================
+INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, SORTABLE, FILTERABLE, IS_VIRTUAL, DELETED, CREATE_TIME, UPDATE_TIME, CREATE_BY, TABLE_CODE)
+VALUES (1503, 146, 'id', 'ID', 'ID', 'number', 1, 1, 1, 0, 0, SYSTIMESTAMP, SYSTIMESTAMP, 'system', 'auditLog');
+INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, SORTABLE, FILTERABLE, IS_VIRTUAL, DELETED, CREATE_TIME, UPDATE_TIME, CREATE_BY, TABLE_CODE)
+VALUES (1504, 146, 'userName', 'USER_NAME', '操作用户', 'text', 2, 1, 1, 0, 0, SYSTIMESTAMP, SYSTIMESTAMP, 'system', 'auditLog');
+INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, SORTABLE, FILTERABLE, IS_VIRTUAL, DELETED, CREATE_TIME, UPDATE_TIME, CREATE_BY, TABLE_CODE)
+VALUES (1505, 146, 'operationTime', 'OPERATION_TIME', '操作时间', 'datetime', 3, 1, 1, 0, 0, SYSTIMESTAMP, SYSTIMESTAMP, 'system', 'auditLog');
+INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, SORTABLE, FILTERABLE, IS_VIRTUAL, DELETED, CREATE_TIME, UPDATE_TIME, CREATE_BY, TABLE_CODE)
+VALUES (1506, 146, 'pageCode', 'PAGE_CODE', '页面编码', 'text', 4, 1, 1, 0, 0, SYSTIMESTAMP, SYSTIMESTAMP, 'system', 'auditLog');
+INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, SORTABLE, FILTERABLE, IS_VIRTUAL, DELETED, CREATE_TIME, UPDATE_TIME, CREATE_BY, TABLE_CODE)
+VALUES (1507, 146, 'tableCode', 'TABLE_CODE', '表编码', 'text', 5, 1, 1, 0, 0, SYSTIMESTAMP, SYSTIMESTAMP, 'system', 'auditLog');
+INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, SORTABLE, FILTERABLE, IS_VIRTUAL, DELETED, CREATE_TIME, UPDATE_TIME, CREATE_BY, TABLE_CODE)
+VALUES (1508, 146, 'tableName', 'TABLE_NAME', '表名称', 'text', 6, 1, 1, 0, 0, SYSTIMESTAMP, SYSTIMESTAMP, 'system', 'auditLog');
+INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, SORTABLE, FILTERABLE, IS_VIRTUAL, DELETED, CREATE_TIME, UPDATE_TIME, CREATE_BY, TABLE_CODE)
+VALUES (1509, 146, 'recordId', 'RECORD_ID', '记录ID', 'number', 7, 1, 1, 0, 0, SYSTIMESTAMP, SYSTIMESTAMP, 'system', 'auditLog');
+INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, SORTABLE, FILTERABLE, IS_VIRTUAL, DELETED, CREATE_TIME, UPDATE_TIME, CREATE_BY, TABLE_CODE)
+VALUES (1510, 146, 'operationType', 'OPERATION_TYPE', '操作类型', 'text', 8, 1, 1, 0, 0, SYSTIMESTAMP, SYSTIMESTAMP, 'system', 'auditLog');
+INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, SORTABLE, FILTERABLE, IS_VIRTUAL, DELETED, CREATE_TIME, UPDATE_TIME, CREATE_BY, TABLE_CODE)
+VALUES (1511, 146, 'fieldChanges', 'FIELD_CHANGES', '字段变更', 'text', 9, 1, 0, 0, 0, SYSTIMESTAMP, SYSTIMESTAMP, 'system', 'auditLog');
+INSERT INTO T_COST_COLUMN_METADATA (ID, TABLE_METADATA_ID, FIELD_NAME, COLUMN_NAME, HEADER_TEXT, DATA_TYPE, DISPLAY_ORDER, SORTABLE, FILTERABLE, IS_VIRTUAL, DELETED, CREATE_TIME, UPDATE_TIME, CREATE_BY, TABLE_CODE)
+VALUES (1512, 146, 'createTime', 'CREATE_TIME', '创建时间', 'datetime', 10, 1, 1, 0, 0, SYSTIMESTAMP, SYSTIMESTAMP, 'system', 'auditLog');
+
+-- ============================================================
+-- 3. 页面组件
+-- ============================================================
+INSERT INTO T_COST_PAGE_COMPONENT (ID, PAGE_CODE, COMPONENT_KEY, COMPONENT_TYPE, PARENT_KEY, COMPONENT_CONFIG, REF_TABLE_CODE, SORT_ORDER, DELETED, DESCRIPTION, CREATE_TIME, UPDATE_TIME, CREATE_BY)
+VALUES (146, 'auditLog', 'masterGrid', 'GRID', NULL, NULL, 'auditLog', 1, 0, '审计追踪主表格', SYSTIMESTAMP, SYSTIMESTAMP, 'system');
+
+-- ============================================================
+-- 4. 页面规则
+-- ============================================================
+INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, SORT_ORDER, DESCRIPTION, DELETED, CREATE_TIME, UPDATE_TIME, CREATE_BY)
+VALUES (550, 'auditLog', 'masterGrid', 'COLUMN_OVERRIDE', '[
+  {"field":"id","width":80,"editable":false},
+  {"field":"userName","width":120,"editable":false},
+  {"field":"operationTime","width":180,"editable":false},
+  {"field":"pageCode","width":150,"editable":false},
+  {"field":"tableCode","width":150,"editable":false},
+  {"field":"tableName","width":150,"editable":false},
+  {"field":"recordId","width":100,"editable":false},
+  {"field":"operationType","width":100,"editable":false},
+  {"field":"fieldChanges","width":400,"editable":false,"wrapText":true,"autoHeight":true},
+  {"field":"createTime","width":180,"editable":false}
+]', 1, '列覆盖配置', 0, SYSTIMESTAMP, SYSTIMESTAMP, 'system');
