@@ -22,6 +22,8 @@ export const views: Record<LastLevelRouteKey, RouteComponent | (() => Promise<Ro
   dynamic: () => import("@/views/_builtin/dynamic/index.vue"),
   "iframe-page": () => import("@/views/_builtin/iframe-page/[url].vue"),
   login: () => import("@/views/_builtin/login/index.vue"),
+  "meta-config": () => import("@/views/_builtin/meta-config/index.vue"),
   permission: () => import("@/views/_builtin/permission/index.vue"),
   home: () => import("@/views/home/index.vue"),
+  "meta-config": () => import("@/views/_builtin/meta-config/index.vue"),
 };

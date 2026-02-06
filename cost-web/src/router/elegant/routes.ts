@@ -94,6 +94,15 @@ export const generatedRoutes: GeneratedRoute[] = [
     }
   },
   {
+    name: 'meta-config',
+    path: '/meta-config',
+    component: 'layout.base$view.meta-config',
+    meta: {
+      title: 'meta-config',
+      i18nKey: 'route.meta-config'
+    }
+  },
+  {
     name: 'permission',
     path: '/permission',
     component: 'layout.base$view.permission',

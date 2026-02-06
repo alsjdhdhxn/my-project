@@ -1,0 +1,158 @@
+package com.cost.costserver.metadata.controller;
+
+import com.cost.costserver.auth.entity.Resource;
+import com.cost.costserver.common.Result;
+import com.cost.costserver.metadata.entity.*;
+import com.cost.costserver.metadata.service.MetaConfigService;
+import com.cost.costserver.metadata.service.MetadataService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+import java.util.Map;
+
+/**
+ * 元数据配置中心控制器（硬编码页面专用）
+ */
+@Tag(name = "元数据配置中心")
+@RestController
+@RequestMapping("/meta-config")
+@RequiredArgsConstructor
+public class MetaConfigController {
+
+    private final MetaConfigService metaConfigService;
+    private final MetadataService metadataService;
+
+    // ==================== 目录管理 ====================
+
+    @GetMapping("/resources")
+    public Result<List<Resource>> listResources() {
+        return Result.ok(metaConfigService.listResources());
+    }
+
+    @PostMapping("/resource")
+    public Result<Resource> saveResource(@RequestBody Resource resource) {
+        return Result.ok(metaConfigService.saveResource(resource));
+    }
+
+    @DeleteMapping("/resource/{id}")
+    public Result<Void> deleteResource(@PathVariable Long id) {
+        metaConfigService.deleteResource(id);
+        return Result.ok();
+    }
+
+    // ==================== 表管理 ====================
+
+    @GetMapping("/tables")
+    public Result<List<TableMetadata>> listTables() {
+        return Result.ok(metaConfigService.listTables());
+    }
+
+    @PostMapping("/table")
+    public Result<TableMetadata> saveTable(@RequestBody TableMetadata table) {
+        TableMetadata saved = metaConfigService.saveTable(table);
+        metadataService.clearCache(saved.getTableCode());
+        return Result.ok(saved);
+    }
+
+    @DeleteMapping("/table/{id}")
+    public Result<Void> deleteTable(@PathVariable Long id) {
+        metaConfigService.deleteTable(id);
+        metadataService.clearCache(null);
+        return Result.ok();
+    }
+
+    @GetMapping("/table/{tableId}/columns")
+    public Result<List<ColumnMetadata>> listColumns(@PathVariable Long tableId) {
+        return Result.ok(metaConfigService.listColumns(tableId));
+    }
+
+    @PostMapping("/column")
+    public Result<ColumnMetadata> saveColumn(@RequestBody ColumnMetadata column) {
+        ColumnMetadata saved = metaConfigService.saveColumn(column);
+        metadataService.clearCache(null);
+        return Result.ok(saved);
+    }
+
+    @DeleteMapping("/column/{id}")
+    public Result<Void> deleteColumn(@PathVariable Long id) {
+        metaConfigService.deleteColumn(id);
+        metadataService.clearCache(null);
+        return Result.ok();
+    }
+
+    // ==================== 页面管理 ====================
+
+    @GetMapping("/components")
+    public Result<List<PageComponent>> listComponents() {
+        return Result.ok(metaConfigService.listComponents());
+    }
+
+    @PostMapping("/component")
+    public Result<PageComponent> saveComponent(@RequestBody PageComponent component) {
+        PageComponent saved = metaConfigService.saveComponent(component);
+        metadataService.clearCache(null);
+        return Result.ok(saved);
+    }
+
+    @DeleteMapping("/component/{id}")
+    public Result<Void> deleteComponent(@PathVariable Long id) {
+        metaConfigService.deleteComponent(id);
+        metadataService.clearCache(null);
+        return Result.ok();
+    }
+
+    @GetMapping("/rules")
+    public Result<List<PageRule>> listRules(
+            @RequestParam String pageCode,
+            @RequestParam String componentKey) {
+        return Result.ok(metaConfigService.listRules(pageCode, componentKey));
+    }
+
+    @PostMapping("/rule")
+    public Result<PageRule> saveRule(@RequestBody PageRule rule) {
+        PageRule saved = metaConfigService.saveRule(rule);
+        metadataService.clearCache(null);
+        return Result.ok(saved);
+    }
+
+    @DeleteMapping("/rule/{id}")
+    public Result<Void> deleteRule(@PathVariable Long id) {
+        metaConfigService.deleteRule(id);
+        metadataService.clearCache(null);
+        return Result.ok();
+    }
+
+    // ==================== Lookup管理 ====================
+
+    @GetMapping("/lookups")
+    public Result<List<LookupConfig>> listLookups() {
+        return Result.ok(metaConfigService.listLookups());
+    }
+
+    @PostMapping("/lookup")
+    public Result<LookupConfig> saveLookup(@RequestBody LookupConfig lookup) {
+        LookupConfig saved = metaConfigService.saveLookup(lookup);
+        metadataService.clearCache(null);
+        return Result.ok(saved);
+    }
+
+    @DeleteMapping("/lookup/{id}")
+    public Result<Void> deleteLookup(@PathVariable Long id) {
+        metaConfigService.deleteLookup(id);
+        metadataService.clearCache(null);
+        return Result.ok();
+    }
+
+    // ==================== 视图列查询 ====================
+
+    @Operation(summary = "查询视图/表的物理列")
+    @GetMapping("/view-columns")
+    public Result<List<Map<String, Object>>> listViewColumns(
+            @RequestParam(defaultValue = "CMX") String owner,
+            @RequestParam String viewName) {
+        return Result.ok(metaConfigService.listViewColumns(owner, viewName));
+    }
+}

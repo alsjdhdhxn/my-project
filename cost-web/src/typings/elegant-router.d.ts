@@ -25,6 +25,7 @@ declare module "@elegant-router/types" {
     "home": "/home";
     "iframe-page": "/iframe-page/:url";
     "login": "/login/:module(pwd-login|code-login|register|reset-pwd|bind-wechat)?";
+    "meta-config": "/meta-config";
     "permission": "/permission";
   };
 
@@ -65,6 +66,7 @@ declare module "@elegant-router/types" {
     | "home"
     | "iframe-page"
     | "login"
+    | "meta-config"
     | "permission"
   >;
 
@@ -89,6 +91,7 @@ declare module "@elegant-router/types" {
     | "dynamic"
     | "iframe-page"
     | "login"
+    | "meta-config"
     | "permission"
     | "home"
   >;
