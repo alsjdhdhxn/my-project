@@ -268,3 +268,132 @@ BEGIN
 EXCEPTION WHEN OTHERS THEN ROLLBACK; RAISE;
 END;
 /
+
+-- ============================================================
+-- 液体版存储过程
+-- ============================================================
+
+-- 成本核算明细计算(液体)
+CREATE OR REPLACE PROCEDURE p_pinggu_dtl_compute_lq(p_docid NUMBER, is_all_comp NUMBER) AS
+  v_apex_pl NUMBER; v_dtl_count NUMBER;
+BEGIN
+  SELECT COUNT(*) INTO v_dtl_count FROM t_cost_pinggu_dtl_lq WHERE docid = p_docid;
+  IF v_dtl_count = 0 THEN RETURN; END IF;
+  BEGIN SELECT a.apex_pl INTO v_apex_pl FROM t_cost_pinggu_lq a WHERE a.docid = p_docid;
+  EXCEPTION WHEN NO_DATA_FOUND THEN RETURN; END;
+  
+  IF is_all_comp = 0 THEN
+    UPDATE t_cost_pinggu_dtl_lq a SET a.per_hl = a.batch_qty / v_apex_pl * 1000000
+    WHERE a.docid = p_docid AND a.dtl_useflag IN ('原料', '辅料');
+    UPDATE t_cost_pinggu_dtl_lq a SET a.per_hl = a.batch_qty / v_apex_pl * 1000000
+    WHERE a.docid = p_docid AND a.dtl_useflag IN ('印字包材', '非印字包材') AND REGEXP_LIKE(a.apex_goodsname, '硬片|铝箔');
+  END IF;
+  
+  UPDATE t_cost_pinggu_dtl_lq a SET a.cost_batch = a.batch_qty * a.price WHERE a.docid = p_docid;
+END;
+/
+
+-- 成本核算主表计算(液体)
+CREATE OR REPLACE PROCEDURE p_pinggu_compute_lq (p_docid IN NUMBER) IS
+  v_apex_pl NUMBER; v_p_perpack NUMBER; v_yield NUMBER; v_out_price_rmb NUMBER; v_annual_qty NUMBER;
+  v_total_fl NUMBER; v_total_bc NUMBER; v_total_yl NUMBER; v_total_cost NUMBER;
+  v_salemoney NUMBER; v_jgf_batch NUMBER; v_jgf_perqp NUMBER; v_cost_perqp NUMBER;
+  v_ml_perqp NUMBER; v_y_jg_re NUMBER; v_y_ml NUMBER; v_y_sale NUMBER; v_cost_perbox NUMBER;
+  v_sum_yl NUMBER := 0; is_exists NUMBER;
+BEGIN
+  SELECT COUNT(1) INTO is_exists FROM t_cost_pinggu_lq WHERE docid = p_docid;
+  IF is_exists > 0 THEN
+    SELECT apex_pl, p_perpack, yield, out_price_rmb, annual_qty, cost_perqp
+    INTO v_apex_pl, v_p_perpack, v_yield, v_out_price_rmb, v_annual_qty, v_cost_perqp
+    FROM t_cost_pinggu_lq WHERE docid = p_docid;
+    
+    SELECT NVL(SUM(CASE WHEN dtl_useflag = '原料' THEN cost_batch ELSE 0 END), 0) INTO v_sum_yl
+    FROM t_cost_pinggu_dtl_lq WHERE docid = p_docid;
+    
+    IF v_sum_yl > 0 THEN
+      SELECT NVL(SUM(CASE WHEN dtl_useflag = '原料' THEN cost_batch / 1.13 ELSE 0 END), 0),
+             NVL(SUM(CASE WHEN dtl_useflag = '辅料' THEN cost_batch / 1.13 ELSE 0 END), 0),
+             NVL(SUM(CASE WHEN dtl_useflag IN ('非印字包材', '印字包材') THEN cost_batch / 1.13 ELSE 0 END), 0)
+      INTO v_total_yl, v_total_fl, v_total_bc FROM t_cost_pinggu_dtl_lq WHERE docid = p_docid;
+    ELSE
+      SELECT NVL(SUM(CASE WHEN dtl_useflag = '原料' THEN cost_batch ELSE 0 END), 0),
+             NVL(SUM(CASE WHEN dtl_useflag = '辅料' THEN cost_batch ELSE 0 END), 0),
+             NVL(SUM(CASE WHEN dtl_useflag IN ('非印字包材', '印字包材') THEN cost_batch ELSE 0 END), 0)
+      INTO v_total_yl, v_total_fl, v_total_bc FROM t_cost_pinggu_dtl_lq WHERE docid = p_docid;
+    END IF;
+    
+    v_total_cost := v_total_fl + v_total_bc + v_total_yl;
+    v_salemoney := ROUND(NVL(v_out_price_rmb, 0) / NULLIF(v_p_perpack, 0) * NVL(v_apex_pl, 0) * (NVL(v_yield, 0) / 100), 2);
+    v_jgf_batch := ROUND(NVL(v_salemoney, 0) - NVL(v_total_cost, 0), 2);
+    v_cost_perbox := ROUND(NVL(v_total_cost, 0) / NULLIF(v_apex_pl, 0) * NVL(v_p_perpack, 0), 2);
+    v_jgf_perqp := ROUND(NVL(v_jgf_batch, 0) / NULLIF(v_apex_pl, 0) * 1000, 2);
+    v_ml_perqp := ROUND(NVL(v_jgf_perqp, 0) - NVL(v_cost_perqp, 0), 2);
+    v_y_jg_re := ROUND(NVL(v_jgf_perqp, 0) / 1000 * NVL(v_annual_qty, 0), 2);
+    v_y_ml := ROUND(NVL(v_ml_perqp, 0) / 1000 * NVL(v_annual_qty, 0), 2);
+    v_y_sale := ROUND(NVL(v_salemoney, 0) / NULLIF(v_apex_pl, 0) * NVL(v_annual_qty, 0), 2);
+    
+    UPDATE t_cost_pinggu_lq SET salemoney = v_salemoney, jgf_batch = v_jgf_batch, jgf_perqp = v_jgf_perqp,
+           cost_perbox = v_cost_perbox, ml_perqp = v_ml_perqp, y_jg_re = v_y_jg_re, y_ml = v_y_ml, y_sale = v_y_sale,
+           total_fl = v_total_fl, total_bc = v_total_bc, total_yl = v_total_yl, total_cost = v_total_cost
+    WHERE docid = p_docid;
+  END IF;
+EXCEPTION WHEN NO_DATA_FOUND THEN ROLLBACK; RAISE; WHEN OTHERS THEN ROLLBACK; RAISE;
+END p_pinggu_compute_lq;
+/
+
+-- BOM生成明细(液体)
+CREATE OR REPLACE PROCEDURE P_COST_BOM_INSERT_LQ (p_docid IN t_cost_pinggu_lq.docid%TYPE) AS
+    v_goodsid varchar2(20);
+    v_raw_goodsid t_cost_pinggu_lq.goodsid%TYPE;
+BEGIN
+    SELECT goodsid INTO v_raw_goodsid FROM t_cost_pinggu_lq WHERE docid = p_docid;
+    IF v_raw_goodsid IS NULL THEN RAISE_APPLICATION_ERROR(-20003, '该产品在ERP中不存在BOM'); END IF;
+    v_goodsid := '-' || v_raw_goodsid || '-';
+    DELETE FROM t_cost_pinggu_dtl_lq WHERE docid = p_docid;
+    INSERT INTO t_cost_pinggu_dtl_lq (dtlid, docid, apex_goodsid, spec, batch_qty, price, BASE_PRICE, modifydate, cost_batch,
+                                   DTL_USEFLAG, APEX_GOODSNAME, APEX_FACTORYNAME, GOODSTYPE)
+    SELECT SEQ_COST_PINGGU_DTL_LQ.NEXTVAL, p_docid, v.goodsid, v.standardtype, v.useqty, f.PRICE, f.PRICE, sysdate,
+           nvl(v.useqty,0)*nvl(f.price,0), decode(v.useflag,4,'原料',2,'辅料',3,'非印字包材',5,'印字包材'),
+           f.GOODSNAME, f.FACTORYNAME, f.GOODSTYPE
+    FROM t_cost_bom_goods_tree_v v, PUB_GOODS_V f
+    WHERE v.treeid LIKE v_goodsid||'%' AND v.pid <> '-1' AND v.USEFLAG NOT IN (0,1) AND v.goodsid = f.goodsid(+);
+    p_pinggu_dtl_compute_lq(p_docid, 0);
+    p_pinggu_compute_lq(p_docid);
+    COMMIT;
+END P_COST_BOM_INSERT_LQ;
+/
+
+-- 批量计算所有成本核算(液体)
+CREATE OR REPLACE PROCEDURE p_pinggu_compute_all_lq AS
+BEGIN
+  UPDATE t_cost_pinggu_dtl_lq a SET a.price = (SELECT PRICE FROM t_cost_goods_price x WHERE x.GOODSID = a.apex_goodsid AND x.USEFLAG NOT IN ('产成品'));
+  FOR i IN (SELECT DOCID FROM t_cost_pinggu_lq) LOOP
+    p_pinggu_dtl_compute_lq(i.docid, 1);
+    p_pinggu_compute_lq(i.docid);
+  END LOOP;
+END;
+/
+
+-- 备份成本核算表(液体)
+CREATE OR REPLACE PROCEDURE sp_backup_pinggu_tables_lq AS
+BEGIN
+  INSERT INTO t_cost_pinggu_his_lq (goodsid, goodsname, strength, ma_no, apex_pl, mah, p_perpack, form, s_perback, packtype,
+    x_perback, total_fl, total_bc, total_yl, memo, usestatus, docid, dosage, annual_qty, yield, total_cost, out_price_f,
+    out_price_rmb, salemoney, jgf_batch, jgf_perqp, cost_perqp, ml_perqp, y_jg_re, y_ml, y_sale, customid, customname,
+    country, projectno, useflag, yield_time, apex_pl_time, fmname, fmrate, goodsname_en, livery, deleted, create_time,
+    update_time, create_by, update_by, cost_perbox, backup_time)
+  SELECT t.goodsid, t.goodsname, t.strength, t.ma_no, t.apex_pl, t.mah, t.p_perpack, t.form, t.s_perback, t.packtype,
+    t.x_perback, t.total_fl, t.total_bc, t.total_yl, t.memo, t.usestatus, t.docid, t.dosage, t.annual_qty, t.yield,
+    t.total_cost, t.out_price_f, t.out_price_rmb, t.salemoney, t.jgf_batch, t.jgf_perqp, t.cost_perqp, t.ml_perqp,
+    t.y_jg_re, t.y_ml, t.y_sale, t.customid, t.customname, t.country, t.projectno, t.useflag, t.yield_time, t.apex_pl_time,
+    t.fmname, t.fmrate, t.goodsname_en, t.livery, t.deleted, t.create_time, t.update_time, t.create_by, t.update_by,
+    t.cost_perbox, SYSDATE FROM t_cost_pinggu_lq t;
+  INSERT INTO t_cost_pinggu_dtl_his_lq (docid, apex_goodsid, apex_goodsname, dtl_useflag, spec, per_hl, exadd_mater, batch_qty,
+    price, cost_batch, memo, dtlid, apex_factoryname, apex_factoryid, modifydate, base_price, suqty, goodstype, goodsname_en,
+    deleted, create_time, update_time, create_by, update_by, backup_time)
+  SELECT t.docid, t.apex_goodsid, t.apex_goodsname, t.dtl_useflag, t.spec, t.per_hl, t.exadd_mater, t.batch_qty, t.price,
+    t.cost_batch, t.memo, t.dtlid, t.apex_factoryname, t.apex_factoryid, t.modifydate, t.base_price, t.suqty, t.goodstype,
+    t.goodsname_en, t.deleted, t.create_time, t.update_time, t.create_by, t.update_by, SYSDATE FROM t_cost_pinggu_dtl_lq t;
+  COMMIT;
+END;
+/
