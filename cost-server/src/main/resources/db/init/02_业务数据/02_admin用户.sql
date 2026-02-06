@@ -13,5 +13,5 @@ VALUES (111, 'admin', '系统管理员', 'admin@example.com', NULL, NULL, 'ACTIV
 -- ============================================================
 -- 2. 关联admin用户与ADMIN角色
 -- ============================================================
-INSERT INTO T_COST_USER_ROLE (ID, USER_ID, ROLE_ID, USERNAME, ROLE_CODE)
-VALUES (3, 111, 3, 'admin', 'ADMIN');
+INSERT INTO T_COST_USER_ROLE (ID, USER_ID, ROLE_ID)
+VALUES (3, 111, 3);

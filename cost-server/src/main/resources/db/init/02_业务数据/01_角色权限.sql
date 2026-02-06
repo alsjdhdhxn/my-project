@@ -70,36 +70,36 @@ VALUES (123, '成品发运单', 'PAGE', 'wms-shipping', 'mdi:truck-delivery', '/
 -- ============================================================
 -- 3. 角色页面权限数据 (ADMIN角色)
 -- ============================================================
-INSERT INTO T_COST_ROLE_PAGE (ID, ROLE_ID, PAGE_CODE, BUTTON_POLICY, COLUMN_POLICY, ROW_POLICY, ROLE_CODE)
-VALUES (6, 3, 'home', '["*"]', NULL, NULL, 'ADMIN');
+INSERT INTO T_COST_ROLE_PAGE (ID, ROLE_ID, PAGE_CODE, BUTTON_POLICY, COLUMN_POLICY, ROW_POLICY)
+VALUES (6, 3, 'home', '["*"]', NULL, NULL);
 
-INSERT INTO T_COST_ROLE_PAGE (ID, ROLE_ID, PAGE_CODE, BUTTON_POLICY, COLUMN_POLICY, ROW_POLICY, ROLE_CODE)
-VALUES (98, 3, 'cost', '["*"]', NULL, NULL, 'ADMIN');
+INSERT INTO T_COST_ROLE_PAGE (ID, ROLE_ID, PAGE_CODE, BUTTON_POLICY, COLUMN_POLICY, ROW_POLICY)
+VALUES (98, 3, 'cost', '["*"]', NULL, NULL);
 
-INSERT INTO T_COST_ROLE_PAGE (ID, ROLE_ID, PAGE_CODE, BUTTON_POLICY, COLUMN_POLICY, ROW_POLICY, ROLE_CODE)
-VALUES (65, 3, 'cost-pinggu', '[]', '{"masterGrid":{"id":{},"goodsname":{"editable":false},"goodsnameEn":{"editable":false},"strength":{"editable":false},"customname":{"editable":false},"country":{"editable":false},"projectno":{"editable":false},"apexPl":{"editable":false},"annualQty":{"editable":false},"yield":{"editable":false},"pPerpack":{"editable":false},"sPerback":{"editable":false},"xPerback":{"editable":false},"packtype":{"editable":false},"totalYl":{},"totalFl":{},"totalBc":{},"totalCost":{},"outPriceRmb":{"editable":false},"salemoney":{},"jgfBatch":{},"costPerqp":{"editable":false},"jgfPerqp":{},"mlPerqp":{},"yJgRe":{},"yMl":{},"ySale":{},"fmname":{"editable":false},"fmrate":{"editable":false}}}', '{"mode":"visual","logic":"AND","conditions":[{"field":"CREATE_BY","fieldLabel":"创建人","op":"eq","valueType":"dynamic","value":"${username}"},{"field":"GOODSNAME","fieldLabel":"产品名称","op":"eq","valueType":"static","value":"洒洒水"}],"sql":"CREATE_BY = ${username} AND GOODSNAME = ''洒洒水''"}', 'ADMIN');
+INSERT INTO T_COST_ROLE_PAGE (ID, ROLE_ID, PAGE_CODE, BUTTON_POLICY, COLUMN_POLICY, ROW_POLICY)
+VALUES (65, 3, 'cost-pinggu', '[]', '{"masterGrid":{"id":{},"goodsname":{"editable":false},"goodsnameEn":{"editable":false},"strength":{"editable":false},"customname":{"editable":false},"country":{"editable":false},"projectno":{"editable":false},"apexPl":{"editable":false},"annualQty":{"editable":false},"yield":{"editable":false},"pPerpack":{"editable":false},"sPerback":{"editable":false},"xPerback":{"editable":false},"packtype":{"editable":false},"totalYl":{},"totalFl":{},"totalBc":{},"totalCost":{},"outPriceRmb":{"editable":false},"salemoney":{},"jgfBatch":{},"costPerqp":{"editable":false},"jgfPerqp":{},"mlPerqp":{},"yJgRe":{},"yMl":{},"ySale":{},"fmname":{"editable":false},"fmrate":{"editable":false}}}', '{"mode":"visual","logic":"AND","conditions":[{"field":"CREATE_BY","fieldLabel":"创建人","op":"eq","valueType":"dynamic","value":"${username}"},{"field":"GOODSNAME","fieldLabel":"产品名称","op":"eq","valueType":"static","value":"洒洒水"}],"sql":"CREATE_BY = ${username} AND GOODSNAME = ''洒洒水''"}');
 
-INSERT INTO T_COST_ROLE_PAGE (ID, ROLE_ID, PAGE_CODE, BUTTON_POLICY, COLUMN_POLICY, ROW_POLICY, ROLE_CODE)
-VALUES (62, 3, 'goods-manage', '["*"]', NULL, NULL, 'ADMIN');
+INSERT INTO T_COST_ROLE_PAGE (ID, ROLE_ID, PAGE_CODE, BUTTON_POLICY, COLUMN_POLICY, ROW_POLICY)
+VALUES (62, 3, 'goods-manage', '["*"]', NULL, NULL);
 
-INSERT INTO T_COST_ROLE_PAGE (ID, ROLE_ID, PAGE_CODE, BUTTON_POLICY, COLUMN_POLICY, ROW_POLICY, ROLE_CODE)
-VALUES (23, 3, 'customer-manage', '["*"]', NULL, NULL, 'ADMIN');
+INSERT INTO T_COST_ROLE_PAGE (ID, ROLE_ID, PAGE_CODE, BUTTON_POLICY, COLUMN_POLICY, ROW_POLICY)
+VALUES (23, 3, 'customer-manage', '["*"]', NULL, NULL);
 
-INSERT INTO T_COST_ROLE_PAGE (ID, ROLE_ID, PAGE_CODE, BUTTON_POLICY, COLUMN_POLICY, ROW_POLICY, ROLE_CODE)
-VALUES (63, 3, 'goods-price-manage', '["*"]', NULL, NULL, 'ADMIN');
+INSERT INTO T_COST_ROLE_PAGE (ID, ROLE_ID, PAGE_CODE, BUTTON_POLICY, COLUMN_POLICY, ROW_POLICY)
+VALUES (63, 3, 'goods-price-manage', '["*"]', NULL, NULL);
 
-INSERT INTO T_COST_ROLE_PAGE (ID, ROLE_ID, PAGE_CODE, BUTTON_POLICY, COLUMN_POLICY, ROW_POLICY, ROLE_CODE)
-VALUES (21, 3, 'formoney-manage', '["*"]', NULL, NULL, 'ADMIN');
+INSERT INTO T_COST_ROLE_PAGE (ID, ROLE_ID, PAGE_CODE, BUTTON_POLICY, COLUMN_POLICY, ROW_POLICY)
+VALUES (21, 3, 'formoney-manage', '["*"]', NULL, NULL);
 
-INSERT INTO T_COST_ROLE_PAGE (ID, ROLE_ID, PAGE_CODE, BUTTON_POLICY, COLUMN_POLICY, ROW_POLICY, ROLE_CODE)
-VALUES (117, 3, 'system', '["*"]', NULL, NULL, 'ADMIN');
+INSERT INTO T_COST_ROLE_PAGE (ID, ROLE_ID, PAGE_CODE, BUTTON_POLICY, COLUMN_POLICY, ROW_POLICY)
+VALUES (117, 3, 'system', '["*"]', NULL, NULL);
 
-INSERT INTO T_COST_ROLE_PAGE (ID, ROLE_ID, PAGE_CODE, BUTTON_POLICY, COLUMN_POLICY, ROW_POLICY, ROLE_CODE)
-VALUES (119, 3, 'user-manage', '["*"]', NULL, NULL, 'ADMIN');
+INSERT INTO T_COST_ROLE_PAGE (ID, ROLE_ID, PAGE_CODE, BUTTON_POLICY, COLUMN_POLICY, ROW_POLICY)
+VALUES (119, 3, 'user-manage', '["*"]', NULL, NULL);
 
-INSERT INTO T_COST_ROLE_PAGE (ID, ROLE_ID, PAGE_CODE, BUTTON_POLICY, COLUMN_POLICY, ROW_POLICY, ROLE_CODE)
-VALUES (118, 3, 'permission', '["*"]', NULL, NULL, 'ADMIN');
+INSERT INTO T_COST_ROLE_PAGE (ID, ROLE_ID, PAGE_CODE, BUTTON_POLICY, COLUMN_POLICY, ROW_POLICY)
+VALUES (118, 3, 'permission', '["*"]', NULL, NULL);
 
-INSERT INTO T_COST_ROLE_PAGE (ID, ROLE_ID, PAGE_CODE, BUTTON_POLICY, COLUMN_POLICY, ROW_POLICY, ROLE_CODE)
-VALUES (120, 3, 'dept-manage', '["*"]', NULL, NULL, 'ADMIN');
+INSERT INTO T_COST_ROLE_PAGE (ID, ROLE_ID, PAGE_CODE, BUTTON_POLICY, COLUMN_POLICY, ROW_POLICY)
+VALUES (120, 3, 'dept-manage', '["*"]', NULL, NULL);
 
