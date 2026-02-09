@@ -94,6 +94,7 @@
           :refreshDetailRowHeight="refreshDetailRowHeight"
           :defaultViewMode="'stack'"
           :viewMode="detailViewMode"
+          @update:activeTab="(v: string) => activeDetailTab = v"
         />
       </template>
     </NSplit>
@@ -224,47 +225,59 @@ const mergedToolbarItems = computed<MergedToolbarItem[]>(() => {
     items.push({ ...item, key: `master_${item.action}` });
   }
 
-  // 2. 从表 toolbar 按钮（按 action 分组合并）
+  // 2. 从表 toolbar 按钮
   const tabs = pageConfig.value?.tabs || [];
   const detailToolbars = detailToolbarByTab?.value || {};
-  // 收集所有从表 toolbar 按钮，按 action 分组
-  const actionGroup = new Map<string, { label: string; tabKey: string; tabTitle: string; alias?: string; item: any }[]>();
+  const isTabMode = detailViewMode.value === 'tab';
 
-  for (const tab of tabs) {
-    const toolbar = detailToolbars[tab.key];
-    if (!toolbar?.items) continue;
-    for (const btn of toolbar.items) {
-      if (btn.visible === false || !btn.action) continue;
-      const group = actionGroup.get(btn.action) || [];
-      group.push({
-        label: btn.toolbarAlias || `${btn.label}(${tab.title})`,
-        tabKey: tab.key,
-        tabTitle: tab.title,
-        alias: btn.toolbarAlias,
-        item: btn
-      });
-      actionGroup.set(btn.action, group);
+  if (isTabMode) {
+    // Tab 模式：直接显示当前激活 tab 的按钮，不需要下拉
+    const currentTab = activeDetailTab.value || tabs[0]?.key;
+    const toolbar = currentTab ? detailToolbars[currentTab] : null;
+    if (toolbar?.items) {
+      for (const btn of toolbar.items) {
+        if (btn.visible === false || !btn.action) continue;
+        items.push({ ...btn, key: `detail_${currentTab}_${btn.action}`, tabKey: currentTab });
+      }
     }
-  }
+  } else {
+    // 堆叠模式：按 action 分组合并为下拉按钮
+    const actionGroup = new Map<string, { label: string; tabKey: string; tabTitle: string; alias?: string; item: any }[]>();
 
-  for (const [action, group] of actionGroup) {
-    if (group.length === 1) {
-      // 只有一个 tab 有这个 action，直接显示（带别名或 tab 名）
-      const { item, tabKey, label } = group[0];
-      items.push({ ...item, key: `detail_${tabKey}_${action}`, label, tabKey });
-    } else {
-      // 多个 tab 同名 action，合并为下拉按钮
-      const baseLabel = group[0].item.label || action;
-      items.push({
-        key: `detail_merged_${action}`,
-        action,
-        label: baseLabel,
-        type: group[0].item.type,
-        children: group.map(g => ({
-          label: g.label,
-          key: `detail_${g.tabKey}_${action}`
-        }))
-      });
+    for (const tab of tabs) {
+      const toolbar = detailToolbars[tab.key];
+      if (!toolbar?.items) continue;
+      for (const btn of toolbar.items) {
+        if (btn.visible === false || !btn.action) continue;
+        const group = actionGroup.get(btn.action) || [];
+        group.push({
+          label: btn.toolbarAlias || `${btn.label}(${tab.title})`,
+          tabKey: tab.key,
+          tabTitle: tab.title,
+          alias: btn.toolbarAlias,
+          item: btn
+        });
+        actionGroup.set(btn.action, group);
+      }
+    }
+
+    for (const [action, group] of actionGroup) {
+      if (group.length === 1) {
+        const { item, tabKey, label } = group[0];
+        items.push({ ...item, key: `detail_${tabKey}_${action}`, label, tabKey });
+      } else {
+        const baseLabel = group[0].item.label || action;
+        items.push({
+          key: `detail_merged_${action}`,
+          action,
+          label: baseLabel,
+          type: group[0].item.type,
+          children: group.map(g => ({
+            label: g.label,
+            key: `detail_${g.tabKey}_${action}`
+          }))
+        });
+      }
     }
   }
 
@@ -392,6 +405,7 @@ const detailRowEditableByTab = computed(() => {
 });
 const activeMasterId = ref<number | null>(null);
 const activeMasterRowKey = ref<string | null>(null);
+const activeDetailTab = ref<string>('');
 
 const masterGridOptionsValue = computed(() => masterGridOptions?.value || null);
 

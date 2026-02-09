@@ -97,6 +97,10 @@ const props = defineProps<{
   refreshDetailRowHeight?: () => void;
 }>();
 
+const emit = defineEmits<{
+  (e: 'update:activeTab', value: string): void;
+}>();
+
 const localViewMode = ref<'tab' | 'stack'>(props.defaultViewMode ?? 'tab');
 const activeTab = ref<string>('');
 const gridApis = ref<Record<string, any>>({});
@@ -119,6 +123,7 @@ watch(
     }
     if (!activeTab.value || !tabs.some(tab => tab.key === activeTab.value)) {
       activeTab.value = tabs[0].key;
+      emit('update:activeTab', activeTab.value);
     }
   },
   { immediate: true }
@@ -138,6 +143,7 @@ watch(
 );
 
 watch(activeTab, () => {
+  emit('update:activeTab', activeTab.value);
   if (props.activeMasterRowKey == null) return;
   updateGridRows(props.activeMasterRowKey, activeTab.value);
   nextTick(() => refreshLayout());
