@@ -1,4 +1,4 @@
-import { ref, type Ref, type ShallowRef } from 'vue';
+import { ref, nextTick, type Ref, type ShallowRef } from 'vue';
 import type { GridApi } from 'ag-grid-community';
 import type { LookupRule } from '@/composables/useMetaColumns';
 import { ensureRowKey, type RowData } from '@/v3/logic/calc-engine';
@@ -104,7 +104,7 @@ export function useLookupDialog(params: {
   const currentLookupIsMaster = ref<boolean>(true);
   const currentLookupTabKey = ref<string>('');
 
-  function onMasterCellClicked(event: any) {
+  async function onMasterCellClicked(event: any) {
     const field = event.colDef?.field;
     const rowData = event.data;
     if (!field || !rowData) return;
@@ -121,10 +121,12 @@ export function useLookupDialog(params: {
     currentLookupCellValue.value = rowData[field];
     currentLookupIsMaster.value = true;
     currentLookupTabKey.value = '';
+    // 等待 Vue 渲染，确保 LookupDialog 的 props（lookupCode）已更新
+    await nextTick();
     lookupDialogRef.value?.open();
   }
 
-  function onDetailCellClicked(event: any, _masterId: number, tabKey: string) {
+  async function onDetailCellClicked(event: any, _masterId: number, tabKey: string) {
     const field = event.colDef?.field;
     const rowData = event.data;
     if (!field || !rowData) return;
@@ -141,6 +143,8 @@ export function useLookupDialog(params: {
     currentLookupCellValue.value = rowData[field];
     currentLookupIsMaster.value = false;
     currentLookupTabKey.value = tabKey;
+    // 等待 Vue 渲染，确保 LookupDialog 的 props（lookupCode）已更新
+    await nextTick();
     lookupDialogRef.value?.open();
   }
 

@@ -91,6 +91,7 @@ const emit = defineEmits<{ (e: 'select', data: Record<string, any>): void; (e: '
 
 const visible = ref(false);
 const config = ref<Api.Metadata.LookupConfig | null>(null);
+const lastLookupCode = ref('');
 const rowData = ref<Record<string, any>[]>([]);
 const searchText = ref('');
 const selectedRow = ref<Record<string, any> | null>(null);
@@ -185,7 +186,10 @@ async function open() {
   searchText.value = '';
   dialogX.value = 0;
   dialogY.value = 0;
-  if (!config.value) {
+  // lookupCode 变化时重新加载配置，避免复用旧表头
+  if (!config.value || lastLookupCode.value !== props.lookupCode) {
+    lastLookupCode.value = props.lookupCode;
+    config.value = null;
     const { data } = await fetchLookupConfig(props.lookupCode);
     if (data) config.value = data;
   }
