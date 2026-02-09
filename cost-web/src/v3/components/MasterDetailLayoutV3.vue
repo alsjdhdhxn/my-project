@@ -316,11 +316,7 @@ const {
     if (runtimeActiveMasterRowKey) {
       runtimeActiveMasterRowKey.value = activeMasterRowKey.value;
     }
-    if (activeMasterId.value == null) return;
-    if (!activeMasterRowKey.value) return;
-    if (!detailCache.get(activeMasterRowKey.value)) {
-      await loadDetailData(activeMasterId.value, activeMasterRowKey.value);
-    }
+    // loadDetailData 由 DetailPanelV3 的 watch(activeMasterId) 统一触发，此处不再重复调用
   }
 });
 
