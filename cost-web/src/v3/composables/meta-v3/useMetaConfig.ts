@@ -311,6 +311,7 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
   const detailRowEditableRulesByTab = shallowRef<Record<string, import('@/v3/composables/meta-v3/types').RowEditableRule[]>>({});
   const detailCellEditableRulesByTab = shallowRef<Record<string, import('@/v3/composables/meta-v3/types').CellEditableRule[]>>({});
   const masterToolbar = shallowRef<ToolbarRule | null>(null);
+  const detailToolbarByTab = shallowRef<Record<string, ToolbarRule | null>>({});
 
   async function loadComponents() {
     const pageRes = await fetchPageComponents(pageCode);
@@ -612,6 +613,7 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
 
       // 从 TABS 组件配置中读取 tab 的按钮
       detailContextMenuByTab.value[tab.key] = parseContextMenuRule(tab.key, tabRules, tabsComponentConfig, tab.key) || detailContextMenuDefault.value;
+      detailToolbarByTab.value[tab.key] = parseToolbarRule(tab.key, tabRules, tabsComponentConfig, tab.key);
       detailRowClassRulesByTab.value[tab.key] = parseRowClassRule(tab.key, tabRules);
       detailRowEditableRulesByTab.value[tab.key] = parseRowEditableRule(tab.key, tabRules);
       detailCellEditableRulesByTab.value[tab.key] = parseCellEditableRule(tab.key, tabRules);
@@ -663,6 +665,7 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
     detailRowEditableRulesByTab,
     detailCellEditableRulesByTab,
     masterToolbar,
+    detailToolbarByTab,
     loadComponents,
     parseConfig,
     loadMeta,

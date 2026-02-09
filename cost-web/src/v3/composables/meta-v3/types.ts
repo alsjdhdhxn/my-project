@@ -119,6 +119,8 @@ export type ButtonItemRule = {
   permission?: string;
   /** 工具栏按钮类型 */
   buttonType?: 'default' | 'primary' | 'info' | 'success' | 'warning' | 'error';
+  /** 工具栏下拉别名（多 tab 同名按钮合并时显示） */
+  toolbarAlias?: string;
   sql?: string;
   script?: string;
   procedure?: string;

@@ -1,18 +1,31 @@
 ﻿<template>
   <div class="master-detail-layout-v3">
     <!-- 工具栏 -->
-    <div v-if="toolbarItems.length > 0" class="toolbar-container">
+    <div v-if="mergedToolbarItems.length > 0" class="toolbar-container">
       <NSpace>
-        <NButton
-          v-for="item in toolbarItems"
-          :key="item.action"
-          :type="item.type || 'default'"
-          :disabled="item.disabled"
-          size="small"
-          @click="handleToolbarClick(item)"
-        >
-          {{ item.label }}
-        </NButton>
+        <template v-for="item in mergedToolbarItems" :key="item.key">
+          <!-- 下拉按钮：多个 tab 同名 action 合并 -->
+          <NDropdown
+            v-if="item.children"
+            trigger="click"
+            :options="item.children"
+            @select="(key: string) => handleDropdownSelect(key, item)"
+          >
+            <NButton :type="item.type || 'default'" :disabled="item.disabled" size="small">
+              {{ item.label }} ▾
+            </NButton>
+          </NDropdown>
+          <!-- 普通按钮 -->
+          <NButton
+            v-else
+            :type="item.type || 'default'"
+            :disabled="item.disabled"
+            size="small"
+            @click="handleToolbarClick(item)"
+          >
+            {{ item.label }}
+          </NButton>
+        </template>
       </NSpace>
     </div>
 
@@ -123,7 +136,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { AgGridVue } from 'ag-grid-vue3';
-import { NSplit, NSpace, NButton, useDialog } from 'naive-ui';
+import { NSplit, NSpace, NButton, NDropdown, useDialog } from 'naive-ui';
 import DetailRowRendererV3 from '@/v3/components/detail/DetailRowRendererV3.vue';
 import DetailPanelV3 from '@/v3/components/detail/DetailPanelV3.vue';
 import { useMasterGridBindings } from '@/v3/composables/meta-v3/useMasterGridBindings';
@@ -165,6 +178,7 @@ const {
   masterRowEditableRules,
   masterRowClassRules,
   masterToolbar,
+  detailToolbarByTab,
   applyGridConfig,
   loadDetailData,
   addMasterRow,
@@ -186,14 +200,126 @@ const {
 
 const editingState = ref(false);
 
-// 工具栏
-const toolbarItems = computed(() => {
-  const toolbar = masterToolbar?.value;
-  if (!toolbar?.items) return [];
-  return toolbar.items.filter((item: any) => item.visible !== false);
+// 工具栏：合并主表 + 从表 toolbar 按钮
+// 多个 tab 同名 action 合并为下拉按钮
+type MergedToolbarItem = {
+  key: string;
+  action?: string;
+  label?: string;
+  type?: string;
+  disabled?: boolean;
+  confirm?: string;
+  requiresRow?: boolean;
+  tabKey?: string;
+  children?: { label: string; key: string }[];
+};
+
+const mergedToolbarItems = computed<MergedToolbarItem[]>(() => {
+  const items: MergedToolbarItem[] = [];
+
+  // 1. 主表 toolbar 按钮
+  const masterItems = masterToolbar?.value?.items || [];
+  for (const item of masterItems) {
+    if (item.visible === false) continue;
+    items.push({ ...item, key: `master_${item.action}` });
+  }
+
+  // 2. 从表 toolbar 按钮（按 action 分组合并）
+  const tabs = pageConfig.value?.tabs || [];
+  const detailToolbars = detailToolbarByTab?.value || {};
+  // 收集所有从表 toolbar 按钮，按 action 分组
+  const actionGroup = new Map<string, { label: string; tabKey: string; tabTitle: string; alias?: string; item: any }[]>();
+
+  for (const tab of tabs) {
+    const toolbar = detailToolbars[tab.key];
+    if (!toolbar?.items) continue;
+    for (const btn of toolbar.items) {
+      if (btn.visible === false || !btn.action) continue;
+      const group = actionGroup.get(btn.action) || [];
+      group.push({
+        label: btn.toolbarAlias || `${btn.label}(${tab.title})`,
+        tabKey: tab.key,
+        tabTitle: tab.title,
+        alias: btn.toolbarAlias,
+        item: btn
+      });
+      actionGroup.set(btn.action, group);
+    }
+  }
+
+  for (const [action, group] of actionGroup) {
+    if (group.length === 1) {
+      // 只有一个 tab 有这个 action，直接显示（带别名或 tab 名）
+      const { item, tabKey, label } = group[0];
+      items.push({ ...item, key: `detail_${tabKey}_${action}`, label, tabKey });
+    } else {
+      // 多个 tab 同名 action，合并为下拉按钮
+      const baseLabel = group[0].item.label || action;
+      items.push({
+        key: `detail_merged_${action}`,
+        action,
+        label: baseLabel,
+        type: group[0].item.type,
+        children: group.map(g => ({
+          label: g.label,
+          key: `detail_${g.tabKey}_${action}`
+        }))
+      });
+    }
+  }
+
+  return items;
 });
 
+function handleDropdownSelect(key: string, parentItem: MergedToolbarItem) {
+  // key 格式: detail_{tabKey}_{action}
+  const match = key.match(/^detail_(.+?)_(.+)$/);
+  if (!match) return;
+  const [, tabKey, action] = match;
+  // 找到对应的 tab 和 action，执行操作
+  const masterId = activeMasterId.value;
+  const masterRowKey = activeMasterRowKey.value;
+  if (masterId == null) {
+    window.$message?.warning('请先选择主表记录');
+    return;
+  }
+  switch (action) {
+    case 'addRow':
+      addDetailRow(masterId, tabKey, masterRowKey || undefined);
+      break;
+    case 'copyRow': {
+      const api = detailGridApisByTab?.value?.[tabKey];
+      const selectedRows = api?.getSelectedRows?.() || [];
+      if (selectedRows.length === 0) {
+        window.$message?.warning('请先选择要复制的行');
+        return;
+      }
+      copyDetailRow(masterId, tabKey, selectedRows[0], masterRowKey || undefined);
+      break;
+    }
+    case 'deleteRow': {
+      const api = detailGridApisByTab?.value?.[tabKey];
+      const selectedRows = api?.getSelectedRows?.() || [];
+      if (selectedRows.length === 0) {
+        window.$message?.warning('请先选择要删除的行');
+        return;
+      }
+      deleteDetailRow(masterId, tabKey, selectedRows[0], masterRowKey || undefined);
+      break;
+    }
+    default:
+      // 自定义 action，走 executeAction
+      executeAction(action, { data: {}, selectedRow: null });
+      break;
+  }
+}
+
 async function handleToolbarClick(item: any) {
+  if (item.tabKey) {
+    // 从表按钮，直接执行对应 tab 的操作
+    handleDropdownSelect(`detail_${item.tabKey}_${item.action}`, item);
+    return;
+  }
   await handleToolbarAction(item, {
     getSelectedRow: () => {
       const api = masterGridApi?.value;
