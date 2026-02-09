@@ -317,7 +317,7 @@ function handleDropdownSelect(key: string, parentItem: MergedToolbarItem) {
         window.$message?.warning('请先选择要删除的行');
         return;
       }
-      deleteDetailRow(masterId, tabKey, selectedRows[0], masterRowKey || undefined);
+      selectedRows.forEach((row: any) => deleteDetailRow(masterId, tabKey, row, masterRowKey || undefined));
       break;
     }
     default:
