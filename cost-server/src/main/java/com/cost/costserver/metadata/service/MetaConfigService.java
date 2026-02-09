@@ -239,6 +239,36 @@ public class MetaConfigService {
         return rows.stream().map(this::mapToTableMetadata).collect(java.util.stream.Collectors.toList());
     }
 
+    /**
+     * 根据 pageCode 查询关联的 lookupCode 列表
+     * 从 t_cost_page_rule 中 rule_type='LOOKUP' 的 rules JSON 提取
+     */
+    public List<String> listLookupCodesByPageCode(String pageCode) {
+        String safeCode = pageCode.replace("'", "''");
+        String sql = "SELECT RULES FROM T_COST_PAGE_RULE WHERE PAGE_CODE = '" + safeCode + "' AND RULE_TYPE = 'LOOKUP' AND DELETED = 0";
+        List<Map<String, Object>> rows = dynamicMapper.selectList(sql);
+
+        java.util.Set<String> codes = new java.util.LinkedHashSet<>();
+        for (Map<String, Object> row : rows) {
+            Object rulesObj = row.get("RULES");
+            String rulesStr = null;
+            if (rulesObj instanceof String s) {
+                rulesStr = s;
+            } else if (rulesObj instanceof java.sql.Clob clob) {
+                try { rulesStr = clob.getSubString(1, (int) clob.length()); } catch (Exception ignored) {}
+            }
+            if (rulesStr == null || rulesStr.isBlank()) continue;
+            try {
+                cn.hutool.json.JSONArray arr = cn.hutool.json.JSONUtil.parseArray(rulesStr);
+                for (int i = 0; i < arr.size(); i++) {
+                    String lc = arr.getJSONObject(i).getStr("lookupCode");
+                    if (lc != null && !lc.isEmpty()) codes.add(lc);
+                }
+            } catch (Exception ignored) {}
+        }
+        return new java.util.ArrayList<>(codes);
+    }
+
     private TableMetadata mapToTableMetadata(Map<String, Object> row) {
         TableMetadata t = new TableMetadata();
         t.setId(row.get("ID") != null ? ((Number) row.get("ID")).longValue() : null);

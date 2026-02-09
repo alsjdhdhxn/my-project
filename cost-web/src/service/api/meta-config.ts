@@ -64,6 +64,12 @@ export async function fetchViewColumns(viewName: string, owner = 'CMX') {
   return data || [];
 }
 
+/** 根据 pageCode 查询关联的 lookupCode 列表 */
+export async function fetchLookupCodesByPageCode(pageCode: string) {
+  const { data } = await request<string[]>({ url: '/meta-config/lookup-codes-by-page', params: { pageCode } });
+  return data || [];
+}
+
 // ==================== 页面管理 ====================
 
 export async function fetchAllPageComponents() {

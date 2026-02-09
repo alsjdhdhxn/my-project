@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, inject, watch } from 'vue';
+import type { Ref } from 'vue';
 import { NButton, NSpace, NPopconfirm, useMessage } from 'naive-ui';
 import { AgGridVue } from 'ag-grid-vue3';
 import type { GridApi, GridReadyEvent, ColDef, CellValueChangedEvent } from 'ag-grid-community';
-import { fetchAllLookupConfigs, saveLookupConfig, deleteLookupConfig } from '@/service/api/meta-config';
+import { fetchAllLookupConfigs, saveLookupConfig, deleteLookupConfig, fetchLookupCodesByPageCode } from '@/service/api/meta-config';
 
 const message = useMessage();
+const filterState = inject<Ref<{ tab: string; pageCode: string } | null>>('filterState');
 const gridApi = ref<GridApi | null>(null);
 const rowData = ref<any[]>([]);
 const selectedRow = ref<any>(null);
@@ -89,7 +91,26 @@ function markDirty(event: CellValueChangedEvent) {
   if (event.data) event.data._dirty = true;
 }
 
-onMounted(loadData);
+onMounted(() => {
+  if (filterState?.value?.tab === 'lookup') return;
+  loadData();
+});
+
+// 从目录管理跳转过来时，按 lookupCode 过滤
+watch(() => filterState?.value, async (state) => {
+  if (!state || state.tab !== 'lookup') return;
+  const pageCode = state.pageCode;
+  try {
+    const [allData, codes] = await Promise.all([
+      fetchAllLookupConfigs(),
+      fetchLookupCodesByPageCode(pageCode)
+    ]);
+    if (!codes.length) { message.warning(`pageCode="${pageCode}" 未关联任何Lookup`); return; }
+    const codeSet = new Set(codes);
+    rowData.value = (allData || []).filter((r: any) => codeSet.has(r.lookupCode));
+    setTimeout(() => gridApi.value?.autoSizeAllColumns(), 100);
+  } catch { message.error('查询关联Lookup失败'); }
+}, { immediate: true });
 </script>
 
 <template>

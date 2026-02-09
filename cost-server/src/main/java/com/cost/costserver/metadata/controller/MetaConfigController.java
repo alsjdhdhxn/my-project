@@ -154,6 +154,12 @@ public class MetaConfigController {
         return Result.ok(metaConfigService.listTablesByPageCode(pageCode));
     }
 
+    @Operation(summary = "根据pageCode查询关联的lookupCode列表")
+    @GetMapping("/lookup-codes-by-page")
+    public Result<List<String>> listLookupCodesByPageCode(@RequestParam String pageCode) {
+        return Result.ok(metaConfigService.listLookupCodesByPageCode(pageCode));
+    }
+
     @Operation(summary = "查询视图/表的物理列")
     @GetMapping("/view-columns")
     public Result<List<Map<String, Object>>> listViewColumns(
