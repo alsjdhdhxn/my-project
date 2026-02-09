@@ -73,10 +73,15 @@ public class MenuService {
             return List.of();
         }
         
+        // 仅管理员可见的页面（非 admin 用户强制排除）
+        Set<String> adminOnlyPages = Set.of("meta-config");
+
+        
         // 先收集有权限的 PAGE 资源 ID
         Set<Long> allowedPageIds = resources.stream()
             .filter(r -> "PAGE".equals(r.getResourceType()))
             .filter(r -> allowedPageCodes.contains(r.getPageCode()))
+            .filter(r -> !adminOnlyPages.contains(r.getPageCode()))
             .map(Resource::getId)
             .collect(Collectors.toSet());
         
