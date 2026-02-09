@@ -333,15 +333,48 @@ async function handleToolbarClick(item: any) {
     handleDropdownSelect(`detail_${item.tabKey}_${item.action}`, item);
     return;
   }
-  await handleToolbarAction(item, {
-    getSelectedRow: () => {
+
+  // 主表内置 action 处理
+  const action = item.action;
+  const getSelectedRow = () => {
+    const api = masterGridApi?.value;
+    const selectedRows = api?.getSelectedRows?.() || [];
+    return selectedRows[0] || null;
+  };
+
+  switch (action) {
+    case 'addRow':
+      addMasterRow();
+      return;
+    case 'copyRow': {
+      const row = getSelectedRow();
+      if (!row) { window.$message?.warning('请先选择一行'); return; }
+      copyMasterRow(row);
+      return;
+    }
+    case 'deleteRow': {
       const api = masterGridApi?.value;
       const selectedRows = api?.getSelectedRows?.() || [];
-      return selectedRows[0] || null;
-    },
-    executeAction,
-    dialog
-  });
+      if (selectedRows.length === 0) { window.$message?.warning('请先选择要删除的行'); return; }
+      selectedRows.forEach((row: any) => deleteMasterRow(row));
+      return;
+    }
+    case 'save':
+      save();
+      return;
+    case 'saveGridConfig': {
+      const api = masterGridApi?.value;
+      if (api) saveGridConfig?.(masterGridKey.value, api, null);
+      return;
+    }
+    default:
+      // 自定义后端 action
+      await handleToolbarAction(item, {
+        getSelectedRow,
+        executeAction,
+        dialog
+      });
+  }
 }
 
 // 使用全局主题设置的detailViewMode
