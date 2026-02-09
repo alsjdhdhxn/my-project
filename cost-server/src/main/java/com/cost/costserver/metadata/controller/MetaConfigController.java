@@ -148,6 +148,12 @@ public class MetaConfigController {
 
     // ==================== 视图列查询 ====================
 
+    @Operation(summary = "根据pageCode查询关联的表元数据")
+    @GetMapping("/tables-by-page")
+    public Result<List<TableMetadata>> listTablesByPageCode(@RequestParam String pageCode) {
+        return Result.ok(metaConfigService.listTablesByPageCode(pageCode));
+    }
+
     @Operation(summary = "查询视图/表的物理列")
     @GetMapping("/view-columns")
     public Result<List<Map<String, Object>>> listViewColumns(

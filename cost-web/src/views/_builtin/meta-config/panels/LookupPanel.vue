@@ -23,16 +23,17 @@ const columnDefs: ColDef[] = [
   { field: 'labelField', headerName: 'labelField', width: 120, editable: true }
 ];
 
-const defaultColDef: ColDef = { sortable: true, resizable: true, flex: 0 };
+const defaultColDef: ColDef = { sortable: true, resizable: true, flex: 0, suppressHeaderMenuButton: true };
 
 async function loadData() {
   try {
     const res = await fetchAllLookupConfigs();
     rowData.value = res || [];
+    setTimeout(() => gridApi.value?.autoSizeAllColumns(), 100);
   } catch { message.error('加载Lookup配置失败'); }
 }
 
-function onGridReady(params: GridReadyEvent) { gridApi.value = params.api; }
+function onGridReady(params: GridReadyEvent) { gridApi.value = params.api; params.api.autoSizeAllColumns(); }
 
 function onSelectionChanged() {
   const rows = gridApi.value?.getSelectedRows() || [];

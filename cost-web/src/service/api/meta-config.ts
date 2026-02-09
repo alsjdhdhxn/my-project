@@ -25,6 +25,12 @@ export async function fetchAllTableMeta() {
   return data || [];
 }
 
+/** 根据 pageCode 查询关联的表元数据 */
+export async function fetchTablesByPageCode(pageCode: string) {
+  const { data } = await request<any[]>({ url: '/meta-config/tables-by-page', params: { pageCode } });
+  return data || [];
+}
+
 export async function saveTableMeta(data: Record<string, any>) {
   const { data: res, error } = await request<any>({ url: '/meta-config/table', method: 'POST', data });
   if (error) throw error;

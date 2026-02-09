@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, watch, inject } from 'vue';
+import type { Ref } from 'vue';
 import { NButton, NSpace, NPopconfirm, NModal, NDataTable, useMessage } from 'naive-ui';
 import type { DataTableColumns, DataTableRowKey } from 'naive-ui';
 import { AgGridVue } from 'ag-grid-vue3';
@@ -7,10 +8,11 @@ import type { GridApi, GridReadyEvent, ColDef, CellValueChangedEvent } from 'ag-
 import {
   fetchAllTableMeta, saveTableMeta, deleteTableMeta,
   fetchColumnsByTableId, saveColumnMeta, deleteColumnMeta,
-  fetchViewColumns
+  fetchViewColumns, fetchTablesByPageCode
 } from '@/service/api/meta-config';
 
 const message = useMessage();
+const filterState = inject<Ref<{ tab: string; pageCode: string } | null>>('filterState');
 
 // ==================== 上半区: 表元数据 ====================
 const tableGridApi = ref<GridApi | null>(null);
@@ -49,28 +51,32 @@ const colColDefs: ColDef[] = [
   { field: 'displayOrder', headerName: '排序', width: 70, editable: true, cellDataType: 'number' },
   {
     field: 'sortable', headerName: '可排序', width: 80, editable: true,
-    cellEditor: 'agSelectCellEditor', cellEditorParams: { values: [0, 1] },
-    valueFormatter: (p: any) => p.value === 1 ? '是' : '否'
+    cellRenderer: 'agCheckboxCellRenderer', cellEditor: 'agCheckboxCellEditor',
+    valueGetter: (p: any) => p.data?.sortable === 1,
+    valueSetter: (p: any) => { p.data.sortable = p.newValue ? 1 : 0; return true; }
   },
   {
     field: 'filterable', headerName: '可筛选', width: 80, editable: true,
-    cellEditor: 'agSelectCellEditor', cellEditorParams: { values: [0, 1] },
-    valueFormatter: (p: any) => p.value === 1 ? '是' : '否'
+    cellRenderer: 'agCheckboxCellRenderer', cellEditor: 'agCheckboxCellEditor',
+    valueGetter: (p: any) => p.data?.filterable === 1,
+    valueSetter: (p: any) => { p.data.filterable = p.newValue ? 1 : 0; return true; }
   },
   {
     field: 'isVirtual', headerName: '虚拟列', width: 80, editable: true,
-    cellEditor: 'agSelectCellEditor', cellEditorParams: { values: [0, 1] },
-    valueFormatter: (p: any) => p.value === 1 ? '是' : '否'
+    cellRenderer: 'agCheckboxCellRenderer', cellEditor: 'agCheckboxCellEditor',
+    valueGetter: (p: any) => p.data?.isVirtual === 1,
+    valueSetter: (p: any) => { p.data.isVirtual = p.newValue ? 1 : 0; return true; }
   },
   { field: 'dictType', headerName: '字典类型', width: 120, editable: true }
 ];
 
-const defaultColDef: ColDef = { sortable: true, resizable: true, flex: 0 };
+const defaultColDef: ColDef = { sortable: true, resizable: true, flex: 0, suppressHeaderMenuButton: true };
 
 async function loadTables() {
   try {
     const res = await fetchAllTableMeta();
     tableRows.value = res || [];
+    setTimeout(() => tableGridApi.value?.autoSizeAllColumns(), 100);
   } catch { message.error('加载表元数据失败'); }
 }
 
@@ -78,11 +84,12 @@ async function loadColumns(tableMetadataId: number) {
   try {
     const res = await fetchColumnsByTableId(tableMetadataId);
     colRows.value = res || [];
+    setTimeout(() => colGridApi.value?.autoSizeAllColumns(), 100);
   } catch { message.error('加载列元数据失败'); }
 }
 
-function onTableGridReady(params: GridReadyEvent) { tableGridApi.value = params.api; }
-function onColGridReady(params: GridReadyEvent) { colGridApi.value = params.api; }
+function onTableGridReady(params: GridReadyEvent) { tableGridApi.value = params.api; params.api.autoSizeAllColumns(); }
+function onColGridReady(params: GridReadyEvent) { colGridApi.value = params.api; params.api.autoSizeAllColumns(); }
 
 function onTableSelectionChanged() {
   const rows = tableGridApi.value?.getSelectedRows() || [];
@@ -96,13 +103,7 @@ function onTableSelectionChanged() {
 
 function onTableRowClicked(event: any) {
   if (event.node?.data) {
-    selectedTable.value = event.node.data;
     event.node.setSelected(true, true);
-    if (selectedTable.value?.id) {
-      loadColumns(selectedTable.value.id);
-    } else {
-      colRows.value = [];
-    }
   }
 }
 
@@ -113,7 +114,6 @@ function onColSelectionChanged() {
 
 function onColRowClicked(event: any) {
   if (event.node?.data) {
-    selectedCol.value = event.node.data;
     event.node.setSelected(true, true);
   }
 }
@@ -315,7 +315,31 @@ function onResizeEnd() {
   document.body.style.userSelect = '';
 }
 
-onMounted(loadTables);
+onMounted(() => {
+  // 如果是跳转过来的，不加载全量，由 watch 处理
+  if (filterState?.value?.tab === 'table') return;
+  loadTables();
+});
+
+// 从页面管理跳转过来时，后端直接查关联的表
+watch(() => filterState?.value, async (state) => {
+  if (!state || state.tab !== 'table') return;
+  const pageCode = state.pageCode;
+  try {
+    const tables = await fetchTablesByPageCode(pageCode);
+    if (!tables.length) { message.warning(`pageCode="${pageCode}" 未关联任何表`); return; }
+    tableRows.value = tables;
+    setTimeout(() => {
+      tableGridApi.value?.autoSizeAllColumns();
+      const firstNode = tableGridApi.value?.getDisplayedRowAtIndex(0);
+      if (firstNode) {
+        firstNode.setSelected(true);
+        selectedTable.value = firstNode.data;
+        if (firstNode.data?.id) loadColumns(firstNode.data.id);
+      }
+    }, 150);
+  } catch { message.error('查询关联表失败'); }
+}, { immediate: true });
 </script>
 
 <template>

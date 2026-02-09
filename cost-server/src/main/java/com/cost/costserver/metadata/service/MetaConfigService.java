@@ -187,4 +187,69 @@ public class MetaConfigService {
                      "ORDER BY COLUMN_ID";
         return dynamicMapper.selectList(sql);
     }
+
+    /**
+     * 根据 pageCode 查询关联的表元数据
+     */
+    public List<TableMetadata> listTablesByPageCode(String pageCode) {
+        String safeCode = pageCode.replace("'", "''");
+        // 1. 查出该 pageCode 下所有组件
+        String compSql = "SELECT COMPONENT_TYPE, REF_TABLE_CODE, COMPONENT_CONFIG " +
+                         "FROM T_COST_PAGE_COMPONENT WHERE PAGE_CODE = '" + safeCode + "' AND DELETED = 0";
+        List<Map<String, Object>> comps = dynamicMapper.selectList(compSql);
+
+        // 2. 提取所有关联的 tableCode
+        java.util.Set<String> tableCodes = new java.util.LinkedHashSet<>();
+        for (Map<String, Object> comp : comps) {
+            String type = (String) comp.get("COMPONENT_TYPE");
+            String refTableCode = (String) comp.get("REF_TABLE_CODE");
+            // COMPONENT_CONFIG 可能是 CLOB 类型（Druid 返回 ClobProxyImpl）
+            Object configObj = comp.get("COMPONENT_CONFIG");
+            String config = null;
+            if (configObj instanceof String s) {
+                config = s;
+            } else if (configObj instanceof java.sql.Clob clob) {
+                try { config = clob.getSubString(1, (int) clob.length()); } catch (Exception ignored) {}
+            }
+            // GRID 的 refTableCode
+            if ("GRID".equals(type) && refTableCode != null && !refTableCode.isEmpty()) {
+                tableCodes.add(refTableCode);
+            }
+            // TABS 的 componentConfig -> tabs[].tableCode
+            if ("TABS".equals(type) && config != null && !config.isEmpty()) {
+                try {
+                    cn.hutool.json.JSONObject json = cn.hutool.json.JSONUtil.parseObj(config);
+                    cn.hutool.json.JSONArray tabs = json.getJSONArray("tabs");
+                    if (tabs != null) {
+                        for (int i = 0; i < tabs.size(); i++) {
+                            String tc = tabs.getJSONObject(i).getStr("tableCode");
+                            if (tc != null && !tc.isEmpty()) tableCodes.add(tc);
+                        }
+                    }
+                } catch (Exception ignored) {}
+            }
+        }
+        if (tableCodes.isEmpty()) return java.util.Collections.emptyList();
+
+        // 3. 用 tableCode IN (...) 查表元数据
+        String inClause = tableCodes.stream().map(c -> "'" + c.replace("'", "''") + "'")
+                          .collect(java.util.stream.Collectors.joining(","));
+        String sql = "SELECT * FROM T_COST_TABLE_METADATA WHERE DELETED = 0 AND TABLE_CODE IN (" + inClause + ") ORDER BY ID";
+        List<Map<String, Object>> rows = dynamicMapper.selectList(sql);
+        return rows.stream().map(this::mapToTableMetadata).collect(java.util.stream.Collectors.toList());
+    }
+
+    private TableMetadata mapToTableMetadata(Map<String, Object> row) {
+        TableMetadata t = new TableMetadata();
+        t.setId(row.get("ID") != null ? ((Number) row.get("ID")).longValue() : null);
+        t.setTableCode((String) row.get("TABLE_CODE"));
+        t.setTableName((String) row.get("TABLE_NAME"));
+        t.setQueryView((String) row.get("QUERY_VIEW"));
+        t.setTargetTable((String) row.get("TARGET_TABLE"));
+        t.setSequenceName((String) row.get("SEQUENCE_NAME"));
+        t.setPkColumn((String) row.get("PK_COLUMN"));
+        t.setParentTableCode((String) row.get("PARENT_TABLE_CODE"));
+        t.setParentFkColumn((String) row.get("PARENT_FK_COLUMN"));
+        return t;
+    }
 }

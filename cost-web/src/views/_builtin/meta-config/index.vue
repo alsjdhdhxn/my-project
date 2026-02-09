@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, provide } from 'vue';
 import { NTabs, NTabPane } from 'naive-ui';
 import DirectoryPanel from './panels/DirectoryPanel.vue';
 import TablePanel from './panels/TablePanel.vue';
@@ -7,6 +7,17 @@ import PagePanel from './panels/PagePanel.vue';
 import LookupPanel from './panels/LookupPanel.vue';
 
 const activeTab = ref('directory');
+
+/** 跳转到指定 tab 并携带过滤条件 */
+const filterState = ref<{ tab: string; pageCode: string } | null>(null);
+
+function navigateTo(tab: string, pageCode: string) {
+  filterState.value = { tab, pageCode };
+  activeTab.value = tab;
+}
+
+provide('navigateTo', navigateTo);
+provide('filterState', filterState);
 </script>
 
 <template>

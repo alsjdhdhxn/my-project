@@ -1,14 +1,17 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, inject, watch } from 'vue';
+import type { Ref } from 'vue';
 import { NButton, NSpace, NPopconfirm, NTabs, NTabPane, useMessage } from 'naive-ui';
 import { AgGridVue } from 'ag-grid-vue3';
-import type { GridApi, GridReadyEvent, ColDef, CellValueChangedEvent } from 'ag-grid-community';
+import type { GridApi, GridReadyEvent, ColDef, CellValueChangedEvent, GetContextMenuItemsParams } from 'ag-grid-community';
 import {
   fetchAllPageComponents, savePageComponent, deletePageComponent,
   fetchRulesByComponent, savePageRule, deletePageRule
 } from '@/service/api/meta-config';
 
 const message = useMessage();
+const navigateTo = inject<(tab: string, pageCode: string) => void>('navigateTo')!;
+const filterState = inject<Ref<{ tab: string; pageCode: string } | null>>('filterState');
 
 // ==================== 上半区: 页面组件 ====================
 const compGridApi = ref<GridApi | null>(null);
@@ -57,12 +60,13 @@ const ruleColDefs: ColDef[] = [
   { field: 'description', headerName: '描述', width: 150, editable: true }
 ];
 
-const defaultColDef: ColDef = { sortable: true, resizable: true, flex: 0 };
+const defaultColDef: ColDef = { sortable: true, resizable: true, flex: 0, suppressHeaderMenuButton: true };
 
 async function loadComponents() {
   try {
     const res = await fetchAllPageComponents();
-    compRows.value = res || [];
+    compRows.value = (res || []).filter((r: any) => r.componentType !== 'LAYOUT');
+    setTimeout(() => compGridApi.value?.autoSizeAllColumns(), 100);
   } catch { message.error('加载页面组件失败'); }
 }
 
@@ -70,11 +74,12 @@ async function loadRules(pageCode: string, componentKey: string) {
   try {
     const res = await fetchRulesByComponent(pageCode, componentKey);
     ruleRows.value = res || [];
+    setTimeout(() => ruleGridApi.value?.autoSizeAllColumns(), 100);
   } catch { message.error('加载规则失败'); }
 }
 
-function onCompGridReady(params: GridReadyEvent) { compGridApi.value = params.api; }
-function onRuleGridReady(params: GridReadyEvent) { ruleGridApi.value = params.api; }
+function onCompGridReady(params: GridReadyEvent) { compGridApi.value = params.api; params.api.autoSizeAllColumns(); }
+function onRuleGridReady(params: GridReadyEvent) { ruleGridApi.value = params.api; params.api.autoSizeAllColumns(); }
 
 function onCompSelectionChanged() {
   const rows = compGridApi.value?.getSelectedRows() || [];
@@ -88,13 +93,7 @@ function onCompSelectionChanged() {
 
 function onCompRowClicked(event: any) {
   if (event.node?.data) {
-    selectedComp.value = event.node.data;
     event.node.setSelected(true, true);
-    if (selectedComp.value?.pageCode && selectedComp.value?.componentKey) {
-      loadRules(selectedComp.value.pageCode, selectedComp.value.componentKey);
-    } else {
-      ruleRows.value = [];
-    }
   }
 }
 
@@ -105,7 +104,6 @@ function onRuleSelectionChanged() {
 
 function onRuleRowClicked(event: any) {
   if (event.node?.data) {
-    selectedRule.value = event.node.data;
     event.node.setSelected(true, true);
   }
 }
@@ -225,7 +223,31 @@ function onResizeEnd() {
   document.body.style.userSelect = '';
 }
 
-onMounted(loadComponents);
+// ---- 右键菜单 ----
+function getContextMenuItems(params: GetContextMenuItemsParams) {
+  const row = params.node?.data;
+  const pageCode = row?.pageCode;
+  if (!pageCode) return [];
+  return [
+    { name: '跳转到 表管理', action: () => navigateTo('table', pageCode) }
+  ];
+}
+
+onMounted(() => {
+  if (filterState?.value?.tab === 'page') return;
+  loadComponents();
+});
+
+// 从目录管理跳转过来时，按 pageCode 过滤组件
+watch(() => filterState?.value, async (state) => {
+  if (!state || state.tab !== 'page') return;
+  const pageCode = state.pageCode;
+  try {
+    const res = await fetchAllPageComponents();
+    compRows.value = (res || []).filter((r: any) => r.componentType !== 'LAYOUT' && r.pageCode === pageCode);
+    setTimeout(() => compGridApi.value?.autoSizeAllColumns(), 100);
+  } catch { message.error('加载页面组件失败'); }
+}, { immediate: true });
 </script>
 
 <template>
@@ -253,6 +275,7 @@ onMounted(loadComponents);
           :columnDefs="compColDefs"
           :defaultColDef="defaultColDef"
           :rowSelection="{ mode: 'singleRow', checkboxes: false }"
+          :getContextMenuItems="getContextMenuItems"
           @grid-ready="onCompGridReady"
           @selection-changed="onCompSelectionChanged"
           @row-clicked="onCompRowClicked"

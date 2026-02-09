@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue';
+import { ref, onMounted, computed, inject } from 'vue';
 import { NButton, NSpace, NPopconfirm, useMessage } from 'naive-ui';
 import { AgGridVue } from 'ag-grid-vue3';
-import type { GridApi, GridReadyEvent, ColDef, CellValueChangedEvent, GetDataPath } from 'ag-grid-community';
+import type { GridApi, GridReadyEvent, ColDef, CellValueChangedEvent, GetDataPath, GetContextMenuItemsParams } from 'ag-grid-community';
 import { fetchAllResources, saveResource, deleteResource } from '@/service/api/meta-config';
 
 const message = useMessage();
+const navigateTo = inject<(tab: string, pageCode: string) => void>('navigateTo')!;
 const gridApi = ref<GridApi | null>(null);
 const rawData = ref<any[]>([]);
 const selectedRow = ref<any>(null);
@@ -66,13 +67,15 @@ const columnDefs: ColDef[] = [
 const defaultColDef: ColDef = {
   sortable: true,
   resizable: true,
-  flex: 0
+  flex: 0,
+  suppressHeaderMenuButton: true
 };
 
 async function loadData() {
   loading.value = true;
   try {
     rawData.value = await fetchAllResources();
+    setTimeout(() => gridApi.value?.autoSizeAllColumns(), 100);
   } catch (e) {
     message.error('加载失败');
   } finally {
@@ -82,6 +85,7 @@ async function loadData() {
 
 function onGridReady(params: GridReadyEvent) {
   gridApi.value = params.api;
+  params.api.autoSizeAllColumns();
 }
 
 function onSelectionChanged() {
@@ -174,6 +178,16 @@ function onCellValueChanged(event: CellValueChangedEvent) {
   if (event.data) event.data._dirty = true;
 }
 
+// ---- 右键菜单（AG Grid 自带） ----
+function getContextMenuItems(params: GetContextMenuItemsParams) {
+  const row = params.node?.data;
+  const pageCode = row?.pageCode;
+  if (!pageCode) return [];
+  return [
+    { name: '跳转到 页面管理', action: () => navigateTo('page', pageCode) }
+  ];
+}
+
 onMounted(loadData);
 </script>
 
@@ -205,6 +219,7 @@ onMounted(loadData);
         :groupDefaultExpanded="-1"
         :rowSelection="{ mode: 'singleRow', checkboxes: false }"
         :getRowId="(params: any) => String(params.data.id)"
+        :getContextMenuItems="getContextMenuItems"
         @grid-ready="onGridReady"
         @selection-changed="onSelectionChanged"
         @row-clicked="onRowClicked"
