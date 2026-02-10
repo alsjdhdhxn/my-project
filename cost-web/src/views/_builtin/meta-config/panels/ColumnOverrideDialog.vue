@@ -121,11 +121,16 @@ async function loadAvailableFields() {
         label: `${col.fieldName} (${col.headerText || col.columnName})`,
         value: col.fieldName
       }));
-    // 记录数字类型字段
+    // 记录数字类型字段（兼容大小写和多种类型名）
+    const numericTypes = new Set(['number', 'integer', 'decimal', 'float', 'double', 'numeric', 'int', 'bigint']);
     numericFields.value = new Set(
-      cols.filter((col: any) => col.fieldName && col.dataType === 'number')
+      cols.filter((col: any) => col.fieldName && col.dataType && numericTypes.has(col.dataType.toLowerCase()))
         .map((col: any) => col.fieldName)
     );
+    // 已配置 aggFunc 的字段也标记为数字（兼容元数据缺失 dataType 的情况）
+    for (const item of items.value) {
+      if (item.aggFunc) numericFields.value.add(item.field);
+    }
   } catch {
     availableFields.value = [];
   } finally {
