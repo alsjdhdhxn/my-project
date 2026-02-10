@@ -105,6 +105,8 @@ export function useLookupDialog(params: {
   const currentLookupTabKey = ref<string>('');
 
   async function onMasterCellClicked(event: any) {
+    // 汇总行不响应点击
+    if (event.node?.rowPinned) return;
     const field = event.colDef?.field;
     const rowData = event.data;
     if (!field || !rowData) return;
@@ -127,6 +129,8 @@ export function useLookupDialog(params: {
   }
 
   async function onDetailCellClicked(event: any, _masterId: number, tabKey: string) {
+    // 汇总行不响应点击
+    if (event.node?.rowPinned) return;
     const field = event.colDef?.field;
     const rowData = event.data;
     if (!field || !rowData) return;

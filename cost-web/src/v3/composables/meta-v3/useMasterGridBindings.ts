@@ -75,7 +75,12 @@ export function useMasterGridBindings(params: {
     sortable: true,
     filter: 'agTextColumnFilter',
     resizable: true,
-    editable: editableCallback ?? true,
+    editable: (p: any) => {
+      // 汇总行不可编辑
+      if (p.node?.rowPinned) return false;
+      if (editableCallback) return editableCallback(p);
+      return true;
+    },
     wrapHeaderText: true,
     autoHeaderHeight: true,
     cellClassRules,
@@ -229,6 +234,8 @@ export function useMasterGridBindings(params: {
   }
 
   function onCellClicked(event: any) {
+    // 汇总行不响应点击
+    if (event.node?.rowPinned) return;
     runtime.onMasterCellClicked?.(event);
   }
 

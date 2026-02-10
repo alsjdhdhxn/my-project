@@ -129,7 +129,7 @@ const defaultColDef = computed<ColDef>(() => ({
   sortable: true,
   filter: true,
   resizable: true,
-  editable: true,
+  editable: (p: any) => !p.node?.rowPinned,
   wrapHeaderText: true,
   autoHeaderHeight: true,
   cellClassRules: props.cellClassRules,
