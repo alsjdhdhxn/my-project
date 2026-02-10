@@ -34,7 +34,8 @@ import {
   applyColumnOverrides,
   extractLookupFromColumnOverride,
   parseGridStyleRule,
-  applyCellStyleRules
+  applyCellStyleRules,
+  extractSumFields
 } from '@/v3/composables/meta-v3/usePageRules';
 import {
   normalizeGridOptions,
@@ -307,6 +308,8 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
   const detailCellEditableRulesByTab = shallowRef<Record<string, import('@/v3/composables/meta-v3/types').CellEditableRule[]>>({});
   const masterToolbar = shallowRef<ToolbarRule | null>(null);
   const detailToolbarByTab = shallowRef<Record<string, ToolbarRule | null>>({});
+  const masterSumFields = shallowRef<string[]>([]);
+  const detailSumFieldsByTab = shallowRef<Record<string, string[]>>({});
 
   async function loadComponents() {
     const pageRes = await fetchPageComponents(pageCode);
@@ -464,11 +467,13 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
     masterColumnDefs.value = masterColumns;
     masterRowClassGetter.value = masterMeta.getRowClass;
     masterColumnMeta.value = masterMeta.rawColumns || [];
+    masterSumFields.value = extractSumFields(masterColumnOverrides);
 
     detailColumnsByTab.value = {};
     detailRowClassGetterByTab.value = {};
     detailColumnMetaByTab.value = {};
     detailFkColumnByTab.value = {};
+    detailSumFieldsByTab.value = {};
 
     for (const tab of config.tabs || []) {
       const tableCode = tab.tableCode || config.detailTableCode;
@@ -500,6 +505,7 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
         DIRTY_CELL_CLASS_RULES
       );
       detailRowClassGetterByTab.value[tab.key] = detailMeta.getRowClass;
+      detailSumFieldsByTab.value[tab.key] = extractSumFields(tabColumnOverrides);
 
       const fkColumnName = detailMeta.metadata.parentFkColumn;
       detailFkColumnByTab.value[tab.key] = fkColumnName
@@ -688,6 +694,8 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
     detailCellEditableRulesByTab,
     masterToolbar,
     detailToolbarByTab,
+    masterSumFields,
+    detailSumFieldsByTab,
     loadComponents,
     parseConfig,
     loadMeta,

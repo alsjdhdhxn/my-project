@@ -13,6 +13,7 @@
       :getContextMenuItems="contextMenuItems"
       :rowHeight="28"
       :headerHeight="28"
+      :pinnedBottomRowData="pinnedBottomRowData"
       v-bind="gridRuntimeOptions"
       @grid-ready="onGridReady"
       @row-data-updated="updateHeightFromGrid"
@@ -31,6 +32,7 @@ import type { ColDef, GridReadyEvent } from 'ag-grid-community';
 import type { TabConfig, RowData } from '@/v3/logic/calc-engine';
 import { autoSizeColumnsOnReady, buildGridRuntimeOptions, type ResolvedGridOptions } from '@/v3/composables/meta-v3/grid-options';
 import { isFlagTrue } from '@/v3/composables/meta-v3/cell-style';
+import { computeSumRow } from '@/v3/composables/meta-v3/usePageRules';
 
 const props = defineProps<{
   tab: TabConfig;
@@ -50,6 +52,7 @@ const props = defineProps<{
   onCellClicked: (event: any) => void;
   onCellEditingStarted: () => void;
   onCellEditingStopped: () => void;
+  sumFields?: string[];
 }>();
 
 const gridApi = ref<any>(null);
@@ -135,6 +138,13 @@ const defaultColDef = computed<ColDef>(() => ({
 
 const gridRuntimeOptions = computed(() => buildGridRuntimeOptions(props.gridOptions));
 
+// 汇总行（pinnedBottomRowData）
+const pinnedBottomRowData = computed(() => {
+  if (!props.sumFields?.length) return undefined;
+  const sumRow = computeSumRow(props.rows || [], props.sumFields);
+  return sumRow ? [sumRow] : undefined;
+});
+
 function getRowId(params: any) {
   return String(params.data?.id ?? '');
 }
@@ -194,6 +204,11 @@ watch(
   (rows) => {
     if (gridApi.value) {
       gridApi.value.setGridOption('rowData', rows || []);
+      // 更新汇总行
+      if (props.sumFields?.length) {
+        const sumRow = computeSumRow(rows || [], props.sumFields);
+        gridApi.value.setGridOption('pinnedBottomRowData', sumRow ? [sumRow] : []);
+      }
     }
   },
   { deep: false }

@@ -237,7 +237,7 @@ async function loadComponents() {
 }
 
 // 隐藏的规则类型（系统内部使用，不需要用户看到）
-const hiddenRuleTypes = new Set(['ROLE_BINDING', 'RELATION']);
+const hiddenRuleTypes = new Set(['ROLE_BINDING', 'RELATION', 'SUMMARY_CONFIG', 'NESTED_CONFIG']);
 
 async function loadRules(pageCode: string, componentKey: string) {
   try {

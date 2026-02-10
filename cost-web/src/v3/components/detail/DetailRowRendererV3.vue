@@ -8,6 +8,7 @@
       :detailColumnsByTab="detailColumnsByTab"
       :detailRowClassByTab="detailRowClassByTab"
       :detailGridOptionsByTab="detailGridOptionsByTab"
+      :detailSumFieldsByTab="detailSumFieldsByTab"
       :cellClassRules="cellClassRules"
       :applyGridConfig="applyGridConfig"
       :onDetailCellValueChanged="onDetailCellValueChanged"
@@ -49,6 +50,7 @@ const detailCache = computed(() => panelContext.value.detailCache || new Map());
 const detailColumnsByTab = computed(() => unref(panelContext.value.detailColumnsByTab) || {});
 const detailRowClassByTab = computed(() => unref(panelContext.value.detailRowClassByTab) || {});
 const detailGridOptionsByTab = computed(() => unref(panelContext.value.detailGridOptionsByTab) || {});
+const detailSumFieldsByTab = computed(() => unref(panelContext.value.detailSumFieldsByTab) || {});
 const cellClassRules = computed(() => panelContext.value.cellClassRules);
 const noop = () => {};
 const noopLoad = async () => {};

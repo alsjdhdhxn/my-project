@@ -24,6 +24,8 @@ export type ColumnOverrideRule = {
   required?: boolean;
   cellEditor?: string;
   cellEditorParams?: Record<string, any>;
+  /** 聚合函数：sum 表示底部汇总求和 */
+  aggFunc?: 'sum';
   rulesConfig?: {
     compare?: {
       enabled: boolean;

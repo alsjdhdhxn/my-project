@@ -31,10 +31,12 @@ type OverrideItem = {
   width?: string | null;
   cellEditor?: string;
   cellEditorParams?: Record<string, any>;
+  aggFunc?: string;
 };
 
 const items = ref<OverrideItem[]>([]);
 const availableFields = ref<{ label: string; value: string }[]>([]);
+const numericFields = ref<Set<string>>(new Set());
 const lookupOptionsRaw = ref<Array<{ label: string; value: string }>>([]);
 const loadingFields = ref(false);
 const addFieldValue = ref<string | null>(null);
@@ -74,6 +76,7 @@ watch(() => props.show, async (val) => {
       width: r.width != null ? String(r.width) : null,
       cellEditor: r.cellEditor || '',
       cellEditorParams: normalizeCellEditorParams(r.cellEditorParams),
+      aggFunc: r.aggFunc || undefined,
     }));
   } catch {
     items.value = [];
@@ -118,6 +121,11 @@ async function loadAvailableFields() {
         label: `${col.fieldName} (${col.headerText || col.columnName})`,
         value: col.fieldName
       }));
+    // 记录数字类型字段
+    numericFields.value = new Set(
+      cols.filter((col: any) => col.fieldName && col.dataType === 'number')
+        .map((col: any) => col.fieldName)
+    );
   } catch {
     availableFields.value = [];
   } finally {
@@ -158,6 +166,7 @@ function addField() {
     required: undefined,
     width: null,
     cellEditor: '',
+    aggFunc: undefined,
   });
   addFieldValue.value = null;
 }
@@ -169,6 +178,7 @@ function addCustomField() {
     editable: undefined,
     width: null,
     cellEditor: '',
+    aggFunc: undefined,
   });
 }
 
@@ -322,6 +332,7 @@ async function handleSave() {
       if (i.required != null) obj.required = i.required;
       if (i.width != null && i.width !== '') obj.width = Number(i.width);
       if (i.cellEditor) obj.cellEditor = i.cellEditor;
+      if (i.aggFunc) obj.aggFunc = i.aggFunc;
       if (i.cellEditorParams && Object.keys(i.cellEditorParams).length > 0) {
         const params = { ...i.cellEditorParams };
         // 清理 lookup mapping 中的空项
@@ -406,6 +417,7 @@ async function handleSave() {
         <span class="col-check">编辑</span>
         <span class="col-check">搜索</span>
         <span class="col-check">必填</span>
+        <span class="col-check">求和</span>
         <span class="col-width">宽度</span>
         <span class="col-editor">编辑器</span>
         <span class="col-ops">操作</span>
@@ -428,6 +440,15 @@ async function handleSave() {
         </div>
         <div class="col-check">
           <NSwitch v-model:value="item.required" size="small" />
+        </div>
+        <div class="col-check">
+          <NSwitch
+            v-if="numericFields.has(item.field)"
+            :value="item.aggFunc === 'sum'"
+            @update:value="(v: boolean) => item.aggFunc = v ? 'sum' : undefined"
+            size="small"
+          />
+          <span v-else style="color:#ccc;font-size:11px">—</span>
         </div>
         <div class="col-width">
           <NInput v-model:value="item.width" size="small" placeholder="auto" clearable style="width: 60px" />

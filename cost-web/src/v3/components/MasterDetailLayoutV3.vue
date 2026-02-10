@@ -81,6 +81,7 @@
           :detailColumnsByTab="detailColumnsByTab"
           :detailRowClassByTab="mergedDetailRowClassByTab"
           :detailGridOptionsByTab="detailGridOptionsByTab"
+          :detailSumFieldsByTab="detailSumFieldsByTab"
           :cellClassRules="cellClassRules"
           :applyGridConfig="applyGridConfig"
           :onDetailCellValueChanged="onDetailCellValueChanged"
@@ -173,6 +174,7 @@ const {
   detailRowEditableRulesByTab,
   masterGridOptions,
   detailGridOptionsByTab,
+  detailSumFieldsByTab,
   detailGridApisByTab,
   masterContextMenu,
   detailContextMenuByTab,
@@ -566,6 +568,7 @@ const gridContext = {
     detailColumnsByTab,
     detailRowClassByTab: mergedDetailRowClassByTab,
     detailGridOptionsByTab,
+    detailSumFieldsByTab,
     cellClassRules,
     applyGridConfig,
     onDetailCellValueChanged,

@@ -37,6 +37,7 @@
           :onCellClicked="(event) => onDetailCellClicked(event, activeMasterId!, activeTabConfig.key)"
           :onCellEditingStarted="onCellEditingStarted"
           :onCellEditingStopped="onCellEditingStopped"
+          :sumFields="detailSumFieldsByTab?.[activeTabConfig.key]"
         />
 
         <div v-else class="detail-stack">
@@ -60,6 +61,7 @@
             :onCellClicked="(event) => onDetailCellClicked(event, activeMasterId!, tab.key)"
             :onCellEditingStarted="onCellEditingStarted"
             :onCellEditingStopped="onCellEditingStopped"
+            :sumFields="detailSumFieldsByTab?.[tab.key]"
           />
         </div>
       </div>
@@ -82,6 +84,7 @@ const props = defineProps<{
   detailColumnsByTab: Record<string, ColDef[]>;
   detailRowClassByTab?: Record<string, ((params: any) => string | undefined) | undefined>;
   detailGridOptionsByTab?: Record<string, ResolvedGridOptions>;
+  detailSumFieldsByTab?: Record<string, string[]>;
   cellClassRules: ColDef['cellClassRules'];
   defaultViewMode?: 'tab' | 'stack';
   viewMode?: 'tab' | 'stack';

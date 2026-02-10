@@ -377,6 +377,10 @@ export function applyColumnOverrides(columns: ColDef[], overrides: ColumnOverrid
         updated.cellEditorParams = params;
       }
     }
+    // 支持聚合函数（底部汇总）
+    if (override.aggFunc) {
+      updated.aggFunc = override.aggFunc;
+    }
     // 支持对比值渲染
     if (override.rulesConfig?.compare?.enabled) {
       const compare = override.rulesConfig.compare;
@@ -712,4 +716,27 @@ export function parseToolbarRule(componentKey: string, rules: PageRule[], compon
   if (!buttonRule) return null;
   const toolbarItems = filterButtonsByPosition(buttonRule.items, 'toolbar');
   return toolbarItems.length > 0 ? { items: toolbarItems } : null;
+}
+
+/** 从 COLUMN_OVERRIDE 中提取需要求和的字段列表 */
+export function extractSumFields(overrides: ColumnOverrideRule[]): string[] {
+  if (!overrides || overrides.length === 0) return [];
+  return overrides
+    .filter(o => o.aggFunc === 'sum' && (o.field || o.fieldName))
+    .map(o => (o.field || o.fieldName)!);
+}
+
+/** 根据数据行计算求和汇总行（用于 pinnedBottomRowData） */
+export function computeSumRow(rows: any[], sumFields: string[]): Record<string, any> | null {
+  if (!sumFields.length || !rows.length) return null;
+  const result: Record<string, any> = { _isSumRow: true };
+  for (const field of sumFields) {
+    let sum = 0;
+    for (const row of rows) {
+      const val = Number(row[field]);
+      if (!isNaN(val)) sum += val;
+    }
+    result[field] = Math.round(sum * 100) / 100; // 保留2位精度
+  }
+  return result;
 }

@@ -2,7 +2,7 @@
 import type { ColDef, GridReadyEvent, CellValueChangedEvent } from 'ag-grid-community';
 import { useGridContextMenu } from '@/v3/composables/meta-v3/useGridContextMenu';
 import type { ContextMenuRule, RowEditableRule, RowClassRule, CellEditableRule } from '@/v3/composables/meta-v3/types';
-import { buildRowEditableCallback, buildRowClassCallback, buildRowStyleCallback, buildCellEditableCallback } from '@/v3/composables/meta-v3/usePageRules';
+import { buildRowEditableCallback, buildRowClassCallback, buildRowStyleCallback, buildCellEditableCallback, computeSumRow } from '@/v3/composables/meta-v3/usePageRules';
 import {
   buildGridRuntimeOptions,
   autoSizeColumnsOnReady,
@@ -50,6 +50,7 @@ export function useMasterGridBindings(params: {
   cellEditableRules?: CellEditableRule[];
   rowClassRules?: RowClassRule[];
   dataSource?: any;
+  sumFields?: string[];
   notifyError?: (message: string) => void;
 }) {
   const { runtime } = params;
@@ -125,6 +126,20 @@ export function useMasterGridBindings(params: {
   const rowClassCallback = buildRowClassCallback(rowClassRules);
   const rowStyleCallback = buildRowStyleCallback(rowClassRules);
   const dataSource = params.dataSource;
+  const sumFields = params.sumFields ?? (runtime as any).masterSumFields?.value ?? [];
+
+  /** 更新主表底部汇总行（从当前已加载的行计算） */
+  function updatePinnedSumRow() {
+    if (!sumFields.length) return;
+    const api = runtime.masterGridApi?.value;
+    if (!api) return;
+    const allRows: any[] = [];
+    api.forEachNode((node: any) => {
+      if (node.data) allRows.push(node.data);
+    });
+    const sumRow = computeSumRow(allRows, sumFields);
+    api.setGridOption('pinnedBottomRowData', sumRow ? [sumRow] : []);
+  }
 
   function getRowClass(params: any): string | undefined {
     const classes: string[] = [];
@@ -179,6 +194,10 @@ export function useMasterGridBindings(params: {
       autoSizeColumnsOnReady(params.api, currentDefs, gridOptions);
     } else if (!hasExplicitWidth) {
       params.api.sizeColumnsToFit();
+    }
+    // SSRM 数据加载后更新汇总行
+    if (sumFields.length) {
+      params.api.addEventListener('modelUpdated', () => updatePinnedSumRow());
     }
   }
 
