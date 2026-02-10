@@ -162,6 +162,31 @@ export function parseColumnOverrideConfig(componentKey: string, rules: PageRule[
   return parseRuleArray<ColumnOverrideRule>(rule, `${componentKey}.COLUMN_OVERRIDE`);
 }
 
+/**
+ * 从 COLUMN_OVERRIDE 中提取 lookup 配置（cellEditor === 'lookup'）
+ * 返回 LookupRule[] 格式，可与传统 LOOKUP 规则合并
+ */
+export function extractLookupFromColumnOverride(overrides: ColumnOverrideRule[]): LookupRule[] {
+  if (!overrides || overrides.length === 0) return [];
+  const result: LookupRule[] = [];
+  for (const override of overrides) {
+    if (override.cellEditor !== 'lookup') continue;
+    const field = override.field || override.fieldName;
+    const params = override.cellEditorParams;
+    if (!field || !params?.lookupCode) continue;
+    result.push({
+      fieldName: field,
+      lookupCode: params.lookupCode,
+      mapping: params.mapping || {},
+      noFillback: params.noFillback,
+      filterField: params.filterField,
+      filterColumn: params.filterColumn,
+      filterValueFrom: params.filterValueFrom
+    });
+  }
+  return result;
+}
+
 export function parseBroadcastRuleConfig(componentKey: string, rules: PageRule[]): string[] | null {
   const rule = getRuleByType(rules, 'BROADCAST');
   if (!rule?.rules) return null;
@@ -328,7 +353,7 @@ export function applyColumnOverrides(columns: ColDef[], overrides: ColumnOverrid
     if (override.searchable === false) updated.filter = false;
     if (override.searchable === true && updated.filter === false) updated.filter = true;
     // 支持下拉框编辑器
-    if (override.cellEditor) updated.cellEditor = override.cellEditor;
+    if (override.cellEditor && override.cellEditor !== 'lookup') updated.cellEditor = override.cellEditor;
     if (override.cellEditorParams) {
       const params = override.cellEditorParams;
       if (params.mode === 'static') {

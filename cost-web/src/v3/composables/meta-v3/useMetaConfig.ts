@@ -32,7 +32,8 @@ import {
   parseCellEditableRule,
   attachGroupCellRenderer,
   parseColumnOverrideConfig,
-  applyColumnOverrides
+  applyColumnOverrides,
+  extractLookupFromColumnOverride
 } from '@/v3/composables/meta-v3/usePageRules';
 import {
   normalizeGridOptions,
@@ -525,7 +526,17 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
     masterValidationRules.value = masterValidation.length > 0 ? masterValidation : parseValidationRules(masterColumnMeta.value);
 
     const masterLookup = parseLookupRuleConfig(masterRuleLabel, masterRules);
-    masterLookupRules.value = masterLookup.length > 0 ? masterLookup : extractLookupRules(masterColumnMeta.value);
+    // 从 COLUMN_OVERRIDE 中提取 lookup 配置并合并
+    const masterColumnOverridesForLookup = parseColumnOverrideConfig(masterRuleLabel, masterRules);
+    const masterLookupFromOverride = extractLookupFromColumnOverride(masterColumnOverridesForLookup);
+    const mergedMasterLookup = [...masterLookup, ...masterLookupFromOverride];
+    // 去重：COLUMN_OVERRIDE 中的配置优先（后面的覆盖前面的同名字段）
+    const masterLookupMap = new Map<string, LookupRule>();
+    for (const r of mergedMasterLookup) {
+      masterLookupMap.set(r.fieldName, r);
+    }
+    const finalMasterLookup = Array.from(masterLookupMap.values());
+    masterLookupRules.value = finalMasterLookup.length > 0 ? finalMasterLookup : extractLookupRules(masterColumnMeta.value);
 
     // 给有 lookup 的列添加高亮样式
     const lookupFields = new Set(masterLookupRules.value.map(r => r.fieldName));
@@ -584,8 +595,17 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
         : parseValidationRules(rawColumns);
 
       const detailLookup = parseLookupRuleConfig(tab.key, tabRules);
-      detailLookupRulesByTab.value[tab.key] = detailLookup.length > 0
-        ? detailLookup
+      // 从 COLUMN_OVERRIDE 中提取 lookup 配置并合并
+      const tabColumnOverridesForLookup = parseColumnOverrideConfig(tab.key, tabRules);
+      const detailLookupFromOverride = extractLookupFromColumnOverride(tabColumnOverridesForLookup);
+      const mergedDetailLookup = [...detailLookup, ...detailLookupFromOverride];
+      const detailLookupMap = new Map<string, LookupRule>();
+      for (const r of mergedDetailLookup) {
+        detailLookupMap.set(r.fieldName, r);
+      }
+      const finalDetailLookup = Array.from(detailLookupMap.values());
+      detailLookupRulesByTab.value[tab.key] = finalDetailLookup.length > 0
+        ? finalDetailLookup
         : extractLookupRules(rawColumns);
 
       // 给有 lookup 的列添加高亮样式

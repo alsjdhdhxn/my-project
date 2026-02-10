@@ -6,6 +6,7 @@ import { AgGridVue } from 'ag-grid-vue3';
 import type { GridApi, GridReadyEvent, ColDef, CellValueChangedEvent, GetContextMenuItemsParams, ICellRendererParams } from 'ag-grid-community';
 import ButtonConfigDialog from './ButtonConfigDialog.vue';
 import ColumnOverrideDialog from './ColumnOverrideDialog.vue';
+import GridOptionsDialog from './GridOptionsDialog.vue';
 import {
   fetchAllPageComponents, savePageComponent, deletePageComponent,
   fetchRulesByComponent, savePageRule, deletePageRule
@@ -74,7 +75,7 @@ const ruleColDefs: ColDef[] = [
   },
   {
     field: 'rules', headerName: '规则内容(JSON)', flex: 1,
-    editable: (params: any) => params.data?.ruleType !== 'COLUMN_OVERRIDE',
+    editable: (params: any) => params.data?.ruleType !== 'COLUMN_OVERRIDE' && params.data?.ruleType !== 'GRID_OPTIONS',
     cellEditor: 'agLargeTextCellEditor', cellEditorPopup: true,
     cellRenderer: (params: ICellRendererParams) => {
       if (params.data?.ruleType === 'COLUMN_OVERRIDE') {
@@ -89,6 +90,24 @@ const ruleColDefs: ColDef[] = [
         el.style.color = count > 0 ? '#2080f0' : '#999';
         el.style.fontWeight = count > 0 ? '500' : 'normal';
         el.addEventListener('click', () => openColOverrideDialog(params.data));
+        return el;
+      }
+      if (params.data?.ruleType === 'GRID_OPTIONS') {
+        const el = document.createElement('span');
+        let summary = '';
+        try {
+          const obj = params.value ? JSON.parse(params.value) : {};
+          const labels: string[] = [];
+          if (obj.cellSelection) labels.push('范围选择');
+          if (obj.sideBar) labels.push('侧边栏');
+          if (obj.autoSizeColumns) labels.push('列宽自适应');
+          summary = labels.length > 0 ? labels.join('、') : '未配置';
+        } catch { summary = '解析错误'; }
+        el.textContent = `⚙ 表格选项: ${summary}`;
+        el.style.cursor = 'pointer';
+        el.style.color = summary !== '未配置' ? '#2080f0' : '#999';
+        el.style.fontWeight = summary !== '未配置' ? '500' : 'normal';
+        el.addEventListener('click', () => openGridOptionsDialog(params.data));
         return el;
       }
       // 其他类型正常显示文本
@@ -150,6 +169,27 @@ function onColOverrideSave(json: string) {
   }
 }
 
+// ---- 表格选项配置弹窗 ----
+const gridOptionsShow = ref(false);
+const gridOptionsJson = ref('');
+const gridOptionsCompKey = ref('');
+let gridOptionsTargetRow: any = null;
+
+function openGridOptionsDialog(row: any) {
+  gridOptionsJson.value = row.rules || '{}';
+  gridOptionsCompKey.value = row.componentKey || '';
+  gridOptionsTargetRow = row;
+  gridOptionsShow.value = true;
+}
+
+function onGridOptionsSave(json: string) {
+  if (gridOptionsTargetRow) {
+    gridOptionsTargetRow.rules = json;
+    gridOptionsTargetRow._dirty = true;
+    ruleGridApi.value?.refreshCells({ force: true });
+  }
+}
+
 async function loadComponents() {
   try {
     const res = await fetchAllPageComponents();
@@ -158,10 +198,13 @@ async function loadComponents() {
   } catch { message.error('加载页面组件失败'); }
 }
 
+// 隐藏的规则类型（系统内部使用，不需要用户看到）
+const hiddenRuleTypes = new Set(['ROLE_BINDING', 'RELATION']);
+
 async function loadRules(pageCode: string, componentKey: string) {
   try {
     const res = await fetchRulesByComponent(pageCode, componentKey);
-    ruleRows.value = res || [];
+    ruleRows.value = (res || []).filter((r: any) => !hiddenRuleTypes.has(r.ruleType));
     setTimeout(() => ruleGridApi.value?.autoSizeAllColumns(), 100);
   } catch { message.error('加载规则失败'); }
 }
@@ -419,6 +462,14 @@ watch(() => filterState?.value, async (state) => {
       :componentKey="colOverrideCompKey"
       :ruleRow="colOverrideTargetRow"
       @save="onColOverrideSave"
+    />
+    <!-- 表格选项配置弹窗 -->
+    <GridOptionsDialog
+      v-model:show="gridOptionsShow"
+      :rulesJson="gridOptionsJson"
+      :componentKey="gridOptionsCompKey"
+      :ruleRow="gridOptionsTargetRow"
+      @save="onGridOptionsSave"
     />
   </div>
 </template>

@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, reactive } from 'vue';
 import {
   NModal, NButton, NSpace, NSwitch, NInputNumber, NInput, NSelect,
-  NEmpty, NPopconfirm, NTag, NIcon, useMessage
+  NEmpty, NPopconfirm, NTag, NIcon, NCollapse, NCollapseItem, NAutoComplete, useMessage
 } from 'naive-ui';
-import { fetchColumnsByTableId, fetchTablesByPageCode, savePageRule } from '@/service/api/meta-config';
+import { fetchColumnsByTableId, fetchTablesByPageCode, savePageRule, fetchAllLookupConfigs } from '@/service/api/meta-config';
 
 const props = defineProps<{
   show: boolean;
@@ -35,6 +35,7 @@ type OverrideItem = {
 
 const items = ref<OverrideItem[]>([]);
 const availableFields = ref<{ label: string; value: string }[]>([]);
+const lookupOptionsRaw = ref<Array<{ label: string; value: string }>>([]);
 const loadingFields = ref(false);
 const addFieldValue = ref<string | null>(null);
 
@@ -46,6 +47,7 @@ const cellEditorOptions = [
   { label: '日期', value: 'agDateCellEditor' },
   { label: '下拉', value: 'agSelectCellEditor' },
   { label: '富文本下拉', value: 'agRichSelectCellEditor' },
+  { label: '弹窗选择', value: 'lookup' },
 ];
 
 // 已配置的字段集合
@@ -77,8 +79,10 @@ watch(() => props.show, async (val) => {
     items.value = [];
   }
   addFieldValue.value = null;
-  // 加载关联表的列
-  await loadAvailableFields();
+  // 默认全部折叠
+  expandedRows.clear();
+  // 加载关联表的列和 lookup 配置
+  await Promise.all([loadAvailableFields(), loadLookupOptions()]);
 });
 
 async function loadAvailableFields() {
@@ -119,6 +123,26 @@ async function loadAvailableFields() {
   } finally {
     loadingFields.value = false;
   }
+}
+
+async function loadLookupOptions() {
+  try {
+    const list = await fetchAllLookupConfigs();
+    lookupOptionsRaw.value = list.map((item: any) => ({
+      label: item.lookupName || item.lookupCode,
+      value: item.lookupCode
+    }));
+  } catch {
+    lookupOptionsRaw.value = [];
+  }
+}
+
+function getLookupAutoOptions(input: string): Array<{ label: string; value: string }> {
+  if (!input) return lookupOptionsRaw.value;
+  const keyword = input.toLowerCase();
+  return lookupOptionsRaw.value.filter(
+    o => o.label.toLowerCase().includes(keyword) || o.value.toLowerCase().includes(keyword)
+  );
 }
 
 function addField() {
@@ -165,7 +189,7 @@ function normalizeCellEditorParams(params: any): Record<string, any> | undefined
   if (Array.isArray(result.values)) {
     result.values = result.values.join(',');
   }
-  if (!result.mode) {
+  if (!result.mode && !result.lookupCode) {
     result.mode = result.refTable ? 'ref' : 'static';
   }
   return result;
@@ -175,10 +199,37 @@ function isSelectEditor(editor?: string) {
   return editor === 'agSelectCellEditor' || editor === 'agRichSelectCellEditor';
 }
 
-function onEditorChange(item: OverrideItem, value: string) {
+function isLookupEditor(editor?: string) {
+  return editor === 'lookup';
+}
+
+function onEditorChange(item: OverrideItem, value: string, index?: number) {
   if (isSelectEditor(value) && !item.cellEditorParams) {
     item.cellEditorParams = { mode: 'static', values: '' };
   }
+  if (isLookupEditor(value) && !item.cellEditorParams) {
+    item.cellEditorParams = { lookupCode: '', mapping: {} };
+  }
+  // 选择有参数的编辑器时自动展开
+  if ((isSelectEditor(value) || isLookupEditor(value)) && index != null) {
+    expandedRows.add(index);
+  }
+  // 选择无参数编辑器时折叠
+  if (!isSelectEditor(value) && !isLookupEditor(value) && index != null) {
+    expandedRows.delete(index);
+  }
+}
+
+function toggleExpand(index: number) {
+  if (expandedRows.has(index)) {
+    expandedRows.delete(index);
+  } else {
+    expandedRows.add(index);
+  }
+}
+
+function hasParams(item: OverrideItem): boolean {
+  return isSelectEditor(item.cellEditor) || isLookupEditor(item.cellEditor);
 }
 
 function setParamMode(item: OverrideItem, mode: string) {
@@ -186,8 +237,24 @@ function setParamMode(item: OverrideItem, mode: string) {
   item.cellEditorParams = { mode };
 }
 
-function setParam(item: OverrideItem, key: string, value: string) {
+function setParam(item: OverrideItem, key: string, value: any) {
   if (!item.cellEditorParams) item.cellEditorParams = { mode: 'static' };
+  if (key === 'noFillback') {
+    // boolean 特殊处理
+    if (value) {
+      item.cellEditorParams = { ...item.cellEditorParams, [key]: true };
+    } else {
+      const { noFillback: _, ...rest } = item.cellEditorParams;
+      item.cellEditorParams = rest;
+    }
+    return;
+  }
+  // 空字符串时删除该 key
+  if (value === '' || value == null) {
+    const { [key]: _, ...rest } = item.cellEditorParams;
+    item.cellEditorParams = rest;
+    return;
+  }
   item.cellEditorParams = { ...item.cellEditorParams, [key]: value };
 }
 
@@ -203,7 +270,46 @@ function setStaticValuesStr(item: OverrideItem, value: string) {
   item.cellEditorParams = { ...item.cellEditorParams, values: value };
 }
 
+// Lookup mapping 管理
+function getLookupMapping(item: OverrideItem): Array<{ local: string; remote: string }> {
+  const mapping = item.cellEditorParams?.mapping;
+  if (!mapping || typeof mapping !== 'object') return [];
+  return Object.entries(mapping).map(([local, remote]) => ({ local, remote: remote as string }));
+}
+
+function setLookupMapping(item: OverrideItem, pairs: Array<{ local: string; remote: string }>) {
+  if (!item.cellEditorParams) item.cellEditorParams = { lookupCode: '', mapping: {} };
+  const mapping: Record<string, string> = {};
+  for (const p of pairs) {
+    if (p.local && p.remote) mapping[p.local] = p.remote;
+  }
+  item.cellEditorParams = { ...item.cellEditorParams, mapping };
+}
+
+function addLookupMappingPair(item: OverrideItem) {
+  const pairs = getLookupMapping(item);
+  pairs.push({ local: '', remote: '' });
+  setLookupMapping(item, pairs);
+}
+
+function removeLookupMappingPair(item: OverrideItem, index: number) {
+  const pairs = getLookupMapping(item);
+  pairs.splice(index, 1);
+  setLookupMapping(item, pairs);
+}
+
+function updateLookupMappingPair(item: OverrideItem, index: number, key: 'local' | 'remote', value: string) {
+  const pairs = getLookupMapping(item);
+  if (pairs[index]) {
+    pairs[index][key] = value;
+    setLookupMapping(item, pairs);
+  }
+}
+
 const saving = ref(false);
+
+// 跟踪每行的折叠状态（lookup/select 参数区）
+const expandedRows = reactive(new Set<number>());
 
 async function handleSave() {
   const result = items.value
@@ -217,7 +323,26 @@ async function handleSave() {
       if (i.width != null && i.width !== '') obj.width = Number(i.width);
       if (i.cellEditor) obj.cellEditor = i.cellEditor;
       if (i.cellEditorParams && Object.keys(i.cellEditorParams).length > 0) {
-        obj.cellEditorParams = i.cellEditorParams;
+        const params = { ...i.cellEditorParams };
+        // 清理 lookup mapping 中的空项
+        if (params.mapping && typeof params.mapping === 'object') {
+          const cleaned: Record<string, string> = {};
+          for (const [k, v] of Object.entries(params.mapping)) {
+            if (k && v) cleaned[k] = v as string;
+          }
+          if (Object.keys(cleaned).length > 0) {
+            params.mapping = cleaned;
+          } else {
+            delete params.mapping;
+          }
+        }
+        // 清理空字符串值
+        for (const [k, v] of Object.entries(params)) {
+          if (v === '' || v == null) delete params[k];
+        }
+        if (Object.keys(params).length > 0) {
+          obj.cellEditorParams = params;
+        }
       }
       return obj;
     });
@@ -250,7 +375,7 @@ async function handleSave() {
     @update:show="(v) => emit('update:show', v)"
     preset="card"
     :title="`列覆盖配置 - ${componentKey}`"
-    style="width: 900px; max-height: 90vh"
+    style="width: 960px; max-height: 90vh"
     :mask-closable="false"
     :segmented="{ content: true, footer: true }"
   >
@@ -271,15 +396,15 @@ async function handleSave() {
     </div>
 
     <!-- 列表 -->
-    <div class="override-list" style="max-height: 65vh; overflow-y: auto">
+    <div class="override-list" style="max-height: 65vh; overflow-y: auto; overflow-x: hidden">
       <NEmpty v-if="items.length === 0" description="暂无列覆盖配置" />
 
       <!-- 表头 -->
       <div v-if="items.length > 0" class="override-header">
         <span class="col-field">字段</span>
         <span class="col-check">显示</span>
-        <span class="col-check">可编辑</span>
-        <span class="col-check">可搜索</span>
+        <span class="col-check">编辑</span>
+        <span class="col-check">搜索</span>
         <span class="col-check">必填</span>
         <span class="col-width">宽度</span>
         <span class="col-editor">编辑器</span>
@@ -290,7 +415,7 @@ async function handleSave() {
         <div class="override-row">
         <div class="col-field">
           <NInput v-if="!availableFields.find(f => f.value === item.field)" v-model:value="item.field" size="small" placeholder="fieldName" />
-          <NTag v-else size="small">{{ item.field }}</NTag>
+          <NTag v-else size="small" :bordered="false">{{ item.field }}</NTag>
         </div>
         <div class="col-check">
           <NSwitch v-model:value="item.visible" size="small" />
@@ -305,13 +430,16 @@ async function handleSave() {
           <NSwitch v-model:value="item.required" size="small" />
         </div>
         <div class="col-width">
-          <NInput v-model:value="item.width" size="small" placeholder="auto" clearable style="width: 70px" />
+          <NInput v-model:value="item.width" size="small" placeholder="auto" clearable style="width: 60px" />
         </div>
         <div class="col-editor">
-          <NSelect v-model:value="item.cellEditor" :options="cellEditorOptions" size="small" style="width: 140px" clearable
-            @update:value="onEditorChange(item, $event)" />
+          <NSelect v-model:value="item.cellEditor" :options="cellEditorOptions" size="small" clearable
+            @update:value="onEditorChange(item, $event, index)" />
         </div>
         <div class="col-ops">
+          <NButton v-if="hasParams(item)" text size="small" @click="toggleExpand(index)" :style="{ color: expandedRows.has(index) ? '#18a058' : '#999' }">
+            {{ expandedRows.has(index) ? '▾' : '▸' }}
+          </NButton>
           <NButton text size="small" :disabled="index === 0" @click="moveItem(index, -1)">↑</NButton>
           <NButton text size="small" :disabled="index === items.length - 1" @click="moveItem(index, 1)">↓</NButton>
           <NPopconfirm @positive-click="removeItem(index)">
@@ -322,8 +450,8 @@ async function handleSave() {
           </NPopconfirm>
         </div>
         </div>
-        <!-- 下拉参数配置区 -->
-        <div v-if="isSelectEditor(item.cellEditor)" class="editor-params">
+        <!-- 下拉参数配置区（可折叠） -->
+        <div v-if="isSelectEditor(item.cellEditor) && expandedRows.has(index)" class="editor-params">
           <div class="params-row">
             <span class="params-label">模式</span>
             <NSelect
@@ -385,6 +513,68 @@ async function handleSave() {
             />
           </div>
         </div>
+        <!-- 弹窗选择参数配置区（可折叠） -->
+        <div v-if="isLookupEditor(item.cellEditor) && expandedRows.has(index)" class="editor-params">
+          <div class="params-row">
+            <span class="params-label">lookupCode</span>
+            <NAutoComplete
+              :value="item.cellEditorParams?.lookupCode || ''"
+              @update:value="setParam(item, 'lookupCode', $event || '')"
+              :options="getLookupAutoOptions(item.cellEditorParams?.lookupCode || '')"
+              :get-show="() => true"
+              size="small" clearable placeholder="搜索Lookup" style="width: 200px"
+            />
+            <span class="params-label">禁止回填</span>
+            <NSwitch
+              :value="!!item.cellEditorParams?.noFillback"
+              @update:value="setParam(item, 'noFillback', $event)"
+              size="small"
+            />
+          </div>
+          <div class="params-row">
+            <span class="params-label">筛选字段(行)</span>
+            <NSelect
+              :value="item.cellEditorParams?.filterField || null"
+              @update:value="setParam(item, 'filterField', $event || '')"
+              :options="availableFields"
+              size="small" filterable clearable placeholder="可选" style="width: 140px"
+            />
+            <span class="params-label">筛选列(SQL)</span>
+            <NInput
+              :value="item.cellEditorParams?.filterColumn || ''"
+              @update:value="setParam(item, 'filterColumn', $event)"
+              size="small" placeholder="如 GOODSID" style="width: 130px"
+            />
+            <span class="params-label">值来源</span>
+            <NSelect
+              :value="item.cellEditorParams?.filterValueFrom || null"
+              @update:value="setParam(item, 'filterValueFrom', $event || '')"
+              :options="[{ label: '行数据', value: 'row' }, { label: '单元格', value: 'cell' }]"
+              size="small" clearable style="width: 100px"
+            />
+          </div>
+          <div class="params-row" style="align-items: flex-start">
+            <span class="params-label" style="margin-top: 4px">字段映射</span>
+            <div style="flex: 1; display: flex; flex-direction: column; gap: 4px">
+              <div v-for="(pair, pi) in getLookupMapping(item)" :key="pi" style="display: flex; gap: 4px; align-items: center">
+                <NSelect
+                  :value="pair.local || null"
+                  @update:value="updateLookupMappingPair(item, pi, 'local', $event || '')"
+                  :options="availableFields"
+                  size="small" filterable placeholder="本表字段" style="width: 150px"
+                />
+                <span style="color: #999">→</span>
+                <NInput
+                  :value="pair.remote"
+                  @update:value="updateLookupMappingPair(item, pi, 'remote', $event)"
+                  size="small" placeholder="弹窗字段" style="width: 150px"
+                />
+                <NButton text size="small" type="error" @click="removeLookupMappingPair(item, pi)">删</NButton>
+              </div>
+              <NButton size="tiny" dashed @click="addLookupMappingPair(item)" style="width: fit-content">+ 添加映射</NButton>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -414,7 +604,7 @@ async function handleSave() {
 .override-header {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   padding: 6px 8px;
   background: #f5f5f5;
   border-radius: 4px;
@@ -427,33 +617,33 @@ async function handleSave() {
 .override-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   padding: 6px 8px;
   transition: background 0.15s;
 }
 
 .col-field {
-  flex: 0 0 140px;
-  min-width: 0;
+  flex: 1 1 120px;
+  min-width: 80px;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .col-check {
-  flex: 0 0 55px;
+  flex: 0 0 46px;
   text-align: center;
 }
 
 .col-width {
-  flex: 0 0 85px;
+  flex: 0 0 60px;
 }
 
 .col-editor {
-  flex: 0 0 150px;
+  flex: 0 0 120px;
 }
 
 .col-ops {
-  flex: 0 0 70px;
+  flex: 0 0 90px;
   display: flex;
   gap: 2px;
   align-items: center;
@@ -468,10 +658,14 @@ async function handleSave() {
 }
 
 .editor-params {
-  padding: 4px 8px 8px 148px;
+  padding: 6px 8px 8px 16px;
   display: flex;
   flex-direction: column;
   gap: 4px;
+  background: #fafcff;
+  border-left: 2px solid #d6e4ff;
+  margin: 0 8px 4px 8px;
+  border-radius: 0 4px 4px 0;
 }
 
 .params-row {

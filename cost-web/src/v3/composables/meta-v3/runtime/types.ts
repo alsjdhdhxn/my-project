@@ -59,6 +59,7 @@ export type GridState = ComponentStateBase & {
   autoSizeStrategy?: any;
   getRowId?: (params: any) => string;
   getRowClass?: (params: any) => string | undefined;
+  getRowStyle?: (params: any) => Record<string, string> | undefined;
   getContextMenuItems?: (params: any) => any[];
   rowHeight?: number;
   headerHeight?: number;

@@ -565,6 +565,7 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
       gridState.autoSizeStrategy = bindings.autoSizeStrategy;
       gridState.getRowId = bindings.getRowId;
       gridState.getRowClass = bindings.getRowClass;
+      gridState.getRowStyle = bindings.getRowStyle;
       gridState.getContextMenuItems = resolvedFeatures.value.contextMenu ? bindings.getContextMenuItems : undefined;
       gridState.gridOptions = bindings.gridOptions;
       gridState.dataSource = dataSource;
