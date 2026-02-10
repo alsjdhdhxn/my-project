@@ -7,6 +7,7 @@ import type { GridApi, GridReadyEvent, ColDef, CellValueChangedEvent, GetContext
 import ButtonConfigDialog from './ButtonConfigDialog.vue';
 import ColumnOverrideDialog from './ColumnOverrideDialog.vue';
 import GridOptionsDialog from './GridOptionsDialog.vue';
+import GridStyleDialog from './GridStyleDialog.vue';
 import {
   fetchAllPageComponents, savePageComponent, deletePageComponent,
   fetchRulesByComponent, savePageRule, deletePageRule
@@ -75,7 +76,7 @@ const ruleColDefs: ColDef[] = [
   },
   {
     field: 'rules', headerName: '规则内容(JSON)', flex: 1,
-    editable: (params: any) => params.data?.ruleType !== 'COLUMN_OVERRIDE' && params.data?.ruleType !== 'GRID_OPTIONS',
+    editable: (params: any) => params.data?.ruleType !== 'COLUMN_OVERRIDE' && params.data?.ruleType !== 'GRID_OPTIONS' && params.data?.ruleType !== 'GRID_STYLE',
     cellEditor: 'agLargeTextCellEditor', cellEditorPopup: true,
     cellRenderer: (params: ICellRendererParams) => {
       if (params.data?.ruleType === 'COLUMN_OVERRIDE') {
@@ -108,6 +109,20 @@ const ruleColDefs: ColDef[] = [
         el.style.color = summary !== '未配置' ? '#2080f0' : '#999';
         el.style.fontWeight = summary !== '未配置' ? '500' : 'normal';
         el.addEventListener('click', () => openGridOptionsDialog(params.data));
+        return el;
+      }
+      if (params.data?.ruleType === 'GRID_STYLE') {
+        const el = document.createElement('span');
+        let count = 0;
+        try {
+          const arr = params.value ? JSON.parse(params.value) : [];
+          count = Array.isArray(arr) ? arr.length : 0;
+        } catch { /* ignore */ }
+        el.textContent = count > 0 ? `🎨 样式规则(${count})` : '🎨 样式规则';
+        el.style.cursor = 'pointer';
+        el.style.color = count > 0 ? '#18a058' : '#999';
+        el.style.fontWeight = count > 0 ? '500' : 'normal';
+        el.addEventListener('click', () => openGridStyleDialog(params.data));
         return el;
       }
       // 其他类型正常显示文本
@@ -186,6 +201,29 @@ function onGridOptionsSave(json: string) {
   if (gridOptionsTargetRow) {
     gridOptionsTargetRow.rules = json;
     gridOptionsTargetRow._dirty = true;
+    ruleGridApi.value?.refreshCells({ force: true });
+  }
+}
+
+// ---- Grid 样式规则弹窗 ----
+const gridStyleShow = ref(false);
+const gridStyleJson = ref('');
+const gridStylePageCode = ref('');
+const gridStyleCompKey = ref('');
+let gridStyleTargetRow: any = null;
+
+function openGridStyleDialog(row: any) {
+  gridStyleJson.value = row.rules || '[]';
+  gridStylePageCode.value = row.pageCode || '';
+  gridStyleCompKey.value = row.componentKey || '';
+  gridStyleTargetRow = row;
+  gridStyleShow.value = true;
+}
+
+function onGridStyleSave(json: string) {
+  if (gridStyleTargetRow) {
+    gridStyleTargetRow.rules = json;
+    gridStyleTargetRow._dirty = true;
     ruleGridApi.value?.refreshCells({ force: true });
   }
 }
@@ -470,6 +508,15 @@ watch(() => filterState?.value, async (state) => {
       :componentKey="gridOptionsCompKey"
       :ruleRow="gridOptionsTargetRow"
       @save="onGridOptionsSave"
+    />
+    <!-- Grid 样式规则弹窗 -->
+    <GridStyleDialog
+      v-model:show="gridStyleShow"
+      :rulesJson="gridStyleJson"
+      :pageCode="gridStylePageCode"
+      :componentKey="gridStyleCompKey"
+      :ruleRow="gridStyleTargetRow"
+      @save="onGridStyleSave"
     />
   </div>
 </template>
