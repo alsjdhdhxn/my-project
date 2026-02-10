@@ -557,6 +557,7 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
         contextMenuConfig: meta.masterContextMenu?.value,
         rowEditableRules: meta.masterRowEditableRules?.value,
         dataSource,
+        sumFields: meta.masterSumFields?.value,
         notifyError
       });
 
