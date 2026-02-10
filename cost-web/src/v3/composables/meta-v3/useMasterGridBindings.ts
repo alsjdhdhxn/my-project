@@ -224,6 +224,11 @@ export function useMasterGridBindings(params: {
     runtime.markFieldChange?.(row, field, event.oldValue, event.newValue, changeType);
     runtime.masterGridApi?.value?.refreshCells({ rowNodes: [event.node], columns: [field], force: true });
 
+    // 求和字段变化时重新计算底部汇总行
+    if (sumFields.includes(field)) {
+      updatePinnedSumRow();
+    }
+
     if (isUserEditing.value) {
       runtime.runMasterCalc?.(event.node, row);
       const broadcastList = runtime.broadcastFields?.value || [];
