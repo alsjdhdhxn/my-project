@@ -133,15 +133,17 @@ export function useMasterGridBindings(params: {
   const dataSource = params.dataSource;
   const sumFields = params.sumFields ?? (runtime as any).masterSumFields?.value ?? [];
 
-  /** 更新主表底部汇总行（从当前已加载的行计算） */
+  /** 更新主表底部汇总行（从当前已渲染的行数据直接计算） */
   function updatePinnedSumRow() {
     if (!sumFields.length) return;
     const api = runtime.masterGridApi?.value;
     if (!api) return;
+    // SSRM 下 forEachNode 不可靠，改用 getRenderedNodes 取当前已加载的行
+    const renderedNodes = api.getRenderedNodes?.() ?? [];
     const allRows: any[] = [];
-    api.forEachNode((node: any) => {
-      if (node.data) allRows.push(node.data);
-    });
+    for (const node of renderedNodes) {
+      if (node.data && !node.rowPinned) allRows.push(node.data);
+    }
     const sumRow = computeSumRow(allRows, sumFields);
     api.setGridOption('pinnedBottomRowData', sumRow ? [sumRow] : []);
   }
@@ -224,17 +226,17 @@ export function useMasterGridBindings(params: {
     runtime.markFieldChange?.(row, field, event.oldValue, event.newValue, changeType);
     runtime.masterGridApi?.value?.refreshCells({ rowNodes: [event.node], columns: [field], force: true });
 
-    // 求和字段变化时重新计算底部汇总行
-    if (sumFields.includes(field)) {
-      updatePinnedSumRow();
-    }
-
     if (isUserEditing.value) {
       runtime.runMasterCalc?.(event.node, row);
       const broadcastList = runtime.broadcastFields?.value || [];
       if (broadcastList.includes(field)) {
         await runtime.broadcastToDetail?.(masterId, row, field);
       }
+    }
+
+    // 任何单元格变化后都重算汇总（calc 联动可能改了求和字段）
+    if (sumFields.length) {
+      updatePinnedSumRow();
     }
   }
 
