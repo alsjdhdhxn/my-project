@@ -27,13 +27,14 @@ import {
   parseGridOptionsRule,
   parseContextMenuRule,
   parseRowEditableRule,
-  parseRowClassRule,
   parseToolbarRule,
   parseCellEditableRule,
   attachGroupCellRenderer,
   parseColumnOverrideConfig,
   applyColumnOverrides,
-  extractLookupFromColumnOverride
+  extractLookupFromColumnOverride,
+  parseGridStyleRule,
+  applyCellStyleRules
 } from '@/v3/composables/meta-v3/usePageRules';
 import {
   normalizeGridOptions,
@@ -300,8 +301,8 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
   const layoutSplitConfigRef = shallowRef<SplitLayoutConfig | null>(null);
   const masterRowEditableRules = shallowRef<import('@/v3/composables/meta-v3/types').RowEditableRule[]>([]);
   const masterCellEditableRules = shallowRef<import('@/v3/composables/meta-v3/types').CellEditableRule[]>([]);
-  const masterRowClassRules = shallowRef<import('@/v3/composables/meta-v3/types').RowClassRule[]>([]);
-  const detailRowClassRulesByTab = shallowRef<Record<string, import('@/v3/composables/meta-v3/types').RowClassRule[]>>({});
+  const masterRowClassRules = shallowRef<import('@/v3/composables/meta-v3/types').GridStyleRule[]>([]);
+  const detailRowClassRulesByTab = shallowRef<Record<string, import('@/v3/composables/meta-v3/types').GridStyleRule[]>>({});
   const detailRowEditableRulesByTab = shallowRef<Record<string, import('@/v3/composables/meta-v3/types').RowEditableRule[]>>({});
   const detailCellEditableRulesByTab = shallowRef<Record<string, import('@/v3/composables/meta-v3/types').CellEditableRule[]>>({});
   const masterToolbar = shallowRef<ToolbarRule | null>(null);
@@ -578,7 +579,9 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
     masterContextMenu.value = parseContextMenuRule(masterRuleLabel, masterRules, masterComponentConfig);
     masterRowEditableRules.value = parseRowEditableRule(masterRuleLabel, masterRules);
     masterCellEditableRules.value = parseCellEditableRule(masterRuleLabel, masterRules);
-    masterRowClassRules.value = parseRowClassRule(masterRuleLabel, masterRules);
+    masterRowClassRules.value = parseGridStyleRule(masterRuleLabel, masterRules);
+    // 应用主表单元格级样式规则
+    masterColumnDefs.value = applyCellStyleRules(masterColumnDefs.value, masterRowClassRules.value);
     masterToolbar.value = parseToolbarRule(masterRuleLabel, masterRules, masterComponentConfig);
     detailContextMenuDefault.value = null;
 
@@ -629,7 +632,11 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
       const detailGridConfig = getDetailGridComponentConfig(pageComponents.value || [], tab.key);
       detailContextMenuByTab.value[tab.key] = parseContextMenuRule(tab.key, tabRules, detailGridConfig) || detailContextMenuDefault.value;
       detailToolbarByTab.value[tab.key] = parseToolbarRule(tab.key, tabRules, detailGridConfig);
-      detailRowClassRulesByTab.value[tab.key] = parseRowClassRule(tab.key, tabRules);
+      detailRowClassRulesByTab.value[tab.key] = parseGridStyleRule(tab.key, tabRules);
+      // 应用明细表单元格级样式规则
+      if (detailColumnsByTab.value[tab.key]) {
+        detailColumnsByTab.value[tab.key] = applyCellStyleRules(detailColumnsByTab.value[tab.key], detailRowClassRulesByTab.value[tab.key] || []);
+      }
       detailRowEditableRulesByTab.value[tab.key] = parseRowEditableRule(tab.key, tabRules);
       detailCellEditableRulesByTab.value[tab.key] = parseCellEditableRule(tab.key, tabRules);
     }

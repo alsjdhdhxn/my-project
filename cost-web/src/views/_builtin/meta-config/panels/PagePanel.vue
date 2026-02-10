@@ -71,7 +71,7 @@ const ruleColDefs: ColDef[] = [
   {
     field: 'ruleType', headerName: '规则类型', width: 140, editable: true,
     cellEditor: 'agSelectCellEditor',
-    cellEditorParams: { values: ['COLUMN_OVERRIDE', 'CALC', 'TOOLBAR', 'CONTEXT_MENU', 'STYLE', 'VALIDATION', 'LOOKUP', 'BATCH_SELECT', 'DETAIL_LINK', 'BUTTON'] }
+    cellEditorParams: { values: ['COLUMN_OVERRIDE', 'GRID_STYLE', 'GRID_OPTIONS', 'CALC', 'VALIDATION', 'LOOKUP', 'BUTTON', 'BATCH_SELECT', 'DETAIL_LINK', 'ROW_EDITABLE', 'CELL_EDITABLE', 'BROADCAST', 'SUMMARY_CONFIG'] }
   },
   {
     field: 'rules', headerName: '规则内容(JSON)', flex: 1,

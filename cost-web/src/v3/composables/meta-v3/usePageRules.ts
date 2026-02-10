@@ -14,6 +14,7 @@ import type {
   ContextMenuRule,
   RowEditableRule,
   RowClassRule,
+  GridStyleRule,
   ToolbarRule,
   CellEditableRule,
   CellEditableCondition
@@ -576,49 +577,51 @@ export function buildCellEditableCallback(
   };
 }
 
-/** 解析 ROW_CLASS 规则 */
-export function parseRowClassRule(componentKey: string, rules: PageRule[]): RowClassRule[] {
-  const rule = rules.find(r => r.ruleType === 'ROW_CLASS');
+/** 解析 GRID_STYLE / ROW_CLASS 规则（向后兼容） */
+export function parseGridStyleRule(componentKey: string, rules: PageRule[]): GridStyleRule[] {
+  // 优先读 GRID_STYLE，没有则读 ROW_CLASS（向后兼容）
+  const rule = rules.find(r => r.ruleType === 'GRID_STYLE') || rules.find(r => r.ruleType === 'ROW_CLASS');
   if (!rule?.rules) return [];
   try {
     const raw = typeof rule.rules === 'string' ? JSON.parse(rule.rules) : rule.rules;
-    if (Array.isArray(raw)) return raw as RowClassRule[];
-    if (raw && typeof raw === 'object') return [raw as RowClassRule];
+    if (Array.isArray(raw)) return raw as GridStyleRule[];
+    if (raw && typeof raw === 'object') return [raw as GridStyleRule];
     return [];
   } catch (error) {
-    console.warn(`[PageRule] Failed to parse ${componentKey}.ROW_CLASS`, error);
+    console.warn(`[PageRule] Failed to parse ${componentKey}.GRID_STYLE`, error);
     return [];
   }
 }
 
-/** 根据 ROW_CLASS 规则生成 getRowClass 回调 */
-export function buildRowClassCallback(rules: RowClassRule[]): ((params: any) => string | undefined) | undefined {
+/** @deprecated 使用 parseGridStyleRule */
+export function parseRowClassRule(componentKey: string, rules: PageRule[]): GridStyleRule[] {
+  return parseGridStyleRule(componentKey, rules);
+}
+
+/** 条件匹配工具函数 */
+function matchCondition(data: any, rule: GridStyleRule): boolean {
+  const fieldValue = data[rule.field];
+  switch (rule.operator) {
+    case 'notNull': return fieldValue != null;
+    case 'eq': return fieldValue === rule.value;
+    case 'ne': return fieldValue !== rule.value;
+    case 'in': return Array.isArray(rule.value) && rule.value.includes(fieldValue);
+    case 'notIn': return !Array.isArray(rule.value) || !rule.value.includes(fieldValue);
+    default: return false;
+  }
+}
+
+/** 根据 GRID_STYLE 规则生成 getRowClass 回调（兼容旧 className） */
+export function buildRowClassCallback(rules: GridStyleRule[]): ((params: any) => string | undefined) | undefined {
   if (!rules || rules.length === 0) return undefined;
+  const classRules = rules.filter(r => r.className);
+  if (classRules.length === 0) return undefined;
   return (params: any) => {
     const data = params.data;
     if (!data) return undefined;
     const classes: string[] = [];
-    for (const rule of rules) {
-      const fieldValue = data[rule.field];
-      let matched = false;
-      switch (rule.operator) {
-        case 'notNull':
-          matched = fieldValue != null;
-          break;
-        case 'eq':
-          matched = fieldValue === rule.value;
-          break;
-        case 'ne':
-          matched = fieldValue !== rule.value;
-          break;
-        case 'in':
-          matched = Array.isArray(rule.value) && rule.value.includes(fieldValue);
-          break;
-        case 'notIn':
-          matched = !Array.isArray(rule.value) || !rule.value.includes(fieldValue);
-          break;
-      }
-      if (matched && rule.className) {
+    for (const rule of classRules) {
+      if (matchCondition(data, rule) && rule.className) {
         classes.push(rule.className);
       }
     }
@@ -626,39 +629,19 @@ export function buildRowClassCallback(rules: RowClassRule[]): ((params: any) => 
   };
 }
 
-/** 根据 ROW_CLASS 规则生成 getRowStyle 回调（支持直接配置颜色） */
-export function buildRowStyleCallback(rules: RowClassRule[]): ((params: any) => Record<string, string> | undefined) | undefined {
+/** 根据 GRID_STYLE 规则生成 getRowStyle 回调（scope=row 或无 scope 的规则） */
+export function buildRowStyleCallback(rules: GridStyleRule[]): ((params: any) => Record<string, string> | undefined) | undefined {
   if (!rules || rules.length === 0) return undefined;
-  // 检查是否有任何规则配置了 style
-  const hasStyleRules = rules.some(r => r.style);
-  if (!hasStyleRules) return undefined;
+  const rowRules = rules.filter(r => r.style && (!r.scope || r.scope === 'row'));
+  if (rowRules.length === 0) return undefined;
   
   return (params: any) => {
     const data = params.data;
     if (!data) return undefined;
     const mergedStyle: Record<string, string> = {};
-    for (const rule of rules) {
+    for (const rule of rowRules) {
       if (!rule.style) continue;
-      const fieldValue = data[rule.field];
-      let matched = false;
-      switch (rule.operator) {
-        case 'notNull':
-          matched = fieldValue != null;
-          break;
-        case 'eq':
-          matched = fieldValue === rule.value;
-          break;
-        case 'ne':
-          matched = fieldValue !== rule.value;
-          break;
-        case 'in':
-          matched = Array.isArray(rule.value) && rule.value.includes(fieldValue);
-          break;
-        case 'notIn':
-          matched = !Array.isArray(rule.value) || !rule.value.includes(fieldValue);
-          break;
-      }
-      if (matched && rule.style) {
+      if (matchCondition(data, rule)) {
         if (rule.style.backgroundColor) mergedStyle.backgroundColor = rule.style.backgroundColor;
         if (rule.style.color) mergedStyle.color = rule.style.color;
         if (rule.style.fontWeight) mergedStyle.fontWeight = rule.style.fontWeight;
@@ -667,6 +650,58 @@ export function buildRowStyleCallback(rules: RowClassRule[]): ((params: any) => 
     }
     return Object.keys(mergedStyle).length > 0 ? mergedStyle : undefined;
   };
+}
+
+/** 根据 GRID_STYLE 规则生成单元格级 cellStyle 回调（scope=cell 的规则） */
+export function buildCellStyleRules(rules: GridStyleRule[]): Map<string, (params: any) => Record<string, string> | undefined> {
+  const result = new Map<string, (params: any) => Record<string, string> | undefined>();
+  if (!rules || rules.length === 0) return result;
+  
+  const cellRules = rules.filter(r => r.style && r.scope === 'cell' && r.targetFields?.length);
+  if (cellRules.length === 0) return result;
+
+  // 按 targetField 分组
+  const rulesByField = new Map<string, GridStyleRule[]>();
+  for (const rule of cellRules) {
+    for (const field of rule.targetFields!) {
+      const list = rulesByField.get(field) || [];
+      list.push(rule);
+      rulesByField.set(field, list);
+    }
+  }
+
+  for (const [field, fieldRules] of rulesByField) {
+    result.set(field, (params: any) => {
+      const data = params.data;
+      if (!data) return undefined;
+      const mergedStyle: Record<string, string> = {};
+      for (const rule of fieldRules) {
+        if (!rule.style) continue;
+        if (matchCondition(data, rule)) {
+          if (rule.style.backgroundColor) mergedStyle.backgroundColor = rule.style.backgroundColor;
+          if (rule.style.color) mergedStyle.color = rule.style.color;
+          if (rule.style.fontWeight) mergedStyle.fontWeight = rule.style.fontWeight;
+          if (rule.style.fontStyle) mergedStyle.fontStyle = rule.style.fontStyle;
+        }
+      }
+      return Object.keys(mergedStyle).length > 0 ? mergedStyle : undefined;
+    });
+  }
+
+  return result;
+}
+
+/** 将单元格样式规则应用到列定义上 */
+export function applyCellStyleRules(columns: ColDef[], rules: GridStyleRule[]): ColDef[] {
+  const cellStyleMap = buildCellStyleRules(rules);
+  if (cellStyleMap.size === 0) return columns;
+  return columns.map(col => {
+    const field = col.field;
+    if (!field) return col;
+    const cellStyleFn = cellStyleMap.get(field);
+    if (!cellStyleFn) return col;
+    return { ...col, cellStyle: cellStyleFn };
+  });
 }
 
 /**

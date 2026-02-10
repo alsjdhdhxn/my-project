@@ -158,19 +158,29 @@ export type CellEditableRule = {
   editableFields: string[];
 };
 
-/** 行级样式规则 */
-export type RowClassRule = {
+/** Grid 样式规则（行颜色、单元格颜色、字体颜色） */
+export type GridStyleRule = {
+  /** 条件判断字段 */
   field: string;
   operator: 'notNull' | 'eq' | 'ne' | 'in' | 'notIn';
   value?: any;
-  className?: string;
+  /** 作用范围：row=整行, cell=指定单元格 (默认 row) */
+  scope?: 'row' | 'cell';
+  /** scope=cell 时，样式作用于哪些字段 */
+  targetFields?: string[];
+  /** 样式 */
   style?: {
     backgroundColor?: string;
     color?: string;
     fontWeight?: string;
     fontStyle?: string;
   };
+  /** @deprecated 使用 style 代替 */
+  className?: string;
 };
+
+/** @deprecated 使用 GridStyleRule */
+export type RowClassRule = GridStyleRule;
 
 /** @deprecated 使用 ButtonItemRule 代替 */
 export type ToolbarItemRule = ButtonItemRule;
