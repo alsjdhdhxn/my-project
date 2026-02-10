@@ -329,7 +329,28 @@ export function applyColumnOverrides(columns: ColDef[], overrides: ColumnOverrid
     if (override.searchable === true && updated.filter === false) updated.filter = true;
     // 支持下拉框编辑器
     if (override.cellEditor) updated.cellEditor = override.cellEditor;
-    if (override.cellEditorParams) updated.cellEditorParams = override.cellEditorParams;
+    if (override.cellEditorParams) {
+      const params = override.cellEditorParams;
+      if (params.mode === 'static') {
+        // 纯值模式：values 可能是数组或逗号分隔字符串
+        const values = Array.isArray(params.values)
+          ? params.values
+          : typeof params.values === 'string' ? params.values.split(',').map((v: string) => v.trim()) : [];
+        updated.cellEditorParams = { values };
+      } else if (params.mode === 'ref') {
+        // 关联查询模式：后端已通过 LEFT JOIN 返回 xxxLabel 字段
+        // valueFormatter 展示 label，实际值还是原字段
+        const labelField = field + 'Label';
+        updated.valueFormatter = (p: any) => {
+          if (p.data && p.data[labelField] != null) return p.data[labelField];
+          return p.value ?? '';
+        };
+        // cellEditorParams 透传给前端（后续可用于构建下拉选项）
+        updated.cellEditorParams = params;
+      } else {
+        updated.cellEditorParams = params;
+      }
+    }
     // 支持对比值渲染
     if (override.rulesConfig?.compare?.enabled) {
       const compare = override.rulesConfig.compare;

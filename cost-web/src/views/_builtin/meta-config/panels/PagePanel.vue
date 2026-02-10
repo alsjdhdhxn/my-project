@@ -417,6 +417,7 @@ watch(() => filterState?.value, async (state) => {
       :rulesJson="colOverrideJson"
       :pageCode="colOverridePageCode"
       :componentKey="colOverrideCompKey"
+      :ruleRow="colOverrideTargetRow"
       @save="onColOverrideSave"
     />
   </div>
