@@ -3,7 +3,9 @@ import { ref, onMounted, inject, watch } from 'vue';
 import type { Ref } from 'vue';
 import { NButton, NSpace, NPopconfirm, NTabs, NTabPane, useMessage } from 'naive-ui';
 import { AgGridVue } from 'ag-grid-vue3';
-import type { GridApi, GridReadyEvent, ColDef, CellValueChangedEvent, GetContextMenuItemsParams } from 'ag-grid-community';
+import type { GridApi, GridReadyEvent, ColDef, CellValueChangedEvent, GetContextMenuItemsParams, ICellRendererParams } from 'ag-grid-community';
+import ButtonConfigDialog from './ButtonConfigDialog.vue';
+import ColumnOverrideDialog from './ColumnOverrideDialog.vue';
 import {
   fetchAllPageComponents, savePageComponent, deletePageComponent,
   fetchRulesByComponent, savePageRule, deletePageRule
@@ -33,8 +35,26 @@ const compColDefs: ColDef[] = [
   { field: 'sortOrder', headerName: '排序', width: 70, editable: true, cellDataType: 'number' },
   { field: 'description', headerName: '描述', width: 150, editable: true },
   {
-    field: 'componentConfig', headerName: 'componentConfig', width: 200, editable: true,
-    cellEditor: 'agLargeTextCellEditor', cellEditorPopup: true
+    field: 'componentConfig', headerName: 'componentConfig', width: 200,
+    editable: false,
+    cellRenderer: (params: ICellRendererParams) => {
+      const el = document.createElement('span');
+      let count = 0;
+      try {
+        const cfg = params.value ? JSON.parse(params.value) : {};
+        if (cfg.tabs) {
+          count = cfg.tabs.reduce((sum: number, t: any) => sum + (t.buttons?.length || 0), 0);
+        } else {
+          count = cfg.buttons?.length || 0;
+        }
+      } catch { /* ignore */ }
+      el.textContent = count > 0 ? `⚙ 配置按钮(${count})` : '⚙ 配置按钮';
+      el.style.cursor = 'pointer';
+      el.style.color = count > 0 ? '#18a058' : '#999';
+      el.style.fontWeight = count > 0 ? '500' : 'normal';
+      el.addEventListener('click', () => openBtnConfigDialog(params.data));
+      return el;
+    }
   }
 ];
 
@@ -53,14 +73,84 @@ const ruleColDefs: ColDef[] = [
     cellEditorParams: { values: ['COLUMN_OVERRIDE', 'CALC', 'TOOLBAR', 'CONTEXT_MENU', 'STYLE', 'VALIDATION', 'LOOKUP', 'BATCH_SELECT', 'DETAIL_LINK', 'BUTTON'] }
   },
   {
-    field: 'rules', headerName: '规则内容(JSON)', flex: 1, editable: true,
-    cellEditor: 'agLargeTextCellEditor', cellEditorPopup: true
+    field: 'rules', headerName: '规则内容(JSON)', flex: 1,
+    editable: (params: any) => params.data?.ruleType !== 'COLUMN_OVERRIDE',
+    cellEditor: 'agLargeTextCellEditor', cellEditorPopup: true,
+    cellRenderer: (params: ICellRendererParams) => {
+      if (params.data?.ruleType === 'COLUMN_OVERRIDE') {
+        const el = document.createElement('span');
+        let count = 0;
+        try {
+          const arr = params.value ? JSON.parse(params.value) : [];
+          count = Array.isArray(arr) ? arr.length : 0;
+        } catch { /* ignore */ }
+        el.textContent = count > 0 ? `⚙ 列覆盖配置(${count})` : '⚙ 列覆盖配置';
+        el.style.cursor = 'pointer';
+        el.style.color = count > 0 ? '#2080f0' : '#999';
+        el.style.fontWeight = count > 0 ? '500' : 'normal';
+        el.addEventListener('click', () => openColOverrideDialog(params.data));
+        return el;
+      }
+      // 其他类型正常显示文本
+      const el = document.createElement('span');
+      el.textContent = params.value || '';
+      el.style.overflow = 'hidden';
+      el.style.textOverflow = 'ellipsis';
+      el.style.whiteSpace = 'nowrap';
+      return el;
+    }
   },
   { field: 'sortOrder', headerName: '排序', width: 70, editable: true, cellDataType: 'number' },
   { field: 'description', headerName: '描述', width: 150, editable: true }
 ];
 
 const defaultColDef: ColDef = { sortable: true, resizable: true, flex: 0, suppressHeaderMenuButton: true };
+
+// ---- 按钮配置弹窗 ----
+const btnDialogShow = ref(false);
+const btnDialogConfig = ref('');
+const btnDialogCompType = ref('GRID');
+const btnDialogCompKey = ref('');
+let btnDialogTargetRow: any = null;
+
+function openBtnConfigDialog(row: any) {
+  btnDialogConfig.value = row.componentConfig || '';
+  btnDialogCompType.value = row.componentType === 'TAB_CONTAINER' ? 'TABS' : 'GRID';
+  btnDialogCompKey.value = row.componentKey || '';
+  btnDialogTargetRow = row;
+  btnDialogShow.value = true;
+}
+
+function onBtnConfigSave(config: string) {
+  if (btnDialogTargetRow) {
+    btnDialogTargetRow.componentConfig = config;
+    btnDialogTargetRow._dirty = true;
+    compGridApi.value?.refreshCells({ force: true });
+  }
+}
+
+// ---- 列覆盖配置弹窗 ----
+const colOverrideShow = ref(false);
+const colOverrideJson = ref('');
+const colOverridePageCode = ref('');
+const colOverrideCompKey = ref('');
+let colOverrideTargetRow: any = null;
+
+function openColOverrideDialog(row: any) {
+  colOverrideJson.value = row.rules || '[]';
+  colOverridePageCode.value = row.pageCode || '';
+  colOverrideCompKey.value = row.componentKey || '';
+  colOverrideTargetRow = row;
+  colOverrideShow.value = true;
+}
+
+function onColOverrideSave(json: string) {
+  if (colOverrideTargetRow) {
+    colOverrideTargetRow.rules = json;
+    colOverrideTargetRow._dirty = true;
+    ruleGridApi.value?.refreshCells({ force: true });
+  }
+}
 
 async function loadComponents() {
   try {
@@ -316,6 +406,22 @@ watch(() => filterState?.value, async (state) => {
         />
       </div>
     </div>
+    <!-- 按钮配置弹窗 -->
+    <ButtonConfigDialog
+      v-model:show="btnDialogShow"
+      :componentConfig="btnDialogConfig"
+      :componentType="btnDialogCompType"
+      :componentKey="btnDialogCompKey"
+      @save="onBtnConfigSave"
+    />
+    <!-- 列覆盖配置弹窗 -->
+    <ColumnOverrideDialog
+      v-model:show="colOverrideShow"
+      :rulesJson="colOverrideJson"
+      :pageCode="colOverridePageCode"
+      :componentKey="colOverrideCompKey"
+      @save="onColOverrideSave"
+    />
   </div>
 </template>
 
