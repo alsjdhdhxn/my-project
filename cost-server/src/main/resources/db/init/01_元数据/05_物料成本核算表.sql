@@ -160,10 +160,13 @@ INSERT INTO T_COST_PAGE_COMPONENT (ID, PAGE_CODE, COMPONENT_KEY, COMPONENT_TYPE,
 VALUES (113, 'cost-pinggu', 'root', 'LAYOUT', NULL, '{"direction":"vertical","gap":8}', NULL, 0, 0, SYSTIMESTAMP, SYSTIMESTAMP, 'system');
 
 INSERT INTO T_COST_PAGE_COMPONENT (ID, PAGE_CODE, COMPONENT_KEY, COMPONENT_TYPE, PARENT_KEY, COMPONENT_CONFIG, REF_TABLE_CODE, SORT_ORDER, DELETED, CREATE_TIME, UPDATE_TIME, CREATE_BY)
-VALUES (114, 'cost-pinggu', 'masterGrid', 'GRID', 'root', '{"height":"50%","selectionMode":"single","buttons":[{"action":"addRow","label":"新增"},{"action":"copyRow","label":"复制","requiresRow":true},{"action":"deleteRow","label":"删除","requiresRow":true},{"action":"generateFromBom","label":"由BOM生成明细","requiresRow":true,"procedure":"P_COST_BOM_INSERT","params":[{"source":"data.id","mode":"IN","jdbcType":"NUMERIC"}]},{"action":"syncPrice","label":"同步采购价","procedure":"P_PINGGU_COMPUTE_ALL","params":[]},{"action":"saveGridConfig","label":"保存列配置"},{"action":"save","label":"保存"}]}', 'CostPinggu', 1, 0, SYSTIMESTAMP, SYSTIMESTAMP, 'system');
+VALUES (114, 'cost-pinggu', 'masterGrid', 'GRID', 'root', '{"height":"50%","selectionMode":"single","broadcast":["apexPl","pPerpack","sPerback","xPerback"],"buttons":[{"action":"addRow","label":"新增"},{"action":"copyRow","label":"复制","requiresRow":true},{"action":"deleteRow","label":"删除","requiresRow":true},{"action":"generateFromBom","label":"由BOM生成明细","requiresRow":true,"procedure":"P_COST_BOM_INSERT","params":[{"source":"data.id","mode":"IN","jdbcType":"NUMERIC"}]},{"action":"syncPrice","label":"同步采购价","procedure":"P_PINGGU_COMPUTE_ALL","params":[]},{"action":"saveGridConfig","label":"保存列配置"},{"action":"save","label":"保存"}]}', 'CostPinggu', 1, 0, SYSTIMESTAMP, SYSTIMESTAMP, 'system');
 
 INSERT INTO T_COST_PAGE_COMPONENT (ID, PAGE_CODE, COMPONENT_KEY, COMPONENT_TYPE, PARENT_KEY, COMPONENT_CONFIG, REF_TABLE_CODE, SORT_ORDER, DELETED, CREATE_TIME, UPDATE_TIME, CREATE_BY)
-VALUES (115, 'cost-pinggu', 'detailTabs', 'TABS', 'root', '{"mode":"multi","tabs":[{"key":"material","title":"原料/辅料","tableCode":"CostMaterial","buttons":[{"action":"addRow","label":"新增","position":"both","toolbarAlias":"新增原料"},{"action":"copyRow","label":"复制","requiresRow":true,"position":"context"},{"action":"deleteRow","label":"删除","requiresRow":true,"position":"both","toolbarAlias":"删除原料"},{"action":"saveGridConfig","label":"保存列配置","position":"context"},{"action":"clipboard.copy","label":"复制","position":"context"},{"action":"clipboard.paste","label":"粘贴","position":"context"}]},{"key":"package","title":"包材","tableCode":"CostPackage","buttons":[{"action":"addRow","label":"新增","position":"both","toolbarAlias":"新增包材"},{"action":"copyRow","label":"复制","requiresRow":true,"position":"context"},{"action":"deleteRow","label":"删除","requiresRow":true,"position":"both","toolbarAlias":"删除包材"},{"action":"saveGridConfig","label":"保存列配置","position":"context"},{"action":"clipboard.copy","label":"复制","position":"context"},{"action":"clipboard.paste","label":"粘贴","position":"context"}]}]}', NULL, 2, 0, SYSTIMESTAMP, SYSTIMESTAMP, 'system');
+VALUES (115, 'cost-pinggu', 'material', 'DETAIL_GRID', 'root', '{"title":"原料/辅料","buttons":[{"action":"addRow","label":"明细新增","position":"both","toolbarAlias":"新增原料"},{"action":"copyRow","label":"明细复制","requiresRow":true,"position":"context"},{"action":"deleteRow","label":"明细删除","requiresRow":true,"position":"both","toolbarAlias":"删除原料"},{"action":"saveGridConfig","label":"保存列配置","position":"context"},{"action":"clipboard.copy","label":"复制","position":"context"},{"action":"clipboard.paste","label":"粘贴","position":"context"}]}', 'CostMaterial', 2, 0, SYSTIMESTAMP, SYSTIMESTAMP, 'system');
+
+INSERT INTO T_COST_PAGE_COMPONENT (ID, PAGE_CODE, COMPONENT_KEY, COMPONENT_TYPE, PARENT_KEY, COMPONENT_CONFIG, REF_TABLE_CODE, SORT_ORDER, DELETED, CREATE_TIME, UPDATE_TIME, CREATE_BY)
+VALUES (116, 'cost-pinggu', 'package', 'DETAIL_GRID', 'root', '{"title":"包材","buttons":[{"action":"addRow","label":"明细新增","position":"both","toolbarAlias":"新增包材"},{"action":"copyRow","label":"明细复制","requiresRow":true,"position":"context"},{"action":"deleteRow","label":"明细删除","requiresRow":true,"position":"both","toolbarAlias":"删除包材"},{"action":"saveGridConfig","label":"保存列配置","position":"context"},{"action":"clipboard.copy","label":"复制","position":"context"},{"action":"clipboard.paste","label":"粘贴","position":"context"}]}', 'CostPackage', 3, 0, SYSTIMESTAMP, SYSTIMESTAMP, 'system');
 
 -- ============================================================
 -- 6. 页面规则 - masterGrid
@@ -210,19 +213,16 @@ INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, SO
 VALUES (544, 'cost-pinggu', 'masterGrid', 'ROW_CLASS', '[{"field":"memo","operator":"eq","value":"ERP未搭建BOM","style":{"backgroundColor":"#ffcccc"}}]', 0, 0, SYSTIMESTAMP, SYSTIMESTAMP, 'system');
 
 -- ============================================================
--- 7. 页面规则 - detailTabs
+-- 7. 页面规则 - masterGrid (全局配置：BROADCAST, SUMMARY_CONFIG)
 -- ============================================================
 INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, SORT_ORDER, DELETED, CREATE_TIME, UPDATE_TIME, CREATE_BY)
-VALUES (488, 'cost-pinggu', 'detailTabs', 'ROLE_BINDING', '{"role":"DETAIL_TABS"}', 0, 0, SYSTIMESTAMP, SYSTIMESTAMP, 'system');
+VALUES (488, 'cost-pinggu', 'masterGrid', 'ROLE_BINDING', '{"role":"MASTER_GRID"}', 0, 0, SYSTIMESTAMP, SYSTIMESTAMP, 'system');
 
 INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, SORT_ORDER, DELETED, CREATE_TIME, UPDATE_TIME, CREATE_BY)
-VALUES (489, 'cost-pinggu', 'detailTabs', 'RELATION', '{"masterKey":"masterGrid","detailKey":"detailTabs"}', 0, 0, SYSTIMESTAMP, SYSTIMESTAMP, 'system');
+VALUES (490, 'cost-pinggu', 'masterGrid', 'BROADCAST', '["apexPl","pPerpack","sPerback","xPerback"]', 0, 0, SYSTIMESTAMP, SYSTIMESTAMP, 'system');
 
 INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, SORT_ORDER, DELETED, CREATE_TIME, UPDATE_TIME, CREATE_BY)
-VALUES (490, 'cost-pinggu', 'detailTabs', 'BROADCAST', '["apexPl","pPerpack","sPerback","xPerback"]', 0, 0, SYSTIMESTAMP, SYSTIMESTAMP, 'system');
-
-INSERT INTO T_COST_PAGE_RULE (ID, PAGE_CODE, COMPONENT_KEY, RULE_TYPE, RULES, SORT_ORDER, DELETED, CREATE_TIME, UPDATE_TIME, CREATE_BY)
-VALUES (491, 'cost-pinggu', 'detailTabs', 'SUMMARY_CONFIG', '{"enabled":true,"groupLabelField":"groupLabel","groupLabelHeader":"分类","summaryColumns":[{"field":"totalAmount","headerName":"汇总金额","width":null},{"field":"rowCount","headerName":"行数","width":null}],"summaryAggregates":[{"sourceField":"costBatch","targetField":"totalAmount","algorithm":"SUM"},{"sourceField":"costBatch","targetField":"rowCount","algorithm":"COUNT"}]}', 0, 0, SYSTIMESTAMP, SYSTIMESTAMP, 'system');
+VALUES (491, 'cost-pinggu', 'masterGrid', 'SUMMARY_CONFIG', '{"enabled":true,"groupLabelField":"groupLabel","groupLabelHeader":"分类","summaryColumns":[{"field":"totalAmount","headerName":"汇总金额","width":null},{"field":"rowCount","headerName":"行数","width":null}],"summaryAggregates":[{"sourceField":"costBatch","targetField":"totalAmount","algorithm":"SUM"},{"sourceField":"costBatch","targetField":"rowCount","algorithm":"COUNT"}]}', 0, 0, SYSTIMESTAMP, SYSTIMESTAMP, 'system');
 
 -- ============================================================
 -- 8. 页面规则 - material (原辅料明细)

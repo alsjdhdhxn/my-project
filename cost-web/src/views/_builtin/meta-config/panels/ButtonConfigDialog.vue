@@ -8,7 +8,6 @@ import {
 const props = defineProps<{
   show: boolean;
   componentConfig: string;
-  componentType: string; // GRID or TABS
   componentKey: string;
 }>();
 
@@ -42,23 +41,13 @@ type TabButtons = {
   buttons: ButtonItem[];
 };
 
-// 当前编辑的按钮列表（GRID 组件）
+// 当前编辑的按钮列表
 const buttons = ref<ButtonItem[]>([]);
-// 当前编辑的 tab 按钮列表（TABS 组件）
-const tabButtonsList = ref<TabButtons[]>([]);
 // 当前展开编辑的按钮索引
 const expandedIndex = ref<number | null>(null);
-// TABS 模式下当前选中的 tab
-const activeTabKey = ref<string>('');
-
-const isTabsMode = computed(() => props.componentType === 'TABS');
 
 // 当前显示的按钮列表
-const currentButtons = computed(() => {
-  if (!isTabsMode.value) return buttons.value;
-  const tab = tabButtonsList.value.find(t => t.tabKey === activeTabKey.value);
-  return tab?.buttons || [];
-});
+const currentButtons = computed(() => buttons.value);
 
 // 内置 action 选项
 const builtinActions = [
@@ -154,20 +143,9 @@ watch(() => props.show, (val) => {
   expandedIndex.value = null;
   try {
     const config = props.componentConfig ? JSON.parse(props.componentConfig) : {};
-    if (isTabsMode.value) {
-      const tabs = config.tabs || [];
-      tabButtonsList.value = tabs.map((tab: any) => ({
-        tabKey: tab.key || '',
-        tabTitle: tab.title || tab.key || '',
-        buttons: (tab.buttons || []).map(parseButtonFromRaw),
-      }));
-      activeTabKey.value = tabButtonsList.value[0]?.tabKey || '';
-    } else {
-      buttons.value = (config.buttons || []).map(parseButtonFromRaw);
-    }
+    buttons.value = (config.buttons || []).map(parseButtonFromRaw);
   } catch {
     buttons.value = [];
-    tabButtonsList.value = [];
   }
 });
 
@@ -177,14 +155,12 @@ function addButton() {
     action: '', label: '', position: 'context', requiresRow: false,
     execType: 'builtin', params: [],
   };
-  const list = getCurrentButtonList();
-  list.push(newBtn);
-  expandedIndex.value = list.length - 1;
+  buttons.value.push(newBtn);
+  expandedIndex.value = buttons.value.length - 1;
 }
 
 function removeButton(index: number) {
-  const list = getCurrentButtonList();
-  list.splice(index, 1);
+  buttons.value.splice(index, 1);
   if (expandedIndex.value === index) expandedIndex.value = null;
   else if (expandedIndex.value !== null && expandedIndex.value > index) expandedIndex.value--;
 }
@@ -194,7 +170,7 @@ function toggleExpand(index: number) {
 }
 
 function moveButton(index: number, direction: -1 | 1) {
-  const list = getCurrentButtonList();
+  const list = buttons.value;
   const target = index + direction;
   if (target < 0 || target >= list.length) return;
   [list[index], list[target]] = [list[target], list[index]];
@@ -209,12 +185,6 @@ function addParam(btn: ButtonItem) {
 
 function removeParam(btn: ButtonItem, index: number) {
   btn.params?.splice(index, 1);
-}
-
-function getCurrentButtonList(): ButtonItem[] {
-  if (!isTabsMode.value) return buttons.value;
-  const tab = tabButtonsList.value.find(t => t.tabKey === activeTabKey.value);
-  return tab?.buttons || [];
 }
 
 function onActionChange(btn: ButtonItem) {
@@ -255,18 +225,7 @@ function getPositionLabel(pos?: string): string {
 function handleSave() {
   try {
     const config = props.componentConfig ? JSON.parse(props.componentConfig) : {};
-    if (isTabsMode.value) {
-      const tabs = config.tabs || [];
-      for (const tabBtns of tabButtonsList.value) {
-        const tab = tabs.find((t: any) => t.key === tabBtns.tabKey);
-        if (tab) {
-          tab.buttons = tabBtns.buttons.map(serializeButton);
-        }
-      }
-      config.tabs = tabs;
-    } else {
-      config.buttons = buttons.value.map(serializeButton);
-    }
+    config.buttons = buttons.value.map(serializeButton);
     emit('save', JSON.stringify(config));
     emit('update:show', false);
     message.success('按钮配置已更新');
@@ -286,21 +245,6 @@ function handleSave() {
     :mask-closable="false"
     :segmented="{ content: true, footer: true }"
   >
-    <!-- TABS 模式：tab 切换 -->
-    <div v-if="isTabsMode && tabButtonsList.length > 1" class="tab-switcher">
-      <NSpace size="small">
-        <NButton
-          v-for="tab in tabButtonsList"
-          :key="tab.tabKey"
-          :type="activeTabKey === tab.tabKey ? 'primary' : 'default'"
-          size="small"
-          @click="activeTabKey = tab.tabKey; expandedIndex = null"
-        >
-          {{ tab.tabTitle }} ({{ tab.buttons.length }})
-        </NButton>
-      </NSpace>
-    </div>
-
     <!-- 按钮列表 -->
     <div class="button-list" style="max-height: 70vh; overflow-y: auto">
       <NEmpty v-if="currentButtons.length === 0" description="暂无按钮配置" />

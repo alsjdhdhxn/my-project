@@ -23,27 +23,35 @@ export interface TabConfig {
   variantKey?: string; // 变体列分组键
 }
 
-/** TABS 组件配置（从数据库读取） */
-export interface TabsComponentConfig {
-  mode: 'group' | 'multi';
+/** DETAIL_GRID 组件配置（从数据库读取） */
+export interface DetailGridComponentConfig {
+  title?: string;
+  mode?: 'group' | 'multi';
   groupField?: string;
-  tabs: Array<{
-    key: string;
-    title: string;
-    value?: string; // group 模式的分组值
-    values?: string[]; // group 模式的多个分组值
-    tableCode?: string; // multi 模式的表代码
-    columns: string[];
-    initialSort?: Array<{ colId: string; sort: 'asc' | 'desc' }>; // AG Grid 初始排序
-    variantKey?: string; // 变体列分组键
-  }>;
+  groupValue?: string;
+  groupValues?: string[];
+  columns?: string[];
+  initialSort?: Array<{ colId: string; sort: 'asc' | 'desc' }>;
+  variantKey?: string;
+  buttons?: any[];
+}
+
+/** 主表 GRID 组件的全局配置（calcRules/aggregates 等从这里读取） */
+export interface MasterGridGlobalConfig {
   broadcast?: string[];
   calcRules?: CalcRule[];
   aggregates?: AggRule[];
-  postProcess?: string; // 聚合后处理表达式
-  masterCalcRules?: CalcRule[]; // 主表计算规则
-  nestedConfig?: NestedConfig; // 三层嵌套配置
+  postProcess?: string;
+  masterCalcRules?: CalcRule[];
+  nestedConfig?: NestedConfig;
+  enterpriseConfig?: EnterpriseConfig;
+  height?: string;
+  selectionMode?: string;
+  buttons?: any[];
 }
+
+/** @deprecated 保留类型别名，旧代码引用不报错 */
+export type TabsComponentConfig = MasterGridGlobalConfig;
 
 /** 页面组件（从 API 返回） */
 export interface PageComponent {
@@ -135,20 +143,14 @@ export function parsePageComponents(
     return null;
   }
 
-  // 解析主表组件的企业版配置
-  const masterConfig = parseComponentConfig<{ enterpriseConfig?: EnterpriseConfig }>(masterGrid.componentConfig);
+  // 解析主表组件配置（包含全局配置 + 企业版配置）
+  const masterConfig = parseComponentConfig<MasterGridGlobalConfig>(masterGrid.componentConfig);
   const enterpriseConfig = masterConfig?.enterpriseConfig;
 
-  const detailKey = options?.detailTabsKey;
-  let detailTabs = detailKey ? findComponent(components, detailKey, 'TABS') : null;
-  if (!detailTabs) {
-    const tabs = findComponentsByType(components, 'TABS');
-    if (tabs.length === 1) detailTabs = tabs[0];
-  }
-  if (!detailTabs) {
-    detailTabs = findComponentByType(components, 'TABS');
-  }
-  if (!detailTabs) {
+  // 查找所有 DETAIL_GRID 组件，每个代表一个从表 tab
+  const detailGrids = findComponentsByType(components, 'DETAIL_GRID');
+
+  if (detailGrids.length === 0) {
     // 单表模式
     return {
       masterTableCode: masterGrid.refTableCode || '',
@@ -164,58 +166,71 @@ export function parsePageComponents(
     };
   }
 
-  const config = parseComponentConfig<TabsComponentConfig>(detailTabs.componentConfig);
-  if (!config) {
-    console.warn('[Parser] TABS 组件配置解析失败');
-    return null;
-  }
+  // 按 sortOrder 排序
+  detailGrids.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
 
-  // 解析 Tab 配置
-  const tabs = parseTabConfig(config);
-  const broadcastList = config.broadcast || [];
+  // 从每个 DETAIL_GRID 的 componentConfig 解析 tab 配置
+  const tabs: TabConfig[] = detailGrids.map(dg => {
+    const dgConfig = parseComponentConfig<DetailGridComponentConfig>(dg.componentConfig);
+    return {
+      key: dg.componentKey,
+      title: dgConfig?.title || dg.componentKey,
+      mode: dgConfig?.mode || 'multi',
+      groupField: dgConfig?.groupField,
+      groupValue: dgConfig?.groupValue,
+      groupValues: dgConfig?.groupValues,
+      tableCode: dg.refTableCode || undefined,
+      columns: dgConfig?.columns || [],
+      initialSort: dgConfig?.initialSort,
+      variantKey: dgConfig?.variantKey
+    };
+  });
+
+  const broadcastList = masterConfig?.broadcast || [];
 
   return {
     masterTableCode: masterGrid.refTableCode || '',
-    detailTableCode: detailTabs.refTableCode || '',
+    detailTableCode: detailGrids[0]?.refTableCode || '',
     tabs,
     broadcast: broadcastList,
     broadcastFields: broadcastList,
-    calcRules: config.calcRules || [],
-    aggregates: config.aggregates || [],
-    groupField: config.groupField,
-    mode: config.mode || 'group',
-    postProcess: config.postProcess,
-    masterCalcRules: config.masterCalcRules || [],
+    calcRules: masterConfig?.calcRules || [],
+    aggregates: masterConfig?.aggregates || [],
+    groupField: undefined,
+    mode: 'multi',
+    postProcess: masterConfig?.postProcess,
+    masterCalcRules: masterConfig?.masterCalcRules || [],
     enterpriseConfig,
-    nestedConfig: config.nestedConfig
+    nestedConfig: masterConfig?.nestedConfig
   };
 }
 
 /**
- * 解析 Tab 配置
+ * @deprecated 不再使用，DETAIL_GRID 组件直接解析
  */
-export function parseTabConfig(config: TabsComponentConfig): TabConfig[] {
-  return config.tabs.map(tab => ({
+export function parseTabConfig(config: any): TabConfig[] {
+  if (!config?.tabs) return [];
+  return config.tabs.map((tab: any) => ({
     key: tab.key,
     title: tab.title,
     mode: config.mode || 'group',
     groupField: config.groupField,
     groupValue: tab.value,
-    groupValues: tab.values, // 多个分组值
+    groupValues: tab.values,
     tableCode: tab.tableCode,
     columns: tab.columns || [],
-    initialSort: tab.initialSort, // AG Grid 初始排序
-    variantKey: tab.variantKey // 变体列分组键
+    initialSort: tab.initialSort,
+    variantKey: tab.variantKey
   }));
 }
 
 /**
  * 解析计算规则（从 COMPONENT_CONFIG）
  */
-export function parseCalcRules(config: TabsComponentConfig): CalcRule[] {
-  if (!config.calcRules) return [];
+export function parseCalcRules(config: any): CalcRule[] {
+  if (!config?.calcRules) return [];
 
-  return config.calcRules.map((rule, idx) => ({
+  return config.calcRules.map((rule: any, idx: number) => ({
     field: rule.field,
     expression: rule.expression,
     triggerFields: rule.triggerFields || [],
@@ -227,10 +242,10 @@ export function parseCalcRules(config: TabsComponentConfig): CalcRule[] {
 /**
  * 解析聚合规则（从 COMPONENT_CONFIG）
  */
-export function parseAggRules(config: TabsComponentConfig): AggRule[] {
-  if (!config.aggregates) return [];
+export function parseAggRules(config: any): AggRule[] {
+  if (!config?.aggregates) return [];
 
-  return config.aggregates.map(rule => ({
+  return config.aggregates.map((rule: any) => ({
     sourceField: rule.sourceField,
     targetField: rule.targetField,
     algorithm: rule.algorithm,

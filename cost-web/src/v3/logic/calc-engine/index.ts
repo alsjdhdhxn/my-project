@@ -20,6 +20,8 @@ export {
 export {
   type TabConfig,
   type TabsComponentConfig,
+  type DetailGridComponentConfig,
+  type MasterGridGlobalConfig,
   type PageComponent,
   type ParsedPageConfig,
   type EnterpriseConfig,

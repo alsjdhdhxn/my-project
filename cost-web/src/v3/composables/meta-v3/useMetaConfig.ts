@@ -84,8 +84,8 @@ function hasComponentType(components: PageComponentWithRules[], type: string): b
 function injectMasterDetailRoot(components: PageComponentWithRules[]): PageComponentWithRules[] {
   if (hasComponentType(components, 'MASTER_DETAIL')) return components;
   const hasGrid = hasComponentType(components, 'GRID');
-  const hasTabs = hasComponentType(components, 'TABS');
-  if (!hasGrid || !hasTabs) return components;
+  const hasDetailGrid = hasComponentType(components, 'DETAIL_GRID');
+  if (!hasGrid || !hasDetailGrid) return components;
   const pageCode = components[0]?.pageCode || '';
   return [{
     id: -1,
@@ -138,17 +138,10 @@ function getComponentConfig(components: PageComponentWithRules[], key: string): 
 }
 
 /**
- * 获取 TABS 组件的 componentConfig（用于读取 tab 的按钮配置）
+ * 获取 DETAIL_GRID 组件的 componentConfig（按 componentKey 查找）
  */
-function getTabsComponentConfig(components: PageComponentWithRules[]): string | undefined {
-  for (const component of components) {
-    if (component.componentType === 'TABS') return component.componentConfig;
-    if (Array.isArray(component.children)) {
-      const config = getTabsComponentConfig(component.children);
-      if (config) return config;
-    }
-  }
-  return undefined;
+function getDetailGridComponentConfig(components: PageComponentWithRules[], key: string): string | undefined {
+  return getComponentConfig(components, key);
 }
 
 function resolveLayoutKeys(
@@ -201,8 +194,8 @@ function resolveLayoutKeys(
   }
 
   if (!detailTabsKey) {
-    const tabsKeys = collectComponentKeysByType(components, 'TABS');
-    if (tabsKeys.length === 1) detailTabsKey = tabsKeys[0];
+    const detailGridKeys = collectComponentKeysByType(components, 'DETAIL_GRID');
+    if (detailGridKeys.length > 0) detailTabsKey = 'detailTabs'; // 占位符，实际 tab 从 DETAIL_GRID 解析
   }
 
   return {
@@ -360,24 +353,33 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
     }
 
     const rulesMap = rulesByComponent.value;
-    const tabsComponentKeys = collectComponentKeysByType(components, 'TABS');
-    const ruleKeys = resolvedDetailTabsKey ? [resolvedDetailTabsKey] : tabsComponentKeys;
+
+    // 从主表规则中读取 broadcast/summary 等全局配置覆盖
+    const masterRuleKeysForGlobal = uniqueKeys([resolvedMasterGridKey, 'master', 'masterGrid']);
+    const masterRulesForGlobal = collectRulesByKeys(rulesMap, masterRuleKeysForGlobal);
+    const masterRuleLabelForGlobal = resolvedMasterGridKey || 'master';
+
+    const broadcastOverride = parseBroadcastRuleConfig(masterRuleLabelForGlobal, masterRulesForGlobal);
+    if (broadcastOverride !== null) {
+      config.broadcast = broadcastOverride;
+      config.broadcastFields = broadcastOverride;
+    }
+
+    const summaryOverride = parseSummaryConfigRule(masterRuleLabelForGlobal, masterRulesForGlobal);
+    if (summaryOverride !== null) {
+      config.nestedConfig = mergeNestedConfig(config.nestedConfig, summaryOverride);
+    }
+
+    // 从表级别的全局规则（detailTabs 级别的规则仍然支持）
+    const detailGridKeys = collectComponentKeysByType(components, 'DETAIL_GRID');
     let detailTabsRules: PageRule[] = [];
-    let detailTabsRuleLabel = resolvedDetailTabsKey || ruleKeys[0] || 'tabs';
+    let detailTabsRuleLabel = resolvedDetailTabsKey || 'detailTabs';
 
-    if (ruleKeys.length > 0) {
-      detailTabsRules = getComponentRules(rulesMap, ruleKeys);
-      detailTabsRuleLabel = resolvedDetailTabsKey || ruleKeys[0] || 'tabs';
-      const broadcastOverride = parseBroadcastRuleConfig(detailTabsRuleLabel, detailTabsRules);
-      if (broadcastOverride !== null) {
-        config.broadcast = broadcastOverride;
-        config.broadcastFields = broadcastOverride;
-      }
-
-      const summaryOverride = parseSummaryConfigRule(detailTabsRuleLabel, detailTabsRules);
-      if (summaryOverride !== null) {
-        config.nestedConfig = mergeNestedConfig(config.nestedConfig, summaryOverride);
-      }
+    if (resolvedDetailTabsKey) {
+      detailTabsRules = getComponentRules(rulesMap, [resolvedDetailTabsKey]);
+    } else if (detailGridKeys.length > 0) {
+      // 尝试从 detailTabs key 读取全局从表规则
+      detailTabsRules = getComponentRules(rulesMap, ['detailTabs']);
     }
 
     const resolvedDetailType = layoutDetailTypeRef.value?.toLowerCase();
@@ -561,8 +563,6 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
 
     // 获取主表组件配置（用于读取按钮）
     const masterComponentConfig = getComponentConfig(pageComponents.value || [], resolvedMasterGridKey || 'masterGrid');
-    // 获取 TABS 组件配置（用于读取 tab 的按钮）
-    const tabsComponentConfig = getTabsComponentConfig(pageComponents.value || []);
 
     masterContextMenu.value = parseContextMenuRule(masterRuleLabel, masterRules, masterComponentConfig);
     masterRowEditableRules.value = parseRowEditableRule(masterRuleLabel, masterRules);
@@ -571,15 +571,9 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
     masterToolbar.value = parseToolbarRule(masterRuleLabel, masterRules, masterComponentConfig);
     detailContextMenuDefault.value = null;
 
-    const tabsComponentKeys = collectComponentKeysByType(pageComponents.value || [], 'TABS');
-    const detailRuleKeys = resolvedDetailTabsKey ? [resolvedDetailTabsKey] : tabsComponentKeys;
-    let detailTabsRules: PageRule[] = [];
-    let detailTabsRuleLabel = resolvedDetailTabsKey || detailRuleKeys[0] || 'tabs';
-    if (detailRuleKeys.length > 0) {
-      detailTabsRules = getComponentRules(rulesMap, detailRuleKeys);
-      detailTabsRuleLabel = resolvedDetailTabsKey || detailRuleKeys[0] || 'tabs';
-    }
-    detailContextMenuDefault.value = parseContextMenuRule(detailTabsRuleLabel, detailTabsRules);
+    // 从表全局默认规则（从 detailTabs key 读取）
+    const detailGlobalRules = getComponentRules(rulesMap, ['detailTabs']);
+    detailContextMenuDefault.value = parseContextMenuRule('detailTabs', detailGlobalRules);
 
     for (const tab of config.tabs || []) {
       const tabRules = getComponentRules(rulesMap, [tab.key]);
@@ -611,9 +605,10 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
         detailCalcRulesByTab.value[tab.key] = compileCalcRules(calcRules, `${pageCode}_${tab.key}`);
       }
 
-      // 从 TABS 组件配置中读取 tab 的按钮
-      detailContextMenuByTab.value[tab.key] = parseContextMenuRule(tab.key, tabRules, tabsComponentConfig, tab.key) || detailContextMenuDefault.value;
-      detailToolbarByTab.value[tab.key] = parseToolbarRule(tab.key, tabRules, tabsComponentConfig, tab.key);
+      // 从 DETAIL_GRID 组件配置中读取 tab 的按钮
+      const detailGridConfig = getDetailGridComponentConfig(pageComponents.value || [], tab.key);
+      detailContextMenuByTab.value[tab.key] = parseContextMenuRule(tab.key, tabRules, detailGridConfig) || detailContextMenuDefault.value;
+      detailToolbarByTab.value[tab.key] = parseToolbarRule(tab.key, tabRules, detailGridConfig);
       detailRowClassRulesByTab.value[tab.key] = parseRowClassRule(tab.key, tabRules);
       detailRowEditableRulesByTab.value[tab.key] = parseRowEditableRule(tab.key, tabRules);
       detailCellEditableRulesByTab.value[tab.key] = parseCellEditableRule(tab.key, tabRules);

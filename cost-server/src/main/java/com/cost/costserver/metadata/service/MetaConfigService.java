@@ -211,8 +211,8 @@ public class MetaConfigService {
             } else if (configObj instanceof java.sql.Clob clob) {
                 try { config = clob.getSubString(1, (int) clob.length()); } catch (Exception ignored) {}
             }
-            // GRID 的 refTableCode
-            if ("GRID".equals(type) && refTableCode != null && !refTableCode.isEmpty()) {
+            // GRID / DETAIL_GRID 的 refTableCode
+            if (("GRID".equals(type) || "DETAIL_GRID".equals(type)) && refTableCode != null && !refTableCode.isEmpty()) {
                 tableCodes.add(refTableCode);
             }
             // TABS 的 componentConfig -> tabs[].tableCode

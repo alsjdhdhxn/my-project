@@ -109,13 +109,11 @@ const defaultColDef: ColDef = { sortable: true, resizable: true, flex: 0, suppre
 // ---- 按钮配置弹窗 ----
 const btnDialogShow = ref(false);
 const btnDialogConfig = ref('');
-const btnDialogCompType = ref('GRID');
 const btnDialogCompKey = ref('');
 let btnDialogTargetRow: any = null;
 
 function openBtnConfigDialog(row: any) {
   btnDialogConfig.value = row.componentConfig || '';
-  btnDialogCompType.value = row.componentType === 'TAB_CONTAINER' ? 'TABS' : 'GRID';
   btnDialogCompKey.value = row.componentKey || '';
   btnDialogTargetRow = row;
   btnDialogShow.value = true;
@@ -410,7 +408,6 @@ watch(() => filterState?.value, async (state) => {
     <ButtonConfigDialog
       v-model:show="btnDialogShow"
       :componentConfig="btnDialogConfig"
-      :componentType="btnDialogCompType"
       :componentKey="btnDialogCompKey"
       @save="onBtnConfigSave"
     />

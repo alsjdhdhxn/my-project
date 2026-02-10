@@ -629,7 +629,7 @@ public class RoleManageService {
                         log.warn("解析TABS组件配置失败, pageCode={}, error={}", pageCode, e.getMessage());
                     }
                 }
-            } else if ("GRID".equals(componentType)) {
+            } else if ("GRID".equals(componentType) || "DETAIL_GRID".equals(componentType)) {
                 // GRID 组件
                 String rulesJson = columnOverrideRules.get(componentKey);
                 // 也尝试 masterGrid 和 master 的映射

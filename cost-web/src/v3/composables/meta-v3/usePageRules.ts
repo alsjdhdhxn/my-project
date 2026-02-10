@@ -213,7 +213,6 @@ export function parseGridOptionsRule(componentKey: string, rules: PageRule[]): G
  */
 type ComponentConfigWithButtons = {
   buttons?: ButtonItemRule[];
-  tabs?: Array<{ key: string; buttons?: ButtonItemRule[] }>;
 };
 
 /**
@@ -233,43 +232,18 @@ function parseComponentConfigButtons(componentConfig?: string): ButtonItemRule[]
 }
 
 /**
- * 解析 TABS 组件中某个 tab 的按钮
- */
-function parseTabButtons(componentConfig?: string, tabKey?: string): ButtonItemRule[] | null {
-  if (!componentConfig || !tabKey) return null;
-  try {
-    const config = JSON.parse(componentConfig) as ComponentConfigWithButtons;
-    const tab = config.tabs?.find(t => t.key === tabKey);
-    if (tab && Array.isArray(tab.buttons)) {
-      return tab.buttons;
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-/**
  * 解析按钮规则
- * 优先从 componentConfig.buttons 读取，如果没有则从 rules 中读取（兼容旧数据）
+ * 优先从 componentConfig.buttons 读取，如果没有则从 rules 中读取
  */
-export function parseButtonRule(componentKey: string, rules: PageRule[], componentConfig?: string, tabKey?: string): ButtonRule | null {
-  // 优先从 componentConfig 读取
-  let buttons: ButtonItemRule[] | null = null;
-  
-  if (tabKey) {
-    // 如果是 tab，从 tabs[].buttons 读取
-    buttons = parseTabButtons(componentConfig, tabKey);
-  } else {
-    // 否则从 componentConfig.buttons 读取
-    buttons = parseComponentConfigButtons(componentConfig);
-  }
+export function parseButtonRule(componentKey: string, rules: PageRule[], componentConfig?: string): ButtonRule | null {
+  // 优先从 componentConfig.buttons 读取
+  const buttons = parseComponentConfigButtons(componentConfig);
   
   if (buttons && buttons.length > 0) {
     return { items: buttons };
   }
   
-  // 兼容：从 rules 中读取 BUTTON 类型
+  // 从 rules 中读取 BUTTON 类型
   const rule = getRuleByType(rules, 'BUTTON');
   if (!rule?.rules) return null;
   try {
@@ -327,8 +301,8 @@ function filterButtonsByPosition(items: ButtonItemRule[], position: 'context' | 
 /**
  * 解析右键菜单规则（从按钮配置中提取 position='context' 的按钮）
  */
-export function parseContextMenuRule(componentKey: string, rules: PageRule[], componentConfig?: string, tabKey?: string): ContextMenuRule | null {
-  const buttonRule = parseButtonRule(componentKey, rules, componentConfig, tabKey);
+export function parseContextMenuRule(componentKey: string, rules: PageRule[], componentConfig?: string): ContextMenuRule | null {
+  const buttonRule = parseButtonRule(componentKey, rules, componentConfig);
   if (!buttonRule) return null;
   const contextItems = filterButtonsByPosition(buttonRule.items, 'context');
   return contextItems.length > 0 ? { items: contextItems } : null;
@@ -652,8 +626,8 @@ export function buildRowStyleCallback(rules: RowClassRule[]): ((params: any) => 
 /**
  * 解析工具栏规则（从按钮配置中提取 position='toolbar' 的按钮）
  */
-export function parseToolbarRule(componentKey: string, rules: PageRule[], componentConfig?: string, tabKey?: string): ToolbarRule | null {
-  const buttonRule = parseButtonRule(componentKey, rules, componentConfig, tabKey);
+export function parseToolbarRule(componentKey: string, rules: PageRule[], componentConfig?: string): ToolbarRule | null {
+  const buttonRule = parseButtonRule(componentKey, rules, componentConfig);
   if (!buttonRule) return null;
   const toolbarItems = filterButtonsByPosition(buttonRule.items, 'toolbar');
   return toolbarItems.length > 0 ? { items: toolbarItems } : null;
