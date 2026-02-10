@@ -13,7 +13,6 @@
       :getContextMenuItems="contextMenuItems"
       :rowHeight="28"
       :headerHeight="28"
-      :pinnedBottomRowData="pinnedBottomRowData"
       v-bind="gridRuntimeOptions"
       @grid-ready="onGridReady"
       @row-data-updated="updateHeightFromGrid"
@@ -32,7 +31,6 @@ import type { ColDef, GridReadyEvent } from 'ag-grid-community';
 import type { TabConfig, RowData } from '@/v3/logic/calc-engine';
 import { autoSizeColumnsOnReady, buildGridRuntimeOptions, type ResolvedGridOptions } from '@/v3/composables/meta-v3/grid-options';
 import { isFlagTrue } from '@/v3/composables/meta-v3/cell-style';
-import { computeSumRow } from '@/v3/composables/meta-v3/usePageRules';
 
 const props = defineProps<{
   tab: TabConfig;
@@ -136,14 +134,17 @@ const defaultColDef = computed<ColDef>(() => ({
   suppressHeaderMenuButton: true
 }));
 
-const gridRuntimeOptions = computed(() => buildGridRuntimeOptions(props.gridOptions));
-
-// 汇总行（pinnedBottomRowData）
-const pinnedBottomRowData = computed(() => {
-  if (!props.sumFields?.length) return undefined;
-  const sumRow = computeSumRow(props.rows || [], props.sumFields);
-  return sumRow ? [sumRow] : undefined;
+const gridRuntimeOptions = computed(() => {
+  const opts = buildGridRuntimeOptions(props.gridOptions);
+  // 有求和字段时启用 AG Grid 原生底部汇总行
+  if (props.sumFields?.length) {
+    opts.grandTotalRow = 'bottom';
+  }
+  return opts;
 });
+
+// AG Grid 原生汇总：aggFunc 已通过 applyColumnOverrides 设置在列上
+// grandTotalRow 通过 gridRuntimeOptions 注入
 
 function getRowId(params: any) {
   return String(params.data?.id ?? '');
@@ -204,11 +205,6 @@ watch(
   (rows) => {
     if (gridApi.value) {
       gridApi.value.setGridOption('rowData', rows || []);
-      // 更新汇总行
-      if (props.sumFields?.length) {
-        const sumRow = computeSumRow(rows || [], props.sumFields);
-        gridApi.value.setGridOption('pinnedBottomRowData', sumRow ? [sumRow] : []);
-      }
     }
   },
   { deep: false }
