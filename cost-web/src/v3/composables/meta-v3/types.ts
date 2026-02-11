@@ -155,12 +155,18 @@ export type RowEditableRule = {
 /** 单元格级可编辑规则 - 条件匹配时只允许编辑指定字段 */
 export type CellEditableCondition = {
   field: string;
-  operator: 'notNull' | 'eq' | 'ne' | 'in' | 'notIn';
+  operator: 'notNull' | 'isNull' | 'eq' | 'ne' | 'in' | 'notIn';
   value?: any;
 };
 
 export type CellEditableRule = {
-  condition: CellEditableCondition;
+  /** 新格式：多条件 + 逻辑组合 */
+  logic?: 'AND' | 'OR';
+  conditions?: CellEditableCondition[];
+  /** 旧格式兼容：单条件 */
+  condition?: CellEditableCondition;
+  /** SQL 判断（后端执行） */
+  sqlCheck?: string;
   editableFields: string[];
 };
 

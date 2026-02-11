@@ -9,6 +9,7 @@ import ColumnOverrideDialog from './ColumnOverrideDialog.vue';
 import GridOptionsDialog from './GridOptionsDialog.vue';
 import GridStyleDialog from './GridStyleDialog.vue';
 import RuleConfigDialog from './RuleConfigDialog.vue';
+import CellEditableDialog from './CellEditableDialog.vue';
 import {
   fetchAllPageComponents, savePageComponent, deletePageComponent,
   fetchRulesByComponent, savePageRule, deletePageRule
@@ -93,7 +94,7 @@ const ruleColDefs: ColDef[] = [
   },
   {
     field: 'rules', headerName: '规则内容(JSON)', flex: 1,
-    editable: (params: any) => params.data?.ruleType !== 'COLUMN_OVERRIDE' && params.data?.ruleType !== 'GRID_OPTIONS' && params.data?.ruleType !== 'GRID_STYLE' && params.data?.ruleType !== 'CALC' && params.data?.ruleType !== 'AGGREGATE' && params.data?.ruleType !== 'VALIDATION',
+    editable: (params: any) => params.data?.ruleType !== 'COLUMN_OVERRIDE' && params.data?.ruleType !== 'GRID_OPTIONS' && params.data?.ruleType !== 'GRID_STYLE' && params.data?.ruleType !== 'CALC' && params.data?.ruleType !== 'AGGREGATE' && params.data?.ruleType !== 'VALIDATION' && params.data?.ruleType !== 'CELL_EDITABLE',
     cellEditor: 'agLargeTextCellEditor', cellEditorPopup: true,
     cellRenderer: (params: ICellRendererParams) => {
       if (params.data?.ruleType === 'COLUMN_OVERRIDE') {
@@ -157,6 +158,21 @@ const ruleColDefs: ColDef[] = [
         el.style.color = count > 0 ? '#2080f0' : '#999';
         el.style.fontWeight = count > 0 ? '500' : 'normal';
         el.addEventListener('click', () => openRuleConfigDialog(params.data));
+        return el;
+      }
+      // CELL_EDITABLE 可视化配置
+      if (ruleType === 'CELL_EDITABLE') {
+        const el = document.createElement('span');
+        let count = 0;
+        try {
+          const arr = params.value ? JSON.parse(params.value) : [];
+          count = Array.isArray(arr) ? arr.length : 0;
+        } catch { /* ignore */ }
+        el.textContent = count > 0 ? `🔒 可编辑规则(${count})` : '🔒 可编辑规则';
+        el.style.cursor = 'pointer';
+        el.style.color = count > 0 ? '#f0a020' : '#999';
+        el.style.fontWeight = count > 0 ? '500' : 'normal';
+        el.addEventListener('click', () => openCellEditableDialog(params.data));
         return el;
       }
       const el = document.createElement('span');
@@ -283,6 +299,30 @@ function openRuleConfigDialog(row: any) {
 function onRuleConfigSave(json: string) {
   if (ruleConfigTargetRow) {
     ruleConfigTargetRow.rules = json;
+    if (selectedComp.value?.pageCode && selectedComp.value?.componentKey) {
+      loadRules(selectedComp.value.pageCode, selectedComp.value.componentKey);
+    }
+  }
+}
+
+// ---- 单元格可编辑规则弹窗 ----
+const cellEditableShow = ref(false);
+const cellEditableJson = ref('');
+const cellEditablePageCode = ref('');
+const cellEditableCompKey = ref('');
+let cellEditableTargetRow: any = null;
+
+function openCellEditableDialog(row: any) {
+  cellEditableJson.value = row.rules || '[]';
+  cellEditablePageCode.value = row.pageCode || '';
+  cellEditableCompKey.value = row.componentKey || '';
+  cellEditableTargetRow = row;
+  cellEditableShow.value = true;
+}
+
+function onCellEditableSave(json: string) {
+  if (cellEditableTargetRow) {
+    cellEditableTargetRow.rules = json;
     if (selectedComp.value?.pageCode && selectedComp.value?.componentKey) {
       loadRules(selectedComp.value.pageCode, selectedComp.value.componentKey);
     }
@@ -595,6 +635,15 @@ watch(() => filterState?.value, async (state) => {
       :componentKey="ruleConfigCompKey"
       :ruleRow="ruleConfigTargetRow"
       @save="onRuleConfigSave"
+    />
+    <!-- 单元格可编辑规则弹窗 -->
+    <CellEditableDialog
+      v-model:show="cellEditableShow"
+      :rulesJson="cellEditableJson"
+      :pageCode="cellEditablePageCode"
+      :componentKey="cellEditableCompKey"
+      :ruleRow="cellEditableTargetRow"
+      @save="onCellEditableSave"
     />
   </div>
 </template>

@@ -586,16 +586,20 @@ export function parseCellEditableRule(componentKey: string, rules: PageRule[]): 
   }
 }
 
-/** 检查条件是否匹配 */
+/** 检查单个条件是否匹配 */
 function checkCondition(data: any, condition: CellEditableCondition): boolean {
   const fieldValue = data[condition.field];
   switch (condition.operator) {
     case 'notNull':
       return fieldValue != null;
+    case 'isNull':
+      return fieldValue == null;
     case 'eq':
-      return fieldValue === condition.value;
+      // eslint-disable-next-line eqeqeq
+      return fieldValue == condition.value;
     case 'ne':
-      return fieldValue !== condition.value;
+      // eslint-disable-next-line eqeqeq
+      return fieldValue != condition.value;
     case 'in':
       return Array.isArray(condition.value) && condition.value.includes(fieldValue);
     case 'notIn':
@@ -603,6 +607,24 @@ function checkCondition(data: any, condition: CellEditableCondition): boolean {
     default:
       return false;
   }
+}
+
+/** 检查一条规则的所有前端条件是否匹配 */
+function checkRuleConditions(data: any, rule: CellEditableRule): boolean {
+  // 新格式：多条件
+  if (rule.conditions && rule.conditions.length > 0) {
+    const logic = rule.logic || 'AND';
+    if (logic === 'OR') {
+      return rule.conditions.some(c => checkCondition(data, c));
+    }
+    return rule.conditions.every(c => checkCondition(data, c));
+  }
+  // 旧格式：单条件
+  if (rule.condition) {
+    return checkCondition(data, rule.condition);
+  }
+  // 没有前端条件（可能只有 sqlCheck），默认通过
+  return true;
 }
 
 /** 根据 CELL_EDITABLE 规则生成单元格级 editable 回调 */
@@ -628,8 +650,7 @@ export function buildCellEditableCallback(
     // 检查 CELL_EDITABLE 规则
     if (cellRules && cellRules.length > 0) {
       for (const rule of cellRules) {
-        if (checkCondition(data, rule.condition)) {
-          // 条件匹配，只有 editableFields 中的字段可编辑
+        if (checkRuleConditions(data, rule)) {
           return rule.editableFields.includes(field);
         }
       }
