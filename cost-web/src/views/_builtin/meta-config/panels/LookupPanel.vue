@@ -64,12 +64,14 @@ function handleAdd() {
 }
 
 async function handleSave() {
-  const row = selectedRow.value;
-  if (!row) { message.warning('请先选中一行'); return; }
-  if (!row.lookupCode || !row.lookupName) { message.warning('lookupCode和名称不能为空'); return; }
+  const dirtyRows = rowData.value.filter((r: any) => r._dirty || r._isNew);
+  if (dirtyRows.length === 0) { message.info('没有需要保存的修改'); return; }
+  for (const row of dirtyRows) {
+    if (!row.lookupCode || !row.lookupName) { message.warning('lookupCode和名称不能为空'); return; }
+  }
   try {
-    await saveLookupConfig(row);
-    message.success('保存成功');
+    await Promise.all(dirtyRows.map((r: any) => saveLookupConfig(r)));
+    message.success(`已保存 ${dirtyRows.length} 条记录`);
     await loadData();
   } catch { message.error('保存失败'); }
 }

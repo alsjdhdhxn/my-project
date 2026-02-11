@@ -338,12 +338,15 @@ function addComponent() {
 }
 
 async function saveComp() {
-  const row = selectedComp.value;
-  if (!row) { message.warning('请先选中一行'); return; }
-  if (!row.pageCode || !row.componentKey) { message.warning('pageCode和componentKey不能为空'); return; }
+  // 收集所有修改过或新增的行
+  const dirtyRows = compRows.value.filter(r => r._dirty || r._isNew);
+  if (dirtyRows.length === 0) { message.info('没有需要保存的修改'); return; }
+  for (const row of dirtyRows) {
+    if (!row.pageCode || !row.componentKey) { message.warning(`组件 pageCode 和 componentKey 不能为空`); return; }
+  }
   try {
-    await savePageComponent(row);
-    message.success('保存成功');
+    await Promise.all(dirtyRows.map(r => savePageComponent(r)));
+    message.success(`已保存 ${dirtyRows.length} 条组件`);
     await loadComponents();
   } catch { message.error('保存失败'); }
 }
@@ -380,12 +383,15 @@ function addRule() {
 }
 
 async function saveRule() {
-  const row = selectedRule.value;
-  if (!row) { message.warning('请先选中一条规则'); return; }
-  if (!row.ruleType) { message.warning('规则类型不能为空'); return; }
+  // 收集所有修改过或新增的规则行
+  const dirtyRows = ruleRows.value.filter(r => r._dirty || r._isNew);
+  if (dirtyRows.length === 0) { message.info('没有需要保存的修改'); return; }
+  for (const row of dirtyRows) {
+    if (!row.ruleType) { message.warning('规则类型不能为空'); return; }
+  }
   try {
-    await savePageRule(row);
-    message.success('保存成功');
+    await Promise.all(dirtyRows.map(r => savePageRule(r)));
+    message.success(`已保存 ${dirtyRows.length} 条规则`);
     if (selectedComp.value?.pageCode && selectedComp.value?.componentKey) {
       await loadRules(selectedComp.value.pageCode, selectedComp.value.componentKey);
     }
@@ -512,7 +518,7 @@ watch(() => filterState?.value, async (state) => {
             </template>
             确定删除？
           </NPopconfirm>
-          <NButton size="small" @click="saveRule" :disabled="!selectedRule">保存规则</NButton>
+          <NButton size="small" @click="saveRule">保存规则</NButton>
         </NSpace>
       </div>
       <div class="grid-wrapper">

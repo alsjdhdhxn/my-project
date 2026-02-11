@@ -130,12 +130,14 @@ function addTable() {
 }
 
 async function saveTable() {
-  const row = selectedTable.value;
-  if (!row) { message.warning('请先选中一行'); return; }
-  if (!row.tableCode || !row.tableName) { message.warning('tableCode和表名称不能为空'); return; }
+  const dirtyRows = tableRows.value.filter(r => r._dirty || r._isNew);
+  if (dirtyRows.length === 0) { message.info('没有需要保存的修改'); return; }
+  for (const row of dirtyRows) {
+    if (!row.tableCode || !row.tableName) { message.warning('tableCode和表名称不能为空'); return; }
+  }
   try {
-    await saveTableMeta(row);
-    message.success('保存成功');
+    await Promise.all(dirtyRows.map(r => saveTableMeta(r)));
+    message.success(`已保存 ${dirtyRows.length} 条表记录`);
     await loadTables();
   } catch { message.error('保存失败'); }
 }
@@ -172,12 +174,14 @@ function addColumn() {
 }
 
 async function saveColumn() {
-  const row = selectedCol.value;
-  if (!row) { message.warning('请先选中一列'); return; }
-  if (!row.fieldName || !row.columnName) { message.warning('fieldName和columnName不能为空'); return; }
+  const dirtyRows = colRows.value.filter(r => r._dirty || r._isNew);
+  if (dirtyRows.length === 0) { message.info('没有需要保存的修改'); return; }
+  for (const row of dirtyRows) {
+    if (!row.fieldName || !row.columnName) { message.warning('fieldName和columnName不能为空'); return; }
+  }
   try {
-    await saveColumnMeta(row);
-    message.success('保存成功');
+    await Promise.all(dirtyRows.map(r => saveColumnMeta(r)));
+    message.success(`已保存 ${dirtyRows.length} 条列记录`);
     if (selectedTable.value?.id) await loadColumns(selectedTable.value.id);
   } catch { message.error('保存失败'); }
 }
@@ -389,7 +393,7 @@ watch(() => filterState?.value, async (state) => {
             </template>
             确定删除？
           </NPopconfirm>
-          <NButton size="small" @click="saveColumn" :disabled="!selectedCol">保存列</NButton>
+          <NButton size="small" @click="saveColumn">保存列</NButton>
         </NSpace>
       </div>
       <div class="grid-wrapper">

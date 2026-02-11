@@ -140,19 +140,20 @@ function expandAndShow(id: number) {
 }
 
 async function handleSave() {
-  const row = selectedRow.value;
-  if (!row) { message.warning('请先选中一行'); return; }
-  if (!row.resourceName) { message.warning('名称不能为空'); return; }
-  const toSave = { ...row };
-  delete toSave._treePath;
-  if (toSave._isNew) {
-    delete toSave.id;
-    delete toSave._isNew;
-    delete toSave._dirty;
+  const dirtyRows: any[] = [];
+  gridApi.value?.forEachNode(node => { if (node.data?._dirty || node.data?._isNew) dirtyRows.push(node.data); });
+  if (dirtyRows.length === 0) { message.info('没有需要保存的修改'); return; }
+  for (const row of dirtyRows) {
+    if (!row.resourceName) { message.warning('名称不能为空'); return; }
   }
   try {
-    await saveResource(toSave);
-    message.success('保存成功');
+    await Promise.all(dirtyRows.map(r => {
+      const toSave = { ...r };
+      delete toSave._treePath;
+      if (toSave._isNew) { delete toSave.id; delete toSave._isNew; delete toSave._dirty; }
+      return saveResource(toSave);
+    }));
+    message.success(`已保存 ${dirtyRows.length} 条记录`);
     await loadData();
   } catch (e) {
     message.error('保存失败');
