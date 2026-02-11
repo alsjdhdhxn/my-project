@@ -136,7 +136,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { AgGridVue } from 'ag-grid-vue3';
 import { NSplit, NSpace, NButton, NDropdown, useDialog } from 'naive-ui';
 import DetailRowRendererV3 from '@/v3/components/detail/DetailRowRendererV3.vue';
@@ -532,6 +532,11 @@ function handleMasterGridReady(event: any) {
 function refreshDetailRowHeight() {
   masterGridApi.value?.resetRowHeights();
 }
+
+// 切换 tab/堆叠 模式时重算展开行高度
+watch(detailViewMode, () => {
+  nextTick(() => masterGridApi.value?.resetRowHeights());
+});
 
 function onDetailCellValueChanged(event: any, masterId: number, tabKey: string, masterRowKey?: string) {
   const field = event.colDef?.field;
