@@ -59,17 +59,35 @@ export function useMasterGridBindings(params: {
   const gridOptions = params.gridOptions || null;
 
   const cellClassRules = DIRTY_CELL_CLASS_RULES;
-  const rowEditableRules = params.rowEditableRules
-    ?? (runtime as any).masterRowEditableRules?.value
-    ?? [];
-  const cellEditableRules = params.cellEditableRules
-    ?? (runtime as any).masterCellEditableRules?.value
-    ?? [];
-  
-  // 优先使用 CELL_EDITABLE 规则，否则使用 ROW_EDITABLE 规则
-  const editableCallback = cellEditableRules.length > 0
-    ? buildCellEditableCallback(cellEditableRules, rowEditableRules)
-    : buildRowEditableCallback(rowEditableRules);
+
+  // 缓存 editable 回调，规则变化时自动重建
+  let _cachedCellRules: any = null;
+  let _cachedRowRules: any = null;
+  let _cachedEditableCallback: ((params: any) => boolean) | undefined;
+
+  function getEditableCallback(): ((params: any) => boolean) | undefined {
+    const cellRules = (runtime as any).masterCellEditableRules?.value
+      ?? params.cellEditableRules ?? [];
+    const rowRules = (runtime as any).masterRowEditableRules?.value
+      ?? params.rowEditableRules ?? [];
+    // 规则引用没变就复用缓存
+    if (cellRules === _cachedCellRules && rowRules === _cachedRowRules) {
+      return _cachedEditableCallback;
+    }
+    _cachedCellRules = cellRules;
+    _cachedRowRules = rowRules;
+    if (cellRules.length > 0) {
+      _cachedEditableCallback = buildCellEditableCallback(cellRules, rowRules);
+    } else if (rowRules.length > 0) {
+      _cachedEditableCallback = buildRowEditableCallback(rowRules);
+    } else {
+      _cachedEditableCallback = undefined;
+    }
+    return _cachedEditableCallback;
+  }
+
+  // 初始回调（用于 contextMenu 等需要引用的地方）
+  const editableCallback = getEditableCallback();
 
   const defaultColDef: ColDef = {
     sortable: true,
@@ -78,7 +96,8 @@ export function useMasterGridBindings(params: {
     editable: (p: any) => {
       // 汇总行不可编辑
       if (p.node?.rowPinned) return false;
-      if (editableCallback) return editableCallback(p);
+      const cb = getEditableCallback();
+      if (cb) return cb(p);
       return true;
     },
     wrapHeaderText: true,
@@ -87,22 +106,26 @@ export function useMasterGridBindings(params: {
     suppressHeaderMenuButton: true
   };
 
-  function wrapColumnEditable(def: ColDef, callback: (params: any) => boolean) {
+  function wrapColumnEditable(def: ColDef) {
     if (!def || wrappedEditableColumns.has(def)) return;
     const existing = def.editable;
     def.editable = (params: any) => {
       const base = typeof existing === 'function' ? existing(params) : existing === false ? false : true;
-      return base && callback(params);
+      // 动态获取最新的 editable 回调，确保 WebSocket 推送后规则立即生效
+      const cb = getEditableCallback();
+      if (cb) return base && cb(params);
+      return base;
     };
     wrappedEditableColumns.add(def);
   }
 
-  if (editableCallback && params.columnDefs) {
+  // 始终 watch columnDefs，因为规则可能通过 WebSocket 动态添加
+  if (params.columnDefs) {
     watch(
       params.columnDefs,
       (defs) => {
         if (!Array.isArray(defs)) return;
-        defs.forEach(def => wrapColumnEditable(def, editableCallback));
+        defs.forEach(def => wrapColumnEditable(def));
       },
       { immediate: true }
     );

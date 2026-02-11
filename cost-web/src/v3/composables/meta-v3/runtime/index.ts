@@ -620,6 +620,38 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     // V3 强制使用 SSRM，不需要预加载数据，由 Grid 自动触发
   }
 
+  /** 热重载元数据配置（WebSocket 推送触发） */
+  async function reloadMetadata() {
+    console.log(`[MetaRuntime] reloadMetadata for ${pageCode}`);
+    const componentsOk = await loadComponentsRaw();
+    if (!componentsOk) return;
+    parseConfigRaw();
+    await loadMetaRaw();
+    compileRulesRaw();
+    refreshAutoFeatures();
+
+    const api = masterGridApi.value;
+    if (!api) return;
+
+    // 更新列定义（新的 COLUMN_OVERRIDE、精度、宽度等）
+    const newDefs = meta.masterColumnDefs.value;
+    if (newDefs?.length) {
+      api.setGridOption('columnDefs', newDefs);
+    }
+
+    // 强制 AG Grid 重新读取 defaultColDef，使 editable 回调拿到最新规则
+    const masterKey = meta.masterGridKey.value || findFirstGridKey(meta.pageComponents.value || []);
+    const gridState = masterKey ? (componentStateByKey.value[masterKey] as any) : null;
+    if (gridState?.defaultColDef) {
+      api.setGridOption('defaultColDef', { ...gridState.defaultColDef });
+    }
+
+    // 强制刷新所有单元格，让 editable/style 等回调重新执行
+    api.refreshCells({ force: true });
+    // 刷新数据
+    api.refreshServerSide?.({ purge: false });
+  }
+
   return {
     isReady,
     status: runtimeStatus,
@@ -627,6 +659,7 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     features: resolvedFeatures,
     reportComponentError,
     init,
+    reloadMetadata,
     loadComponents,
     parseConfig,
     loadMeta,

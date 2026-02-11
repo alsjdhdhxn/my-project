@@ -1,0 +1,16 @@
+{
+  "enabled": true,
+  "name": "禁止自动Git提交",
+  "description": "拦截所有shell命令，禁止agent自动执行git commit/push等操作，所有git提交由用户手动完成",
+  "version": "1",
+  "when": {
+    "type": "preToolUse",
+    "toolTypes": [
+      "shell"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "检查即将执行的shell命令，如果包含 git commit、git push、git add 等git写操作，必须停止执行并告知用户自行操作。git status、git log、git diff 等只读命令可以放行。"
+  }
+}

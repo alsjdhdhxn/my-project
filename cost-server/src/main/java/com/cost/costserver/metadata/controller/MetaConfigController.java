@@ -2,6 +2,7 @@ package com.cost.costserver.metadata.controller;
 
 import com.cost.costserver.auth.entity.Resource;
 import com.cost.costserver.common.Result;
+import com.cost.costserver.config.AppWebSocketHandler;
 import com.cost.costserver.metadata.entity.*;
 import com.cost.costserver.metadata.service.MetaConfigService;
 import com.cost.costserver.metadata.service.MetadataService;
@@ -24,6 +25,7 @@ public class MetaConfigController {
 
     private final MetaConfigService metaConfigService;
     private final MetadataService metadataService;
+    private final AppWebSocketHandler webSocketHandler;
 
     // ==================== 目录管理 ====================
 
@@ -73,6 +75,7 @@ public class MetaConfigController {
     public Result<ColumnMetadata> saveColumn(@RequestBody ColumnMetadata column) {
         ColumnMetadata saved = metaConfigService.saveColumn(column);
         metadataService.clearCache(null);
+        webSocketHandler.broadcast("META_CONFIG_CHANGED", Map.of());
         return Result.ok(saved);
     }
 
@@ -94,6 +97,8 @@ public class MetaConfigController {
     public Result<PageComponent> saveComponent(@RequestBody PageComponent component) {
         PageComponent saved = metaConfigService.saveComponent(component);
         metadataService.clearCache(null);
+        webSocketHandler.broadcast("META_CONFIG_CHANGED",
+                Map.of("pageCode", component.getPageCode() != null ? component.getPageCode() : ""));
         return Result.ok(saved);
     }
 
@@ -115,6 +120,8 @@ public class MetaConfigController {
     public Result<PageRule> saveRule(@RequestBody PageRule rule) {
         PageRule saved = metaConfigService.saveRule(rule);
         metadataService.clearCache(null);
+        webSocketHandler.broadcast("META_CONFIG_CHANGED",
+                Map.of("pageCode", rule.getPageCode() != null ? rule.getPageCode() : ""));
         return Result.ok(saved);
     }
 
@@ -122,6 +129,7 @@ public class MetaConfigController {
     public Result<Void> deleteRule(@PathVariable Long id) {
         metaConfigService.deleteRule(id);
         metadataService.clearCache(null);
+        webSocketHandler.broadcast("META_CONFIG_CHANGED", Map.of());
         return Result.ok();
     }
 

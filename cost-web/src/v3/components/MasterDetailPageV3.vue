@@ -35,6 +35,7 @@ import MetaPageRendererV3 from '@/v3/components/meta-v3/renderers/MetaPageRender
 import LookupDialog from '@/v3/components/LookupDialog.vue';
 import BatchSelectDialog from '@/v3/components/BatchSelectDialog.vue';
 import { useMetaRuntime } from '@/v3/composables/meta-v3/useMetaRuntime';
+import { useWebSocket } from '@/composables/useWebSocket';
 
 const props = defineProps<{ pageCode: string }>();
 const message = useMessage();
@@ -50,6 +51,15 @@ const { isReady, pageComponents, init } = runtime;
 const { lookupDialogRef, currentLookupRule, currentLookupRowData, currentLookupCellValue, onLookupSelect, onLookupCancel } = runtime as any;
 const { batchSelectDialogRef, onBatchSelectConfirm, onBatchSelectCancel } = runtime as any;
 const pageError = (runtime as any).pageError;
+
+// WebSocket 订阅：元数据配置变更时热重载
+const { subscribe } = useWebSocket();
+subscribe('META_CONFIG_CHANGED', (payload) => {
+  const changedPageCode = payload.pageCode;
+  if (!changedPageCode || changedPageCode === props.pageCode) {
+    (runtime as any).reloadMetadata?.();
+  }
+});
 
 onMounted(async () => {
   await init();
