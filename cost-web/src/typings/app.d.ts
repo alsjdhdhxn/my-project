@@ -282,6 +282,8 @@ declare namespace App {
       localIcon?: string;
       /** I18n key */
       i18nKey?: I18n.I18nKey | null;
+      /** 动态页面的 pageCode，创建 tab 时从 route.meta 快照 */
+      pageCode?: string;
     };
 
     /** Form rule */

@@ -1,19 +1,14 @@
 <script setup lang="ts">
-import { computed, defineComponent, h } from 'vue';
-import type { RouteLocationNormalizedLoaded } from 'vue-router';
-import { useRoute } from 'vue-router';
-import { LAYOUT_SCROLL_EL_ID } from '@sa/materials';
+import { computed, defineAsyncComponent, h, markRaw, shallowRef, watch, type Component } from 'vue';
 import { useAppStore } from '@/store/modules/app';
-import { useThemeStore } from '@/store/modules/theme';
-import { useRouteStore } from '@/store/modules/route';
 import { useTabStore } from '@/store/modules/tab';
+import { router } from '@/router';
 
 defineOptions({
   name: 'GlobalContent'
 });
 
 interface Props {
-  /** Show padding for content */
   showPadding?: boolean;
 }
 
@@ -21,71 +16,133 @@ const props = withDefaults(defineProps<Props>(), {
   showPadding: true
 });
 
-const route = useRoute();
 const appStore = useAppStore();
-const themeStore = useThemeStore();
-const routeStore = useRouteStore();
 const tabStore = useTabStore();
 
-const transitionName = computed(() => (themeStore.page.animate ? themeStore.page.animateMode : ''));
+/**
+ * 已挂载的 tab 组件实例缓存
+ * key = tab.id, value = 解析后的组件
+ */
+const mountedTabs = shallowRef<Map<string, Component>>(new Map());
 
-// 根据路由 meta.noPadding 或 props 决定是否显示 padding
-// 有 pageCode 的动态页面默认不显示 padding（表格需要撑满）
-const shouldShowPadding = computed(() => {
-  if (route.meta?.noPadding) return false;
-  // 有 pageCode 的页面不显示 padding
-  if (route.meta?.pageCode) {
-    return false;
+/** 根据 tab 的 routeKey 从 router 中解析出对应的视图组件 */
+function resolveTabComponent(tab: App.Global.Tab): Component | null {
+  const routes = router.getRoutes();
+  const matched = routes.find(r => r.name === tab.routeKey);
+  if (!matched) return null;
+
+  const comp = matched.components?.default;
+  if (!comp) return null;
+
+  // 动态页面（有 pageCode）：包装组件，固定传入 pageCode prop
+  if (tab.pageCode) {
+    const pageCode = tab.pageCode;
+    const asyncComp = typeof comp === 'function'
+      ? defineAsyncComponent(comp as () => Promise<any>)
+      : comp;
+    return markRaw({
+      name: `tab-${tab.id}`,
+      setup() {
+        return () => h(asyncComp as Component, { pageCode });
+      }
+    });
   }
-  return props.showPadding;
-});
 
-function resetScroll() {
-  const el = document.querySelector(`#${LAYOUT_SCROLL_EL_ID}`);
-
-  el?.scrollTo({ left: 0, top: 0 });
+  // 非动态页面，直接使用
+  if (typeof comp === 'function') {
+    return markRaw(defineAsyncComponent(comp as () => Promise<any>));
+  }
+  return markRaw(comp as Component);
 }
 
-/** 给组件注入路由 name，让 KeepAlive 的 include 能匹配到 */
-const componentCache = new Map<string, any>();
-function wrapComponent(component: any, route: RouteLocationNormalizedLoaded) {
-  const routeName = route.name as string;
-  if (!routeName || !component) return component;
-  // 组件已经有匹配的 name，直接返回
-  if (component.name === routeName) return component;
-  // 缓存包装组件，避免重复创建导致 KeepAlive 失效
-  if (componentCache.has(routeName)) return componentCache.get(routeName);
-  const wrapped = defineComponent({
-    name: routeName,
-    setup() {
-      return () => h(component);
+/** 确保 tab 对应的组件已挂载 */
+function ensureTabMounted(tab: App.Global.Tab) {
+  const map = mountedTabs.value;
+  if (map.has(tab.id)) return;
+
+  const comp = resolveTabComponent(tab);
+  if (comp) {
+    const newMap = new Map(map);
+    newMap.set(tab.id, comp);
+    mountedTabs.value = newMap;
+  }
+}
+
+/** 清理已关闭 tab 的组件 */
+function cleanClosedTabs(currentTabIds: Set<string>) {
+  const map = mountedTabs.value;
+  let changed = false;
+  const newMap = new Map<string, Component>();
+  for (const [id, comp] of map) {
+    if (currentTabIds.has(id)) {
+      newMap.set(id, comp);
+    } else {
+      changed = true;
     }
-  });
-  componentCache.set(routeName, wrapped);
-  return wrapped;
+  }
+  if (changed) {
+    mountedTabs.value = newMap;
+  }
 }
+
+// 监听 tabs 变化，挂载新 tab、清理已关闭 tab
+watch(
+  () => tabStore.tabs,
+  (tabs) => {
+    const tabIds = new Set(tabs.map(t => t.id));
+    const activeTab = tabs.find(t => t.id === tabStore.activeTabId);
+    if (activeTab) {
+      ensureTabMounted(activeTab);
+    }
+    cleanClosedTabs(tabIds);
+  },
+  { immediate: true }
+);
+
+// 当 activeTabId 变化时，确保对应 tab 已挂载
+watch(
+  () => tabStore.activeTabId,
+  () => {
+    const activeTab = tabStore.tabs.find(t => t.id === tabStore.activeTabId);
+    if (activeTab) {
+      ensureTabMounted(activeTab);
+    }
+  },
+  { immediate: true }
+);
+
+/** 判断 tab 是否需要 padding */
+function tabNeedsPadding(tab: App.Global.Tab) {
+  if (tab.pageCode) return false;
+  return props.showPadding;
+}
+
+/** 获取已挂载的 tab 列表 */
+const renderedTabs = computed(() => {
+  const map = mountedTabs.value;
+  const result: { id: string; component: Component; tab: App.Global.Tab }[] = [];
+  for (const tab of tabStore.tabs) {
+    const comp = map.get(tab.id);
+    if (comp) {
+      result.push({ id: tab.id, component: comp, tab });
+    }
+  }
+  return result;
+});
 </script>
 
 <template>
-  <RouterView v-slot="{ Component, route }">
-    <Transition
-      :name="transitionName"
-      mode="out-in"
-      @before-leave="appStore.setContentXScrollable(true)"
-      @after-leave="resetScroll"
-      @after-enter="appStore.setContentXScrollable(false)"
+  <div class="flex-grow relative bg-layout">
+    <div
+      v-for="item in renderedTabs"
+      :key="item.id"
+      v-show="item.id === tabStore.activeTabId && appStore.reloadFlag"
+      :class="{ 'p-16px': tabNeedsPadding(item.tab) }"
+      class="absolute inset-0 overflow-auto"
     >
-      <KeepAlive :include="routeStore.cacheRoutes" :exclude="routeStore.excludeCacheRoutes">
-        <component
-          :is="wrapComponent(Component, route)"
-          v-if="appStore.reloadFlag"
-          :key="tabStore.getTabIdByRoute(route)"
-          :class="{ 'p-16px': shouldShowPadding }"
-          class="flex-grow bg-layout transition-300"
-        />
-      </KeepAlive>
-    </Transition>
-  </RouterView>
+      <component :is="item.component" class="h-full" />
+    </div>
+  </div>
 </template>
 
-<style></style>
+<style scoped></style>

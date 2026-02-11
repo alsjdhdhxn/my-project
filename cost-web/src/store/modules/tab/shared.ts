@@ -78,7 +78,8 @@ export function getTabByRoute(route: App.Global.TabRoute) {
     fixedIndex: fixedIndexInTab,
     icon,
     localIcon,
-    i18nKey
+    i18nKey,
+    pageCode: (meta.pageCode as string) || undefined
   };
 
   return tab;
