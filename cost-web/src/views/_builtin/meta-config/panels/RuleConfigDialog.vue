@@ -24,7 +24,7 @@ const message = useMessage();
 
 type FormulaItem = { key: string; expression: string; triggerFields: string[] };
 type CalcItem = {
-  field: string; expression: string; triggerFields: string[];
+  field: string; expression: string;
   condition?: string; order?: number;
   isMultiFormula: boolean; formulaField?: string; formulas: FormulaItem[];
 };
@@ -124,7 +124,7 @@ async function loadAvailableFields() {
 function addItem() {
   if (props.ruleType === 'CALC') {
     calcItems.value.push({
-      field: '', expression: '', triggerFields: [], condition: '',
+      field: '', expression: '', condition: '',
       order: calcItems.value.length, isMultiFormula: false, formulaField: '', formulas: [],
     });
   } else if (props.ruleType === 'AGGREGATE') {
@@ -137,6 +137,24 @@ function addItem() {
   }
 }
 
+// 从表达式中自动提取字段名（排除 mathjs 内置函数）
+const builtins = new Set([
+  'abs', 'ceil', 'floor', 'round', 'sqrt', 'pow', 'log', 'exp',
+  'min', 'max', 'sum', 'mean', 'mod', 'sign',
+  'pi', 'e', 'true', 'false', 'null', 'undefined',
+  'if', 'else', 'return', 'NaN', 'Infinity',
+]);
+function extractIdentifiers(expression: string): string[] {
+  const regex = /\b([a-zA-Z_]\w*)\b/g;
+  const fields = new Set<string>();
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(expression)) !== null) {
+    const name = match[1];
+    if (!builtins.has(name)) fields.add(name);
+  }
+  return Array.from(fields);
+}
+
 function buildJson(): string {
   if (props.ruleType === 'CALC') {
     return JSON.stringify(calcItems.value.map(item => {
@@ -144,14 +162,15 @@ function buildJson(): string {
         const formulas: Record<string, any> = {};
         for (const f of item.formulas) {
           if (!f.key) continue;
-          formulas[f.key] = { expression: f.expression, triggerFields: f.triggerFields };
+          formulas[f.key] = { expression: f.expression, triggerFields: extractIdentifiers(f.expression) };
         }
         const r: any = { field: item.field, formulaField: item.formulaField, formulas };
         if (item.condition) r.condition = item.condition;
         if (item.order != null) r.order = item.order;
         return r;
       }
-      const r: any = { field: item.field, expression: item.expression, triggerFields: item.triggerFields };
+      const triggerFields = extractIdentifiers(item.expression);
+      const r: any = { field: item.field, expression: item.expression, triggerFields };
       if (item.condition) r.condition = item.condition;
       if (item.order != null) r.order = item.order;
       return r;
@@ -273,12 +292,6 @@ async function handleSave() {
                 <NInput v-model:value="item.expression" size="small" placeholder="如: batchQty * price" />
               </div>
             </div>
-            <div class="rule-row">
-              <div class="rule-field" style="flex:1">
-                <span class="field-label">触发字段</span>
-                <NSelect v-model:value="item.triggerFields" :options="availableFields" size="small" filterable multiple tag placeholder="选择或输入" />
-              </div>
-            </div>
           </template>
           <!-- 多公式 -->
           <template v-else>
@@ -302,12 +315,6 @@ async function handleSave() {
                   <template #trigger><NButton size="tiny" quaternary type="error" style="align-self:flex-end">删除</NButton></template>
                   删除此分支？
                 </NPopconfirm>
-              </div>
-              <div class="rule-row">
-                <div class="rule-field" style="flex:1">
-                  <span class="field-label">触发字段</span>
-                  <NSelect v-model:value="f.triggerFields" :options="availableFields" size="small" filterable multiple tag placeholder="选择或输入" />
-                </div>
               </div>
             </div>
             <NButton size="tiny" dashed @click="item.formulas.push({ key: '', expression: '', triggerFields: [] })" style="margin-top:4px">+ 添加分支</NButton>
