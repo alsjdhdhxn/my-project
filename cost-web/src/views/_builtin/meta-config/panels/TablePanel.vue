@@ -418,7 +418,7 @@ watch(() => filterState?.value, async (state) => {
       preset="card"
       title="从视图选择列"
       :style="{ width: '720px' }"
-      :mask-closable="false"
+      :mask-closable="true"
     >
       <NDataTable
         :columns="viewColTableColumns"

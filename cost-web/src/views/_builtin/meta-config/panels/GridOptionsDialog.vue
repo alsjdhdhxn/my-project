@@ -79,7 +79,7 @@ async function handleSave() {
     preset="card"
     :title="`表格选项 - ${componentKey}`"
     style="width: 460px"
-    :mask-closable="false"
+    :mask-closable="true"
     :segmented="{ content: true, footer: true }"
   >
     <div class="options-list">

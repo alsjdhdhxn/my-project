@@ -248,7 +248,7 @@ async function handleSave() {
     preset="card"
     :title="`按钮配置 - ${componentKey}`"
     style="width: 720px; max-height: 90vh"
-    :mask-closable="false"
+    :mask-closable="true"
     :segmented="{ content: true, footer: true }"
   >
     <!-- 按钮列表 -->

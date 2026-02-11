@@ -187,7 +187,7 @@ async function handleSave() {
     preset="card"
     :title="`Grid 样式规则 - ${componentKey}`"
     style="width: 720px; max-height: 80vh"
-    :mask-closable="false"
+    :mask-closable="true"
     :segmented="{ content: true, footer: true }"
   >
     <div style="max-height: 60vh; overflow-y: auto">

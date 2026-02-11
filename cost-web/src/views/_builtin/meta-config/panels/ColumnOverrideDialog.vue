@@ -440,7 +440,7 @@ async function handleSave() {
     preset="card"
     :title="`列覆盖配置 - ${componentKey}`"
     style="width: 1100px; max-height: 90vh"
-    :mask-closable="false"
+    :mask-closable="true"
     :segmented="{ content: true, footer: true }"
   >
     <!-- 添加字段 -->

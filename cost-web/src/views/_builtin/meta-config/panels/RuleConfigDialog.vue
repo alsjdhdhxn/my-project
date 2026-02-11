@@ -301,7 +301,7 @@ async function handleSave() {
     preset="card"
     :title="dialogTitle"
     style="width: 1060px; max-height: 85vh"
-    :mask-closable="false"
+    :mask-closable="true"
     :segmented="{ content: true, footer: true }"
   >
     <div class="dialog-body">
