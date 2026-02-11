@@ -32,7 +32,7 @@ type AggItem = {
 };
 type ValidationItem = { field: string; rule: string; message: string; value?: any };
 type FieldInfo = { fieldName: string; headerText: string; columnName: string };
-type TableFieldGroup = { tableCode: string; label: string; isMaster: boolean; fields: FieldInfo[] };
+type TableFieldGroup = { tableCode: string; label: string; isMaster: boolean; isCurrent: boolean; fields: FieldInfo[] };
 
 // ==================== 状态 ====================
 const calcItems = ref<CalcItem[]>([]);
@@ -59,9 +59,14 @@ const validationRuleOptions = [
 
 // 侧边栏：根据规则类型过滤显示的字段组
 const visibleFieldGroups = computed(() => {
-  const groups = props.ruleType === 'CALC'
-    ? fieldGroups.value.filter(g => !g.isMaster)
-    : fieldGroups.value;
+  let groups: TableFieldGroup[];
+  if (props.ruleType === 'CALC') {
+    // 行计算：只显示当前组件自己的表字段（不管是主表还是从表）
+    groups = fieldGroups.value.filter(g => g.isCurrent);
+  } else {
+    // AGGREGATE / VALIDATION：显示全部
+    groups = fieldGroups.value;
+  }
   const kw = sidebarFilter.value.trim().toLowerCase();
   if (!kw) return groups;
   return groups.map(g => ({
@@ -133,7 +138,7 @@ async function loadAvailableFields() {
         fieldName: c.fieldName, headerText: c.headerText || '', columnName: c.columnName || '',
       }));
       const isMaster = currentRef === masterRef;
-      fieldGroups.value.push({ tableCode: currentRef || '', label: isMaster ? `主表 (${currentRef})` : `当前表 (${currentRef})`, isMaster, fields });
+      fieldGroups.value.push({ tableCode: currentRef || '', label: isMaster ? `主表 (${currentRef})` : `当前表 (${currentRef})`, isMaster, isCurrent: true, fields });
       availableFields.value = fields.map(f => ({ label: `${f.fieldName} (${f.headerText || f.columnName})`, value: f.fieldName }));
     }
 
@@ -145,7 +150,7 @@ async function loadAvailableFields() {
         const fields = cols.filter((c: any) => c.fieldName).map((c: any) => ({
           fieldName: c.fieldName, headerText: c.headerText || '', columnName: c.columnName || '',
         }));
-        fieldGroups.value.unshift({ tableCode: masterRef, label: `主表 (${masterRef})`, isMaster: true, fields });
+        fieldGroups.value.unshift({ tableCode: masterRef, label: `主表 (${masterRef})`, isMaster: true, isCurrent: false, fields });
       }
     }
 
@@ -162,7 +167,7 @@ async function loadAvailableFields() {
         const fields = cols.filter((c: any) => c.fieldName).map((c: any) => ({
           fieldName: c.fieldName, headerText: c.headerText || '', columnName: c.columnName || '',
         }));
-        fieldGroups.value.push({ tableCode: comp.refTableCode, label: `${comp.componentKey} (${comp.refTableCode})`, isMaster: false, fields });
+        fieldGroups.value.push({ tableCode: comp.refTableCode, label: `${comp.componentKey} (${comp.refTableCode})`, isMaster: false, isCurrent: false, fields });
       }
     }
   } catch { /* ignore */ }
