@@ -598,30 +598,40 @@ function getRowHeight(params: any): number | undefined {
   const gap = 16;
   const padding = 80;
   const minRows = 2;
+  const isTabMode = detailViewMode.value === 'tab';
   
-  // 可用总高度
+  const cached = masterRowKey ? detailCache.get(masterRowKey) : undefined;
+
+  if (isTabMode) {
+    // tab 模式：只显示一个从表，高度按最大的 tab 算
+    const tabBarHeight = 32;
+    let maxTabHeight = 0;
+    for (const tab of tabs) {
+      const rows = cached?.[tab.key] || [];
+      const contentHeight = headerHeight + Math.max(rows.length, minRows) * rowHeight + 20;
+      if (contentHeight > maxTabHeight) maxTabHeight = contentHeight;
+    }
+    // 限制最大高度
+    const maxContainerHeight = window.innerHeight - 100;
+    const totalHeight = tabBarHeight + maxTabHeight + 40;
+    return Math.min(totalHeight, maxContainerHeight);
+  }
+
+  // 堆叠模式：所有子表累加
   const availableHeight = window.innerHeight - 100 - padding - (gap * (tabCount - 1));
-  // 每个子表最大可用高度
   const maxGridHeight = Math.floor(availableHeight / tabCount);
-  // 每个子表最小高度 = 表头 + 2行
   const minGridHeight = headerHeight + rowHeight * minRows;
   
-  // 计算所有子表的总高度
-  const cached = masterRowKey ? detailCache.get(masterRowKey) : undefined;
   let totalHeight = padding;
-  
   for (let i = 0; i < tabs.length; i++) {
     const tabKey = tabs[i].key;
     const rows = cached?.[tabKey] || [];
-    // 实际内容高度 + 少量余量
     const contentHeight = headerHeight + Math.max(rows.length, minRows) * rowHeight + 20;
-    // 限制在最小和最大之间
     const gridHeight = Math.max(minGridHeight, Math.min(contentHeight, maxGridHeight));
     totalHeight += gridHeight;
     if (i < tabs.length - 1) totalHeight += gap;
   }
   
-  // 最大不超过屏幕高度 - 100
   const maxContainerHeight = window.innerHeight - 100;
   return Math.min(totalHeight, maxContainerHeight);
 }
