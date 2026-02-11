@@ -219,7 +219,7 @@ onMounted(loadData);
         :treeData="true"
         :getDataPath="getDataPath"
         :autoGroupColumnDef="autoGroupColumnDef"
-        :groupDefaultExpanded="-1"
+        :groupDefaultExpanded="0"
         :rowSelection="{ mode: 'singleRow', checkboxes: false }"
         :getRowId="(params: any) => String(params.data.id)"
         :getContextMenuItems="getContextMenuItems"
