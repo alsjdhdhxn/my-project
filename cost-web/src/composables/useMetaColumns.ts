@@ -13,7 +13,7 @@ interface NumberFormatConfig {
   trimZeros?: boolean;
 }
 
-const DEFAULT_NUMBER_PRECISION = 2;
+const _DEFAULT_NUMBER_PRECISION = 2; // 已废弃，精度由 COLUMN_OVERRIDE 配置控制
 
 /** 样式规则 */
 export interface StyleRule {
@@ -166,8 +166,8 @@ function formatNumberValue(value: any, format?: NumberFormatConfig): string {
   const num = Number(value);
   if (!Number.isFinite(num)) return String(value);
   if (!format) {
-    if (Number.isInteger(num)) return String(num);
-    return trimTrailingZeros(num.toFixed(DEFAULT_NUMBER_PRECISION));
+    // 不写死精度，直接显示原始值（精度由 COLUMN_OVERRIDE 配置控制）
+    return String(num);
   }
   let text = num.toFixed(format.precision);
   if (format.trimZeros) {

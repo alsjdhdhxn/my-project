@@ -26,6 +26,10 @@ export type ColumnOverrideRule = {
   cellEditorParams?: Record<string, any>;
   /** 聚合函数：sum 表示底部汇总求和 */
   aggFunc?: 'sum';
+  /** 显示精度（小数位数），仅影响显示，不影响计算 */
+  precision?: number | null;
+  /** 取整方式：round=四舍五入, ceil=向上取整, floor=向下取整 */
+  roundMode?: 'round' | 'ceil' | 'floor';
   rulesConfig?: {
     compare?: {
       enabled: boolean;

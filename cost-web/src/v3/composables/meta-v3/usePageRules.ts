@@ -342,7 +342,7 @@ export function applyColumnOverrides(columns: ColDef[], overrides: ColumnOverrid
     if (!key) continue;
     overrideMap.set(key, override);
   }
-  return columns.map(col => {
+  const result = columns.map(col => {
     const field = col.field as string | undefined;
     if (!field) return col;
     const override = overrideMap.get(field);
@@ -381,6 +381,33 @@ export function applyColumnOverrides(columns: ColDef[], overrides: ColumnOverrid
     if (override.aggFunc) {
       updated.aggFunc = override.aggFunc;
     }
+    // 显示精度（仅影响显示，不影响底层数据）
+    if (override.precision != null) {
+      const precision = override.precision;
+      const mode = override.roundMode || 'round';
+      updated.valueFormatter = (params: any) => {
+        const val = params.value;
+        if (val == null || val === '') return '';
+        const num = Number(val);
+        if (!Number.isFinite(num)) return String(val);
+        let rounded: number;
+        const factor = Math.pow(10, precision);
+        switch (mode) {
+          case 'ceil':
+            rounded = Math.ceil(num * factor) / factor;
+            break;
+          case 'floor':
+            rounded = Math.floor(num * factor) / factor;
+            break;
+          default:
+            rounded = Math.round(num * factor) / factor;
+            break;
+        }
+        // 去掉尾部多余的零，0 就显示 0，不补 0.00
+        const fixed = rounded.toFixed(precision);
+        return fixed.replace(/\.?0+$/, '') || '0';
+      };
+    }
     // 支持对比值渲染
     if (override.rulesConfig?.compare?.enabled) {
       const compare = override.rulesConfig.compare;
@@ -393,6 +420,42 @@ export function applyColumnOverrides(columns: ColDef[], overrides: ColumnOverrid
     }
     return updated;
   });
+
+  // 补充虚拟列：COLUMN_OVERRIDE 里有但列元数据里没有的字段
+  const existingFields = new Set(result.map(c => c.field));
+  for (const override of overrides) {
+    const field = override.field || override.fieldName;
+    if (!field || existingFields.has(field)) continue;
+    if (override.visible === false) continue; // 隐藏的不补
+    const virtualCol: ColDef = {
+      field,
+      headerName: override.fieldName || field,
+      sortable: true,
+      resizable: true,
+    };
+    if (override.width != null) virtualCol.width = override.width;
+    if (override.editable != null) virtualCol.editable = override.editable;
+    if (override.cellEditor && override.cellEditor !== 'lookup') virtualCol.cellEditor = override.cellEditor;
+    result.push(virtualCol);
+    existingFields.add(field);
+  }
+
+  // 按 COLUMN_OVERRIDE 中的顺序重排列
+  const orderMap = new Map<string, number>();
+  overrides.forEach((o, i) => {
+    const key = o.field || o.fieldName;
+    if (key) orderMap.set(key, i);
+  });
+  if (orderMap.size > 0) {
+    const maxOrder = orderMap.size;
+    result.sort((a, b) => {
+      const oa = a.field ? (orderMap.get(a.field) ?? maxOrder) : maxOrder;
+      const ob = b.field ? (orderMap.get(b.field) ?? maxOrder) : maxOrder;
+      return oa - ob;
+    });
+  }
+
+  return result;
 }
 
 /** 对比渲染配置 */
@@ -736,7 +799,7 @@ export function computeSumRow(rows: any[], sumFields: string[]): Record<string, 
       const val = Number(row[field]);
       if (!isNaN(val)) sum += val;
     }
-    result[field] = Math.round(sum * 100) / 100; // 保留2位精度
+    result[field] = sum; // 精度由 valueFormatter 统一控制
   }
   return result;
 }

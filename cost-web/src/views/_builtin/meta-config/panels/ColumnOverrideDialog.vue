@@ -32,10 +32,13 @@ type OverrideItem = {
   cellEditor?: string;
   cellEditorParams?: Record<string, any>;
   aggFunc?: string;
+  precision?: number | null;
+  roundMode?: string;
 };
 
 const items = ref<OverrideItem[]>([]);
 const availableFields = ref<{ label: string; value: string }[]>([]);
+const fieldLabelMap = ref<Map<string, string>>(new Map());
 const numericFields = ref<Set<string>>(new Set());
 const lookupOptionsRaw = ref<Array<{ label: string; value: string }>>([]);
 const loadingFields = ref(false);
@@ -77,6 +80,8 @@ watch(() => props.show, async (val) => {
       cellEditor: r.cellEditor || '',
       cellEditorParams: normalizeCellEditorParams(r.cellEditorParams),
       aggFunc: r.aggFunc || undefined,
+      precision: r.precision ?? null,
+      roundMode: r.roundMode || 'round',
     }));
   } catch {
     items.value = [];
@@ -121,6 +126,10 @@ async function loadAvailableFields() {
         label: `${col.fieldName} (${col.headerText || col.columnName})`,
         value: col.fieldName
       }));
+    // 建立 fieldName → 中文名 映射
+    fieldLabelMap.value = new Map(
+      cols.filter((col: any) => col.fieldName).map((col: any) => [col.fieldName, col.headerText || col.columnName || col.fieldName])
+    );
     // 记录数字类型字段（兼容大小写和多种类型名）
     const numericTypes = new Set(['number', 'integer', 'decimal', 'float', 'double', 'numeric', 'int', 'bigint']);
     numericFields.value = new Set(
@@ -172,6 +181,8 @@ function addField() {
     width: null,
     cellEditor: '',
     aggFunc: undefined,
+    precision: null,
+    roundMode: 'round',
   });
   addFieldValue.value = null;
 }
@@ -184,6 +195,8 @@ function addCustomField() {
     width: null,
     cellEditor: '',
     aggFunc: undefined,
+    precision: null,
+    roundMode: 'round',
   });
 }
 
@@ -195,6 +208,39 @@ function moveItem(index: number, dir: -1 | 1) {
   const target = index + dir;
   if (target < 0 || target >= items.value.length) return;
   [items.value[index], items.value[target]] = [items.value[target], items.value[index]];
+}
+
+// 拖拽排序
+const dragIndex = ref<number | null>(null);
+const dragOverIndex = ref<number | null>(null);
+
+function onDragStart(index: number, e: DragEvent) {
+  dragIndex.value = index;
+  if (e.dataTransfer) {
+    e.dataTransfer.effectAllowed = 'move';
+  }
+}
+
+function onDragOver(index: number) {
+  dragOverIndex.value = index;
+}
+
+function onDragLeave() {
+  dragOverIndex.value = null;
+}
+
+function onDrop(index: number) {
+  const from = dragIndex.value;
+  if (from == null || from === index) return;
+  const [moved] = items.value.splice(from, 1);
+  items.value.splice(index, 0, moved);
+  dragOverIndex.value = null;
+  dragIndex.value = null;
+}
+
+function onDragEnd() {
+  dragIndex.value = null;
+  dragOverIndex.value = null;
 }
 
 function normalizeCellEditorParams(params: any): Record<string, any> | undefined {
@@ -338,6 +384,8 @@ async function handleSave() {
       if (i.width != null && i.width !== '') obj.width = Number(i.width);
       if (i.cellEditor) obj.cellEditor = i.cellEditor;
       if (i.aggFunc) obj.aggFunc = i.aggFunc;
+      if (i.precision != null) obj.precision = i.precision;
+      if (i.roundMode && i.roundMode !== 'round') obj.roundMode = i.roundMode;
       if (i.cellEditorParams && Object.keys(i.cellEditorParams).length > 0) {
         const params = { ...i.cellEditorParams };
         // 清理 lookup mapping 中的空项
@@ -391,7 +439,7 @@ async function handleSave() {
     @update:show="(v) => emit('update:show', v)"
     preset="card"
     :title="`列覆盖配置 - ${componentKey}`"
-    style="width: 960px; max-height: 90vh"
+    style="width: 1100px; max-height: 90vh"
     :mask-closable="false"
     :segmented="{ content: true, footer: true }"
   >
@@ -417,22 +465,40 @@ async function handleSave() {
 
       <!-- 表头 -->
       <div v-if="items.length > 0" class="override-header">
+        <span class="col-seq">#</span>
         <span class="col-field">字段</span>
         <span class="col-check">显示</span>
         <span class="col-check">编辑</span>
         <span class="col-check">搜索</span>
         <span class="col-check">必填</span>
         <span class="col-check">求和</span>
+        <span class="col-precision">精度</span>
+        <span class="col-roundmode">取整</span>
         <span class="col-width">宽度</span>
         <span class="col-editor">编辑器</span>
         <span class="col-ops">操作</span>
       </div>
 
-      <div v-for="(item, index) in items" :key="index" class="override-row-wrap">
+      <div
+        v-for="(item, index) in items"
+        :key="index"
+        class="override-row-wrap"
+        :class="{ 'drag-over': dragOverIndex === index }"
+        draggable="true"
+        @dragstart="onDragStart(index, $event)"
+        @dragover.prevent="onDragOver(index)"
+        @dragleave="onDragLeave"
+        @drop="onDrop(index)"
+        @dragend="onDragEnd"
+      >
         <div class="override-row">
+        <div class="col-seq">
+          <span class="drag-handle" title="拖拽排序">☰</span>
+          <span class="seq-num">{{ index + 1 }}</span>
+        </div>
         <div class="col-field">
           <NInput v-if="!availableFields.find(f => f.value === item.field)" v-model:value="item.field" size="small" placeholder="fieldName" />
-          <NTag v-else size="small" :bordered="false">{{ item.field }}</NTag>
+          <NTag v-else size="small" :bordered="false">{{ fieldLabelMap.get(item.field) || item.field }}</NTag>
         </div>
         <div class="col-check">
           <NSwitch v-model:value="item.visible" size="small" />
@@ -455,6 +521,34 @@ async function handleSave() {
           />
           <span v-else style="color:#ccc;font-size:11px">—</span>
         </div>
+        <div class="col-precision">
+          <NInputNumber
+            v-if="numericFields.has(item.field)"
+            v-model:value="item.precision"
+            size="small"
+            :min="0"
+            :max="10"
+            :show-button="false"
+            placeholder="—"
+            clearable
+            style="width: 50px"
+          />
+          <span v-else style="color:#ccc;font-size:11px">—</span>
+        </div>
+        <div class="col-roundmode">
+          <NSelect
+            v-if="numericFields.has(item.field) && item.precision != null"
+            v-model:value="item.roundMode"
+            :options="[
+              { label: '四舍五入', value: 'round' },
+              { label: '向上', value: 'ceil' },
+              { label: '向下', value: 'floor' },
+            ]"
+            size="small"
+            style="width: 80px"
+          />
+          <span v-else style="color:#ccc;font-size:11px">—</span>
+        </div>
         <div class="col-width">
           <NInput v-model:value="item.width" size="small" placeholder="auto" clearable style="width: 60px" />
         </div>
@@ -466,8 +560,6 @@ async function handleSave() {
           <NButton v-if="hasParams(item)" text size="small" @click="toggleExpand(index)" :style="{ color: expandedRows.has(index) ? '#18a058' : '#999' }">
             {{ expandedRows.has(index) ? '▾' : '▸' }}
           </NButton>
-          <NButton text size="small" :disabled="index === 0" @click="moveItem(index, -1)">↑</NButton>
-          <NButton text size="small" :disabled="index === items.length - 1" @click="moveItem(index, 1)">↓</NButton>
           <NPopconfirm @positive-click="removeItem(index)">
             <template #trigger>
               <NButton text size="small" type="error">删</NButton>
@@ -664,15 +756,52 @@ async function handleSave() {
   flex: 0 0 60px;
 }
 
+.col-precision {
+  flex: 0 0 65px;
+}
+
+.col-roundmode {
+  flex: 0 0 80px;
+}
+
 .col-editor {
   flex: 0 0 120px;
 }
 
 .col-ops {
-  flex: 0 0 90px;
+  flex: 0 0 50px;
   display: flex;
   gap: 2px;
   align-items: center;
+}
+
+.col-seq {
+  flex: 0 0 42px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.drag-handle {
+  cursor: grab;
+  color: #999;
+  font-size: 14px;
+  user-select: none;
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+}
+
+.seq-num {
+  font-size: 11px;
+  color: #999;
+  min-width: 16px;
+  text-align: center;
+}
+
+.override-row-wrap.drag-over {
+  border-top: 2px solid #18a058;
 }
 
 .override-row-wrap {
