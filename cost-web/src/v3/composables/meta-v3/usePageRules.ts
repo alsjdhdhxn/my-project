@@ -421,25 +421,6 @@ export function applyColumnOverrides(columns: ColDef[], overrides: ColumnOverrid
     return updated;
   });
 
-  // 补充虚拟列：COLUMN_OVERRIDE 里有但列元数据里没有的字段
-  const existingFields = new Set(result.map(c => c.field));
-  for (const override of overrides) {
-    const field = override.field || override.fieldName;
-    if (!field || existingFields.has(field)) continue;
-    if (override.visible === false) continue; // 隐藏的不补
-    const virtualCol: ColDef = {
-      field,
-      headerName: override.fieldName || field,
-      sortable: true,
-      resizable: true,
-    };
-    if (override.width != null) virtualCol.width = override.width;
-    if (override.editable === false) virtualCol.editable = false;
-    if (override.cellEditor && override.cellEditor !== 'lookup') virtualCol.cellEditor = override.cellEditor;
-    result.push(virtualCol);
-    existingFields.add(field);
-  }
-
   // 按 COLUMN_OVERRIDE 中的顺序重排列
   const orderMap = new Map<string, number>();
   overrides.forEach((o, i) => {
