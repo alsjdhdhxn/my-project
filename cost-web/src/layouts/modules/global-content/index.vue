@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import type { RouteLocationNormalizedLoaded } from 'vue-router';
 import { useRoute } from 'vue-router';
 import { LAYOUT_SCROLL_EL_ID } from '@sa/materials';
 import { useAppStore } from '@/store/modules/app';
@@ -44,6 +45,20 @@ function resetScroll() {
 
   el?.scrollTo({ left: 0, top: 0 });
 }
+
+/** 给组件注入路由 name，让 KeepAlive 的 include 能匹配到 */
+const componentCache = new Map<string, any>();
+function wrapComponent(component: any, route: RouteLocationNormalizedLoaded) {
+  const routeName = route.name as string;
+  if (!routeName || !component) return component;
+  // 组件已经有 name 且匹配，直接返回
+  if (component.name === routeName || component.__name === routeName) return component;
+  // 缓存包装组件，避免重复创建
+  if (componentCache.has(routeName)) return componentCache.get(routeName);
+  const wrapped = { ...component, name: routeName };
+  componentCache.set(routeName, wrapped);
+  return wrapped;
+}
 </script>
 
 <template>
@@ -57,7 +72,7 @@ function resetScroll() {
     >
       <KeepAlive :include="routeStore.cacheRoutes" :exclude="routeStore.excludeCacheRoutes">
         <component
-          :is="Component"
+          :is="wrapComponent(Component, route)"
           v-if="appStore.reloadFlag"
           :key="tabStore.getTabIdByRoute(route)"
           :class="{ 'p-16px': shouldShowPadding }"

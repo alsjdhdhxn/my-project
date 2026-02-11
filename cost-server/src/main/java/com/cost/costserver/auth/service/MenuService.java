@@ -155,6 +155,7 @@ public class MenuService {
         meta.setIcon(resource.getIcon());
         meta.setOrder(resource.getSortOrder());
         meta.setPageCode(resource.getPageCode());
+        meta.setKeepAlive(true);
         route.setMeta(meta);
 
         // 处理子菜单（子菜单不是顶级，传递父级 name）
