@@ -8,6 +8,7 @@ import {
   compileCalcRules,
   compileAggRules,
   parseValidationRules,
+  extractFieldsFromRules,
   type ParsedPageConfig,
   type NestedConfig,
   type ValidationRule
@@ -647,6 +648,32 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
       detailCellEditableRulesByTab.value[tab.key] = parseCellEditableRule(tab.key, tabRules);
     }
 
+    // ── 自动推断 broadcastFields ──
+    // 遍历每个 detail tab 的 CALC 规则，提取所有引用字段名，
+    // 不在该 tab 列元数据中的字段 → 主表字段 → 加入 broadcastFields
+    const inferredBroadcast = new Set<string>();
+    for (const tab of config.tabs || []) {
+      const calcRules = detailCalcRulesByTab.value[tab.key];
+      if (!calcRules || calcRules.length === 0) continue;
+      const referencedFields = extractFieldsFromRules(calcRules);
+      // 排除规则的输出字段（它们是 detail 字段，不是引用）
+      for (const rule of calcRules) {
+        referencedFields.delete(rule.field);
+      }
+      const detailColumns = detailColumnMetaByTab.value[tab.key] || [];
+      const detailFieldNames = new Set(detailColumns.map((col: any) => col.fieldName));
+      for (const field of referencedFields) {
+        if (!detailFieldNames.has(field)) {
+          inferredBroadcast.add(field);
+        }
+      }
+    }
+    if (inferredBroadcast.size > 0) {
+      // 合并手动配置的 broadcastFields（如果有）和自动推断的
+      const existing = new Set(broadcastFields.value || []);
+      for (const f of inferredBroadcast) existing.add(f);
+      broadcastFields.value = Array.from(existing);
+    }
 
     return true;
   }

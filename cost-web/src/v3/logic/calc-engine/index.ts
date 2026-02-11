@@ -13,7 +13,8 @@ export {
   calcAggregates,
   getAffectedRules,
   evalCondition,
-  clearCalcCache
+  clearCalcCache,
+  extractFieldsFromRules
 } from './calculator';
 
 // 解析器

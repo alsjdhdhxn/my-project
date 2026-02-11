@@ -438,3 +438,59 @@ export function clearCalcCache(cacheKey?: string) {
     aggRuleCache.clear();
   }
 }
+/**
+ * 从 CALC 规则中提取所有引用的字段名
+ * 包括 triggerFields、expression 中的标识符、formulaField、多公式的 triggerFields 和 expression
+ */
+export function extractFieldsFromRules(rules: CalcRule[]): Set<string> {
+  const fields = new Set<string>();
+  // 匹配表达式中的标识符（字母/下划线开头，后跟字母/数字/下划线）
+  const identifierRegex = /\b([a-zA-Z_]\w*)\b/g;
+  // mathjs 内置函数/常量，需要排除
+  const builtins = new Set([
+    'abs', 'ceil', 'floor', 'round', 'sqrt', 'pow', 'log', 'exp',
+    'min', 'max', 'sum', 'mean', 'mod', 'sign',
+    'pi', 'e', 'true', 'false', 'null', 'undefined',
+    'if', 'else', 'return', 'NaN', 'Infinity'
+  ]);
+
+  function extractFromExpression(expr: string) {
+    let match: RegExpExecArray | null;
+    identifierRegex.lastIndex = 0;
+    while ((match = identifierRegex.exec(expr)) !== null) {
+      const name = match[1];
+      if (!builtins.has(name) && !/^\d/.test(name)) {
+        fields.add(name);
+      }
+    }
+  }
+
+  for (const rule of rules) {
+    // 目标字段本身不算引用（它是输出）
+    // triggerFields
+    for (const f of rule.triggerFields || []) {
+      fields.add(f);
+    }
+    // 单公式 expression
+    if (rule.expression) {
+      extractFromExpression(rule.expression);
+    }
+    // formulaField
+    if (rule.formulaField) {
+      fields.add(rule.formulaField);
+    }
+    // 多公式模式
+    if (rule.formulas) {
+      for (const formula of Object.values(rule.formulas)) {
+        for (const f of formula.triggerFields || []) {
+          fields.add(f);
+        }
+        if (formula.expression) {
+          extractFromExpression(formula.expression);
+        }
+      }
+    }
+  }
+
+  return fields;
+}
