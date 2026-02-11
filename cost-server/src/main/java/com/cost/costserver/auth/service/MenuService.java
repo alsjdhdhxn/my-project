@@ -155,7 +155,10 @@ public class MenuService {
         meta.setIcon(resource.getIcon());
         meta.setOrder(resource.getSortOrder());
         meta.setPageCode(resource.getPageCode());
-        meta.setKeepAlive(true);
+        // 只有页面节点才需要 keepAlive，目录不需要
+        if ("PAGE".equals(resource.getResourceType())) {
+            meta.setKeepAlive(true);
+        }
         route.setMeta(meta);
 
         // 处理子菜单（子菜单不是顶级，传递父级 name）

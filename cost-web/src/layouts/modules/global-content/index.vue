@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, defineComponent, h } from 'vue';
 import type { RouteLocationNormalizedLoaded } from 'vue-router';
 import { useRoute } from 'vue-router';
 import { LAYOUT_SCROLL_EL_ID } from '@sa/materials';
@@ -51,11 +51,16 @@ const componentCache = new Map<string, any>();
 function wrapComponent(component: any, route: RouteLocationNormalizedLoaded) {
   const routeName = route.name as string;
   if (!routeName || !component) return component;
-  // 组件已经有 name 且匹配，直接返回
-  if (component.name === routeName || component.__name === routeName) return component;
-  // 缓存包装组件，避免重复创建
+  // 组件已经有匹配的 name，直接返回
+  if (component.name === routeName) return component;
+  // 缓存包装组件，避免重复创建导致 KeepAlive 失效
   if (componentCache.has(routeName)) return componentCache.get(routeName);
-  const wrapped = { ...component, name: routeName };
+  const wrapped = defineComponent({
+    name: routeName,
+    setup() {
+      return () => h(component);
+    }
+  });
   componentCache.set(routeName, wrapped);
   return wrapped;
 }

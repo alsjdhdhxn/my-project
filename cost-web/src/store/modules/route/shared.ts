@@ -152,15 +152,18 @@ function getGlobalMenuByBaseRoute(route: RouteLocationNormalizedLoaded | Elegant
 export function getCacheRouteNames(routes: RouteRecordRaw[]) {
   const cacheNames: LastLevelRouteKey[] = [];
 
-  routes.forEach(route => {
-    // only get last two level route, which has component
-    route.children?.forEach(child => {
-      if (child.component && child.meta?.keepAlive) {
-        cacheNames.push(child.name as LastLevelRouteKey);
+  function collect(list: RouteRecordRaw[]) {
+    for (const route of list) {
+      if (route.component && route.meta?.keepAlive) {
+        cacheNames.push(route.name as LastLevelRouteKey);
       }
-    });
-  });
+      if (route.children?.length) {
+        collect(route.children);
+      }
+    }
+  }
 
+  collect(routes);
   return cacheNames;
 }
 
