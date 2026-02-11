@@ -8,6 +8,7 @@ import ButtonConfigDialog from './ButtonConfigDialog.vue';
 import ColumnOverrideDialog from './ColumnOverrideDialog.vue';
 import GridOptionsDialog from './GridOptionsDialog.vue';
 import GridStyleDialog from './GridStyleDialog.vue';
+import RuleConfigDialog from './RuleConfigDialog.vue';
 import {
   fetchAllPageComponents, savePageComponent, deletePageComponent,
   fetchRulesByComponent, savePageRule, deletePageRule
@@ -76,7 +77,7 @@ const ruleColDefs: ColDef[] = [
   },
   {
     field: 'rules', headerName: '规则内容(JSON)', flex: 1,
-    editable: (params: any) => params.data?.ruleType !== 'COLUMN_OVERRIDE' && params.data?.ruleType !== 'GRID_OPTIONS' && params.data?.ruleType !== 'GRID_STYLE',
+    editable: (params: any) => params.data?.ruleType !== 'COLUMN_OVERRIDE' && params.data?.ruleType !== 'GRID_OPTIONS' && params.data?.ruleType !== 'GRID_STYLE' && params.data?.ruleType !== 'CALC' && params.data?.ruleType !== 'AGGREGATE' && params.data?.ruleType !== 'VALIDATION',
     cellEditor: 'agLargeTextCellEditor', cellEditorPopup: true,
     cellRenderer: (params: ICellRendererParams) => {
       if (params.data?.ruleType === 'COLUMN_OVERRIDE') {
@@ -126,6 +127,22 @@ const ruleColDefs: ColDef[] = [
         return el;
       }
       // 其他类型正常显示文本
+      const ruleType = params.data?.ruleType;
+      if (ruleType === 'CALC' || ruleType === 'AGGREGATE' || ruleType === 'VALIDATION') {
+        const el = document.createElement('span');
+        let count = 0;
+        const labelMap: Record<string, string> = { CALC: '📐 计算规则', AGGREGATE: '📊 聚合规则', VALIDATION: '✅ 校验规则' };
+        try {
+          const arr = params.value ? JSON.parse(params.value) : [];
+          count = Array.isArray(arr) ? arr.length : 0;
+        } catch { /* ignore */ }
+        el.textContent = count > 0 ? `${labelMap[ruleType]}(${count})` : labelMap[ruleType];
+        el.style.cursor = 'pointer';
+        el.style.color = count > 0 ? '#2080f0' : '#999';
+        el.style.fontWeight = count > 0 ? '500' : 'normal';
+        el.addEventListener('click', () => openRuleConfigDialog(params.data));
+        return el;
+      }
       const el = document.createElement('span');
       el.textContent = params.value || '';
       el.style.overflow = 'hidden';
@@ -224,6 +241,31 @@ function onGridStyleSave(json: string) {
   if (gridStyleTargetRow) {
     gridStyleTargetRow.rules = json;
     gridStyleTargetRow._dirty = true;
+    ruleGridApi.value?.refreshCells({ force: true });
+  }
+}
+
+// ---- 规则可视化配置弹窗 (CALC / AGGREGATE / VALIDATION) ----
+const ruleConfigShow = ref(false);
+const ruleConfigJson = ref('');
+const ruleConfigType = ref<'CALC' | 'AGGREGATE' | 'VALIDATION'>('CALC');
+const ruleConfigPageCode = ref('');
+const ruleConfigCompKey = ref('');
+let ruleConfigTargetRow: any = null;
+
+function openRuleConfigDialog(row: any) {
+  ruleConfigJson.value = row.rules || '[]';
+  ruleConfigType.value = row.ruleType as 'CALC' | 'AGGREGATE' | 'VALIDATION';
+  ruleConfigPageCode.value = row.pageCode || '';
+  ruleConfigCompKey.value = row.componentKey || '';
+  ruleConfigTargetRow = row;
+  ruleConfigShow.value = true;
+}
+
+function onRuleConfigSave(json: string) {
+  if (ruleConfigTargetRow) {
+    ruleConfigTargetRow.rules = json;
+    ruleConfigTargetRow._dirty = true;
     ruleGridApi.value?.refreshCells({ force: true });
   }
 }
@@ -517,6 +559,16 @@ watch(() => filterState?.value, async (state) => {
       :componentKey="gridStyleCompKey"
       :ruleRow="gridStyleTargetRow"
       @save="onGridStyleSave"
+    />
+    <!-- 规则可视化配置弹窗 (CALC / AGGREGATE / VALIDATION) -->
+    <RuleConfigDialog
+      v-model:show="ruleConfigShow"
+      :rulesJson="ruleConfigJson"
+      :ruleType="ruleConfigType"
+      :pageCode="ruleConfigPageCode"
+      :componentKey="ruleConfigCompKey"
+      :ruleRow="ruleConfigTargetRow"
+      @save="onRuleConfigSave"
     />
   </div>
 </template>
