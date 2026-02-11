@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, nextTick } from 'vue';
 import {
   NModal, NButton, NSpace, NSelect, NInput, NInputNumber,
   NEmpty, NPopconfirm, NTag, NSwitch, useMessage
@@ -42,6 +42,33 @@ const availableFields = ref<{ label: string; value: string }[]>([]);
 const fieldGroups = ref<TableFieldGroup[]>([]);
 const saving = ref(false);
 const sidebarFilter = ref('');
+
+// ==================== 字段插入联动 ====================
+// 记录当前聚焦的输入框信息，点击侧边栏字段时追加到该输入框
+type ActiveInput = { getValue: () => string; setValue: (v: string) => void; el: HTMLInputElement | null };
+const activeInput = ref<ActiveInput | null>(null);
+
+function trackFocus(getValue: () => string, setValue: (v: string) => void, event: FocusEvent) {
+  activeInput.value = { getValue, setValue, el: event.target as HTMLInputElement };
+}
+
+function insertField(fieldName: string) {
+  const ai = activeInput.value;
+  if (!ai) { message.info('请先点击一个输入框'); return; }
+  const el = ai.el;
+  const current = ai.getValue();
+  if (el) {
+    // 在光标位置插入
+    const start = el.selectionStart ?? current.length;
+    const end = el.selectionEnd ?? current.length;
+    const newVal = current.slice(0, start) + fieldName + current.slice(end);
+    ai.setValue(newVal);
+    // 恢复焦点和光标位置
+    nextTick(() => { el.focus(); el.setSelectionRange(start + fieldName.length, start + fieldName.length); });
+  } else {
+    ai.setValue(current + fieldName);
+  }
+}
 
 const titleMap: Record<string, string> = { CALC: '行级计算规则', AGGREGATE: '聚合规则', VALIDATION: '校验规则' };
 const dialogTitle = computed(() => `${titleMap[props.ruleType]} - ${props.componentKey}`);
@@ -295,17 +322,17 @@ async function handleSave() {
             <div class="rule-row">
               <div class="rule-field"><span class="field-label">目标字段</span><NSelect v-model:value="item.field" :options="availableFields" size="small" filterable tag placeholder="输入或选择" style="width:200px" /></div>
               <div class="rule-field"><span class="field-label">排序</span><NInputNumber v-model:value="item.order" size="small" style="width:80px" /></div>
-              <div class="rule-field" style="flex:1"><span class="field-label">条件 (可选)</span><NInput v-model:value="item.condition" size="small" placeholder="如: useFlag !== '包材'" /></div>
+              <div class="rule-field" style="flex:1"><span class="field-label">条件 (可选)</span><NInput v-model:value="item.condition" size="small" placeholder="如: useFlag !== '包材'" @focus="(e: FocusEvent) => trackFocus(() => item.condition || '', (v) => item.condition = v, e)" /></div>
             </div>
             <template v-if="!item.isMultiFormula">
-              <div class="rule-row"><div class="rule-field" style="flex:1"><span class="field-label">表达式</span><NInput v-model:value="item.expression" size="small" placeholder="如: batchQty * price" /></div></div>
+              <div class="rule-row"><div class="rule-field" style="flex:1"><span class="field-label">表达式</span><NInput v-model:value="item.expression" size="small" placeholder="如: batchQty * price" @focus="(e: FocusEvent) => trackFocus(() => item.expression, (v) => item.expression = v, e)" /></div></div>
             </template>
             <template v-else>
               <div class="rule-row"><div class="rule-field"><span class="field-label">分支字段</span><NSelect v-model:value="item.formulaField" :options="availableFields" size="small" filterable tag placeholder="选择分支依据" style="width:220px" /></div></div>
               <div v-for="(f, fi) in item.formulas" :key="fi" class="formula-card">
                 <div class="rule-row">
                   <div class="rule-field"><span class="field-label">分支值</span><NInput v-model:value="f.key" size="small" placeholder="如: A" style="width:80px" /></div>
-                  <div class="rule-field" style="flex:1"><span class="field-label">表达式</span><NInput v-model:value="f.expression" size="small" placeholder="如: apexPl / pPerpack" /></div>
+                  <div class="rule-field" style="flex:1"><span class="field-label">表达式</span><NInput v-model:value="f.expression" size="small" placeholder="如: apexPl / pPerpack" @focus="(e: FocusEvent) => trackFocus(() => f.expression, (v) => f.expression = v, e)" /></div>
                   <NPopconfirm @positive-click="item.formulas.splice(fi, 1)"><template #trigger><NButton size="tiny" quaternary type="error" style="align-self:flex-end">删除</NButton></template>删除此分支？</NPopconfirm>
                 </div>
               </div>
@@ -333,11 +360,11 @@ async function handleSave() {
               </div>
               <div class="rule-row">
                 <div class="rule-field"><span class="field-label">来源Tab (可选)</span><NInput v-model:value="item.sourceTab" size="small" placeholder="如: CostMaterial" style="width:180px" /></div>
-                <div class="rule-field" style="flex:1"><span class="field-label">过滤条件 (可选)</span><NInput v-model:value="item.filter" size="small" placeholder="如: useFlag === '原料'" /></div>
+                <div class="rule-field" style="flex:1"><span class="field-label">过滤条件 (可选)</span><NInput v-model:value="item.filter" size="small" placeholder="如: useFlag === '原料'" @focus="(e: FocusEvent) => trackFocus(() => item.filter || '', (v) => item.filter = v, e)" /></div>
               </div>
             </template>
             <template v-else>
-              <div class="rule-row"><div class="rule-field" style="flex:1"><span class="field-label">表达式</span><NInput v-model:value="item.expression" size="small" placeholder="如: totalYl + totalFl" /></div></div>
+              <div class="rule-row"><div class="rule-field" style="flex:1"><span class="field-label">表达式</span><NInput v-model:value="item.expression" size="small" placeholder="如: totalYl + totalFl" @focus="(e: FocusEvent) => trackFocus(() => item.expression || '', (v) => item.expression = v, e)" /></div></div>
             </template>
           </div>
         </template>
@@ -372,7 +399,7 @@ async function handleSave() {
               <NTag size="tiny" :type="group.isMaster ? 'success' : 'info'">{{ group.isMaster ? '主' : '从' }}</NTag>
               <span>{{ group.label }}</span>
             </div>
-            <div v-for="f in group.fields" :key="f.fieldName" class="field-item" :title="f.columnName">
+            <div v-for="f in group.fields" :key="f.fieldName" class="field-item" :title="f.columnName" @mousedown.prevent="insertField(f.fieldName)">
               <span class="field-name">{{ f.fieldName }}</span>
               <span class="field-desc">{{ f.headerText }}</span>
             </div>
@@ -402,7 +429,7 @@ async function handleSave() {
 .sidebar-scroll { flex: 1; overflow-y: auto; }
 .field-group { margin-bottom: 10px; }
 .group-title { display: flex; align-items: center; gap: 4px; font-size: 12px; color: #666; margin-bottom: 4px; font-weight: 500; }
-.field-item { display: flex; align-items: center; gap: 6px; padding: 2px 4px; font-size: 12px; border-radius: 3px; cursor: default; }
+.field-item { display: flex; align-items: center; gap: 6px; padding: 2px 4px; font-size: 12px; border-radius: 3px; cursor: pointer; user-select: none; }
 .field-item:hover { background: #f0f0f0; }
 .field-name { color: #2080f0; font-family: monospace; white-space: nowrap; }
 .field-desc { color: #999; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
