@@ -350,7 +350,7 @@ export function applyColumnOverrides(columns: ColDef[], overrides: ColumnOverrid
     const updated: ColDef = { ...col };
     if (override.width != null) updated.width = override.width;
     if (override.visible != null) updated.hide = override.visible === false;
-    if (override.editable != null) updated.editable = override.editable;
+    if (override.editable === false) updated.editable = false;
     if (override.searchable === false) updated.filter = false;
     if (override.searchable === true && updated.filter === false) updated.filter = true;
     // 支持下拉框编辑器
@@ -434,7 +434,7 @@ export function applyColumnOverrides(columns: ColDef[], overrides: ColumnOverrid
       resizable: true,
     };
     if (override.width != null) virtualCol.width = override.width;
-    if (override.editable != null) virtualCol.editable = override.editable;
+    if (override.editable === false) virtualCol.editable = false;
     if (override.cellEditor && override.cellEditor !== 'lookup') virtualCol.cellEditor = override.cellEditor;
     result.push(virtualCol);
     existingFields.add(field);
@@ -637,6 +637,14 @@ export function buildCellEditableCallback(
   }
   
   const rowCallback = buildRowEditableCallback(rowRules || []);
+
+  // 收集所有被 CELL_EDITABLE 规则管控的字段
+  const controlledFields = new Set<string>();
+  if (cellRules) {
+    for (const rule of cellRules) {
+      for (const f of rule.editableFields) controlledFields.add(f);
+    }
+  }
   
   return (params: any) => {
     const data = params.data;
@@ -653,6 +661,10 @@ export function buildCellEditableCallback(
         if (checkRuleConditions(data, rule)) {
           return rule.editableFields.includes(field);
         }
+      }
+      // 没有匹配的规则 → 被管控的字段默认不可编辑
+      if (controlledFields.has(field)) {
+        return false;
       }
     }
     

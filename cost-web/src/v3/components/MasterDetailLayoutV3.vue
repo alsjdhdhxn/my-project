@@ -477,6 +477,7 @@ const {
   isUserEditing: editingState,
   metaRowClassGetter: masterRowClassGetter?.value,
   gridOptions: masterGridOptionsValue.value,
+  columnDefs: masterColumnDefs,
   contextMenuConfig: masterContextMenu,
   rowEditableRules: masterRowEditableRules?.value,
   rowClassRules: masterRowClassRules?.value,
