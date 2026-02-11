@@ -86,8 +86,8 @@ public class MetaConfigController {
     // ==================== 页面管理 ====================
 
     @GetMapping("/components")
-    public Result<List<PageComponent>> listComponents() {
-        return Result.ok(metaConfigService.listComponents());
+    public Result<List<Map<String, Object>>> listComponents() {
+        return Result.ok(metaConfigService.listComponentsWithNames());
     }
 
     @PostMapping("/component")

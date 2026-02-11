@@ -25,20 +25,36 @@ const selectedComp = ref<any>(null);
 
 const compColDefs: ColDef[] = [
   { field: 'id', headerName: 'ID', width: 70, editable: false },
-  { field: 'pageCode', headerName: 'pageCode', width: 130, editable: true },
-  { field: 'componentKey', headerName: 'componentKey', width: 130, editable: true },
   {
-    field: 'componentType', headerName: '类型', width: 100, editable: true,
-    cellEditor: 'agSelectCellEditor',
-    cellEditorParams: { values: ['GRID', 'DETAIL_GRID', 'FORM', 'TAB_CONTAINER', 'TOOLBAR'] }
+    field: 'pageCode', headerName: '页面编码', width: 160, editable: true,
+    valueFormatter: (params: any) => {
+      const name = params.data?.pageName;
+      return name ? `${name} (${params.value})` : params.value || '';
+    }
   },
-  { field: 'parentKey', headerName: 'parentKey', width: 120, editable: true },
-  { field: 'refTableCode', headerName: 'refTableCode', width: 130, editable: true },
-  { field: 'slotName', headerName: 'slotName', width: 100, editable: true },
+  { field: 'componentKey', headerName: '组件标识', width: 130, editable: true },
+  {
+    field: 'componentType', headerName: '类型', width: 110, editable: true,
+    cellEditor: 'agSelectCellEditor',
+    cellEditorParams: { values: ['GRID', 'DETAIL_GRID', 'FORM', 'TAB_CONTAINER', 'TOOLBAR'] },
+    valueFormatter: (params: any) => {
+      const map: Record<string, string> = { GRID: '主表格', DETAIL_GRID: '从表格', FORM: '表单', TAB_CONTAINER: '标签容器', TOOLBAR: '工具栏' };
+      return map[params.value] || params.value || '';
+    }
+  },
+  { field: 'parentKey', headerName: '父组件', width: 120, editable: true },
+  {
+    field: 'refTableCode', headerName: '关联表', width: 180, editable: true,
+    valueFormatter: (params: any) => {
+      const name = params.data?.refTableName;
+      return name ? `${name} (${params.value})` : params.value || '';
+    }
+  },
+  { field: 'slotName', headerName: '插槽名', width: 100, editable: true },
   { field: 'sortOrder', headerName: '排序', width: 70, editable: true, cellDataType: 'number' },
   { field: 'description', headerName: '描述', width: 150, editable: true },
   {
-    field: 'componentConfig', headerName: 'componentConfig', width: 200,
+    field: 'componentConfig', headerName: '按钮配置', width: 200,
     editable: false,
     cellRenderer: (params: ICellRendererParams) => {
       const el = document.createElement('span');
@@ -68,8 +84,8 @@ const selectedRule = ref<any>(null);
 
 const ruleColDefs: ColDef[] = [
   { field: 'id', headerName: 'ID', width: 70, editable: false },
-  { field: 'pageCode', headerName: 'pageCode', width: 120, editable: false },
-  { field: 'componentKey', headerName: 'componentKey', width: 120, editable: false },
+  { field: 'pageCode', headerName: '页面编码', width: 120, editable: false },
+  { field: 'componentKey', headerName: '组件标识', width: 120, editable: false },
   {
     field: 'ruleType', headerName: '规则类型', width: 140, editable: true,
     cellEditor: 'agSelectCellEditor',

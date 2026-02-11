@@ -109,6 +109,19 @@ public class MetaConfigService {
         );
     }
 
+    public List<Map<String, Object>> listComponentsWithNames() {
+        String sql = "SELECT c.ID as \"id\", c.PAGE_CODE as \"pageCode\", c.COMPONENT_KEY as \"componentKey\", " +
+                     "c.COMPONENT_TYPE as \"componentType\", c.PARENT_KEY as \"parentKey\", " +
+                     "c.COMPONENT_CONFIG as \"componentConfig\", c.REF_TABLE_CODE as \"refTableCode\", " +
+                     "c.SLOT_NAME as \"slotName\", c.SORT_ORDER as \"sortOrder\", c.DESCRIPTION as \"description\", " +
+                     "r.RESOURCE_NAME as \"pageName\", t.TABLE_NAME as \"refTableName\" " +
+                     "FROM T_COST_PAGE_COMPONENT c " +
+                     "LEFT JOIN T_COST_RESOURCE r ON c.PAGE_CODE = r.PAGE_CODE " +
+                     "LEFT JOIN T_COST_TABLE_METADATA t ON c.REF_TABLE_CODE = t.TABLE_CODE AND t.DELETED = 0 " +
+                     "WHERE c.DELETED = 0 ORDER BY c.SORT_ORDER";
+        return dynamicMapper.selectList(sql);
+    }
+
     @Transactional
     public PageComponent saveComponent(PageComponent c) {
         if (c.getId() == null) {
