@@ -131,13 +131,13 @@ const renderedTabs = computed(() => {
   return result;
 });
 
-/** 是否有 tab（登录页等 BlankLayout 没有 tab） */
-const hasTabs = computed(() => tabStore.tabs.length > 0);
+/** 是否处于 tab 模式（有活跃 tab 且 tab 已初始化） */
+const useTabMode = computed(() => !!tabStore.activeTabId);
 </script>
 
 <template>
-  <!-- 有 tab 时：v-show 多实例模式 -->
-  <div v-if="hasTabs" class="flex-grow relative bg-layout">
+  <!-- 有活跃 tab 时：v-show 多实例模式 -->
+  <div v-if="useTabMode" class="flex-grow relative bg-layout">
     <div
       v-for="item in renderedTabs"
       :key="item.id"
@@ -148,7 +148,7 @@ const hasTabs = computed(() => tabStore.tabs.length > 0);
       <component :is="item.component" class="h-full" />
     </div>
   </div>
-  <!-- 无 tab 时（登录页等）：传统 RouterView -->
+  <!-- 无活跃 tab 时（登录页等）：传统 RouterView -->
   <RouterView v-else v-slot="{ Component: RouteComp }">
     <component :is="RouteComp" v-if="appStore.reloadFlag" class="flex-grow bg-layout" />
   </RouterView>
