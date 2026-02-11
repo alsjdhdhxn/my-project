@@ -648,6 +648,8 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
 
     // 强制刷新所有单元格，让 editable/style 等回调重新执行
     api.refreshCells({ force: true });
+    // 重绘行，让 getRowClass/getRowStyle 回调重新执行
+    api.redrawRows();
     // 刷新数据
     api.refreshServerSide?.({ purge: false });
   }

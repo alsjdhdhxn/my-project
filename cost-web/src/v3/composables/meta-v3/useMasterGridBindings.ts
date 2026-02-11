@@ -149,10 +149,33 @@ export function useMasterGridBindings(params: {
     return rowKey;
   };
 
-  // Row class rules (from ROW_CLASS config).
-  const rowClassRules = params.rowClassRules ?? (runtime as any).masterRowClassRules?.value ?? [];
-  const rowClassCallback = buildRowClassCallback(rowClassRules);
-  const rowStyleCallback = buildRowStyleCallback(rowClassRules);
+  // Row class/style rules (from GRID_STYLE config).
+  // 动态获取最新规则，确保 WebSocket 推送后样式立即生效
+  let _cachedStyleRules: any = null;
+  let _cachedRowClassCallback: ((params: any) => string | undefined) | undefined;
+  let _cachedRowStyleCallback: ((params: any) => Record<string, string> | undefined) | undefined;
+
+  function getLatestRowClassCallback() {
+    const rules = (runtime as any).masterRowClassRules?.value
+      ?? params.rowClassRules ?? [];
+    if (rules === _cachedStyleRules) return _cachedRowClassCallback;
+    _cachedStyleRules = rules;
+    _cachedRowClassCallback = buildRowClassCallback(rules);
+    _cachedRowStyleCallback = buildRowStyleCallback(rules);
+    return _cachedRowClassCallback;
+  }
+
+  function getLatestRowStyleCallback() {
+    const rules = (runtime as any).masterRowClassRules?.value
+      ?? params.rowClassRules ?? [];
+    if (rules !== _cachedStyleRules) {
+      _cachedStyleRules = rules;
+      _cachedRowClassCallback = buildRowClassCallback(rules);
+      _cachedRowStyleCallback = buildRowStyleCallback(rules);
+    }
+    return _cachedRowStyleCallback;
+  }
+
   const dataSource = params.dataSource;
   const sumFields = params.sumFields ?? (runtime as any).masterSumFields?.value ?? [];
 
@@ -175,8 +198,8 @@ export function useMasterGridBindings(params: {
     const classes: string[] = [];
     if (isFlagTrue(params.data?._isDeleted)) classes.push('row-deleted');
     if (isFlagTrue(params.data?._isNew)) classes.push('row-new');
-    // 应用 ROW_CLASS 规则
-    const ruleClass = rowClassCallback?.(params);
+    // 应用 ROW_CLASS 规则（动态获取最新回调）
+    const ruleClass = getLatestRowClassCallback()?.(params);
     if (ruleClass) classes.push(ruleClass);
     // 应用元数据样式
     const metaClass = metaRowClassGetter?.(params);
@@ -185,7 +208,7 @@ export function useMasterGridBindings(params: {
   }
 
   function getRowStyle(params: any): Record<string, string> | undefined {
-    return rowStyleCallback?.(params);
+    return getLatestRowStyleCallback()?.(params);
   }
 
   const resolveGridKey = (key?: string | null) => key && key.trim().length > 0 ? key : 'masterGrid';
