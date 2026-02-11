@@ -546,6 +546,8 @@ function onDetailCellValueChanged(event: any, masterId: number, tabKey: string, 
     const resolvedRowKey = masterRowKey ?? activeMasterRowKey.value ?? undefined;
     runDetailCalc(event.node, event.api, row, masterId, tabKey, resolvedRowKey);
     recalcAggregates(masterId, resolvedRowKey);
+    // 刷新从表聚合汇总（grandTotalRow 不会自动重算）
+    event.api?.refreshClientSideRowModel?.('aggregate');
   }
 }
 

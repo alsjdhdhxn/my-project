@@ -186,6 +186,10 @@ onBeforeUnmount(() => {
 
 function onCellValueChanged(event: any) {
   props.onCellValueChanged(event);
+  // 刷新聚合汇总（grandTotalRow 不会自动重算）
+  if (props.sumFields?.length) {
+    event.api?.refreshClientSideRowModel?.('aggregate');
+  }
 }
 
 function onCellClicked(event: any) {

@@ -327,7 +327,10 @@ export function useCalcBroadcast(params: {
   function refreshAllDetailGrids(masterRowKey: string) {
     const detailApis = detailGridApisByTab?.value;
     if (detailApis && Object.keys(detailApis).length > 0) {
-      Object.values(detailApis).forEach(api => api?.refreshCells?.({ force: true }));
+      Object.values(detailApis).forEach(api => {
+        api?.refreshCells?.({ force: true });
+        api?.refreshClientSideRowModel?.('aggregate');
+      });
       return;
     }
     const api = masterGridApi.value;
@@ -351,6 +354,7 @@ export function useCalcBroadcast(params: {
       }
       if (!tabKey || !cached[tabKey]) return;
       detailInfo.api.refreshCells({ force: true });
+      detailInfo.api.refreshClientSideRowModel?.('aggregate');
     });
   }
 
