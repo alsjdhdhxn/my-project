@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, h, markRaw, shallowRef, watch, type Component } from 'vue';
+import { useRoute } from 'vue-router';
 import { useAppStore } from '@/store/modules/app';
 import { useTabStore } from '@/store/modules/tab';
 import { router } from '@/router';
@@ -129,10 +130,14 @@ const renderedTabs = computed(() => {
   }
   return result;
 });
+
+/** 是否有 tab（登录页等 BlankLayout 没有 tab） */
+const hasTabs = computed(() => tabStore.tabs.length > 0);
 </script>
 
 <template>
-  <div class="flex-grow relative bg-layout">
+  <!-- 有 tab 时：v-show 多实例模式 -->
+  <div v-if="hasTabs" class="flex-grow relative bg-layout">
     <div
       v-for="item in renderedTabs"
       :key="item.id"
@@ -143,6 +148,10 @@ const renderedTabs = computed(() => {
       <component :is="item.component" class="h-full" />
     </div>
   </div>
+  <!-- 无 tab 时（登录页等）：传统 RouterView -->
+  <RouterView v-else v-slot="{ Component: RouteComp }">
+    <component :is="RouteComp" v-if="appStore.reloadFlag" class="flex-grow bg-layout" />
+  </RouterView>
 </template>
 
 <style scoped></style>
