@@ -119,7 +119,17 @@ public class MetaConfigService {
                      "LEFT JOIN T_COST_RESOURCE r ON c.PAGE_CODE = r.PAGE_CODE " +
                      "LEFT JOIN T_COST_TABLE_METADATA t ON c.REF_TABLE_CODE = t.TABLE_CODE AND t.DELETED = 0 " +
                      "WHERE c.DELETED = 0 ORDER BY c.SORT_ORDER";
-        return dynamicMapper.selectList(sql);
+        List<Map<String, Object>> rows = dynamicMapper.selectList(sql);
+        // CLOB 字段转 String（Oracle 的 CLOB 列返回 ClobProxyImpl，Jackson 无法序列化）
+        for (Map<String, Object> row : rows) {
+            for (Map.Entry<String, Object> entry : row.entrySet()) {
+                if (entry.getValue() instanceof java.sql.Clob clob) {
+                    try { entry.setValue(clob.getSubString(1, (int) clob.length())); }
+                    catch (Exception ignored) { entry.setValue(null); }
+                }
+            }
+        }
+        return rows;
     }
 
     @Transactional
