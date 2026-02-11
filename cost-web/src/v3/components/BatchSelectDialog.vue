@@ -1,5 +1,5 @@
 <template>
-  <NModal v-model:show="visible" :mask-closable="false" :close-on-esc="true">
+  <NModal v-model:show="visible" :mask-closable="true" :close-on-esc="true">
     <div ref="dialogRef" class="batch-select-dialog" :style="dialogStyle">
       <!-- 标题栏（可拖拽） -->
       <div class="dialog-header" @mousedown="startDrag">
