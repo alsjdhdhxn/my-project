@@ -173,7 +173,6 @@ function openBtnConfigDialog(row: any) {
 function onBtnConfigSave(config: string) {
   if (btnDialogTargetRow) {
     btnDialogTargetRow.componentConfig = config;
-    btnDialogTargetRow._dirty = true;
     compGridApi.value?.refreshCells({ force: true });
   }
 }
@@ -196,8 +195,9 @@ function openColOverrideDialog(row: any) {
 function onColOverrideSave(json: string) {
   if (colOverrideTargetRow) {
     colOverrideTargetRow.rules = json;
-    colOverrideTargetRow._dirty = true;
-    ruleGridApi.value?.refreshCells({ force: true });
+    if (selectedComp.value?.pageCode && selectedComp.value?.componentKey) {
+      loadRules(selectedComp.value.pageCode, selectedComp.value.componentKey);
+    }
   }
 }
 
@@ -217,8 +217,9 @@ function openGridOptionsDialog(row: any) {
 function onGridOptionsSave(json: string) {
   if (gridOptionsTargetRow) {
     gridOptionsTargetRow.rules = json;
-    gridOptionsTargetRow._dirty = true;
-    ruleGridApi.value?.refreshCells({ force: true });
+    if (selectedComp.value?.pageCode && selectedComp.value?.componentKey) {
+      loadRules(selectedComp.value.pageCode, selectedComp.value.componentKey);
+    }
   }
 }
 
@@ -240,8 +241,9 @@ function openGridStyleDialog(row: any) {
 function onGridStyleSave(json: string) {
   if (gridStyleTargetRow) {
     gridStyleTargetRow.rules = json;
-    gridStyleTargetRow._dirty = true;
-    ruleGridApi.value?.refreshCells({ force: true });
+    if (selectedComp.value?.pageCode && selectedComp.value?.componentKey) {
+      loadRules(selectedComp.value.pageCode, selectedComp.value.componentKey);
+    }
   }
 }
 
@@ -265,8 +267,9 @@ function openRuleConfigDialog(row: any) {
 function onRuleConfigSave(json: string) {
   if (ruleConfigTargetRow) {
     ruleConfigTargetRow.rules = json;
-    ruleConfigTargetRow._dirty = true;
-    ruleGridApi.value?.refreshCells({ force: true });
+    if (selectedComp.value?.pageCode && selectedComp.value?.componentKey) {
+      loadRules(selectedComp.value.pageCode, selectedComp.value.componentKey);
+    }
   }
 }
 
@@ -532,6 +535,7 @@ watch(() => filterState?.value, async (state) => {
       v-model:show="btnDialogShow"
       :componentConfig="btnDialogConfig"
       :componentKey="btnDialogCompKey"
+      :compRow="btnDialogTargetRow"
       @save="onBtnConfigSave"
     />
     <!-- 列覆盖配置弹窗 -->

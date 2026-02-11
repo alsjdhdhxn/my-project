@@ -4,11 +4,13 @@ import {
   NModal, NButton, NSpace, NForm, NFormItem, NInput, NSelect, NSwitch,
   NCard, NIcon, NDivider, NEmpty, NTag, NPopconfirm, useMessage
 } from 'naive-ui';
+import { savePageComponent } from '@/service/api/meta-config';
 
 const props = defineProps<{
   show: boolean;
   componentConfig: string;
   componentKey: string;
+  compRow?: any;
 }>();
 
 const emit = defineEmits<{
@@ -222,13 +224,17 @@ function getPositionLabel(pos?: string): string {
 }
 
 // ---- 保存 ----
-function handleSave() {
+async function handleSave() {
   try {
     const config = props.componentConfig ? JSON.parse(props.componentConfig) : {};
     config.buttons = buttons.value.map(serializeButton);
-    emit('save', JSON.stringify(config));
+    const configJson = JSON.stringify(config);
+    if (props.compRow) {
+      await savePageComponent({ ...props.compRow, componentConfig: configJson });
+      message.success('按钮配置已保存');
+    }
+    emit('save', configJson);
     emit('update:show', false);
-    message.success('按钮配置已更新');
   } catch (e) {
     message.error('保存失败: ' + e);
   }
