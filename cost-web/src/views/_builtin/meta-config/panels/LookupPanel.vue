@@ -138,6 +138,7 @@ watch(() => filterState?.value, async (state) => {
         :columnDefs="columnDefs"
         :defaultColDef="defaultColDef"
         :rowSelection="{ mode: 'singleRow', checkboxes: false }"
+        :cellSelection="true"
         @grid-ready="onGridReady"
         @selection-changed="onSelectionChanged"
         @row-clicked="onRowClicked"

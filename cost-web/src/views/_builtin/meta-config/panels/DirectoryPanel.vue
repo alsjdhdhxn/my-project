@@ -222,6 +222,7 @@ onMounted(loadData);
         :groupDefaultExpanded="0"
         :rowSelection="{ mode: 'singleRow', checkboxes: false }"
         :getRowId="(params: any) => String(params.data.id)"
+        :cellSelection="true"
         :getContextMenuItems="getContextMenuItems"
         @grid-ready="onGridReady"
         @selection-changed="onSelectionChanged"
