@@ -1,0 +1,14 @@
+{
+  "enabled": true,
+  "name": "GitNexus 自动重建索引",
+  "description": "在 agent 执行完成后自动运行 gitnexus analyze 更新知识图谱索引",
+  "version": "1",
+  "when": {
+    "type": "agentStop"
+  },
+  "then": {
+    "type": "runCommand",
+    "command": "npx gitnexus analyze",
+    "timeout": 120
+  }
+}
