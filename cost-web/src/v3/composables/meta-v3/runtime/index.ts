@@ -176,7 +176,7 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
 
   recalcAggregatesRef.current = calc.recalcAggregates;
 
-  // 构建行可编辑检查函数（使用闭包引用 meta，确保获取最新值）
+  // Build row-editable checker using latest meta rules
   const isRowEditable = (row: any) => {
     const cellRules = meta.masterCellEditableRules?.value || [];
     const rowRules = meta.masterRowEditableRules?.value || [];
@@ -205,18 +205,18 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     compiledAggRules: meta.compiledAggRules
   });
 
-  // 批量选择弹窗
+  // Batch select dialog
   const batchSelect = useBatchSelect({
     detailCache: data.detailCache,
     detailFkColumnByTab: meta.detailFkColumnByTab,
     detailGridApisByTab,
     afterAddDetailRows: (masterId, tabKey, rows) => {
-      // 对每个新增行执行计算
+      // Recalculate each newly added detail row
       rows.forEach(row => {
         const api = detailGridApisByTab.value?.[tabKey];
         calc.runDetailCalc(null, api, row, masterId, tabKey);
       });
-      // 重新计算汇总
+      // Recalculate aggregates
       recalcAggregatesProxy(masterId);
     }
   });
@@ -277,7 +277,7 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
       return;
     }
 
-    // 从 T_COST_PAGE_RULE 执行
+    // Execute action from T_COST_PAGE_RULE
     const { error } = await executePageRuleAction(pageCode, {
       componentKey: options?.componentKey,
       actionCode,
@@ -290,7 +290,7 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     
     notifySuccess('执行成功');
     
-    // 根据 refreshMode 决定刷新方式
+    // Refresh by refreshMode
     const refreshMode = options?.refreshMode ?? 'detail';
     console.log('[executeAction] refreshMode:', refreshMode, 'detailCache size:', data.detailCache?.size);
     
@@ -302,7 +302,7 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     const rowId = options?.selectedRow?.id;
     const rowKey = options?.selectedRow?._rowKey;
     
-    // refreshMode === 'all' 时清空所有缓存，否则只清当前行
+    // refreshMode === 'all' 时清空所有缓存，否则只清当前行缓存
     if (refreshMode === 'all') {
       console.log('[executeAction] clearing all cache');
       data.clearAllCache();
@@ -312,7 +312,6 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     
     if (refreshMode === 'detail') {
       // 只刷新明细，不刷新主表
-      // 重新加载明细数据
       if (rowId != null && rowKey) {
         await data.loadDetailData(rowId, rowKey);
       }
@@ -376,7 +375,7 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
       if (!resolvedFeatures.value.lookup) return;
       lookup.onLookupCancel();
     },
-    // 批量选择
+    // Batch select
     ...batchSelect,
     executeAction,
     registerActionHandler,
@@ -529,7 +528,7 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
 
     if (!watchersAttached && masterKey) {
       watchersAttached = true;
-      // V3 强制使用 SSRM，不需要 watch rowData 来更新 Grid
+      // V3 uses SSRM; no need to watch rowData for grid updates
       watch(meta.masterColumnDefs, (defs) => {
         const state = componentStateByKey.value[masterKey] as GridState | undefined;
         if (state) state.columnDefs = defs || [];
@@ -546,7 +545,9 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
 
     const masterGridOptions = meta.masterGridOptions?.value;
     // V3 强制使用 SSRM 数据源
-    const dataSource = (runtimeApi as any).createServerSideDataSource?.({ pageSize: masterGridOptions?.cacheBlockSize || 100 });
+    const dataSource = (runtimeApi as any).createServerSideDataSource?.({
+      pageSize: masterGridOptions?.cacheBlockSize || 100
+    });
 
     if (masterKey && gridState) {
       const bindings = useMasterGridBindings({
@@ -618,13 +619,58 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     applyExtensions();
     runtimeStatus.value = runtimeError.value ? 'error' : 'ready';
     isReady.value = true;
-    // V3 强制使用 SSRM，不需要预加载数据，由 Grid 自动触发
+    // V3 uses SSRM; data loading is triggered by grid datasource
   }
 
-  /** 热重载元数据配置（WebSocket 推送触发） */
+  function resolveHotReloadMasterTarget() {
+    const activeRowKey = activeMasterRowKey.value;
+    if (activeRowKey) {
+      const activeRow = data.getMasterRowByRowKey(activeRowKey);
+      const masterId = activeRow?.id != null ? Number(activeRow.id) : NaN;
+      if (!Number.isNaN(masterId)) {
+        return { masterId, rowKey: String(activeRowKey) };
+      }
+    }
+
+    const selectedRow = (masterGridApi.value as any)?.getSelectedRows?.()?.[0];
+    if (selectedRow?.id == null) return null;
+    const masterId = Number(selectedRow.id);
+    if (Number.isNaN(masterId)) return null;
+    const rowKey = selectedRow._rowKey ? String(selectedRow._rowKey) : data.resolveMasterRowKey(masterId);
+    if (!rowKey) return null;
+
+    return { masterId, rowKey: String(rowKey) };
+  }
+
+  async function recalcCurrentDetailRowsForHotReload() {
+    if (!resolvedFeatures.value.detailTabs) return;
+    const target = resolveHotReloadMasterTarget();
+    if (!target) return;
+
+    let cached = data.detailCache.get(target.rowKey);
+    if (!cached) {
+      await data.loadDetailData(target.masterId, target.rowKey);
+      cached = data.detailCache.get(target.rowKey);
+    }
+    if (!cached) return;
+
+    for (const [tabKey, rows] of Object.entries(cached)) {
+      const detailApi = detailGridApisByTab.value?.[tabKey];
+      for (const row of rows) {
+        if (!row || row._isDeleted) continue;
+        calc.runDetailCalc(null, detailApi, row, target.masterId, tabKey, target.rowKey);
+      }
+      detailApi?.refreshCells?.({ force: true });
+      detailApi?.refreshClientSideRowModel?.('aggregate');
+    }
+
+    calc.recalcAggregates(target.masterId, target.rowKey);
+  }
+
+  /** Hot-reload metadata config (triggered by WebSocket push) */
   async function reloadMetadata() {
     console.log(`[MetaRuntime] reloadMetadata for ${pageCode}`);
-    // 规则变更时必须先清缓存，否则 compileCalcRules/compileAggRules 会复用旧编译结果
+    // Clear calc cache before recompiling rules to avoid stale compiled results
     clearCalcCache();
     const componentsOk = await loadComponentsRaw();
     if (!componentsOk) return;
@@ -632,29 +678,25 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     await loadMetaRaw();
     compileRulesRaw();
     refreshAutoFeatures();
+    // Re-run grid callbacks against latest rules
 
     const api = masterGridApi.value;
     if (!api) return;
 
-    // 更新列定义（新的 COLUMN_OVERRIDE、精度、宽度等）
-    const newDefs = meta.masterColumnDefs.value;
-    if (newDefs?.length) {
-      api.setGridOption('columnDefs', newDefs);
+    const latestColumnDefs = meta.masterColumnDefs.value || [];
+    if (latestColumnDefs.length) {
+      api.setGridOption('columnDefs', latestColumnDefs);
+      const masterKey = meta.masterGridKey.value || findFirstGridKey(meta.pageComponents.value || []);
+      const gridState = masterKey ? (componentStateByKey.value[masterKey] as GridState | undefined) : undefined;
+      if (gridState) {
+        gridState.columnDefs = latestColumnDefs;
+      }
     }
 
-    // 强制 AG Grid 重新读取 defaultColDef，使 editable 回调拿到最新规则
-    const masterKey = meta.masterGridKey.value || findFirstGridKey(meta.pageComponents.value || []);
-    const gridState = masterKey ? (componentStateByKey.value[masterKey] as any) : null;
-    if (gridState?.defaultColDef) {
-      api.setGridOption('defaultColDef', { ...gridState.defaultColDef });
-    }
-
-    // 强制刷新所有单元格，让 editable/style 等回调重新执行
+    // 触发 editable/rowClass/rowStyle 等动态回调按最新规则重新执行
     api.refreshCells({ force: true });
-    // 重绘行，让 getRowClass/getRowStyle 回调重新执行
     api.redrawRows();
-    // 刷新数据
-    api.refreshServerSide?.({ purge: false });
+    await recalcCurrentDetailRowsForHotReload();
   }
 
   return {
@@ -675,7 +717,7 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
   };
 }
 
-/** 单表页面 Runtime（禁用主从相关功能） */
+/** Single-grid runtime (master-detail features disabled) */
 export function useSingleGridRuntime(options: BaseRuntimeOptions) {
   return {
     ...useBaseRuntime(options, {
@@ -690,7 +732,7 @@ export function useSingleGridRuntime(options: BaseRuntimeOptions) {
   };
 }
 
-/** 主从页面 Runtime（启用全部功能） */
+/** Master-detail runtime (all features enabled) */
 export function useMasterDetailRuntime(options: BaseRuntimeOptions) {
   return {
     ...useBaseRuntime(options, {
@@ -704,3 +746,4 @@ export function useMasterDetailRuntime(options: BaseRuntimeOptions) {
     mode: 'masterDetail' as const
   };
 }
+
