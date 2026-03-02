@@ -1,6 +1,12 @@
 /** The storage namespace */
 declare namespace StorageType {
   interface Session {
+    /** The token */
+    token: string;
+    /** The refresh token */
+    refreshToken: string;
+    /** The auth last active timestamp */
+    authLastActiveAt: number;
     /** The theme color */
     themeColor: string;
     // /**

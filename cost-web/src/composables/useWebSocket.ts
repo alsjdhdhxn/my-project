@@ -1,5 +1,5 @@
-import { ref, onUnmounted } from 'vue';
-import { localStg } from '@/utils/storage';
+import { onUnmounted, ref } from 'vue';
+import { getToken } from '@/store/modules/auth/shared';
 
 export type WsMessage = {
   type: string;
@@ -19,7 +19,7 @@ const HEARTBEAT_INTERVAL = 30_000;
 const RECONNECT_DELAY = 3_000;
 
 function getWsUrl() {
-  const token = localStg.get('token');
+  const token = getToken();
   if (!token) return null;
   const base = import.meta.env.VITE_SERVICE_BASE_URL || `${window.location.protocol}//${window.location.host}`;
   const wsBase = base.replace(/^http/, 'ws');

@@ -9,7 +9,7 @@ import { SetupStoreId } from '@/enum';
 import { $t } from '@/locales';
 import { useRouteStore } from '../route';
 import { useTabStore } from '../tab';
-import { clearAuthStorage, getToken } from './shared';
+import { clearAuthStorage, getToken, markAuthActivity, setAuthTokens } from './shared';
 
 export const useAuthStore = defineStore(SetupStoreId.Auth, () => {
   const route = useRoute();
@@ -128,9 +128,8 @@ export const useAuthStore = defineStore(SetupStoreId.Auth, () => {
   }
 
   async function loginByToken(loginToken: Api.Auth.LoginToken) {
-    // 1. stored in the localStorage, the later requests need it in headers
-    localStg.set('token', loginToken.token);
-    localStg.set('refreshToken', loginToken.refreshToken);
+    // 1. store tokens in session storage, later requests read them from headers
+    setAuthTokens(loginToken.token, loginToken.refreshToken);
 
     // 2. get user info
     const pass = await getUserInfo();
@@ -161,16 +160,17 @@ export const useAuthStore = defineStore(SetupStoreId.Auth, () => {
     const hasToken = getToken();
 
     if (hasToken) {
+      markAuthActivity(true);
       const pass = await getUserInfo();
 
       if (!pass) {
         resetStore();
         return false;
       }
-      
+
       return true;
     }
-    
+
     return false;
   }
 

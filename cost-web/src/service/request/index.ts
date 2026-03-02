@@ -1,7 +1,6 @@
 import type { AxiosResponse } from 'axios';
 import { BACKEND_ERROR_CODE, createFlatRequest, createRequest } from '@sa/axios';
 import { useAuthStore } from '@/store/modules/auth';
-import { localStg } from '@/utils/storage';
 import { getServiceBaseURL } from '@/utils/service';
 import { $t } from '@/locales';
 import { getAuthorization, handleExpiredRequest, showErrorMsg } from './shared';
@@ -12,7 +11,11 @@ const { baseURL, otherBaseURL } = getServiceBaseURL(import.meta.env, isHttpProxy
 
 export const request = createFlatRequest(
   {
-    baseURL
+    baseURL,
+    // Let 4xx responses enter `onBackendFail`, so 401 can trigger refresh flow.
+    validateStatus(status) {
+      return (status >= 200 && status < 500) || status === 304;
+    }
   },
   {
     defaultState: {
@@ -36,6 +39,8 @@ export const request = createFlatRequest(
     async onBackendFail(response, instance) {
       const authStore = useAuthStore();
       const responseCode = String(response.data.code);
+      const requestUrl = response.config.url || '';
+      const isRefreshTokenApi = requestUrl.includes('/auth/refreshToken');
 
       function handleLogout() {
         authStore.resetStore();
@@ -83,7 +88,7 @@ export const request = createFlatRequest(
       // when the backend response code is in `expiredTokenCodes`, it means the token is expired, and refresh token
       // the api `refreshToken` can not return error code in `expiredTokenCodes`, otherwise it will be a dead loop, should return `logoutCodes` or `modalLogoutCodes`
       const expiredTokenCodes = import.meta.env.VITE_SERVICE_EXPIRED_TOKEN_CODES?.split(',') || [];
-      if (expiredTokenCodes.includes(responseCode)) {
+      if (expiredTokenCodes.includes(responseCode) && !isRefreshTokenApi) {
         const success = await handleExpiredRequest(request.state);
         if (success) {
           const Authorization = getAuthorization();
@@ -133,12 +138,8 @@ export const demoRequest = createRequest(
       return response.data.result;
     },
     async onRequest(config) {
-      const { headers } = config;
-
-      // set token
-      const token = localStg.get('token');
-      const Authorization = token ? `Bearer ${token}` : null;
-      Object.assign(headers, { Authorization });
+      const Authorization = getAuthorization();
+      Object.assign(config.headers, { Authorization });
 
       return config;
     },
