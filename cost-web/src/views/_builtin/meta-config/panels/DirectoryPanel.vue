@@ -216,6 +216,7 @@ onMounted(loadData);
         :rowData="rowData"
         :columnDefs="columnDefs"
         :defaultColDef="defaultColDef"
+        :suppressScrollOnNewData="true"
         :treeData="true"
         :getDataPath="getDataPath"
         :autoGroupColumnDef="autoGroupColumnDef"
