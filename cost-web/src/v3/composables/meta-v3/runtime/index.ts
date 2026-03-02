@@ -622,6 +622,47 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     // V3 uses SSRM; data loading is triggered by grid datasource
   }
 
+  type HotReloadMasterTarget = {
+    masterId: number;
+    rowKey: string;
+    row: any;
+    node?: any;
+  };
+
+  function isMasterRowDirty(row: any): boolean {
+    if (!row) return false;
+    if (row._isDeleted) return false;
+    if (row._isNew) return true;
+    const dirtyFields = row._dirtyFields as Record<string, unknown> | undefined;
+    return Boolean(dirtyFields && Object.keys(dirtyFields).length > 0);
+  }
+
+  function collectDirtyMasterTargets(): HotReloadMasterTarget[] {
+    const api = masterGridApi.value as any;
+    if (!api?.forEachNode) return [];
+
+    const targetMap = new Map<string, HotReloadMasterTarget>();
+    api.forEachNode((node: any) => {
+      const row = node?.data;
+      if (!row || !isMasterRowDirty(row)) return;
+
+      const masterId = row?.id != null ? Number(row.id) : NaN;
+      if (Number.isNaN(masterId)) return;
+
+      const rowKey = row?._rowKey ? String(row._rowKey) : data.resolveMasterRowKey(masterId);
+      if (!rowKey) return;
+
+      targetMap.set(String(rowKey), {
+        masterId,
+        rowKey: String(rowKey),
+        row,
+        node
+      });
+    });
+
+    return Array.from(targetMap.values());
+  }
+
   function resolveHotReloadMasterTarget() {
     const activeRowKey = activeMasterRowKey.value;
     if (activeRowKey) {
@@ -667,6 +708,15 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     calc.recalcAggregates(target.masterId, target.rowKey);
   }
 
+  function recalcDirtyMasterRowsForHotReload() {
+    const targets = collectDirtyMasterTargets();
+    if (targets.length === 0) return;
+
+    for (const target of targets) {
+      calc.runMasterCalc(target.node, target.row);
+    }
+  }
+
   /** Hot-reload metadata config (triggered by WebSocket push) */
   async function reloadMetadata() {
     console.log(`[MetaRuntime] reloadMetadata for ${pageCode}`);
@@ -696,6 +746,7 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     // 触发 editable/rowClass/rowStyle 等动态回调按最新规则重新执行
     api.refreshCells({ force: true });
     api.redrawRows();
+    recalcDirtyMasterRowsForHotReload();
     await recalcCurrentDetailRowsForHotReload();
   }
 
