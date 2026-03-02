@@ -7,9 +7,12 @@ import { compile, type EvalFunction } from 'mathjs';
 // ==================== 类型定义 ====================
 
 /** 单个公式定义 */
+export type FormulaMatchType = 'equals' | 'regex';
+
 export interface FormulaDefinition {
   expression: string;
   triggerFields: string[];
+  matchType?: FormulaMatchType;
 }
 
 /** 行级计算规则 */
@@ -40,9 +43,16 @@ export interface AggConfig {
 }
 
 /** 编译后的计算规则 */
+interface CompiledFormulaBranch {
+  key: string;
+  matchType: FormulaMatchType;
+  compiled: EvalFunction;
+  matcher?: RegExp;
+}
+
 interface CompiledCalcRule extends CalcRule {
   compiled?: EvalFunction; // 单公式时使用
-  compiledFormulas?: Record<string, EvalFunction>; // 多公式时使用
+  compiledFormulaBranches?: CompiledFormulaBranch[]; // 多公式时使用
 }
 
 /** 编译后的聚合规则 */
@@ -73,10 +83,29 @@ export function compileCalcRules(rules: CalcRule[], cacheKey?: string): Compiled
 
     // 多公式模式
     if (rule.formulaField && rule.formulas) {
-      result.compiledFormulas = {};
+      result.compiledFormulaBranches = [];
       for (const [key, formula] of Object.entries(rule.formulas)) {
         try {
-          result.compiledFormulas[key] = compile(formula.expression);
+          const compiledExpression = compile(formula.expression);
+          const matchType: FormulaMatchType = formula.matchType === 'regex' ? 'regex' : 'equals';
+          if (matchType === 'regex') {
+            try {
+              result.compiledFormulaBranches.push({
+                key,
+                matchType,
+                compiled: compiledExpression,
+                matcher: new RegExp(key)
+              });
+            } catch (regexError) {
+              console.warn(`[Calculator] 编译分支正则失败: ${rule.field}.${key}`, regexError);
+            }
+          } else {
+            result.compiledFormulaBranches.push({
+              key,
+              matchType,
+              compiled: compiledExpression
+            });
+          }
         } catch (e) {
           console.warn(`[Calculator] 编译公式失败: ${rule.field}.${key}`, e);
         }
@@ -183,45 +212,64 @@ export function calcRowFields(
     }
   }
 
-  for (const rule of rules) {
-    // 检查条件
-    if (!evalCondition(rule.condition, row)) {
-      continue;
-    }
+  // 多轮迭代，确保级联依赖在规则顺序不完美时仍能收敛
+  const maxPasses = Math.max(1, rules.length * 2);
+  for (let pass = 0; pass < maxPasses; pass++) {
+    let changed = false;
 
-    try {
-      let value: number;
-
-      // 多公式模式：根据 formulaField 的值选择公式
-      if (rule.formulaField && rule.compiledFormulas) {
-        const formulaKey = String(row[rule.formulaField] ?? '');
-        const compiledFormula = rule.compiledFormulas[formulaKey];
-        
-        if (compiledFormula) {
-          value = compiledFormula.evaluate(scope);
-        } else {
-          // 没有匹配的公式，保持原值不变（不加入 results）
-          if (row[rule.field] != null) {
-            scope[rule.field] = row[rule.field];
-          }
-          continue;
-        }
-      }
-      // 单公式模式
-      else if (rule.compiled) {
-        value = rule.compiled.evaluate(scope);
-      } else {
+    for (const rule of rules) {
+      // 条件基于当前 scope 评估，使级联计算可参与条件判断
+      if (!evalCondition(rule.condition, scope)) {
         continue;
       }
 
-      const raw = normalizeNumber(Number(value));
-      const output = applyPrecision(raw, precision);
-      results[rule.field] = output;
-      // 更新 scope，支持级联计算
-      scope[rule.field] = raw;
-    } catch (e) {
-      console.warn('[Calculator] 计算错误:', rule.field, e);
-      results[rule.field] = 0;
+      try {
+        let value: number;
+
+        // 多公式模式：根据 formulaField 的值选择公式
+        if (rule.formulaField && rule.compiledFormulaBranches?.length) {
+          const formulaValue = String(scope[rule.formulaField] ?? '');
+          const matchedBranch = rule.compiledFormulaBranches.find(branch => {
+            if (branch.matchType === 'regex') {
+              return branch.matcher?.test(formulaValue) ?? false;
+            }
+            return branch.key === formulaValue;
+          });
+
+          if (matchedBranch) {
+            value = matchedBranch.compiled.evaluate(scope);
+          } else {
+            // 没有匹配的公式，保持原值不变（不加入 results）
+            if (row[rule.field] != null) {
+              scope[rule.field] = row[rule.field];
+            }
+            continue;
+          }
+        }
+        // 单公式模式
+        else if (rule.compiled) {
+          value = rule.compiled.evaluate(scope);
+        } else {
+          continue;
+        }
+
+        const raw = normalizeNumber(Number(value));
+        const output = applyPrecision(raw, precision);
+        const prev = scope[rule.field];
+        if (!Object.is(prev, raw)) {
+          changed = true;
+        }
+        results[rule.field] = output;
+        // 更新 scope，支持级联计算
+        scope[rule.field] = raw;
+      } catch (e) {
+        console.warn('[Calculator] 计算错误:', rule.field, e);
+        results[rule.field] = 0;
+      }
+    }
+
+    if (!changed) {
+      break;
     }
   }
 

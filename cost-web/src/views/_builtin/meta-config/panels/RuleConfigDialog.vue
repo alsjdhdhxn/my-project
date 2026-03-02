@@ -21,7 +21,8 @@ const emit = defineEmits<{
 const message = useMessage();
 
 // ==================== 类型 ====================
-type FormulaItem = { key: string; expression: string };
+type FormulaMatchType = 'equals' | 'regex';
+type FormulaItem = { key: string; expression: string; matchType: FormulaMatchType };
 type CalcItem = {
   field: string; expression: string; condition?: string; order?: number;
   isMultiFormula: boolean; formulaField?: string; formulas: FormulaItem[];
@@ -77,6 +78,10 @@ const algorithmOptions = [
   { label: 'COUNT (计数)', value: 'COUNT' }, { label: 'MAX (最大)', value: 'MAX' },
   { label: 'MIN (最小)', value: 'MIN' },
 ];
+const formulaMatchTypeOptions = [
+  { label: '等值', value: 'equals' },
+  { label: '正则', value: 'regex' }
+];
 const validationRuleOptions = [
   { label: '必填', value: 'required' }, { label: '最小值', value: 'min' },
   { label: '最大值', value: 'max' }, { label: '最小长度', value: 'minLength' },
@@ -122,7 +127,7 @@ function parseRulesJson() {
         const formulas: FormulaItem[] = [];
         if (isMulti && r.formulas) {
           for (const [key, f] of Object.entries(r.formulas as Record<string, any>)) {
-            formulas.push({ key, expression: f.expression || '' });
+            formulas.push({ key, expression: f.expression || '', matchType: f.matchType === 'regex' ? 'regex' : 'equals' });
           }
         }
         return { field: r.field || '', expression: isMulti ? '' : (r.expression || ''),
@@ -225,7 +230,15 @@ function buildJson(): string {
     return JSON.stringify(calcItems.value.map(item => {
       if (item.isMultiFormula) {
         const formulas: Record<string, any> = {};
-        for (const f of item.formulas) { if (f.key) formulas[f.key] = { expression: f.expression, triggerFields: extractIdentifiers(f.expression) }; }
+        for (const f of item.formulas) {
+          if (f.key) {
+            formulas[f.key] = {
+              expression: f.expression,
+              triggerFields: extractIdentifiers(f.expression),
+              matchType: f.matchType || 'equals'
+            };
+          }
+        }
         const r: any = { field: item.field, formulaField: item.formulaField, formulas };
         if (item.condition) r.condition = item.condition;
         if (item.order != null) r.order = item.order;
@@ -263,6 +276,16 @@ function validate(): boolean {
         if (item.formulas.length === 0) { message.warning(`${item.field}: 至少需要一个分支`); return false; }
         for (const f of item.formulas) {
           if (!f.key) { message.warning(`${item.field}: 分支值不能为空`); return false; }
+          if (f.matchType === 'regex') {
+            try {
+              // 仅校验语法合法性
+              // eslint-disable-next-line no-new
+              new RegExp(f.key);
+            } catch {
+              message.warning(`${item.field}.${f.key || '(空)'}: 正则表达式无效`);
+              return false;
+            }
+          }
           if (!f.expression) { message.warning(`${item.field}.${f.key}: 表达式不能为空`); return false; }
         }
       }
@@ -331,12 +354,24 @@ async function handleSave() {
               <div class="rule-row"><div class="rule-field"><span class="field-label">分支字段</span><NSelect v-model:value="item.formulaField" :options="availableFields" size="small" filterable tag placeholder="选择分支依据" style="width:220px" /></div></div>
               <div v-for="(f, fi) in item.formulas" :key="fi" class="formula-card">
                 <div class="rule-row">
-                  <div class="rule-field"><span class="field-label">分支值</span><NInput v-model:value="f.key" size="small" placeholder="如: A" style="width:80px" /></div>
+                  <div class="rule-field">
+                    <span class="field-label">匹配方式</span>
+                    <NSelect v-model:value="f.matchType" :options="formulaMatchTypeOptions" size="small" style="width:100px" />
+                  </div>
+                  <div class="rule-field">
+                    <span class="field-label">{{ f.matchType === 'regex' ? '正则模式' : '分支值' }}</span>
+                    <NInput
+                      v-model:value="f.key"
+                      size="small"
+                      :placeholder="f.matchType === 'regex' ? '如: 桶|说明书|小盒' : '如: A'"
+                      style="width:180px"
+                    />
+                  </div>
                   <div class="rule-field" style="flex:1"><span class="field-label">表达式</span><NInput v-model:value="f.expression" size="small" placeholder="如: apexPl / pPerpack" @focus="(e: FocusEvent) => trackFocus(() => f.expression, (v) => f.expression = v, e)" /></div>
                   <NPopconfirm @positive-click="item.formulas.splice(fi, 1)"><template #trigger><NButton size="tiny" quaternary type="error" style="align-self:flex-end">删除</NButton></template>删除此分支？</NPopconfirm>
                 </div>
               </div>
-              <NButton size="tiny" dashed @click="item.formulas.push({ key: '', expression: '' })" style="margin-top:4px">+ 添加分支</NButton>
+              <NButton size="tiny" dashed @click="item.formulas.push({ key: '', expression: '', matchType: 'equals' })" style="margin-top:4px">+ 添加分支</NButton>
             </template>
           </div>
         </template>
