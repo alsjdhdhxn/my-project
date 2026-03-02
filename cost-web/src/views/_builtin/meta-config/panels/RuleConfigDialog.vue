@@ -21,7 +21,7 @@ const emit = defineEmits<{
 const message = useMessage();
 
 // ==================== 类型 ====================
-type FormulaMatchType = 'equals' | 'regex';
+type FormulaMatchType = 'equals' | 'regex' | 'contains' | 'notContains';
 type FormulaItem = { key: string; expression: string; matchType: FormulaMatchType };
 type CalcItem = {
   field: string; expression: string; condition?: string; order?: number;
@@ -80,6 +80,8 @@ const algorithmOptions = [
 ];
 const formulaMatchTypeOptions = [
   { label: '等值', value: 'equals' },
+  { label: '包含', value: 'contains' },
+  { label: '不包含', value: 'notContains' },
   { label: '正则', value: 'regex' }
 ];
 const validationRuleOptions = [
@@ -88,6 +90,22 @@ const validationRuleOptions = [
   { label: '最大长度', value: 'maxLength' }, { label: '正则匹配', value: 'pattern' },
   { label: '自定义', value: 'custom' },
 ];
+
+function normalizeFormulaMatchType(value: unknown): FormulaMatchType {
+  return value === 'regex' || value === 'contains' || value === 'notContains' ? value : 'equals';
+}
+
+function getFormulaKeyLabel(matchType: FormulaMatchType): string {
+  if (matchType === 'regex') return '正则模式';
+  if (matchType === 'contains' || matchType === 'notContains') return '关键词';
+  return '分支值';
+}
+
+function getFormulaKeyPlaceholder(matchType: FormulaMatchType): string {
+  if (matchType === 'regex') return '如: 桶|说明书|小盒';
+  if (matchType === 'contains' || matchType === 'notContains') return '如: 胶囊';
+  return '如: A';
+}
 
 // 侧边栏：根据规则类型过滤显示的字段组
 const visibleFieldGroups = computed(() => {
@@ -126,8 +144,12 @@ function parseRulesJson() {
         const isMulti = Boolean(r.formulaField && r.formulas);
         const formulas: FormulaItem[] = [];
         if (isMulti && r.formulas) {
-          for (const [key, f] of Object.entries(r.formulas as Record<string, any>)) {
-            formulas.push({ key, expression: f.expression || '', matchType: f.matchType === 'regex' ? 'regex' : 'equals' });
+          for (const [mapKey, f] of Object.entries(r.formulas as Record<string, any>)) {
+            formulas.push({
+              key: f.key || mapKey,
+              expression: f.expression || '',
+              matchType: normalizeFormulaMatchType(f.matchType)
+            });
           }
         }
         return { field: r.field || '', expression: isMulti ? '' : (r.expression || ''),
@@ -230,12 +252,13 @@ function buildJson(): string {
     return JSON.stringify(calcItems.value.map(item => {
       if (item.isMultiFormula) {
         const formulas: Record<string, any> = {};
-        for (const f of item.formulas) {
+        for (const [branchIndex, f] of item.formulas.entries()) {
           if (f.key) {
-            formulas[f.key] = {
+            formulas[`__branch_${branchIndex}`] = {
+              key: f.key,
               expression: f.expression,
               triggerFields: extractIdentifiers(f.expression),
-              matchType: f.matchType || 'equals'
+              matchType: normalizeFormulaMatchType(f.matchType)
             };
           }
         }
@@ -359,11 +382,11 @@ async function handleSave() {
                     <NSelect v-model:value="f.matchType" :options="formulaMatchTypeOptions" size="small" style="width:100px" />
                   </div>
                   <div class="rule-field">
-                    <span class="field-label">{{ f.matchType === 'regex' ? '正则模式' : '分支值' }}</span>
+                    <span class="field-label">{{ getFormulaKeyLabel(f.matchType) }}</span>
                     <NInput
                       v-model:value="f.key"
                       size="small"
-                      :placeholder="f.matchType === 'regex' ? '如: 桶|说明书|小盒' : '如: A'"
+                      :placeholder="getFormulaKeyPlaceholder(f.matchType)"
                       style="width:180px"
                     />
                   </div>

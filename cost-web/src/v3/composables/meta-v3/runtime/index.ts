@@ -11,6 +11,7 @@ import { useCustomExport } from '@/v3/composables/meta-v3/useCustomExport';
 import { useMasterGridBindings } from '@/v3/composables/meta-v3/useMasterGridBindings';
 import { resolveFormRenderer } from '@/v3/composables/meta-v3/form-renderer-registry';
 import { buildCellEditableCallback } from '@/v3/composables/meta-v3/usePageRules';
+import { clearCalcCache } from '@/v3/logic/calc-engine';
 import { executePageRuleAction } from '@/service/api/dynamic';
 import { createRuntimeLogger } from './logger';
 import type { ComponentState, FormState, GridState, MetaError, RuntimeFeatures, RuntimeStage } from './types';
@@ -623,6 +624,8 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
   /** 热重载元数据配置（WebSocket 推送触发） */
   async function reloadMetadata() {
     console.log(`[MetaRuntime] reloadMetadata for ${pageCode}`);
+    // 规则变更时必须先清缓存，否则 compileCalcRules/compileAggRules 会复用旧编译结果
+    clearCalcCache();
     const componentsOk = await loadComponentsRaw();
     if (!componentsOk) return;
     parseConfigRaw();

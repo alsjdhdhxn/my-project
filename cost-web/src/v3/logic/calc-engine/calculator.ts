@@ -7,9 +7,10 @@ import { compile, type EvalFunction } from 'mathjs';
 // ==================== 类型定义 ====================
 
 /** 单个公式定义 */
-export type FormulaMatchType = 'equals' | 'regex';
+export type FormulaMatchType = 'equals' | 'regex' | 'contains' | 'notContains';
 
 export interface FormulaDefinition {
+  key?: string;
   expression: string;
   triggerFields: string[];
   matchType?: FormulaMatchType;
@@ -85,29 +86,37 @@ export function compileCalcRules(rules: CalcRule[], cacheKey?: string): Compiled
     if (rule.formulaField && rule.formulas) {
       result.compiledFormulaBranches = [];
       for (const [key, formula] of Object.entries(rule.formulas)) {
+        const branchKey = formula.key ?? key;
         try {
           const compiledExpression = compile(formula.expression);
-          const matchType: FormulaMatchType = formula.matchType === 'regex' ? 'regex' : 'equals';
+          const matchType: FormulaMatchType =
+            formula.matchType === 'regex'
+              ? 'regex'
+              : formula.matchType === 'contains'
+                ? 'contains'
+                : formula.matchType === 'notContains'
+                  ? 'notContains'
+                  : 'equals';
           if (matchType === 'regex') {
             try {
               result.compiledFormulaBranches.push({
-                key,
+                key: branchKey,
                 matchType,
                 compiled: compiledExpression,
-                matcher: new RegExp(key)
+                matcher: new RegExp(branchKey)
               });
             } catch (regexError) {
-              console.warn(`[Calculator] 编译分支正则失败: ${rule.field}.${key}`, regexError);
+              console.warn(`[Calculator] 编译分支正则失败: ${rule.field}.${branchKey}`, regexError);
             }
           } else {
             result.compiledFormulaBranches.push({
-              key,
+              key: branchKey,
               matchType,
               compiled: compiledExpression
             });
           }
         } catch (e) {
-          console.warn(`[Calculator] 编译公式失败: ${rule.field}.${key}`, e);
+          console.warn(`[Calculator] 编译公式失败: ${rule.field}.${branchKey}`, e);
         }
       }
     } 
@@ -230,10 +239,16 @@ export function calcRowFields(
         if (rule.formulaField && rule.compiledFormulaBranches?.length) {
           const formulaValue = String(scope[rule.formulaField] ?? '');
           const matchedBranch = rule.compiledFormulaBranches.find(branch => {
-            if (branch.matchType === 'regex') {
-              return branch.matcher?.test(formulaValue) ?? false;
+            switch (branch.matchType) {
+              case 'regex':
+                return branch.matcher?.test(formulaValue) ?? false;
+              case 'contains':
+                return formulaValue.includes(branch.key);
+              case 'notContains':
+                return !formulaValue.includes(branch.key);
+              default:
+                return branch.key === formulaValue;
             }
-            return branch.key === formulaValue;
           });
 
           if (matchedBranch) {
