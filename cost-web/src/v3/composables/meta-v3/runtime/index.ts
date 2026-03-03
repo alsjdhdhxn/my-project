@@ -96,6 +96,55 @@ function findComponentByKey(components: any[], key: string): any | null {
   return visit(components || []);
 }
 
+function safeStringify(value: unknown): string {
+  const seen = new WeakSet<object>();
+  return JSON.stringify(value, (_key, current) => {
+    if (typeof current === 'function') return `__fn__:${current.toString()}`;
+    if (current instanceof RegExp) return `__re__:${current.toString()}`;
+    if (current && typeof current === 'object') {
+      if (seen.has(current as object)) return '__circular__';
+      seen.add(current as object);
+    }
+    return current;
+  });
+}
+
+function columnDefsEquivalent(left: any[] | undefined | null, right: any[] | undefined | null): boolean {
+  if (left === right) return true;
+  if (!Array.isArray(left) || !Array.isArray(right)) return false;
+  if (left.length !== right.length) return false;
+  return safeStringify(left) === safeStringify(right);
+}
+
+function detailColumnDefsMapEquivalent(
+  left: Record<string, any[]> | undefined | null,
+  right: Record<string, any[]> | undefined | null
+): boolean {
+  if (left === right) return true;
+  if (!left || !right) return false;
+  const leftKeys = Object.keys(left).sort();
+  const rightKeys = Object.keys(right).sort();
+  if (leftKeys.length !== rightKeys.length) return false;
+  for (let i = 0; i < leftKeys.length; i++) {
+    if (leftKeys[i] !== rightKeys[i]) return false;
+    if (!columnDefsEquivalent(left[leftKeys[i]], right[rightKeys[i]])) return false;
+  }
+  return true;
+}
+
+function toUpperToken(value: unknown): string {
+  return typeof value === 'string' ? value.trim().toUpperCase() : '';
+}
+
+function shouldUseCalcOnlyHotReload(payload?: Record<string, any>): boolean {
+  if (!payload || Object.keys(payload).length === 0) return false;
+  const entity = toUpperToken(payload.entity || payload.scope || payload.changeType);
+  const ruleType = toUpperToken(payload.ruleType || payload.rule_type || payload.rule);
+  const calcLikeRuleTypes = new Set(['CALC', 'AGGREGATE', 'BROADCAST']);
+  if (entity && entity !== 'RULE') return false;
+  return calcLikeRuleTypes.has(ruleType);
+}
+
 type ActionHandler = (context: {
   actionCode: string;
   runtime: any;
@@ -663,64 +712,100 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     return Array.from(targetMap.values());
   }
 
-  function resolveHotReloadMasterTarget() {
-    const activeRowKey = activeMasterRowKey.value;
-    if (activeRowKey) {
-      const activeRow = data.getMasterRowByRowKey(activeRowKey);
-      const masterId = activeRow?.id != null ? Number(activeRow.id) : NaN;
-      if (!Number.isNaN(masterId)) {
-        return { masterId, rowKey: String(activeRowKey) };
-      }
-    }
+  function recalcDirtyMasterRowsForHotReload(targets?: HotReloadMasterTarget[]) {
+    const resolvedTargets = targets || collectDirtyMasterTargets();
+    if (resolvedTargets.length === 0) return [];
 
-    const selectedRow = (masterGridApi.value as any)?.getSelectedRows?.()?.[0];
-    if (selectedRow?.id == null) return null;
-    const masterId = Number(selectedRow.id);
-    if (Number.isNaN(masterId)) return null;
-    const rowKey = selectedRow._rowKey ? String(selectedRow._rowKey) : data.resolveMasterRowKey(masterId);
-    if (!rowKey) return null;
-
-    return { masterId, rowKey: String(rowKey) };
-  }
-
-  async function recalcCurrentDetailRowsForHotReload() {
-    if (!resolvedFeatures.value.detailTabs) return;
-    const target = resolveHotReloadMasterTarget();
-    if (!target) return;
-
-    let cached = data.detailCache.get(target.rowKey);
-    if (!cached) {
-      await data.loadDetailData(target.masterId, target.rowKey);
-      cached = data.detailCache.get(target.rowKey);
-    }
-    if (!cached) return;
-
-    for (const [tabKey, rows] of Object.entries(cached)) {
-      const detailApi = detailGridApisByTab.value?.[tabKey];
-      for (const row of rows) {
-        if (!row || row._isDeleted) continue;
-        calc.runDetailCalc(null, detailApi, row, target.masterId, tabKey, target.rowKey);
-      }
-      detailApi?.refreshCells?.({ force: true });
-      detailApi?.refreshClientSideRowModel?.('aggregate');
-    }
-
-    calc.recalcAggregates(target.masterId, target.rowKey);
-  }
-
-  function recalcDirtyMasterRowsForHotReload() {
-    const targets = collectDirtyMasterTargets();
-    if (targets.length === 0) return;
-
-    for (const target of targets) {
+    for (const target of resolvedTargets) {
       calc.runMasterCalc(target.node, target.row);
     }
+    return resolvedTargets;
+  }
+
+  async function cascadeDirtyMasterRowsForHotReload(targets: HotReloadMasterTarget[]) {
+    if (!resolvedFeatures.value.detailTabs) return;
+    if (targets.length === 0) return;
+    for (const target of targets) {
+      if (!data.detailCache.has(target.rowKey)) continue;
+      await calc.broadcastToDetail(target.masterId, target.row);
+    }
+  }
+
+  function refreshRenderedMasterCellsForHotReload() {
+    const api = masterGridApi.value as any;
+    if (!api?.getRenderedNodes) return;
+    const renderedNodes = api.getRenderedNodes() || [];
+    if (renderedNodes.length === 0) return;
+    api.refreshCells({ rowNodes: renderedNodes, force: true, suppressFlash: true });
+  }
+
+  function updateMasterGridStateColumnDefs(defs: any[]) {
+    const masterKey = meta.masterGridKey.value || findFirstGridKey(meta.pageComponents.value || []);
+    const gridState = masterKey ? (componentStateByKey.value[masterKey] as GridState | undefined) : undefined;
+    if (gridState) {
+      gridState.columnDefs = defs;
+    }
+  }
+
+  function preserveUnchangedColumnRefs(params: {
+    previousMasterColumnDefs: any[];
+    previousDetailColumnsByTab: Record<string, any[]>;
+  }) {
+    const { previousMasterColumnDefs, previousDetailColumnsByTab } = params;
+    const latestMasterColumnDefs = meta.masterColumnDefs.value || [];
+    const latestDetailColumnsByTab = meta.detailColumnsByTab.value || {};
+    const masterColumnDefsChanged = !columnDefsEquivalent(previousMasterColumnDefs, latestMasterColumnDefs);
+    const detailColumnDefsChanged = !detailColumnDefsMapEquivalent(previousDetailColumnsByTab, latestDetailColumnsByTab);
+
+    if (!masterColumnDefsChanged) {
+      meta.masterColumnDefs.value = previousMasterColumnDefs;
+    }
+    if (!detailColumnDefsChanged) {
+      meta.detailColumnsByTab.value = previousDetailColumnsByTab;
+    }
+
+    return {
+      masterColumnDefsChanged,
+      latestMasterColumnDefs: meta.masterColumnDefs.value || latestMasterColumnDefs
+    };
+  }
+
+  function applyMasterColumnDefsForHotReload(params: { masterColumnDefsChanged: boolean; latestMasterColumnDefs: any[] }) {
+    const { masterColumnDefsChanged, latestMasterColumnDefs } = params;
+    const api = masterGridApi.value as any;
+    if (!api) return;
+    if (!masterColumnDefsChanged || latestMasterColumnDefs.length === 0) {
+      updateMasterGridStateColumnDefs(meta.masterColumnDefs.value || []);
+      return;
+    }
+
+    api.setGridOption('columnDefs', latestMasterColumnDefs);
+    updateMasterGridStateColumnDefs(latestMasterColumnDefs);
+  }
+
+  async function reloadCalcRulesOnly() {
+    clearCalcCache();
+    const componentsOk = await loadComponentsRaw();
+    if (!componentsOk) return;
+    parseConfigRaw();
+    compileRulesRaw();
+    refreshAutoFeatures();
+
+    const dirtyTargets = recalcDirtyMasterRowsForHotReload();
+    await cascadeDirtyMasterRowsForHotReload(dirtyTargets);
+    refreshRenderedMasterCellsForHotReload();
   }
 
   /** Hot-reload metadata config (triggered by WebSocket push) */
-  async function reloadMetadata() {
-    console.log(`[MetaRuntime] reloadMetadata for ${pageCode}`);
-    // Clear calc cache before recompiling rules to avoid stale compiled results
+  async function reloadMetadata(payload?: Record<string, any>) {
+    console.log(`[MetaRuntime] reloadMetadata for ${pageCode}`, payload || {});
+    if (shouldUseCalcOnlyHotReload(payload)) {
+      await reloadCalcRulesOnly();
+      return;
+    }
+
+    const previousMasterColumnDefs = meta.masterColumnDefs.value || [];
+    const previousDetailColumnsByTab = meta.detailColumnsByTab.value || {};
     clearCalcCache();
     const componentsOk = await loadComponentsRaw();
     if (!componentsOk) return;
@@ -728,28 +813,17 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     await loadMetaRaw();
     compileRulesRaw();
     refreshAutoFeatures();
-    // Re-run grid callbacks against latest rules
 
-    const api = masterGridApi.value;
-    if (!api) return;
+    const { masterColumnDefsChanged, latestMasterColumnDefs } = preserveUnchangedColumnRefs({
+      previousMasterColumnDefs,
+      previousDetailColumnsByTab
+    });
+    applyMasterColumnDefsForHotReload({ masterColumnDefsChanged, latestMasterColumnDefs });
 
-    const latestColumnDefs = meta.masterColumnDefs.value || [];
-    if (latestColumnDefs.length) {
-      api.setGridOption('columnDefs', latestColumnDefs);
-      const masterKey = meta.masterGridKey.value || findFirstGridKey(meta.pageComponents.value || []);
-      const gridState = masterKey ? (componentStateByKey.value[masterKey] as GridState | undefined) : undefined;
-      if (gridState) {
-        gridState.columnDefs = latestColumnDefs;
-      }
-    }
-
-    // 触发 editable/rowClass/rowStyle 等动态回调按最新规则重新执行
-    api.refreshCells({ force: true });
-    api.redrawRows();
-    recalcDirtyMasterRowsForHotReload();
-    await recalcCurrentDetailRowsForHotReload();
+    const dirtyTargets = recalcDirtyMasterRowsForHotReload();
+    await cascadeDirtyMasterRowsForHotReload(dirtyTargets);
+    refreshRenderedMasterCellsForHotReload();
   }
-
   return {
     isReady,
     status: runtimeStatus,
@@ -797,4 +871,3 @@ export function useMasterDetailRuntime(options: BaseRuntimeOptions) {
     mode: 'masterDetail' as const
   };
 }
-

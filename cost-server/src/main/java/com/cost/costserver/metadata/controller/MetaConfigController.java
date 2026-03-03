@@ -75,7 +75,9 @@ public class MetaConfigController {
     public Result<ColumnMetadata> saveColumn(@RequestBody ColumnMetadata column) {
         ColumnMetadata saved = metaConfigService.saveColumn(column);
         metadataService.clearCache(null);
-        webSocketHandler.broadcast("META_CONFIG_CHANGED", Map.of());
+        webSocketHandler.broadcast("META_CONFIG_CHANGED", Map.of(
+                "entity", "column"
+        ));
         return Result.ok(saved);
     }
 
@@ -98,7 +100,10 @@ public class MetaConfigController {
         PageComponent saved = metaConfigService.saveComponent(component);
         metadataService.clearCache(null);
         webSocketHandler.broadcast("META_CONFIG_CHANGED",
-                Map.of("pageCode", component.getPageCode() != null ? component.getPageCode() : ""));
+                Map.of(
+                        "pageCode", component.getPageCode() != null ? component.getPageCode() : "",
+                        "entity", "component"
+                ));
         return Result.ok(saved);
     }
 
@@ -121,7 +126,12 @@ public class MetaConfigController {
         PageRule saved = metaConfigService.saveRule(rule);
         metadataService.clearCache(null);
         webSocketHandler.broadcast("META_CONFIG_CHANGED",
-                Map.of("pageCode", rule.getPageCode() != null ? rule.getPageCode() : ""));
+                Map.of(
+                        "pageCode", rule.getPageCode() != null ? rule.getPageCode() : "",
+                        "entity", "rule",
+                        "ruleType", rule.getRuleType() != null ? rule.getRuleType() : "",
+                        "componentKey", rule.getComponentKey() != null ? rule.getComponentKey() : ""
+                ));
         return Result.ok(saved);
     }
 
@@ -129,7 +139,9 @@ public class MetaConfigController {
     public Result<Void> deleteRule(@PathVariable Long id) {
         metaConfigService.deleteRule(id);
         metadataService.clearCache(null);
-        webSocketHandler.broadcast("META_CONFIG_CHANGED", Map.of());
+        webSocketHandler.broadcast("META_CONFIG_CHANGED", Map.of(
+                "entity", "rule"
+        ));
         return Result.ok();
     }
 

@@ -57,7 +57,7 @@ const { subscribe } = useWebSocket();
 subscribe('META_CONFIG_CHANGED', (payload) => {
   const changedPageCode = payload.pageCode;
   if (!changedPageCode || changedPageCode === props.pageCode) {
-    (runtime as any).reloadMetadata?.();
+    (runtime as any).reloadMetadata?.(payload);
   }
 });
 
