@@ -25,7 +25,7 @@ export function useNestedDetailParams(params: {
   getDetailContextMenuItems: (masterId: number, masterRowKey: string, tabKey: string) => (params: any) => any[];
   onCellEditingStarted: () => void;
   onCellEditingStopped: () => void;
-  onDetailCellValueChanged: (event: any, masterId: number, tabKey: string) => void;
+  onDetailCellValueChanged: (event: any, masterId: number, tabKey: string, masterRowKey?: string) => void;
   onDetailCellClicked: (event: any, masterId: number, tabKey: string) => void;
 }) {
   const {

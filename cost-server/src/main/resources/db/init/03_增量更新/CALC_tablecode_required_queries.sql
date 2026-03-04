@@ -1,0 +1,60 @@
+﻿-- SQL data package required by Codex to generate final patch INSERTs
+-- Please run and send results (CSV/Excel/text acceptable).
+
+-- 1) CALC rule raw data + component table mapping
+SELECT
+  r.ID,
+  r.PAGE_CODE,
+  r.COMPONENT_KEY,
+  c.COMPONENT_TYPE,
+  c.REF_TABLE_CODE AS COMPONENT_TABLE_CODE,
+  m.REF_TABLE_CODE AS MASTER_TABLE_CODE,
+  r.RULES
+FROM T_COST_PAGE_RULE r
+LEFT JOIN T_COST_PAGE_COMPONENT c
+  ON c.PAGE_CODE = r.PAGE_CODE
+ AND c.COMPONENT_KEY = r.COMPONENT_KEY
+ AND NVL(c.DELETED, 0) = 0
+LEFT JOIN T_COST_PAGE_COMPONENT m
+  ON m.PAGE_CODE = r.PAGE_CODE
+ AND m.COMPONENT_TYPE = 'GRID'
+ AND NVL(m.DELETED, 0) = 0
+WHERE r.RULE_TYPE = 'CALC'
+  AND NVL(r.DELETED, 0) = 0
+ORDER BY r.PAGE_CODE, r.COMPONENT_KEY, r.ID;
+
+-- 2) Detail table uniqueness check per page (should be unique in your design)
+SELECT
+  pc.PAGE_CODE,
+  pc.REF_TABLE_CODE,
+  COUNT(*) AS CNT,
+  LISTAGG(pc.COMPONENT_KEY, ',') WITHIN GROUP (ORDER BY pc.COMPONENT_KEY) AS COMPONENT_KEYS
+FROM T_COST_PAGE_COMPONENT pc
+WHERE pc.COMPONENT_TYPE = 'DETAIL_GRID'
+  AND NVL(pc.DELETED, 0) = 0
+GROUP BY pc.PAGE_CODE, pc.REF_TABLE_CODE
+HAVING COUNT(*) > 1;
+
+-- 3) Invalid table code identifiers (must match [A-Za-z_][A-Za-z0-9_]*)
+SELECT
+  pc.PAGE_CODE,
+  pc.COMPONENT_KEY,
+  pc.COMPONENT_TYPE,
+  pc.REF_TABLE_CODE
+FROM T_COST_PAGE_COMPONENT pc
+WHERE NVL(pc.DELETED, 0) = 0
+  AND pc.REF_TABLE_CODE IS NOT NULL
+  AND NOT REGEXP_LIKE(pc.REF_TABLE_CODE, '^[A-Za-z_][A-Za-z0-9_]*$')
+ORDER BY pc.PAGE_CODE, pc.COMPONENT_KEY;
+
+-- 4) Existing BROADCAST rules (for cleanup confirmation)
+SELECT
+  r.ID,
+  r.PAGE_CODE,
+  r.COMPONENT_KEY,
+  r.RULE_TYPE,
+  r.RULES
+FROM T_COST_PAGE_RULE r
+WHERE r.RULE_TYPE = 'BROADCAST'
+  AND NVL(r.DELETED, 0) = 0
+ORDER BY r.PAGE_CODE, r.COMPONENT_KEY, r.ID;

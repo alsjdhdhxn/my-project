@@ -1,7 +1,7 @@
 <!-- gitnexus:start -->
 # GitNexus MCP
 
-This project is indexed by GitNexus as **my-project** (2277 symbols, 5735 relationships, 164 execution flows).
+This project is indexed by GitNexus as **my-project** (2306 symbols, 5873 relationships, 166 execution flows).
 
 GitNexus provides a knowledge graph over this codebase — call chains, blast radius, execution flows, and semantic search.
 

@@ -205,7 +205,6 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     getMasterRowByRowKey: data.getMasterRowByRowKey,
     resolveMasterRowKey: data.resolveMasterRowKey,
     detailCache: data.detailCache,
-    broadcastFields: meta.broadcastFields,
     detailCalcRulesByTab: meta.detailCalcRulesByTab,
     compiledAggRules: meta.compiledAggRules,
     compiledMasterCalcRules: meta.compiledMasterCalcRules,
@@ -246,12 +245,8 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     runDetailCalc: calc.runDetailCalc,
     recalcAggregates: recalcAggregatesProxy,
     broadcastToDetail: calc.broadcastToDetail,
-    broadcastFields: meta.broadcastFields,
     detailGridApisByTab,
     isRowEditable,
-    masterCalcRules: meta.compiledMasterCalcRules,
-    detailCalcRulesByTab: meta.detailCalcRulesByTab,
-    compiledAggRules: meta.compiledAggRules
   });
 
   // Batch select dialog
@@ -393,9 +388,27 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     ...data,
     markFieldChange: calc.markFieldChange,
     runMasterCalc: calc.runMasterCalc,
-    runDetailCalc: (node: any, api: any, row: any, masterId: number, tabKey: string, masterRowKey?: string) => {
+    runDetailCalc: (
+      node: any,
+      api: any,
+      row: any,
+      masterId: number,
+      tabKey: string,
+      masterRowKey?: string,
+      changedFields?: string | string[],
+      valueOverrides?: Record<string, any>
+    ) => {
       if (!resolvedFeatures.value.detailTabs) return;
-      return calc.runDetailCalc(node, api, row, masterId, tabKey, masterRowKey);
+      return calc.runDetailCalc(
+        node,
+        api,
+        row,
+        masterId,
+        tabKey,
+        masterRowKey,
+        changedFields,
+        valueOverrides
+      );
     },
     recalcAggregates: (masterId: number) => {
       if (!resolvedFeatures.value.aggregates) return;
@@ -468,7 +481,10 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
 
   function deriveFeaturesFromMeta(): Required<RuntimeFeatures> {
     const hasTabs = (meta.pageConfig.value?.tabs?.length ?? 0) > 0;
-    const hasBroadcast = (meta.broadcastFields.value?.length ?? 0) > 0;
+    const hasDetailCalc = Object.values(meta.detailCalcRulesByTab.value || {}).some(
+      list => (list?.length ?? 0) > 0
+    );
+    const hasBroadcast = hasTabs && hasDetailCalc;
     const hasAgg = (meta.compiledAggRules.value?.length ?? 0) > 0;
     const masterLookup = (meta.masterLookupRules.value?.length ?? 0) > 0;
     const detailLookup = Object.values(meta.detailLookupRulesByTab.value || {}).some(

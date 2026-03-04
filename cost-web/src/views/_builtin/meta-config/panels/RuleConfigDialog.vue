@@ -5,6 +5,7 @@ import {
   NEmpty, NPopconfirm, NTag, NSwitch, useMessage
 } from 'naive-ui';
 import { fetchColumnsByTableId, fetchTablesByPageCode, fetchAllPageComponents, savePageRule } from '@/service/api/meta-config';
+import { extractFieldRefsFromExpression, isValidIdentifier } from '@/v3/logic/calc-engine';
 
 const props = defineProps<{
   show: boolean;
@@ -43,6 +44,7 @@ const availableFields = ref<{ label: string; value: string }[]>([]);
 const fieldGroups = ref<TableFieldGroup[]>([]);
 const saving = ref(false);
 const sidebarFilter = ref('');
+const currentTableCode = ref('');
 
 // ==================== 字段插入联动 ====================
 // 记录当前聚焦的输入框信息，点击侧边栏字段时追加到该输入框
@@ -53,7 +55,7 @@ function trackFocus(getValue: () => string, setValue: (v: string) => void, event
   activeInput.value = { getValue, setValue, el: event.target as HTMLInputElement };
 }
 
-function insertField(fieldName: string) {
+function insertField(fieldRef: string) {
   const ai = activeInput.value;
   if (!ai) { message.info('请先点击一个输入框'); return; }
   const el = ai.el;
@@ -62,13 +64,20 @@ function insertField(fieldName: string) {
     // 在光标位置插入
     const start = el.selectionStart ?? current.length;
     const end = el.selectionEnd ?? current.length;
-    const newVal = current.slice(0, start) + fieldName + current.slice(end);
+    const newVal = current.slice(0, start) + fieldRef + current.slice(end);
     ai.setValue(newVal);
     // 恢复焦点和光标位置
-    nextTick(() => { el.focus(); el.setSelectionRange(start + fieldName.length, start + fieldName.length); });
+    nextTick(() => { el.focus(); el.setSelectionRange(start + fieldRef.length, start + fieldRef.length); });
   } else {
-    ai.setValue(current + fieldName);
+    ai.setValue(current + fieldRef);
   }
+}
+
+function formatFieldRef(tableCode: string, fieldName: string): string {
+  if (isValidIdentifier(tableCode)) {
+    return `${tableCode}.${fieldName}`;
+  }
+  return fieldName;
 }
 
 const titleMap: Record<string, string> = { CALC: '行级计算规则', AGGREGATE: '聚合规则', VALIDATION: '校验规则' };
@@ -109,14 +118,7 @@ function getFormulaKeyPlaceholder(matchType: FormulaMatchType): string {
 
 // 侧边栏：根据规则类型过滤显示的字段组
 const visibleFieldGroups = computed(() => {
-  let groups: TableFieldGroup[];
-  if (props.ruleType === 'CALC') {
-    // 行计算：只显示当前组件自己的表字段（不管是主表还是从表）
-    groups = fieldGroups.value.filter(g => g.isCurrent);
-  } else {
-    // AGGREGATE / VALIDATION：显示全部
-    groups = fieldGroups.value;
-  }
+  const groups: TableFieldGroup[] = fieldGroups.value;
   const kw = sidebarFilter.value.trim().toLowerCase();
   if (!kw) return groups;
   return groups.map(g => ({
@@ -183,6 +185,7 @@ async function loadAvailableFields() {
     const masterComp = allComps?.find((c: any) => c.pageCode === props.pageCode && c.componentType === 'GRID');
     const currentRef = currentComp?.refTableCode;
     const masterRef = masterComp?.refTableCode;
+    currentTableCode.value = currentRef || '';
 
     // 加载当前组件表字段
     const currentTable = currentRef ? tables.find((t: any) => t.tableCode === currentRef) : null;
@@ -238,13 +241,8 @@ function addItem() {
   }
 }
 
-const builtins = new Set(['abs','ceil','floor','round','sqrt','pow','log','exp','min','max','sum','mean','mod','sign','pi','e','true','false','null','undefined','if','else','return','NaN','Infinity']);
 function extractIdentifiers(expression: string): string[] {
-  const regex = /\b([a-zA-Z_]\w*)\b/g;
-  const fields = new Set<string>();
-  let m: RegExpExecArray | null;
-  while ((m = regex.exec(expression)) !== null) { if (!builtins.has(m[1])) fields.add(m[1]); }
-  return Array.from(fields);
+  return Array.from(extractFieldRefsFromExpression(expression, currentTableCode.value || undefined));
 }
 
 function buildJson(): string {
@@ -457,7 +455,13 @@ async function handleSave() {
               <NTag size="tiny" :type="group.isMaster ? 'success' : 'info'">{{ group.isMaster ? '主' : '从' }}</NTag>
               <span>{{ group.label }}</span>
             </div>
-            <div v-for="f in group.fields" :key="f.fieldName" class="field-item" :title="f.columnName" @mousedown.prevent="insertField(f.fieldName)">
+            <div
+              v-for="f in group.fields"
+              :key="f.fieldName"
+              class="field-item"
+              :title="f.columnName"
+              @mousedown.prevent="insertField(formatFieldRef(group.tableCode, f.fieldName))"
+            >
               <span class="field-name">{{ f.fieldName }}</span>
               <span class="field-desc">{{ f.headerText }}</span>
             </div>

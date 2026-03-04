@@ -32,7 +32,7 @@ type RuntimeApi = {
   executeCustomExport?: (exportCode: string, mode: 'all' | 'current') => void;
   executeAction?: (actionCode: string, options?: { data?: Record<string, any>; selectedRow?: Record<string, any> | null }) => Promise<void>;
   markFieldChange?: (row: any, field: string, oldValue: any, newValue: any, type: 'user' | 'calc') => void;
-  runMasterCalc?: (node: any, row: any) => void;
+  runMasterCalc?: (node: any, row: any, valueOverrides?: Record<string, any>) => string[] | void;
   broadcastToDetail?: (masterId: number, row: any, changedFields?: string | string[]) => Promise<void> | void;
   onMasterCellClicked?: (event: any) => void;
 };
@@ -266,18 +266,24 @@ export function useMasterGridBindings(params: {
     const field = event.colDef?.field;
     const row = event.data;
     const masterId = row?.id;
-    if (!field || masterId == null) return;
+    if (!field || masterId == null || event.node?.rowPinned) return;
+    if (Object.is(event.oldValue, event.newValue)) return;
 
-    const changeType = isUserEditing.value ? 'user' : 'calc';
+    // Ensure downstream calc always reads the latest user-entered value.
+    if (!Object.is(row?.[field], event.newValue)) {
+      row[field] = event.newValue;
+    }
+
+    const source = String((event as any)?.source || '').toLowerCase();
+    const isApiChange = source === 'api' || source === 'rowdatachanged';
+    const changeType = isApiChange ? 'calc' : 'user';
     runtime.markFieldChange?.(row, field, event.oldValue, event.newValue, changeType);
     runtime.masterGridApi?.value?.refreshCells({ rowNodes: [event.node], columns: [field], force: true });
 
-    if (isUserEditing.value) {
-      runtime.runMasterCalc?.(event.node, row);
-      const broadcastList = runtime.broadcastFields?.value || [];
-      if (broadcastList.includes(field)) {
-        await runtime.broadcastToDetail?.(masterId, row, field);
-      }
+    if (!isApiChange) {
+      const calcChanged = runtime.runMasterCalc?.(event.node, row, { [field]: event.newValue }) || [];
+      const changedFields = [field, ...calcChanged].filter(Boolean);
+      await runtime.broadcastToDetail?.(masterId, row, changedFields);
     }
 
     // 任何单元格变化后都重算汇总（calc 联动可能改了求和字段）

@@ -1,14 +1,18 @@
-import type { Ref, ShallowRef } from 'vue';
+﻿import type { Ref, ShallowRef } from 'vue';
 import type { GridApi } from 'ag-grid-community';
 import {
   calcRowFields,
   calcAggregates,
   compileCalcRules,
   compileAggRules,
-  getAffectedRules,
+  buildCalcRuleDependencies,
+  resolveAffectedRuleFieldsByDependencies,
+  normalizeFieldRef,
+  isValidIdentifier,
   ensureRowKey,
   type ParsedPageConfig,
-  type RowData
+  type RowData,
+  type CalcRuleDependency
 } from '@/v3/logic/calc-engine';
 import {
   applySummaryRowValues,
@@ -52,7 +56,6 @@ export function useCalcBroadcast(params: {
   getMasterRowByRowKey: (rowKey: string) => RowData | null;
   resolveMasterRowKey: (masterId: number) => string | null;
   detailCache: Map<string, Record<string, RowData[]>>;
-  broadcastFields: Ref<string[]>;
   detailCalcRulesByTab: Ref<Record<string, CompiledCalcRules>>;
   compiledAggRules: Ref<CompiledAggRules>;
   compiledMasterCalcRules: Ref<CompiledCalcRules>;
@@ -66,7 +69,6 @@ export function useCalcBroadcast(params: {
     getMasterRowByRowKey,
     resolveMasterRowKey,
     detailCache,
-    broadcastFields,
     detailCalcRulesByTab,
     compiledAggRules,
     compiledMasterCalcRules,
@@ -74,6 +76,74 @@ export function useCalcBroadcast(params: {
     loadDetailData,
     detailGridApisByTab
   } = params;
+
+  const detailDependencyCache = new Map<
+    string,
+    { rulesRef: CompiledCalcRules; deps: CalcRuleDependency[]; tableCode: string }
+  >();
+
+  function resolveMasterTableCode(): string | null {
+    const tableCode = pageConfig.value?.masterTableCode;
+    if (!isValidIdentifier(tableCode)) return null;
+    return tableCode || null;
+  }
+
+  function resolveDetailTableCode(tabKey: string): string | null {
+    const tab = pageConfig.value?.tabs?.find(item => item.key === tabKey);
+    const tableCode = tab?.tableCode;
+    if (!isValidIdentifier(tableCode)) return null;
+    return tableCode || null;
+  }
+
+  function toQualifiedFieldRefs(fields: string[], defaultTableCode?: string | null): string[] {
+    const refs: string[] = [];
+    const seen = new Set<string>();
+    for (const field of fields) {
+      const raw = typeof field === 'string' ? field.trim() : '';
+      if (!raw) continue;
+      const normalized = normalizeFieldRef(raw, defaultTableCode || undefined);
+      const ref = normalized || raw;
+      if (seen.has(ref)) continue;
+      seen.add(ref);
+      refs.push(ref);
+    }
+    return refs;
+  }
+
+  function getDetailDependencies(tabKey: string, calcRules: CompiledCalcRules): CalcRuleDependency[] {
+    const tableCode = resolveDetailTableCode(tabKey);
+    if (!tableCode) return [];
+    const cacheKey = `${tabKey}:${tableCode}`;
+    const cached = detailDependencyCache.get(cacheKey);
+    if (cached && cached.rulesRef === calcRules) {
+      return cached.deps;
+    }
+    const deps = buildCalcRuleDependencies(calcRules, tableCode);
+    detailDependencyCache.set(cacheKey, { rulesRef: calcRules, deps, tableCode });
+    return deps;
+  }
+
+  function buildMasterCalcContext(masterRow: RowData): Record<string, any> {
+    const context: Record<string, any> = {};
+    const masterTableCode = resolveMasterTableCode();
+    if (masterTableCode) {
+      context[masterTableCode] = masterRow;
+    }
+    return context;
+  }
+
+  function buildDetailCalcContext(masterRow: RowData, detailRow: RowData, tabKey: string): Record<string, any> {
+    const context: Record<string, any> = {};
+    const masterTableCode = resolveMasterTableCode();
+    if (masterTableCode) {
+      context[masterTableCode] = masterRow;
+    }
+    const detailTableCode = resolveDetailTableCode(tabKey);
+    if (detailTableCode) {
+      context[detailTableCode] = detailRow;
+    }
+    return context;
+  }
 
   function markFieldChange(row: RowData, field: string, oldValue: any, newValue: any, type: 'user' | 'calc') {
     if (!row._dirtyFields) row._dirtyFields = {};
@@ -140,12 +210,12 @@ export function useCalcBroadcast(params: {
 
   function logCalcBroadcast(params: {
     masterId: number;
-    triggerFields: string[];
+    triggerFieldRefs: string[];
     detailLogs: DetailLogGroup[];
     aggregateLog?: AggregateLog | null;
   }) {
     if (!isCalcLogEnabled()) return;
-    const { masterId, triggerFields, detailLogs, aggregateLog } = params;
+    const { masterId, triggerFieldRefs, detailLogs, aggregateLog } = params;
     const hasDetail = detailLogs.some(group => group.changes.length > 0);
     const hasMaster = aggregateLog?.changes?.length;
     if (!hasDetail && !hasMaster) return;
@@ -153,7 +223,7 @@ export function useCalcBroadcast(params: {
     const header = `[MetaV3][CALC] masterId=${masterId}`;
     console.groupCollapsed(header);
     console.info('trigger:');
-    console.info(`  - broadcastFields: [${triggerFields.map(f => `"${f}"`).join(', ')}]`);
+    console.info(`  - changed: [${triggerFieldRefs.map(f => `"${f}"`).join(', ')}]`);
 
     for (const group of detailLogs) {
       if (group.changes.length === 0) continue;
@@ -204,37 +274,91 @@ export function useCalcBroadcast(params: {
     console.groupEnd();
   }
 
-  function runDetailCalc(node: any, api: any, row: RowData, masterId: number, tabKey: string, masterRowKey?: string) {
+  function resolveDetailAffectedRules(
+    tabKey: string,
+    calcRules: CompiledCalcRules,
+    changedFieldRefs: string[]
+  ): CompiledCalcRules {
+    if (changedFieldRefs.length === 0) return calcRules;
+    const dependencies = getDetailDependencies(tabKey, calcRules);
+    if (dependencies.length === 0) return calcRules;
+    const affectedFields = resolveAffectedRuleFieldsByDependencies(changedFieldRefs, dependencies);
+    if (affectedFields.size === 0) return [];
+    return calcRules.filter(rule => affectedFields.has(rule.field));
+  }
+
+  function runDetailCalc(
+    node: any,
+    api: any,
+    row: RowData,
+    masterId: number,
+    tabKey: string,
+    masterRowKey?: string,
+    changedFields?: string | string[],
+    valueOverrides?: Record<string, any>
+  ) {
     const masterRow = getMasterRowById(masterId) || (masterRowKey ? getMasterRowByRowKey(masterRowKey) : null);
-    if (!masterRow) return;
+    if (!masterRow) return [] as string[];
     const calcRules = detailCalcRulesByTab.value[tabKey] || [];
-    if (calcRules.length === 0) return;
+    if (calcRules.length === 0) return [] as string[];
 
-    const context: Record<string, any> = {};
-    for (const field of broadcastFields.value) context[field] = masterRow[field];
+    const detailTableCode = resolveDetailTableCode(tabKey);
+    const changedList = Array.isArray(changedFields)
+      ? changedFields.filter(Boolean)
+      : changedFields
+        ? [changedFields]
+        : [];
+    const changedFieldRefs = toQualifiedFieldRefs(changedList, detailTableCode);
+    const effectiveRules = resolveDetailAffectedRules(tabKey, calcRules, changedFieldRefs);
+    if (effectiveRules.length === 0) return [] as string[];
 
-    const results = calcRowFields(row, context, calcRules);
-    const changedFields: string[] = [];
+    const hasOverrides = Boolean(valueOverrides && Object.keys(valueOverrides).length > 0);
+    const evalRow = hasOverrides ? { ...row, ...valueOverrides } : row;
+    const context = buildDetailCalcContext(masterRow, evalRow, tabKey);
+    const results = calcRowFields(evalRow, context, effectiveRules);
+
+    if (hasOverrides && valueOverrides) {
+      for (const [field, value] of Object.entries(valueOverrides)) {
+        if (!Object.is(row[field], value)) {
+          row[field] = value;
+        }
+      }
+    }
+
+    const changedRuleFields: string[] = [];
     for (const [field, value] of Object.entries(results)) {
       if (row[field] !== value) {
         const oldValue = row[field];
         row[field] = value;
         markFieldChange(row, field, oldValue, value, 'calc');
-        changedFields.push(field);
+        changedRuleFields.push(field);
       }
     }
-    if (changedFields.length > 0) {
+    if (changedRuleFields.length > 0) {
       if (node) {
-        api?.refreshCells({ rowNodes: [node], columns: changedFields, force: true });
+        api?.refreshCells({ rowNodes: [node], columns: changedRuleFields, force: true });
       } else {
         api?.refreshCells({ force: true });
       }
     }
+    return changedRuleFields;
   }
 
-  function runMasterCalc(node: any, row: RowData) {
-    if (compiledMasterCalcRules.value.length === 0) return;
-    const results = calcRowFields(row, {}, compiledMasterCalcRules.value);
+  function runMasterCalc(node: any, row: RowData, valueOverrides?: Record<string, any>) {
+    if (compiledMasterCalcRules.value.length === 0) return [] as string[];
+    const hasOverrides = Boolean(valueOverrides && Object.keys(valueOverrides).length > 0);
+    const evalRow = hasOverrides ? { ...row, ...valueOverrides } : row;
+    const context = buildMasterCalcContext(evalRow);
+    const results = calcRowFields(evalRow, context, compiledMasterCalcRules.value);
+
+    if (hasOverrides && valueOverrides) {
+      for (const [field, value] of Object.entries(valueOverrides)) {
+        if (!Object.is(row[field], value)) {
+          row[field] = value;
+        }
+      }
+    }
+
     const changedFields: string[] = [];
     for (const [field, value] of Object.entries(results)) {
       if (row[field] !== value) {
@@ -251,18 +375,7 @@ export function useCalcBroadcast(params: {
         masterGridApi.value?.refreshCells({ force: true });
       }
     }
-  }
-
-  function resolveAffectedRules(calcRules: CompiledCalcRules, changedFields: string[]) {
-    if (changedFields.length === 0) return calcRules;
-    const affectedFields = new Set<string>();
-    for (const field of changedFields) {
-      for (const rule of getAffectedRules(field, calcRules, true)) {
-        affectedFields.add(rule.field);
-      }
-    }
-    if (affectedFields.size === 0) return [];
-    return calcRules.filter(rule => affectedFields.has(rule.field));
+    return changedFields;
   }
 
   async function broadcastToDetail(masterId: number, masterRow: RowData, changedFields?: string | string[]) {
@@ -274,24 +387,26 @@ export function useCalcBroadcast(params: {
     }
     if (!cached) return;
 
-    const context: Record<string, any> = {};
-    for (const field of broadcastFields.value) context[field] = masterRow[field];
     const changedList = Array.isArray(changedFields)
       ? changedFields.filter(Boolean)
       : changedFields
         ? [changedFields]
         : [];
+    const masterTableCode = resolveMasterTableCode();
+    const changedFieldRefs = toQualifiedFieldRefs(changedList, masterTableCode);
 
     const detailLogs: DetailLogGroup[] = [];
     for (const [tabKey, rows] of Object.entries(cached)) {
       const calcRules = detailCalcRulesByTab.value[tabKey] || [];
       if (calcRules.length === 0) continue;
-      const effectiveRules = resolveAffectedRules(calcRules, changedList);
+      const effectiveRules = resolveDetailAffectedRules(tabKey, calcRules, changedFieldRefs);
       if (effectiveRules.length === 0) continue;
       const ruleIndexMap = buildRuleIndexMap(calcRules);
       const changes: CalcChange[] = [];
+
       for (const row of rows) {
         if (row._isDeleted) continue;
+        const context = buildDetailCalcContext(masterRow, row, tabKey);
         const results = calcRowFields(row, context, effectiveRules);
         for (const [field, value] of Object.entries(results)) {
           if (row[field] !== value) {
@@ -318,7 +433,7 @@ export function useCalcBroadcast(params: {
     const aggregateLog = recalcAggregates(masterId, masterRowKey);
     logCalcBroadcast({
       masterId,
-      triggerFields: changedList,
+      triggerFieldRefs: changedFieldRefs.length > 0 ? changedFieldRefs : changedList,
       detailLogs,
       aggregateLog
     });
@@ -398,7 +513,8 @@ export function useCalcBroadcast(params: {
 
     if (compiledMasterCalcRules.value.length > 0) {
       const calcReasonMap = buildRuleIndexMap(compiledMasterCalcRules.value);
-      const calcResults = calcRowFields(masterRow, {}, compiledMasterCalcRules.value);
+      const masterContext = buildMasterCalcContext(masterRow);
+      const calcResults = calcRowFields(masterRow, masterContext, compiledMasterCalcRules.value);
       for (const [field, value] of Object.entries(calcResults)) {
         if (masterRow[field] !== value) {
           const oldValue = masterRow[field];

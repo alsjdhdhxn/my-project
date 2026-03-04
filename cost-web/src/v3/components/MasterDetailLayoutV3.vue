@@ -542,15 +542,23 @@ watch(detailViewMode, () => {
 function onDetailCellValueChanged(event: any, masterId: number, tabKey: string, masterRowKey?: string) {
   const field = event.colDef?.field;
   const row = event.data;
-  if (!field || !masterId) return;
+  if (!field || !masterId || event.node?.rowPinned) return;
+  if (Object.is(event.oldValue, event.newValue)) return;
 
-  const changeType = editingState.value ? 'user' : 'calc';
+  // Ensure downstream calc always reads the latest user-entered value.
+  if (!Object.is(row?.[field], event.newValue)) {
+    row[field] = event.newValue;
+  }
+
+  const source = String(event?.source || '').toLowerCase();
+  const isApiChange = source === 'api' || source === 'rowdatachanged';
+  const changeType = isApiChange ? 'calc' : 'user';
   markFieldChange(row, field, event.oldValue, event.newValue, changeType);
   event.api?.refreshCells({ rowNodes: [event.node], columns: [field], force: true });
 
-  if (editingState.value) {
+  if (!isApiChange) {
     const resolvedRowKey = masterRowKey ?? activeMasterRowKey.value ?? undefined;
-    runDetailCalc(event.node, event.api, row, masterId, tabKey, resolvedRowKey);
+    runDetailCalc(event.node, event.api, row, masterId, tabKey, resolvedRowKey, field, { [field]: event.newValue });
     recalcAggregates(masterId, resolvedRowKey);
     // 刷新从表聚合汇总（grandTotalRow 不会自动重算）
     event.api?.refreshClientSideRowModel?.('aggregate');
