@@ -61,13 +61,20 @@ const BUILTIN_TOKENS = new Set([
   'abs', 'ceil', 'floor', 'round', 'sqrt', 'pow', 'log', 'exp',
   'min', 'max', 'sum', 'mean', 'mod', 'sign',
   'pi', 'e', 'true', 'false', 'null', 'undefined',
-  'if', 'else', 'return', 'NaN', 'Infinity'
+  'if', 'else', 'return', 'NaN', 'Infinity',
+  'SUM_IF', 'AVG_IF', 'COUNT_IF', 'MAX_IF', 'MIN_IF',
+  'sum_if', 'avg_if', 'count_if', 'max_if', 'min_if',
+  'IN', 'in', 'NVL', 'nvl'
 ]);
 
 export interface CalcRuleDependency {
   targetField: string;
   writeFieldRef: string;
   readFieldRefs: string[];
+}
+
+export interface CalcRuntimeScope {
+  detailRowsByTableCode?: Record<string, Array<Record<string, any>>>;
 }
 
 type ParsedFieldRef = { tableCode?: string; field: string };
@@ -362,11 +369,141 @@ export function evalCondition(condition: string | undefined, row: Record<string,
   }
 }
 
+type AggregateAlgorithm = 'SUM' | 'AVG' | 'COUNT' | 'MAX' | 'MIN';
+
+type AggregateSource = {
+  tableCode: string;
+  field: string;
+  filterExpr?: string;
+};
+
+function resolveAggregateSource(args: unknown[]): AggregateSource | null {
+  if (args.length === 0) return null;
+  const first = args[0];
+
+  if (typeof first === 'string') {
+    const firstRaw = first.trim();
+    const parsed = parseFieldRef(firstRaw);
+    if (parsed?.tableCode) {
+      const filterExpr = typeof args[1] === 'string' ? args[1] : undefined;
+      return {
+        tableCode: parsed.tableCode,
+        field: parsed.field,
+        filterExpr
+      };
+    }
+
+    if (
+      isValidIdentifier(firstRaw) &&
+      typeof args[1] === 'string' &&
+      isValidIdentifier(args[1].trim())
+    ) {
+      const filterExpr = typeof args[2] === 'string' ? args[2] : undefined;
+      return {
+        tableCode: firstRaw,
+        field: args[1].trim(),
+        filterExpr
+      };
+    }
+  }
+
+  return null;
+}
+
+function buildFilterMatcher(
+  tableCode: string,
+  filterExpr: string,
+  cache: Map<string, (row: Record<string, any>) => boolean>
+) {
+  const cacheKey = `${tableCode}::${filterExpr}`;
+  const cached = cache.get(cacheKey);
+  if (cached) return cached;
+
+  const evaluator = new Function('scope', `with(scope){ return (${filterExpr}); }`) as (scope: Record<string, any>) => unknown;
+  const matcher = (row: Record<string, any>) => {
+    try {
+      const scope = { ...row, row, [tableCode]: row };
+      return Boolean(evaluator(scope));
+    } catch {
+      return false;
+    }
+  };
+  cache.set(cacheKey, matcher);
+  return matcher;
+}
+
+function aggregateDetailRows(
+  rowsByTableCode: Record<string, Array<Record<string, any>>> | undefined,
+  algorithm: AggregateAlgorithm,
+  args: unknown[],
+  filterCache: Map<string, (row: Record<string, any>) => boolean>
+): number {
+  const source = resolveAggregateSource(args);
+  if (!source) return 0;
+
+  const sourceRows = rowsByTableCode?.[source.tableCode] || [];
+  const rows = source.filterExpr
+    ? sourceRows.filter(buildFilterMatcher(source.tableCode, source.filterExpr, filterCache))
+    : sourceRows;
+
+  if (rows.length === 0) return 0;
+  if (algorithm === 'COUNT') return rows.length;
+
+  const values = rows.map(row => Number(row[source.field]) || 0);
+  switch (algorithm) {
+    case 'SUM':
+      return values.reduce((acc, cur) => acc + cur, 0);
+    case 'AVG':
+      return values.reduce((acc, cur) => acc + cur, 0) / values.length;
+    case 'MAX':
+      return Math.max(...values);
+    case 'MIN':
+      return Math.min(...values);
+    default:
+      return 0;
+  }
+}
+
+function createCalcFunctionScope(runtime?: CalcRuntimeScope): Record<string, any> {
+  const rowsByTableCode = runtime?.detailRowsByTableCode;
+  const filterCache = new Map<string, (row: Record<string, any>) => boolean>();
+
+  const aggregate = (algorithm: AggregateAlgorithm, args: unknown[]) =>
+    aggregateDetailRows(rowsByTableCode, algorithm, args, filterCache);
+
+  const SUM_IF = (...args: unknown[]) => aggregate('SUM', args);
+  const AVG_IF = (...args: unknown[]) => aggregate('AVG', args);
+  const COUNT_IF = (...args: unknown[]) => aggregate('COUNT', args);
+  const MAX_IF = (...args: unknown[]) => aggregate('MAX', args);
+  const MIN_IF = (...args: unknown[]) => aggregate('MIN', args);
+  const IN = (value: unknown, ...candidates: unknown[]) => candidates.some(item => Object.is(item, value));
+  const NVL = (value: unknown, defaultValue: unknown) =>
+    value == null || (typeof value === 'number' && Number.isNaN(value)) ? defaultValue : value;
+
+  return {
+    SUM_IF,
+    AVG_IF,
+    COUNT_IF,
+    MAX_IF,
+    MIN_IF,
+    sum_if: SUM_IF,
+    avg_if: AVG_IF,
+    count_if: COUNT_IF,
+    max_if: MAX_IF,
+    min_if: MIN_IF,
+    IN,
+    in: IN,
+    NVL,
+    nvl: NVL
+  };
+}
+
 export function calcRowFields(
   row: Record<string, any>,
   context: Record<string, any>,
   rules: CompiledCalcRule[],
-  precision: number | null = null
+  precision: number | null = null,
+  runtime?: CalcRuntimeScope
 ): Record<string, number> {
   const results: Record<string, number> = {};
   const scope: Record<string, any> = {};
@@ -382,6 +519,11 @@ export function calcRowFields(
 
   for (const [key, value] of Object.entries(row || {})) {
     scope[key] = value ?? 0;
+  }
+
+  const functionScope = createCalcFunctionScope(runtime);
+  for (const [key, value] of Object.entries(functionScope)) {
+    scope[key] = value;
   }
 
   const rowScopeKeys: string[] = [];

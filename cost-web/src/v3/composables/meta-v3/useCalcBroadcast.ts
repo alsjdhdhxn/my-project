@@ -12,7 +12,8 @@ import {
   ensureRowKey,
   type ParsedPageConfig,
   type RowData,
-  type CalcRuleDependency
+  type CalcRuleDependency,
+  type CalcRuntimeScope
 } from '@/v3/logic/calc-engine';
 import {
   applySummaryRowValues,
@@ -143,6 +144,59 @@ export function useCalcBroadcast(params: {
       context[detailTableCode] = detailRow;
     }
     return context;
+  }
+
+  function resolveMasterRowKeyFromRow(row: RowData, preferredRowKey?: string): string | null {
+    if (preferredRowKey) return preferredRowKey;
+    if (row?._rowKey) return String(row._rowKey);
+    const masterIdRaw = row?.id;
+    if (masterIdRaw == null) return null;
+    const masterId = Number(masterIdRaw);
+    if (Number.isNaN(masterId)) return null;
+    return resolveMasterRowKey(masterId);
+  }
+
+  function buildDetailRowsByTableCode(cached: Record<string, RowData[]> | undefined) {
+    const rowsByTableCode: Record<string, RowData[]> = {};
+    if (!cached) return rowsByTableCode;
+
+    const seenByTable = new Map<string, Set<string>>();
+    const getRowIdentity = (row: RowData, fallbackIndex: number) => {
+      if (row?.id != null) return `id:${row.id}`;
+      if (row?._rowKey) return `rk:${String(row._rowKey)}`;
+      return `idx:${fallbackIndex}`;
+    };
+
+    for (const [tabKey, rows] of Object.entries(cached)) {
+      const tableCode = resolveDetailTableCode(tabKey);
+      if (!tableCode) continue;
+
+      if (!rowsByTableCode[tableCode]) rowsByTableCode[tableCode] = [];
+      if (!seenByTable.has(tableCode)) seenByTable.set(tableCode, new Set<string>());
+      const seen = seenByTable.get(tableCode)!;
+
+      rows.forEach((row, idx) => {
+        if (row?._isDeleted) return;
+        const identity = getRowIdentity(row, idx);
+        if (seen.has(identity)) return;
+        seen.add(identity);
+        rowsByTableCode[tableCode].push(row);
+      });
+    }
+
+    return rowsByTableCode;
+  }
+
+  function buildMasterCalcRuntime(
+    masterRow: RowData,
+    masterRowKey?: string,
+    cachedOverride?: Record<string, RowData[]>
+  ): CalcRuntimeScope {
+    const resolvedRowKey = resolveMasterRowKeyFromRow(masterRow, masterRowKey);
+    const cached = cachedOverride ?? (resolvedRowKey ? detailCache.get(resolvedRowKey) : undefined);
+    return {
+      detailRowsByTableCode: buildDetailRowsByTableCode(cached)
+    };
   }
 
   function markFieldChange(row: RowData, field: string, oldValue: any, newValue: any, type: 'user' | 'calc') {
@@ -348,8 +402,10 @@ export function useCalcBroadcast(params: {
     if (compiledMasterCalcRules.value.length === 0) return [] as string[];
     const hasOverrides = Boolean(valueOverrides && Object.keys(valueOverrides).length > 0);
     const evalRow = hasOverrides ? { ...row, ...valueOverrides } : row;
+    const masterRowKey = resolveMasterRowKeyFromRow(row);
+    const runtimeScope = buildMasterCalcRuntime(evalRow, masterRowKey || undefined);
     const context = buildMasterCalcContext(evalRow);
-    const results = calcRowFields(evalRow, context, compiledMasterCalcRules.value);
+    const results = calcRowFields(evalRow, context, compiledMasterCalcRules.value, null, runtimeScope);
 
     if (hasOverrides && valueOverrides) {
       for (const [field, value] of Object.entries(valueOverrides)) {
@@ -514,7 +570,8 @@ export function useCalcBroadcast(params: {
     if (compiledMasterCalcRules.value.length > 0) {
       const calcReasonMap = buildRuleIndexMap(compiledMasterCalcRules.value);
       const masterContext = buildMasterCalcContext(masterRow);
-      const calcResults = calcRowFields(masterRow, masterContext, compiledMasterCalcRules.value);
+      const runtimeScope = buildMasterCalcRuntime(masterRow, resolvedRowKey, cached);
+      const calcResults = calcRowFields(masterRow, masterContext, compiledMasterCalcRules.value, null, runtimeScope);
       for (const [field, value] of Object.entries(calcResults)) {
         if (masterRow[field] !== value) {
           const oldValue = masterRow[field];

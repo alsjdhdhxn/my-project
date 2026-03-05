@@ -211,8 +211,9 @@ async function loadAvailableFields() {
       }
     }
 
-    // VALIDATION / AGGREGATE：加载同页面其他从表
-    if (props.ruleType === 'VALIDATION' || props.ruleType === 'AGGREGATE') {
+    // VALIDATION / AGGREGATE / (master) CALC：加载同页面其他从表
+    const isMasterCalc = props.ruleType === 'CALC' && Boolean(currentRef && masterRef && currentRef === masterRef);
+    if (props.ruleType === 'VALIDATION' || props.ruleType === 'AGGREGATE' || isMasterCalc) {
       const others = (allComps || []).filter((c: any) =>
         c.pageCode === props.pageCode && c.componentType === 'DETAIL_GRID'
         && c.refTableCode && c.refTableCode !== currentRef && c.refTableCode !== masterRef

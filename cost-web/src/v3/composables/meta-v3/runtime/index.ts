@@ -485,7 +485,8 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
       list => (list?.length ?? 0) > 0
     );
     const hasBroadcast = hasTabs && hasDetailCalc;
-    const hasAgg = (meta.compiledAggRules.value?.length ?? 0) > 0;
+    const hasMasterCalc = (meta.compiledMasterCalcRules.value?.length ?? 0) > 0;
+    const hasAgg = (meta.compiledAggRules.value?.length ?? 0) > 0 || hasMasterCalc;
     const masterLookup = (meta.masterLookupRules.value?.length ?? 0) > 0;
     const detailLookup = Object.values(meta.detailLookupRulesByTab.value || {}).some(
       list => (list?.length ?? 0) > 0

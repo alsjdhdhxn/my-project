@@ -8,6 +8,7 @@ export {
   type AggRule,
   type FormulaDefinition,
   type CalcRuleDependency,
+  type CalcRuntimeScope,
   compileCalcRules,
   compileAggRules,
   calcRowFields,
