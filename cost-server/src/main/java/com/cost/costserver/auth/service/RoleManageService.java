@@ -518,147 +518,191 @@ public class RoleManageService {
      */
     public List<PageTableColumnsVO> listPageColumns(String pageCode) {
         List<PageTableColumnsVO> result = new ArrayList<>();
-        
-        // 1. 查询页面组件，获取表格信息
+        String escapedPageCode = pageCode.replace("'", "''");
+
         List<Map<String, Object>> components = dynamicMapper.selectList(
-            "SELECT c.COMPONENT_KEY, c.COMPONENT_TYPE, c.COMPONENT_CONFIG, c.REF_TABLE_CODE, m.TABLE_NAME, m.ID as TABLE_METADATA_ID " +
+            "SELECT c.COMPONENT_KEY, c.COMPONENT_TYPE, c.COMPONENT_CONFIG, c.REF_TABLE_CODE, m.TABLE_NAME " +
             "FROM T_COST_PAGE_COMPONENT c " +
             "LEFT JOIN T_COST_TABLE_METADATA m ON c.REF_TABLE_CODE = m.TABLE_CODE " +
-            "WHERE c.PAGE_CODE = '" + pageCode.replace("'", "''") + "' " +
+            "WHERE c.PAGE_CODE = '" + escapedPageCode + "' " +
             "AND c.DELETED = 0 " +
             "ORDER BY c.SORT_ORDER"
         );
-        
-        // 2. 查询所有 COLUMN_OVERRIDE 规则
+
         Map<String, String> columnOverrideRules = new HashMap<>();
         List<Map<String, Object>> rules = dynamicMapper.selectList(
             "SELECT COMPONENT_KEY, RULES FROM T_COST_PAGE_RULE " +
-            "WHERE PAGE_CODE = '" + pageCode.replace("'", "''") + "' " +
+            "WHERE PAGE_CODE = '" + escapedPageCode + "' " +
             "AND RULE_TYPE = 'COLUMN_OVERRIDE' AND DELETED = 0"
         );
         for (Map<String, Object> rule : rules) {
             String componentKey = (String) rule.get("COMPONENT_KEY");
-            Object rulesObj = rule.get("RULES");
-            String rulesJson = convertClobToString(rulesObj);
+            String rulesJson = convertClobToString(rule.get("RULES"));
             if (componentKey != null && rulesJson != null) {
                 columnOverrideRules.put(componentKey, rulesJson);
             }
         }
-        
-        // 3. 收集所有需要查询的 tableCode
+
         Set<String> tableCodes = new HashSet<>();
         for (Map<String, Object> comp : components) {
             String refTableCode = (String) comp.get("REF_TABLE_CODE");
-            if (refTableCode != null) tableCodes.add(refTableCode);
-            
-            // 从 TABS 组件中提取 tableCode
+            if (refTableCode != null) {
+                tableCodes.add(refTableCode);
+            }
             String componentType = (String) comp.get("COMPONENT_TYPE");
             if ("TABS".equals(componentType)) {
-                Object configObj = comp.get("COMPONENT_CONFIG");
-                String configJson = convertClobToString(configObj);
-                if (configJson != null) {
-                    try {
-                        cn.hutool.json.JSONObject config = cn.hutool.json.JSONUtil.parseObj(configJson);
-                        cn.hutool.json.JSONArray tabs = config.getJSONArray("tabs");
-                        if (tabs != null) {
-                            for (int i = 0; i < tabs.size(); i++) {
-                                String tableCode = tabs.getJSONObject(i).getStr("tableCode");
-                                if (tableCode != null) tableCodes.add(tableCode);
-                            }
-                        }
-                    } catch (Exception ignored) {}
-                }
+                collectTabTableCodes(convertClobToString(comp.get("COMPONENT_CONFIG")), tableCodes);
             }
         }
-        
-        // 4. 查询所有列元数据（用于获取 headerText）
-        Map<String, Map<String, String>> columnHeaderMap = new HashMap<>(); // tableCode -> (fieldName -> headerText)
-        if (!tableCodes.isEmpty()) {
-            String tableCodeList = tableCodes.stream()
-                .map(tc -> "'" + tc.replace("'", "''") + "'")
-                .collect(Collectors.joining(","));
-            List<Map<String, Object>> columnMetas = dynamicMapper.selectList(
-                "SELECT m.TABLE_CODE, c.FIELD_NAME, c.HEADER_TEXT " +
-                "FROM T_COST_COLUMN_METADATA c " +
-                "JOIN T_COST_TABLE_METADATA m ON c.TABLE_METADATA_ID = m.ID " +
-                "WHERE m.TABLE_CODE IN (" + tableCodeList + ") AND c.DELETED = 0"
-            );
-            for (Map<String, Object> cm : columnMetas) {
-                String tableCode = (String) cm.get("TABLE_CODE");
-                String fieldName = (String) cm.get("FIELD_NAME");
-                String headerText = (String) cm.get("HEADER_TEXT");
-                columnHeaderMap.computeIfAbsent(tableCode, k -> new HashMap<>()).put(fieldName, headerText);
-            }
-        }
-        
-        // 5. 处理每个组件
+        Map<String, List<PageColumnVO>> baseColumnsByTableCode = loadBaseColumnsByTableCode(tableCodes);
+
+        Set<String> addedTableKeys = new HashSet<>();
         for (Map<String, Object> comp : components) {
             String componentKey = (String) comp.get("COMPONENT_KEY");
             String componentType = (String) comp.get("COMPONENT_TYPE");
             String tableName = (String) comp.get("TABLE_NAME");
             String refTableCode = (String) comp.get("REF_TABLE_CODE");
-            
+
             if ("TABS".equals(componentType)) {
-                // TABS 组件：从 config 中提取每个 tab 的信息
-                Object configObj = comp.get("COMPONENT_CONFIG");
-                String configJson = convertClobToString(configObj);
-                if (configJson != null) {
-                    try {
-                        cn.hutool.json.JSONObject config = cn.hutool.json.JSONUtil.parseObj(configJson);
-                        cn.hutool.json.JSONArray tabs = config.getJSONArray("tabs");
-                        if (tabs != null) {
-                            for (int i = 0; i < tabs.size(); i++) {
-                                cn.hutool.json.JSONObject tab = tabs.getJSONObject(i);
-                                String tabKey = tab.getStr("key");
-                                String tabTitle = tab.getStr("title");
-                                String tableCode = tab.getStr("tableCode");
-                                
-                                // 获取该 tab 的 COLUMN_OVERRIDE 规则
-                                String rulesJson = columnOverrideRules.get(tabKey);
-                                if (rulesJson != null) {
-                                    Map<String, String> headerMap = tableCode != null ? columnHeaderMap.get(tableCode) : null;
-                                    PageTableColumnsVO tableVO = new PageTableColumnsVO();
-                                    tableVO.setTableKey(tabKey);
-                                    tableVO.setTableName(tabTitle != null ? tabTitle : tabKey);
-                                    tableVO.setColumns(parseColumnsFromOverride(rulesJson, headerMap));
-                                    result.add(tableVO);
-                                }
-                            }
-                        }
-                    } catch (Exception e) {
-                        log.warn("解析TABS组件配置失败, pageCode={}, error={}", pageCode, e.getMessage());
-                    }
-                }
-            } else if ("GRID".equals(componentType) || "DETAIL_GRID".equals(componentType)) {
-                // GRID 组件
-                String rulesJson = columnOverrideRules.get(componentKey);
-                // 也尝试 masterGrid 和 master 的映射
-                if (rulesJson == null && "masterGrid".equals(componentKey)) {
-                    rulesJson = columnOverrideRules.get("master");
-                }
-                if (rulesJson == null && "master".equals(componentKey)) {
-                    rulesJson = columnOverrideRules.get("masterGrid");
-                }
-                
-                if (rulesJson != null) {
-                    Map<String, String> headerMap = refTableCode != null ? columnHeaderMap.get(refTableCode) : null;
-                    PageTableColumnsVO tableVO = new PageTableColumnsVO();
-                    tableVO.setTableKey(componentKey);
-                    tableVO.setTableName(tableName != null ? tableName : componentKey);
-                    tableVO.setColumns(parseColumnsFromOverride(rulesJson, headerMap));
-                    result.add(tableVO);
-                }
+                addTabColumns(
+                    result,
+                    addedTableKeys,
+                    convertClobToString(comp.get("COMPONENT_CONFIG")),
+                    columnOverrideRules,
+                    baseColumnsByTableCode
+                );
+                continue;
             }
+
+            if (!"GRID".equals(componentType) && !"DETAIL_GRID".equals(componentType)) {
+                continue;
+            }
+            if (componentKey == null || !addedTableKeys.add(componentKey)) {
+                continue;
+            }
+
+            String rulesJson = resolveOverrideRules(componentKey, columnOverrideRules);
+            Map<String, ColumnOverrideSetting> overrideMap = parseColumnOverrideSettings(rulesJson);
+            List<PageColumnVO> baseColumns = refTableCode != null
+                ? baseColumnsByTableCode.getOrDefault(refTableCode, Collections.emptyList())
+                : Collections.emptyList();
+
+            PageTableColumnsVO tableVO = new PageTableColumnsVO();
+            tableVO.setTableKey(componentKey);
+            tableVO.setTableName(tableName != null ? tableName : componentKey);
+            tableVO.setColumns(applyOverrideRestrictions(baseColumns, overrideMap));
+            result.add(tableVO);
         }
-        
+
         return result;
     }
-    
-    /**
-     * 从 COLUMN_OVERRIDE 规则 JSON 中解析列信息
-     */
-    private List<PageColumnVO> parseColumnsFromOverride(String rulesJson, Map<String, String> headerMap) {
-        List<PageColumnVO> columns = new ArrayList<>();
+
+    private void collectTabTableCodes(String configJson, Set<String> tableCodes) {
+        if (configJson == null) return;
+        try {
+            cn.hutool.json.JSONObject config = cn.hutool.json.JSONUtil.parseObj(configJson);
+            cn.hutool.json.JSONArray tabs = config.getJSONArray("tabs");
+            if (tabs == null) return;
+            for (int i = 0; i < tabs.size(); i++) {
+                String tableCode = tabs.getJSONObject(i).getStr("tableCode");
+                if (tableCode != null) {
+                    tableCodes.add(tableCode);
+                }
+            }
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void addTabColumns(
+            List<PageTableColumnsVO> result,
+            Set<String> addedTableKeys,
+            String configJson,
+            Map<String, String> columnOverrideRules,
+            Map<String, List<PageColumnVO>> baseColumnsByTableCode) {
+        if (configJson == null) return;
+        try {
+            cn.hutool.json.JSONObject config = cn.hutool.json.JSONUtil.parseObj(configJson);
+            cn.hutool.json.JSONArray tabs = config.getJSONArray("tabs");
+            if (tabs == null) return;
+
+            for (int i = 0; i < tabs.size(); i++) {
+                cn.hutool.json.JSONObject tab = tabs.getJSONObject(i);
+                String tabKey = tab.getStr("key");
+                if (tabKey == null || !addedTableKeys.add(tabKey)) {
+                    continue;
+                }
+
+                String tabTitle = tab.getStr("title");
+                String tableCode = tab.getStr("tableCode");
+                String rulesJson = resolveOverrideRules(tabKey, columnOverrideRules);
+                Map<String, ColumnOverrideSetting> overrideMap = parseColumnOverrideSettings(rulesJson);
+                List<PageColumnVO> baseColumns = tableCode != null
+                    ? baseColumnsByTableCode.getOrDefault(tableCode, Collections.emptyList())
+                    : Collections.emptyList();
+
+                PageTableColumnsVO tableVO = new PageTableColumnsVO();
+                tableVO.setTableKey(tabKey);
+                tableVO.setTableName(tabTitle != null ? tabTitle : tabKey);
+                tableVO.setColumns(applyOverrideRestrictions(baseColumns, overrideMap));
+                result.add(tableVO);
+            }
+        } catch (Exception e) {
+            log.warn("解析TABS组件配置失败: {}", e.getMessage());
+        }
+    }
+
+    private String resolveOverrideRules(String componentKey, Map<String, String> columnOverrideRules) {
+        String rulesJson = columnOverrideRules.get(componentKey);
+        if (rulesJson == null && "masterGrid".equals(componentKey)) {
+            rulesJson = columnOverrideRules.get("master");
+        }
+        if (rulesJson == null && "master".equals(componentKey)) {
+            rulesJson = columnOverrideRules.get("masterGrid");
+        }
+        return rulesJson;
+    }
+
+    private Map<String, List<PageColumnVO>> loadBaseColumnsByTableCode(Set<String> tableCodes) {
+        if (tableCodes == null || tableCodes.isEmpty()) {
+            return Collections.emptyMap();
+        }
+
+        String tableCodeList = tableCodes.stream()
+            .map(tc -> "'" + tc.replace("'", "''") + "'")
+            .collect(Collectors.joining(","));
+
+        List<Map<String, Object>> columnMetas = dynamicMapper.selectList(
+            "SELECT m.TABLE_CODE, c.FIELD_NAME, c.HEADER_TEXT " +
+            "FROM T_COST_COLUMN_METADATA c " +
+            "JOIN T_COST_TABLE_METADATA m ON c.TABLE_METADATA_ID = m.ID " +
+            "WHERE m.TABLE_CODE IN (" + tableCodeList + ") AND c.DELETED = 0 " +
+            "ORDER BY m.TABLE_CODE, c.DISPLAY_ORDER"
+        );
+
+        Map<String, List<PageColumnVO>> result = new HashMap<>();
+        for (Map<String, Object> cm : columnMetas) {
+            String tableCode = (String) cm.get("TABLE_CODE");
+            String fieldName = (String) cm.get("FIELD_NAME");
+            if (tableCode == null || fieldName == null) {
+                continue;
+            }
+
+            PageColumnVO vo = new PageColumnVO();
+            vo.setFieldName(fieldName);
+            vo.setHeaderText((String) cm.get("HEADER_TEXT"));
+            // T_COST_COLUMN_METADATA 没有 visible/editable 字段，基线默认为可见可编辑。
+            vo.setVisible(true);
+            vo.setEditable(true);
+            result.computeIfAbsent(tableCode, k -> new ArrayList<>()).add(vo);
+        }
+        return result;
+    }
+
+    private Map<String, ColumnOverrideSetting> parseColumnOverrideSettings(String rulesJson) {
+        Map<String, ColumnOverrideSetting> result = new HashMap<>();
+        if (rulesJson == null || rulesJson.isBlank()) {
+            return result;
+        }
         try {
             cn.hutool.json.JSONArray arr = cn.hutool.json.JSONUtil.parseArray(rulesJson);
             for (int i = 0; i < arr.size(); i++) {
@@ -666,25 +710,48 @@ public class RoleManageService {
                 String field = col.getStr("field");
                 if (field == null) field = col.getStr("fieldName");
                 if (field == null) continue;
-                
-                PageColumnVO vo = new PageColumnVO();
-                vo.setFieldName(field);
-                // 优先从列元数据获取 headerText，否则用 field
-                String headerText = headerMap != null ? headerMap.get(field) : null;
-                vo.setHeaderText(headerText != null ? headerText : field);
-                vo.setVisible(col.getBool("visible", true));
-                vo.setEditable(col.getBool("editable", true));
-                columns.add(vo);
+                result.put(field, new ColumnOverrideSetting(col.getBool("visible"), col.getBool("editable")));
             }
         } catch (Exception e) {
             log.warn("解析COLUMN_OVERRIDE规则失败: {}", e.getMessage());
         }
-        return columns;
+        return result;
     }
-    
-    /**
-     * 获取页面主表的字段列表（用于行权限可视化配置）
-     */
+
+    private List<PageColumnVO> applyOverrideRestrictions(
+            List<PageColumnVO> baseColumns,
+            Map<String, ColumnOverrideSetting> overrideMap) {
+        List<PageColumnVO> result = new ArrayList<>();
+        for (PageColumnVO base : baseColumns) {
+            boolean visible = base.getVisible() == null || base.getVisible();
+            boolean editable = base.getEditable() == null || base.getEditable();
+
+            ColumnOverrideSetting override = overrideMap.get(base.getFieldName());
+            if (override != null) {
+                // COLUMN_OVERRIDE 只允许收紧，不允许放开上层配置。
+                if (Boolean.FALSE.equals(override.visible())) {
+                    visible = false;
+                }
+                if (Boolean.FALSE.equals(override.editable())) {
+                    editable = false;
+                }
+            }
+            if (!visible) {
+                editable = false;
+            }
+
+            PageColumnVO merged = new PageColumnVO();
+            merged.setFieldName(base.getFieldName());
+            merged.setHeaderText(base.getHeaderText() != null ? base.getHeaderText() : base.getFieldName());
+            merged.setVisible(visible);
+            merged.setEditable(editable);
+            result.add(merged);
+        }
+        return result;
+    }
+
+    private record ColumnOverrideSetting(Boolean visible, Boolean editable) {
+    }
     public List<RowFilterFieldVO> listRowFilterFields(String pageCode) {
         List<RowFilterFieldVO> result = new ArrayList<>();
         

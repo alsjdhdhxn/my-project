@@ -29,4 +29,20 @@ public record PagePermission(
         }
         return columns.get(fieldName);
     }
+
+    /**
+     * 获取列权限（优先匹配 tableKey:fieldName，其次匹配 fieldName）
+     */
+    public ColumnPermission getColumnPermission(String tableKey, String fieldName) {
+        if (columns == null) {
+            return ColumnPermission.defaultPermission();
+        }
+        if (tableKey != null) {
+            String scopedKey = tableKey + ":" + fieldName;
+            if (columns.containsKey(scopedKey)) {
+                return columns.get(scopedKey);
+            }
+        }
+        return getColumnPermission(fieldName);
+    }
 }
