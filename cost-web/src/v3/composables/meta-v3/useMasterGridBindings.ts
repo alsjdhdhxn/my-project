@@ -235,6 +235,26 @@ export function useMasterGridBindings(params: {
 
   function onGridReady(params: GridReadyEvent) {
     if (runtime.masterGridApi) runtime.masterGridApi.value = params.api;
+    params.api.addEventListener('columnVisible', (event: any) => {
+      const colId = String(event?.column?.getColId?.() ?? '').trim();
+      if (!colId) return;
+      const lockedByConfig = new Set<string>((params.api as any)?.__lockedHiddenColumns || []);
+      const defs = (params.api.getColumnDefs?.() as ColDef[] | undefined) ?? [];
+      defs.forEach(def => {
+        const field = String(def?.field ?? '').trim();
+        if (!field) return;
+        if (def.lockVisible === true || (def as any).suppressColumnsToolPanel === true) {
+          lockedByConfig.add(field);
+        }
+      });
+      if (!lockedByConfig.has(colId)) return;
+      const visible = event?.visible === true || event?.column?.isVisible?.() === true;
+      if (!visible) return;
+      params.api.applyColumnState({
+        state: [{ colId, hide: true }],
+        applyOrder: false
+      });
+    });
     // V3 强制使用 SSRM - 每次 grid-ready 都设置 datasource
     console.log('[DEBUG] onGridReady - dataSource:', dataSource ? 'exists' : 'null');
     if (dataSource) {

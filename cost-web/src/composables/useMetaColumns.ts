@@ -11,6 +11,7 @@ type ColumnMetadata = Api.Metadata.ColumnMetadata;
 interface NumberFormatConfig {
   precision: number;
   trimZeros?: boolean;
+  roundMode?: 'round' | 'ceil' | 'floor';
 }
 
 const _DEFAULT_NUMBER_PRECISION = 2; // 已废弃，精度由 COLUMN_OVERRIDE 配置控制
@@ -100,6 +101,15 @@ export function metaToColDef(col: ColumnMetadata): ColDef {
       if (col.dataType === 'number' && numberFormat) {
         colDef.valueFormatter = (params) => formatNumberValue(params.value, numberFormat);
       }
+      if (config.columnControl?.lockVisible === true || config.lockVisible === true) {
+        colDef.lockVisible = true;
+        // Hide locked columns from Columns Tool Panel so users cannot toggle them.
+        colDef.suppressColumnsToolPanel = true;
+      }
+      applyEditorConfig(colDef, config);
+      if (typeof config.aggFunc === 'string' && config.aggFunc.length > 0) {
+        colDef.aggFunc = config.aggFunc;
+      }
       
       // 0. 自定义排序
       if (config.comparator) {
@@ -158,7 +168,9 @@ function resolveNumberFormat(config: any): NumberFormatConfig | null {
   const precision = Number(precisionRaw);
   if (!Number.isFinite(precision) || precision < 0) return null;
   const trimZeros = Boolean(format?.trimZeros ?? config.trimZeros);
-  return { precision: Math.floor(precision), trimZeros };
+  const roundModeRaw = format?.roundMode ?? config.roundMode;
+  const roundMode = roundModeRaw === 'ceil' || roundModeRaw === 'floor' ? roundModeRaw : 'round';
+  return { precision: Math.floor(precision), trimZeros, roundMode };
 }
 
 function formatNumberValue(value: any, format?: NumberFormatConfig): string {
@@ -166,14 +178,39 @@ function formatNumberValue(value: any, format?: NumberFormatConfig): string {
   const num = Number(value);
   if (!Number.isFinite(num)) return String(value);
   if (!format) {
-    // 不写死精度，直接显示原始值（精度由 COLUMN_OVERRIDE 配置控制）
     return String(num);
   }
-  let text = num.toFixed(format.precision);
+  const factor = Math.pow(10, format.precision);
+  let rounded = num;
+  switch (format.roundMode) {
+    case 'ceil':
+      rounded = Math.ceil(num * factor) / factor;
+      break;
+    case 'floor':
+      rounded = Math.floor(num * factor) / factor;
+      break;
+    default:
+      rounded = Math.round(num * factor) / factor;
+      break;
+  }
+  let text = rounded.toFixed(format.precision);
   if (format.trimZeros) {
     text = trimTrailingZeros(text);
   }
   return text;
+}
+
+function applyEditorConfig(colDef: ColDef, config: any) {
+  if (!config || typeof config !== 'object') return;
+  const editorType = config.editor?.type || config.cellEditor;
+  const editorParams = config.editor?.params || config.cellEditorParams;
+  if (typeof editorType !== 'string' || editorType.length === 0 || editorType === 'lookup') {
+    return;
+  }
+  colDef.cellEditor = editorType;
+  if (editorParams && typeof editorParams === 'object') {
+    colDef.cellEditorParams = editorParams;
+  }
 }
 
 function trimTrailingZeros(value: string): string {

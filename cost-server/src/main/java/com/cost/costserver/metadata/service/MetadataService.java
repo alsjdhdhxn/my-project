@@ -82,9 +82,13 @@ public class MetadataService {
             Long userId,
             boolean applyUserPreferences) {
         TableMetadataDTO base = getTableMetadata(tableCode);
-        // COLUMN_OVERRIDE 规则已在 getPageComponents 中返回，由前端应用
+        // COLUMN_OVERRIDE now merged on backend for metadata/table endpoint.
         List<ColumnMetadataDTO> columns = base.columns();
-        columns = applyPermission(columns, permission);
+        // 1) 列配置（表元数据）基线
+        // 2) 列覆盖（仅收紧，不放开）
+        columns = applyColumnOverrides(columns, loadColumnOverrides(pageCode, gridKey));
+        // 3) 页面权限（仅收紧，不放开）
+        columns = applyPermission(columns, permission, gridKey);
         if (applyUserPreferences) {
             columns = applyUserPreferences(columns, userId, pageCode, gridKey);
         }
@@ -99,13 +103,16 @@ public class MetadataService {
         }
     }
 
-    private List<ColumnMetadataDTO> applyPermission(List<ColumnMetadataDTO> columns, PagePermission permission) {
+    private List<ColumnMetadataDTO> applyPermission(
+            List<ColumnMetadataDTO> columns,
+            PagePermission permission,
+            String gridKey) {
         if (permission == null) {
             return columns;
         }
         List<ColumnMetadataDTO> result = new ArrayList<>();
         for (ColumnMetadataDTO col : columns) {
-            ColumnPermission colPerm = permission.getColumnPermission(col.fieldName());
+            ColumnPermission colPerm = permission.getColumnPermission(gridKey, col.fieldName());
             if (colPerm != null && !colPerm.visible()) {
                 continue;
             }
@@ -113,8 +120,13 @@ public class MetadataService {
             if (colPerm != null && !colPerm.editable()) {
                 editable = false;
             }
-            result.add(copyColumn(col, col.displayOrder(), col.width(), col.visible(), editable,
-                    col.required(), col.searchable(), col.sortable(), col.pinned(), col.rulesConfig()));
+            boolean visible = col.visible() == null || col.visible();
+            if (!visible) {
+                editable = false;
+            }
+            String rulesConfig = applyVisibilityLock(col.rulesConfig(), !visible);
+            result.add(copyColumn(col, col.displayOrder(), col.width(), visible, editable,
+                    col.required(), col.searchable(), col.sortable(), col.pinned(), rulesConfig));
         }
         return result;
     }
@@ -153,22 +165,83 @@ public class MetadataService {
             Integer width = col.width();
             String pinned = col.pinned();
             Boolean visible = col.visible();
+            Boolean editable = col.editable();
 
             if (pref != null) {
                 if (pref.width() != null) {
                     width = pref.width();
                 }
                 if (pref.hidden() != null) {
-                    visible = !pref.hidden();
+                    // 用户个性化只允许收紧：可隐藏，不可放开上层已隐藏列
+                    if (pref.hidden()) {
+                        visible = false;
+                    }
                 }
                 pinned = pref.pinned();
             }
 
-            result.add(copyColumn(col, displayOrder, width, visible, col.editable(),
+            if (visible != null && !visible) {
+                editable = false;
+            }
+
+            result.add(copyColumn(col, displayOrder, width, visible, editable,
                     col.required(), col.searchable(), col.sortable(), pinned, col.rulesConfig()));
             index++;
         }
         return result;
+    }
+
+    private List<ColumnMetadataDTO> applyColumnOverrides(
+            List<ColumnMetadataDTO> columns,
+            Map<String, ColumnOverride> overrides) {
+        if (overrides == null || overrides.isEmpty()) {
+            return columns;
+        }
+
+        List<ColumnMetadataDTO> result = new ArrayList<>();
+        for (ColumnMetadataDTO col : columns) {
+            ColumnOverride override = overrides.get(col.fieldName());
+            if (override == null) {
+                result.add(col);
+                continue;
+            }
+
+            Boolean visible = tightenBoolean(col.visible(), override.visible());
+            Boolean editable = tightenBoolean(col.editable(), override.editable());
+            Boolean required = tightenBoolean(col.required(), override.required());
+            Boolean searchable = tightenBoolean(col.searchable(), override.searchable());
+            Boolean sortable = tightenBoolean(col.sortable(), override.sortable());
+
+            if (visible != null && !visible) {
+                editable = false;
+            }
+
+            Integer width = override.width() != null ? override.width() : col.width();
+            String pinned = override.pinned() != null ? override.pinned() : col.pinned();
+            Integer displayOrder = override.order() != null ? override.order() : col.displayOrder();
+            String mergedRulesConfig = mergeRulesConfig(col.rulesConfig(), override);
+
+            result.add(copyColumn(
+                    col,
+                    displayOrder,
+                    width,
+                    visible,
+                    editable,
+                    required,
+                    searchable,
+                    sortable,
+                    pinned,
+                    mergedRulesConfig));
+        }
+        return result;
+    }
+
+    private Boolean tightenBoolean(Boolean base, Boolean tightenWith) {
+        boolean baseAllowed = base == null || base;
+        if (tightenWith == null) {
+            return baseAllowed;
+        }
+        return baseAllowed && tightenWith;
     }
 
     private Map<String, ColumnOverride> loadColumnOverrides(String pageCode, String gridKey) {
@@ -241,6 +314,10 @@ public class MetadataService {
                         parseOverrideConfig(node.get("format"), "format"),
                         number(node, "precision"),
                         bool(node, "trimZeros"),
+                        text(node, "roundMode"),
+                        text(node, "cellEditor"),
+                        parseOverrideConfig(node.get("cellEditorParams"), "cellEditorParams"),
+                        text(node, "aggFunc"),
                         parseOverrideConfig(node.get("rulesConfig"), "rulesConfig"));
                 result.put(field, override);
             }
@@ -285,8 +362,17 @@ public class MetadataService {
             return null;
         if (value.isBoolean())
             return value.asBoolean();
+        if (value.isNumber()) {
+            int intValue = value.asInt();
+            if (intValue == 1) return true;
+            if (intValue == 0) return false;
+            return null;
+        }
         if (value.isTextual()) {
-            return Boolean.parseBoolean(value.asText());
+            String text = value.asText().trim();
+            if ("1".equals(text)) return true;
+            if ("0".equals(text)) return false;
+            return Boolean.parseBoolean(text);
         }
         return null;
     }
@@ -309,6 +395,168 @@ public class MetadataService {
             }
         }
         return null;
+    }
+
+    private String mergeRulesConfig(String baseRulesConfig, ColumnOverride override) {
+        if (!hasRulesConfigOverride(override)) {
+            return baseRulesConfig;
+        }
+
+        ObjectNode merged = parseRulesConfigObject(baseRulesConfig);
+
+        if (override.rulesConfig() != null) {
+            deepMergeObject(merged, override.rulesConfig());
+        }
+        if (override.format() != null) {
+            merged.set("format", override.format().deepCopy());
+        }
+        if (override.precision() != null) {
+            merged.put("precision", override.precision());
+        }
+        if (override.trimZeros() != null) {
+            merged.put("trimZeros", override.trimZeros());
+        }
+        if (StrUtil.isNotBlank(override.roundMode())) {
+            merged.put("roundMode", override.roundMode());
+            ObjectNode formatNode = ensureObjectNode(merged, "format");
+            formatNode.put("roundMode", override.roundMode());
+        }
+        if (StrUtil.isNotBlank(override.aggFunc())) {
+            merged.put("aggFunc", override.aggFunc());
+        }
+        if (override.cellEditorParams() != null) {
+            merged.set("cellEditorParams", override.cellEditorParams().deepCopy());
+        }
+        if (StrUtil.isNotBlank(override.cellEditor())) {
+            merged.put("cellEditor", override.cellEditor());
+            applyEditorConfig(merged, override);
+        }
+
+        if (merged.isEmpty()) {
+            return null;
+        }
+        try {
+            return objectMapper.writeValueAsString(merged);
+        } catch (Exception e) {
+            log.warn("Failed to serialize merged rulesConfig: {}", e.getMessage());
+            return baseRulesConfig;
+        }
+    }
+
+    private String applyVisibilityLock(String baseRulesConfig, boolean lockVisible) {
+        if (!lockVisible) {
+            return baseRulesConfig;
+        }
+        ObjectNode merged = parseRulesConfigObject(baseRulesConfig);
+        ObjectNode columnControl = ensureObjectNode(merged, "columnControl");
+        columnControl.put("lockVisible", true);
+        try {
+            return objectMapper.writeValueAsString(merged);
+        } catch (Exception e) {
+            log.warn("Failed to serialize visibility lock rulesConfig: {}", e.getMessage());
+            return baseRulesConfig;
+        }
+    }
+
+    private boolean hasRulesConfigOverride(ColumnOverride override) {
+        if (override == null) {
+            return false;
+        }
+        return override.rulesConfig() != null
+                || override.format() != null
+                || override.precision() != null
+                || override.trimZeros() != null
+                || StrUtil.isNotBlank(override.roundMode())
+                || StrUtil.isNotBlank(override.aggFunc())
+                || StrUtil.isNotBlank(override.cellEditor())
+                || override.cellEditorParams() != null;
+    }
+
+    private ObjectNode parseRulesConfigObject(String rawRulesConfig) {
+        if (StrUtil.isBlank(rawRulesConfig)) {
+            return objectMapper.createObjectNode();
+        }
+        try {
+            JsonNode node = objectMapper.readTree(rawRulesConfig);
+            if (node != null && node.isObject()) {
+                return (ObjectNode) node.deepCopy();
+            }
+        } catch (Exception e) {
+            log.warn("Failed to parse base rulesConfig JSON: {}", e.getMessage());
+        }
+        return objectMapper.createObjectNode();
+    }
+
+    private void deepMergeObject(ObjectNode target, JsonNode patch) {
+        if (target == null || patch == null || patch.isNull() || !patch.isObject()) {
+            return;
+        }
+        patch.fields().forEachRemaining(entry -> {
+            String key = entry.getKey();
+            JsonNode patchValue = entry.getValue();
+            JsonNode currentValue = target.get(key);
+            if (currentValue != null && currentValue.isObject() && patchValue != null && patchValue.isObject()) {
+                deepMergeObject((ObjectNode) currentValue, patchValue);
+            } else if (patchValue != null) {
+                target.set(key, patchValue.deepCopy());
+            }
+        });
+    }
+
+    private ObjectNode ensureObjectNode(ObjectNode parent, String key) {
+        JsonNode node = parent.get(key);
+        if (node != null && node.isObject()) {
+            return (ObjectNode) node;
+        }
+        ObjectNode created = objectMapper.createObjectNode();
+        parent.set(key, created);
+        return created;
+    }
+
+    private void applyEditorConfig(ObjectNode merged, ColumnOverride override) {
+        String cellEditor = override.cellEditor();
+        if (StrUtil.isBlank(cellEditor)) {
+            return;
+        }
+
+        ObjectNode editorNode = ensureObjectNode(merged, "editor");
+        editorNode.put("type", cellEditor);
+
+        JsonNode params = override.cellEditorParams();
+        if (params != null) {
+            editorNode.set("params", params.deepCopy());
+        }
+
+        if (!"lookup".equalsIgnoreCase(cellEditor) || params == null || !params.isObject()) {
+            return;
+        }
+
+        String lookupCode = text(params, "lookupCode");
+        JsonNode mapping = params.get("mapping");
+        if (StrUtil.isBlank(lookupCode) || mapping == null || !mapping.isObject()) {
+            return;
+        }
+
+        ObjectNode lookupNode = ensureObjectNode(merged, "lookup");
+        lookupNode.put("code", lookupCode);
+        lookupNode.set("mapping", mapping.deepCopy());
+
+        Boolean noFillback = bool(params, "noFillback");
+        if (noFillback != null) {
+            lookupNode.put("noFillback", noFillback);
+        }
+        String filterField = text(params, "filterField");
+        if (StrUtil.isNotBlank(filterField)) {
+            lookupNode.put("filterField", filterField);
+        }
+        String filterColumn = text(params, "filterColumn");
+        if (StrUtil.isNotBlank(filterColumn)) {
+            lookupNode.put("filterColumn", filterColumn);
+        }
+        String filterValueFrom = text(params, "filterValueFrom");
+        if (StrUtil.isNotBlank(filterValueFrom)) {
+            lookupNode.put("filterValueFrom", filterValueFrom);
+        }
     }
 
     private ColumnMetadataDTO copyColumn(
@@ -357,6 +605,10 @@ public class MetadataService {
             JsonNode format,
             Integer precision,
             Boolean trimZeros,
+            String roundMode,
+            String cellEditor,
+            JsonNode cellEditorParams,
+            String aggFunc,
             JsonNode rulesConfig) {
     }
 

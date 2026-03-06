@@ -100,11 +100,44 @@ export function useUserGridConfig(params: {
     const applyFn = api?.applyColumnState ?? colApi?.applyColumnState;
     if (!applyFn) return;
 
+    const prefMap = new Map(payload.columns.map(col => [col.field, col]));
+    const currentDefs = (api?.getColumnDefs?.() ?? []) as Array<any>;
+    const lockedHiddenColumns = new Set<string>();
+    let needPatchDefs = false;
+    const patchedDefs = currentDefs.map(def => {
+      const field = String(def?.field ?? def?.colId ?? '').trim();
+      if (!field) return def;
+      const hiddenByUser = prefMap.get(field)?.hidden === true;
+      const hiddenByBase = def?.hide === true;
+      const backendLocked = def?.lockVisible === true || def?.suppressColumnsToolPanel === true;
+      const shouldLock = backendLocked || (hiddenByBase && !hiddenByUser);
+      if (!shouldLock) return def;
+      lockedHiddenColumns.add(field);
+      if (def?.lockVisible === true && def?.suppressColumnsToolPanel === true) {
+        return def;
+      }
+      needPatchDefs = true;
+      return {
+        ...def,
+        lockVisible: true,
+        suppressColumnsToolPanel: true
+      };
+    });
+
+    if (lockedHiddenColumns.size > 0) {
+      (api as any).__lockedHiddenColumns = Array.from(lockedHiddenColumns);
+    }
+    if (needPatchDefs) {
+      api?.setGridOption?.('columnDefs', patchedDefs);
+    }
+
     applyFn.call(api?.applyColumnState ? api : colApi, {
       state: payload.columns.map((col, index) => ({
         colId: col.field,
         width: col.width,
-        hide: col.hidden,
+        // 用户个性化只允许收紧：
+        // hidden=true 时隐藏；hidden=false/undefined 不允许反向放开后端权限结果。
+        hide: col.hidden === true ? true : undefined,
         pinned: col.pinned ?? null,
         order: col.order ?? index
       })),

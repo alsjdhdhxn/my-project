@@ -162,6 +162,26 @@ function getRowClass(params: any): string | undefined {
 function onGridReady(event: GridReadyEvent) {
   gridApi.value = event.api;
   props.registerDetailGridApi(props.tab.key, event.api);
+  event.api.addEventListener('columnVisible', (columnEvent: any) => {
+    const colId = String(columnEvent?.column?.getColId?.() ?? '').trim();
+    if (!colId) return;
+    const lockedByConfig = new Set<string>((event.api as any)?.__lockedHiddenColumns || []);
+    const defs = (event.api.getColumnDefs?.() as ColDef[] | undefined) ?? [];
+    defs.forEach(def => {
+      const field = String(def?.field ?? '').trim();
+      if (!field) return;
+      if (def.lockVisible === true || (def as any).suppressColumnsToolPanel === true) {
+        lockedByConfig.add(field);
+      }
+    });
+    if (!lockedByConfig.has(colId)) return;
+    const visible = columnEvent?.visible === true || columnEvent?.column?.isVisible?.() === true;
+    if (!visible) return;
+    event.api.applyColumnState({
+      state: [{ colId, hide: true }],
+      applyOrder: false
+    });
+  });
   props.applyGridConfig?.(props.tab.key, event.api, event.columnApi);
 
   if (props.tab.initialSort && props.tab.initialSort.length > 0) {
