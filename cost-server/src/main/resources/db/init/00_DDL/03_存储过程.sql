@@ -1,9 +1,9 @@
--- ============================================================
--- 存储过程定义
--- 成本管理系统所有存储过程
+﻿-- ============================================================
+-- 瀛樺偍杩囩▼瀹氫箟
+-- 鎴愭湰绠＄悊绯荤粺鎵€鏈夊瓨鍌ㄨ繃绋?
 -- ============================================================
 
--- 同步客户和分销商数据
+-- 鍚屾瀹㈡埛鍜屽垎閿€鍟嗘暟鎹?
 CREATE OR REPLACE PROCEDURE PROC_SYNC_CUSTOMER AS
 BEGIN
     MERGE INTO T_COST_CUSTOMER t
@@ -29,12 +29,12 @@ BEGIN
 END;
 /
 
--- 同步物料价格数据
+-- 鍚屾鐗╂枡浠锋牸鏁版嵁
 CREATE OR REPLACE PROCEDURE PROC_SYNC_GOODS_PRICE AS
 BEGIN
   MERGE INTO T_COST_GOODS_PRICE T
   USING (SELECT a.GOODSID, a.GOODSNAME, a.price AS NEW_PRICE, a.USEFLAG, a.goodstype, a.packtype, a.FACTORYNAME
-         FROM pub_goods_v a WHERE a.USEFLAG NOT IN ('产成品','半成品')) S
+         FROM pub_goods_v a WHERE a.USEFLAG NOT IN ('浜ф垚鍝?,'鍗婃垚鍝?)) S
   ON (T.GOODSID = S.GOODSID)
   WHEN MATCHED THEN
     UPDATE SET T.GOODSNAME = S.GOODSNAME, T.USEFLAG = S.USEFLAG, T.GOODSTYPE = S.goodstype,
@@ -48,7 +48,7 @@ BEGIN
 END;
 /
 
--- 同步WMS库存数据
+-- 鍚屾WMS搴撳瓨鏁版嵁
 CREATE OR REPLACE PROCEDURE PROC_SYNC_WMS_QTY AS
 BEGIN
     DELETE FROM T_WMS_QTY WHERE UPDATE_BY = 'system' OR UPDATE_BY IS NULL OR GOODSGP IS NULL;
@@ -59,8 +59,8 @@ BEGIN
     FROM (
         SELECT a.conid, a.goodsid, a.goodsname || '(' || a.packtype || ')' AS goodsgp,
                a.lotno, a.goodsno, b.packsize,
-               TO_CHAR(NVL(b.goodsqty_total, 0)) || b.packname || '（零头' ||
-               TO_CHAR(NVL(b.goodsqty_oddtray1, 0)) || b.packname || '）成品__' || b.packname || '）' AS qty_show, b.pcs
+               TO_CHAR(NVL(b.goodsqty_total, 0)) || b.packname || '锛堥浂澶? ||
+               TO_CHAR(NVL(b.goodsqty_oddtray1, 0)) || b.packname || '锛夋垚鍝乢_' || b.packname || '锛? AS qty_show, b.pcs
         FROM (SELECT a.conid, a.goodsid, a.goodsno, a.goodsname, a.lotno, a.packtype
               FROM bms_sa_con_dtl_v@hyerp a GROUP BY a.conid, a.goodsid, a.goodsno, a.goodsname, a.lotno, a.packtype) a,
              (SELECT x.goodsownid, x.lotno, x.packname, x.packsize, SUM(x.goodsqty) AS goodsqty_total,
@@ -74,35 +74,35 @@ EXCEPTION WHEN OTHERS THEN ROLLBACK; RAISE;
 END PROC_SYNC_WMS_QTY;
 /
 
--- BOM生成明细
+-- BOM鐢熸垚鏄庣粏
 CREATE OR REPLACE PROCEDURE P_COST_BOM_INSERT (p_docid IN t_cost_pinggu.docid%TYPE) AS
     v_goodsid varchar2(20);
     v_raw_goodsid t_cost_pinggu.goodsid%TYPE;
 BEGIN
     SELECT goodsid INTO v_raw_goodsid FROM t_cost_pinggu WHERE docid = p_docid;
-    IF v_raw_goodsid IS NULL THEN RAISE_APPLICATION_ERROR(-20003, '该产品在ERP中不存在BOM'); END IF;
+    IF v_raw_goodsid IS NULL THEN RAISE_APPLICATION_ERROR(-20003, '璇ヤ骇鍝佸湪ERP涓笉瀛樺湪BOM'); END IF;
     v_goodsid := '-' || v_raw_goodsid || '-';
     DELETE FROM t_cost_pinggu_dtl WHERE docid = p_docid;
     INSERT INTO t_cost_pinggu_dtl (dtlid, docid, apex_goodsid, spec, batch_qty, price, BASE_PRICE, modifydate, cost_batch,
                                    DTL_USEFLAG, APEX_GOODSNAME, APEX_FACTORYNAME, GOODSTYPE)
     SELECT SEQ_COST_PINGGU_DTL.NEXTVAL, p_docid, v.goodsid, v.standardtype, v.useqty, f.PRICE, f.PRICE, sysdate,
-           nvl(v.useqty,0)*nvl(f.price,0), decode(v.useflag,4,'原料',2,'辅料',3,'非印字包材',5,'印字包材'),
+           nvl(v.useqty,0)*nvl(f.price,0), decode(v.useflag,4,'鍘熸枡',2,'杈呮枡',3,'闈炲嵃瀛楀寘鏉?,5,'鍗板瓧鍖呮潗'),
            f.GOODSNAME, f.FACTORYNAME, f.GOODSTYPE
     FROM t_cost_bom_goods_tree_v v, PUB_GOODS_V f
     WHERE v.treeid LIKE v_goodsid||'%' AND v.pid <> '-1' AND v.USEFLAG NOT IN (0,1) AND v.goodsid = f.goodsid(+);
-    p_pinggu_dtl_compute(p_docid, 0);
+    p_pinggu_dtl_compute(p_docid);
     p_pinggu_compute(p_docid);
     COMMIT;
 END P_COST_BOM_INSERT;
 /
 
--- 成本核算主表计算
+-- 鎴愭湰鏍哥畻涓昏〃璁＄畻
 CREATE OR REPLACE PROCEDURE p_pinggu_compute (p_docid IN NUMBER) IS
   v_apex_pl NUMBER; v_p_perpack NUMBER; v_yield NUMBER; v_out_price_rmb NUMBER; v_annual_qty NUMBER;
   v_total_fl NUMBER; v_total_bc NUMBER; v_total_yl NUMBER; v_total_cost NUMBER;
   v_salemoney NUMBER; v_jgf_batch NUMBER; v_jgf_perqp NUMBER; v_cost_perqp NUMBER;
   v_ml_perqp NUMBER; v_y_jg_re NUMBER; v_y_ml NUMBER; v_y_sale NUMBER; v_cost_perbox NUMBER;
-  v_sum_yl NUMBER := 0; is_exists NUMBER;
+  is_exists NUMBER;
 BEGIN
   SELECT COUNT(1) INTO is_exists FROM t_cost_pinggu WHERE docid = p_docid;
   IF is_exists > 0 THEN
@@ -110,19 +110,14 @@ BEGIN
     INTO v_apex_pl, v_p_perpack, v_yield, v_out_price_rmb, v_annual_qty, v_cost_perqp
     FROM t_cost_pinggu WHERE docid = p_docid;
     
-    SELECT NVL(SUM(CASE WHEN dtl_useflag = '原料' THEN cost_batch ELSE 0 END), 0) INTO v_sum_yl
-    FROM t_cost_pinggu_dtl WHERE docid = p_docid;
-    
-    IF v_sum_yl > 0 THEN
-      SELECT NVL(SUM(CASE WHEN dtl_useflag = '原料' THEN cost_batch / 1.13 ELSE 0 END), 0),
-             NVL(SUM(CASE WHEN dtl_useflag = '辅料' THEN cost_batch / 1.13 ELSE 0 END), 0),
-             NVL(SUM(CASE WHEN dtl_useflag IN ('非印字包材', '印字包材') THEN cost_batch / 1.13 ELSE 0 END), 0)
-      INTO v_total_yl, v_total_fl, v_total_bc FROM t_cost_pinggu_dtl WHERE docid = p_docid;
-    ELSE
-      SELECT NVL(SUM(CASE WHEN dtl_useflag = '原料' THEN cost_batch ELSE 0 END), 0),
-             NVL(SUM(CASE WHEN dtl_useflag = '辅料' THEN cost_batch ELSE 0 END), 0),
-             NVL(SUM(CASE WHEN dtl_useflag IN ('非印字包材', '印字包材') THEN cost_batch ELSE 0 END), 0)
-      INTO v_total_yl, v_total_fl, v_total_bc FROM t_cost_pinggu_dtl WHERE docid = p_docid;
+    SELECT NVL(SUM(CASE WHEN dtl_useflag = '鍘熸枡' THEN cost_batch ELSE 0 END), 0),
+           NVL(SUM(CASE WHEN dtl_useflag = '杈呮枡' THEN cost_batch ELSE 0 END), 0),
+           NVL(SUM(CASE WHEN dtl_useflag IN ('闈炲嵃瀛楀寘鏉?, '鍗板瓧鍖呮潗') THEN cost_batch ELSE 0 END), 0)
+    INTO v_total_yl, v_total_fl, v_total_bc FROM t_cost_pinggu_dtl WHERE docid = p_docid;
+    IF v_total_yl > 0 THEN
+      v_total_yl := v_total_yl / 1.13;
+      v_total_fl := v_total_fl / 1.13;
+      v_total_bc := v_total_bc / 1.13;
     END IF;
     
     v_total_cost := v_total_fl + v_total_bc + v_total_yl;
@@ -133,7 +128,7 @@ BEGIN
     v_ml_perqp := ROUND(NVL(v_jgf_perqp, 0) - NVL(v_cost_perqp, 0), 2);
     v_y_jg_re := ROUND(NVL(v_jgf_perqp, 0) / 1000 * NVL(v_annual_qty, 0), 2);
     v_y_ml := ROUND(NVL(v_ml_perqp, 0) / 1000 * NVL(v_annual_qty, 0), 2);
-    v_y_sale := ROUND(NVL(v_salemoney, 0) / NULLIF(v_apex_pl, 0) * NVL(v_annual_qty, 0), 2);
+    v_y_sale := ROUND(NVL(v_annual_qty, 0) / NULLIF(v_p_perpack, 0) * NVL(v_out_price_rmb, 0) * NVL(v_yield, 0), 2);
     
     UPDATE t_cost_pinggu SET salemoney = v_salemoney, jgf_batch = v_jgf_batch, jgf_perqp = v_jgf_perqp,
            cost_perbox = v_cost_perbox, ml_perqp = v_ml_perqp, y_jg_re = v_y_jg_re, y_ml = v_y_ml, y_sale = v_y_sale,
@@ -144,19 +139,19 @@ EXCEPTION WHEN NO_DATA_FOUND THEN ROLLBACK; RAISE; WHEN OTHERS THEN ROLLBACK; RA
 END p_pinggu_compute;
 /
 
--- 批量计算所有成本核算
+-- 鎵归噺璁＄畻鎵€鏈夋垚鏈牳绠?
 CREATE OR REPLACE PROCEDURE p_pinggu_compute_all AS
 BEGIN
-  UPDATE t_cost_pinggu_dtl a SET a.price = (SELECT PRICE FROM t_cost_goods_price x WHERE x.GOODSID = a.apex_goodsid AND x.USEFLAG NOT IN ('产成品'));
+  UPDATE t_cost_pinggu_dtl a SET a.price = (SELECT PRICE FROM t_cost_goods_price x WHERE x.GOODSID = a.apex_goodsid AND x.USEFLAG NOT IN ('浜ф垚鍝?));
   FOR i IN (SELECT DOCID FROM t_cost_pinggu) LOOP
-    p_pinggu_dtl_compute(i.docid, 1);
+    p_pinggu_dtl_compute(i.docid);
     p_pinggu_compute(i.docid);
   END LOOP;
 END;
 /
 
--- 成本核算明细计算
-CREATE OR REPLACE PROCEDURE p_pinggu_dtl_compute(p_docid NUMBER, is_all_comp NUMBER) AS
+-- 鎴愭湰鏍哥畻鏄庣粏璁＄畻
+CREATE OR REPLACE PROCEDURE p_pinggu_dtl_compute(p_docid NUMBER) AS
   v_apex_pl NUMBER; v_dtl_count NUMBER;
 BEGIN
   SELECT COUNT(*) INTO v_dtl_count FROM t_cost_pinggu_dtl WHERE docid = p_docid;
@@ -164,18 +159,45 @@ BEGIN
   BEGIN SELECT a.apex_pl INTO v_apex_pl FROM t_cost_pinggu a WHERE a.docid = p_docid;
   EXCEPTION WHEN NO_DATA_FOUND THEN RETURN; END;
   
-  IF is_all_comp = 0 THEN
-    UPDATE t_cost_pinggu_dtl a SET a.per_hl = a.batch_qty / v_apex_pl * 1000000
-    WHERE a.docid = p_docid AND a.dtl_useflag IN ('原料', '辅料');
-    UPDATE t_cost_pinggu_dtl a SET a.per_hl = a.batch_qty / v_apex_pl * 1000000
-    WHERE a.docid = p_docid AND a.dtl_useflag IN ('印字包材', '非印字包材') AND REGEXP_LIKE(a.apex_goodsname, '硬片|铝箔');
-  END IF;
-  
-  UPDATE t_cost_pinggu_dtl a SET a.cost_batch = a.batch_qty * a.price WHERE a.docid = p_docid;
+  MERGE INTO t_cost_pinggu_dtl a
+  USING (
+    SELECT d.dtlid, d.batch_qty
+      FROM t_cost_pinggu_dtl d
+     WHERE d.docid = p_docid
+       AND d.dtl_useflag IN ('鍘熸枡', '杈呮枡')
+  ) p
+     ON (a.dtlid = p.dtlid)
+  WHEN MATCHED THEN
+    UPDATE SET a.per_hl = p.batch_qty / v_apex_pl * 1000000
+     WHERE a.docid = p_docid;
+
+  MERGE INTO t_cost_pinggu_dtl a
+  USING (
+    SELECT d.dtlid, d.batch_qty
+      FROM t_cost_pinggu_dtl d
+     WHERE d.docid = p_docid
+       AND d.dtl_useflag IN ('鍗板瓧鍖呮潗', '闈炲嵃瀛楀寘鏉?)
+       AND REGEXP_LIKE(d.apex_goodsname, '纭墖|閾濈當')
+  ) q
+     ON (a.dtlid = q.dtlid)
+  WHEN MATCHED THEN
+    UPDATE SET a.per_hl = q.batch_qty / v_apex_pl * 1000000
+     WHERE a.docid = p_docid;
+
+  MERGE INTO t_cost_pinggu_dtl a
+  USING (
+    SELECT d.dtlid, d.batch_qty, d.price
+      FROM t_cost_pinggu_dtl d
+     WHERE d.docid = p_docid
+  ) c
+     ON (a.dtlid = c.dtlid)
+  WHEN MATCHED THEN
+    UPDATE SET a.cost_batch = c.batch_qty * c.price
+     WHERE a.docid = p_docid;
 END;
 /
 
--- 重置密码
+-- 閲嶇疆瀵嗙爜
 CREATE OR REPLACE PROCEDURE P_RESET_PASSWORD(p_ids IN VARCHAR2, p_user_id IN NUMBER, p_result OUT NUMBER, p_message OUT VARCHAR2) AS
     v_count NUMBER := 0; v_operator VARCHAR2(50);
     v_new_password VARCHAR2(100) := '$2a$10$igs26ZAhFQFArWFszhIrn.MSMheCLYW9ertSP5J53jrgjKRpFhdE.';
@@ -185,13 +207,13 @@ BEGIN
     UPDATE T_COST_USER SET PASSWORD = v_new_password, UPDATE_TIME = SYSDATE, UPDATE_BY = v_operator
     WHERE ID IN (SELECT TO_NUMBER(TRIM(REGEXP_SUBSTR(p_ids, '[^,]+', 1, LEVEL))) FROM DUAL CONNECT BY LEVEL <= REGEXP_COUNT(p_ids, ',') + 1);
     v_count := SQL%ROWCOUNT;
-    IF v_count > 0 THEN p_result := 0; p_message := '已重置 ' || v_count || ' 个用户密码为 admin'; COMMIT;
-    ELSE p_result := 1; p_message := '未找到要重置的用户'; END IF;
-EXCEPTION WHEN OTHERS THEN ROLLBACK; p_result := 1; p_message := '重置密码失败: ' || SQLERRM;
+    IF v_count > 0 THEN p_result := 0; p_message := '宸查噸缃?' || v_count || ' 涓敤鎴峰瘑鐮佷负 admin'; COMMIT;
+    ELSE p_result := 1; p_message := '鏈壘鍒拌閲嶇疆鐨勭敤鎴?; END IF;
+EXCEPTION WHEN OTHERS THEN ROLLBACK; p_result := 1; p_message := '閲嶇疆瀵嗙爜澶辫触: ' || SQLERRM;
 END P_RESET_PASSWORD;
 /
 
--- 按发运单同步WMS数据
+-- 鎸夊彂杩愬崟鍚屾WMS鏁版嵁
 CREATE OR REPLACE PROCEDURE P_WMS_SYNC_BY_CONID(p_conid IN NUMBER) AS
 BEGIN
   DELETE FROM T_WMS_QTY WHERE CONID = p_conid;
@@ -206,7 +228,7 @@ BEGIN
 END;
 /
 
--- 备份成本核算表
+-- 澶囦唤鎴愭湰鏍哥畻琛?
 CREATE OR REPLACE PROCEDURE sp_backup_pinggu_tables AS
 BEGIN
   INSERT INTO t_cost_pinggu_his (goodsid, goodsname, strength, ma_no, apex_pl, mah, p_perpack, form, s_perback, packtype,
@@ -230,18 +252,18 @@ BEGIN
 END;
 /
 
--- 同步产品信息
+-- 鍚屾浜у搧淇℃伅
 CREATE OR REPLACE PROCEDURE SP_SYNC_COST_GOODS AS
 BEGIN
     MERGE INTO T_COST_GOODS T
     USING (
         SELECT B.GOODSID, B.GOODSNO, B.GOODSNAME, C.LASTPRICE AS PRICE, C.LASTSUQTY AS SUQTY,
-               (CASE WHEN B.ZX_WMS_GOODSCLASS IN (1, 12) AND B.GSPFLAG = 1 AND B.GOODSNO LIKE '%A%' THEN '原料'
-                     WHEN B.ZX_WMS_GOODSCLASS IN (10) AND B.GSPFLAG = 1 THEN '产成品'
-                     WHEN B.ZX_WMS_GOODSCLASS IN (7, 8, 9) AND B.GSPFLAG = 1 THEN '半成品'
-                     WHEN B.ZX_WMS_GOODSCLASS IN (5, 13) AND B.GSPFLAG = 1 THEN '非印字包材'
-                     WHEN B.ZX_WMS_GOODSCLASS IN (6) AND B.GSPFLAG = 1 THEN '印字包材'
-                     WHEN B.ZX_WMS_GOODSCLASS IN (1, 2, 3, 4) AND B.GSPFLAG = 1 AND B.GOODSNO NOT LIKE '%A%' THEN '辅料'
+               (CASE WHEN B.ZX_WMS_GOODSCLASS IN (1, 12) AND B.GSPFLAG = 1 AND B.GOODSNO LIKE '%A%' THEN '鍘熸枡'
+                     WHEN B.ZX_WMS_GOODSCLASS IN (10) AND B.GSPFLAG = 1 THEN '浜ф垚鍝?
+                     WHEN B.ZX_WMS_GOODSCLASS IN (7, 8, 9) AND B.GSPFLAG = 1 THEN '鍗婃垚鍝?
+                     WHEN B.ZX_WMS_GOODSCLASS IN (5, 13) AND B.GSPFLAG = 1 THEN '闈炲嵃瀛楀寘鏉?
+                     WHEN B.ZX_WMS_GOODSCLASS IN (6) AND B.GSPFLAG = 1 THEN '鍗板瓧鍖呮潗'
+                     WHEN B.ZX_WMS_GOODSCLASS IN (1, 2, 3, 4) AND B.GSPFLAG = 1 AND B.GOODSNO NOT LIKE '%A%' THEN '杈呮枡'
                END) AS USEFLAG, B.FACTORYNAME, B.STANDARDTYPE, B.ZX_PL, B.ZX_MINIMUM, B.APPROVEDOCNO, E.BASEUNITQTY,
                B.ZX_CUSTOMERID, B.CUSTOMNAME, F.TARGETMARKET, B.HOLDERSNAME, B.GOODSTYPE, B.PACKTYPE, B.TRANPOSNAME,
                D.BOMID, C.LASTSUQTY AS LASTSUQTY2, B.TRANPOSID
@@ -270,30 +292,65 @@ END;
 /
 
 -- ============================================================
--- 液体版存储过程
+-- 娑蹭綋鐗堝瓨鍌ㄨ繃绋?
 -- ============================================================
 
--- 成本核算明细计算(液体)
-CREATE OR REPLACE PROCEDURE p_pinggu_dtl_compute_lq(p_docid NUMBER, is_all_comp NUMBER) AS
-  v_apex_pl NUMBER; v_dtl_count NUMBER;
+-- 鎴愭湰鏍哥畻鏄庣粏璁＄畻(娑蹭綋)
+CREATE OR REPLACE PROCEDURE p_pinggu_dtl_compute_lq(p_docid NUMBER) AS
+  v_apex_pl NUMBER;
 BEGIN
-  SELECT COUNT(*) INTO v_dtl_count FROM t_cost_pinggu_dtl_lq WHERE docid = p_docid;
-  IF v_dtl_count = 0 THEN RETURN; END IF;
-  BEGIN SELECT a.apex_pl INTO v_apex_pl FROM t_cost_pinggu_lq a WHERE a.docid = p_docid;
+  BEGIN
+    SELECT a.apex_pl INTO v_apex_pl FROM t_cost_pinggu_lq a WHERE a.docid = p_docid;
   EXCEPTION WHEN NO_DATA_FOUND THEN RETURN; END;
-  
-  IF is_all_comp = 0 THEN
-    UPDATE t_cost_pinggu_dtl_lq a SET a.per_hl = a.batch_qty / v_apex_pl * 1000000
-    WHERE a.docid = p_docid AND a.dtl_useflag IN ('原料', '辅料');
-    UPDATE t_cost_pinggu_dtl_lq a SET a.per_hl = a.batch_qty / v_apex_pl * 1000000
-    WHERE a.docid = p_docid AND a.dtl_useflag IN ('印字包材', '非印字包材') AND REGEXP_LIKE(a.apex_goodsname, '硬片|铝箔');
-  END IF;
-  
-  UPDATE t_cost_pinggu_dtl_lq a SET a.cost_batch = a.batch_qty * a.price WHERE a.docid = p_docid;
+
+  MERGE INTO t_cost_pinggu_dtl_lq a
+  USING (
+    SELECT d.dtlid, d.batch_qty
+      FROM t_cost_pinggu_dtl_lq d
+     WHERE d.docid = p_docid
+       AND d.dtl_useflag IN ('原料', '辅料')
+  ) p
+     ON (a.dtlid = p.dtlid)
+  WHEN MATCHED THEN
+    UPDATE SET a.per_hl = p.batch_qty / v_apex_pl * 1000000
+     WHERE a.docid = p_docid;
+
+  MERGE INTO t_cost_pinggu_dtl_lq a
+  USING (
+    SELECT b.dtlid,
+           CASE
+             WHEN b.dtl_useflag IN ('原料', '辅料')
+             THEN ROUND(b.per_hl * (1 + NVL(b.exadd_mater, 0) / 100) / 1000000, 4)
+
+             WHEN b.dtl_useflag IN ('印字包材', '非印字包材')
+               AND REGEXP_LIKE(b.apex_goodsname, '桶|说明书|小盒|标签|瓶|盖注射器|适配器|量杯|勺|分度器')
+             THEN ROUND((b.apex_pl / NULLIF(b.p_perpack, 0)) *
+                        (1 + NVL(b.exadd_mater, 0) / 100), 4)
+
+             WHEN b.dtl_useflag IN ('印字包材', '非印字包材')
+               AND REGEXP_LIKE(b.apex_goodsname, '大纸箱')
+             THEN ROUND(CEIL((b.apex_pl / NULLIF(b.p_perpack * b.s_perback, 0)) *
+                        (1 + NVL(b.exadd_mater, 0) / 100)), 4)
+
+             WHEN b.dtl_useflag IN ('印字包材', '非印字包材')
+               AND REGEXP_LIKE(b.apex_goodsname, '托盘')
+             THEN ROUND(CEIL((b.apex_pl / NULLIF(b.p_perpack * b.s_perback * b.x_perback, 0)) *
+                        (1 + NVL(b.exadd_mater, 0) / 100)), 4)
+
+             ELSE b.batch_qty
+           END AS new_batch_qty
+      FROM t_cost_pinggu_dtl_lq_v b
+     WHERE b.docid = p_docid
+  ) x
+     ON (a.dtlid = x.dtlid)
+  WHEN MATCHED THEN
+    UPDATE SET a.batch_qty = x.new_batch_qty,
+               a.cost_batch = x.new_batch_qty * a.price
+     WHERE a.docid = p_docid;
 END;
 /
 
--- 成本核算主表计算(液体)
+-- 鎴愭湰鏍哥畻涓昏〃璁＄畻(娑蹭綋)
 CREATE OR REPLACE PROCEDURE p_pinggu_compute_lq (p_docid IN NUMBER) IS
   v_apex_pl NUMBER; v_p_perpack NUMBER; v_yield NUMBER; v_out_price_rmb NUMBER; v_annual_qty NUMBER;
   v_total_fl NUMBER; v_total_bc NUMBER; v_total_yl NUMBER; v_total_cost NUMBER;
@@ -307,18 +364,18 @@ BEGIN
     INTO v_apex_pl, v_p_perpack, v_yield, v_out_price_rmb, v_annual_qty, v_cost_perqp
     FROM t_cost_pinggu_lq WHERE docid = p_docid;
     
-    SELECT NVL(SUM(CASE WHEN dtl_useflag = '原料' THEN cost_batch ELSE 0 END), 0) INTO v_sum_yl
+    SELECT NVL(SUM(CASE WHEN dtl_useflag = '鍘熸枡' THEN cost_batch ELSE 0 END), 0) INTO v_sum_yl
     FROM t_cost_pinggu_dtl_lq WHERE docid = p_docid;
     
     IF v_sum_yl > 0 THEN
-      SELECT NVL(SUM(CASE WHEN dtl_useflag = '原料' THEN cost_batch / 1.13 ELSE 0 END), 0),
-             NVL(SUM(CASE WHEN dtl_useflag = '辅料' THEN cost_batch / 1.13 ELSE 0 END), 0),
-             NVL(SUM(CASE WHEN dtl_useflag IN ('非印字包材', '印字包材') THEN cost_batch / 1.13 ELSE 0 END), 0)
+      SELECT NVL(SUM(CASE WHEN dtl_useflag = '鍘熸枡' THEN cost_batch / 1.13 ELSE 0 END), 0),
+             NVL(SUM(CASE WHEN dtl_useflag = '杈呮枡' THEN cost_batch / 1.13 ELSE 0 END), 0),
+             NVL(SUM(CASE WHEN dtl_useflag IN ('闈炲嵃瀛楀寘鏉?, '鍗板瓧鍖呮潗') THEN cost_batch / 1.13 ELSE 0 END), 0)
       INTO v_total_yl, v_total_fl, v_total_bc FROM t_cost_pinggu_dtl_lq WHERE docid = p_docid;
     ELSE
-      SELECT NVL(SUM(CASE WHEN dtl_useflag = '原料' THEN cost_batch ELSE 0 END), 0),
-             NVL(SUM(CASE WHEN dtl_useflag = '辅料' THEN cost_batch ELSE 0 END), 0),
-             NVL(SUM(CASE WHEN dtl_useflag IN ('非印字包材', '印字包材') THEN cost_batch ELSE 0 END), 0)
+      SELECT NVL(SUM(CASE WHEN dtl_useflag = '鍘熸枡' THEN cost_batch ELSE 0 END), 0),
+             NVL(SUM(CASE WHEN dtl_useflag = '杈呮枡' THEN cost_batch ELSE 0 END), 0),
+             NVL(SUM(CASE WHEN dtl_useflag IN ('闈炲嵃瀛楀寘鏉?, '鍗板瓧鍖呮潗') THEN cost_batch ELSE 0 END), 0)
       INTO v_total_yl, v_total_fl, v_total_bc FROM t_cost_pinggu_dtl_lq WHERE docid = p_docid;
     END IF;
     
@@ -341,40 +398,40 @@ EXCEPTION WHEN NO_DATA_FOUND THEN ROLLBACK; RAISE; WHEN OTHERS THEN ROLLBACK; RA
 END p_pinggu_compute_lq;
 /
 
--- BOM生成明细(液体)
+-- BOM鐢熸垚鏄庣粏(娑蹭綋)
 CREATE OR REPLACE PROCEDURE P_COST_BOM_INSERT_LQ (p_docid IN t_cost_pinggu_lq.docid%TYPE) AS
     v_goodsid varchar2(20);
     v_raw_goodsid t_cost_pinggu_lq.goodsid%TYPE;
 BEGIN
     SELECT goodsid INTO v_raw_goodsid FROM t_cost_pinggu_lq WHERE docid = p_docid;
-    IF v_raw_goodsid IS NULL THEN RAISE_APPLICATION_ERROR(-20003, '该产品在ERP中不存在BOM'); END IF;
+    IF v_raw_goodsid IS NULL THEN RAISE_APPLICATION_ERROR(-20003, '璇ヤ骇鍝佸湪ERP涓笉瀛樺湪BOM'); END IF;
     v_goodsid := '-' || v_raw_goodsid || '-';
     DELETE FROM t_cost_pinggu_dtl_lq WHERE docid = p_docid;
     INSERT INTO t_cost_pinggu_dtl_lq (dtlid, docid, apex_goodsid, spec, batch_qty, price, BASE_PRICE, modifydate, cost_batch,
                                    DTL_USEFLAG, APEX_GOODSNAME, APEX_FACTORYNAME, GOODSTYPE)
     SELECT SEQ_COST_PINGGU_DTL_LQ.NEXTVAL, p_docid, v.goodsid, v.standardtype, v.useqty, f.PRICE, f.PRICE, sysdate,
-           nvl(v.useqty,0)*nvl(f.price,0), decode(v.useflag,4,'原料',2,'辅料',3,'非印字包材',5,'印字包材'),
+           nvl(v.useqty,0)*nvl(f.price,0), decode(v.useflag,4,'鍘熸枡',2,'杈呮枡',3,'闈炲嵃瀛楀寘鏉?,5,'鍗板瓧鍖呮潗'),
            f.GOODSNAME, f.FACTORYNAME, f.GOODSTYPE
     FROM t_cost_bom_goods_tree_v v, PUB_GOODS_V f
     WHERE v.treeid LIKE v_goodsid||'%' AND v.pid <> '-1' AND v.USEFLAG NOT IN (0,1) AND v.goodsid = f.goodsid(+);
-    p_pinggu_dtl_compute_lq(p_docid, 0);
+    p_pinggu_dtl_compute_lq(p_docid);
     p_pinggu_compute_lq(p_docid);
     COMMIT;
 END P_COST_BOM_INSERT_LQ;
 /
 
--- 批量计算所有成本核算(液体)
+-- 鎵归噺璁＄畻鎵€鏈夋垚鏈牳绠?娑蹭綋)
 CREATE OR REPLACE PROCEDURE p_pinggu_compute_all_lq AS
 BEGIN
-  UPDATE t_cost_pinggu_dtl_lq a SET a.price = (SELECT PRICE FROM t_cost_goods_price x WHERE x.GOODSID = a.apex_goodsid AND x.USEFLAG NOT IN ('产成品'));
+  UPDATE t_cost_pinggu_dtl_lq a SET a.price = (SELECT PRICE FROM t_cost_goods_price x WHERE x.GOODSID = a.apex_goodsid AND x.USEFLAG NOT IN ('浜ф垚鍝?));
   FOR i IN (SELECT DOCID FROM t_cost_pinggu_lq) LOOP
-    p_pinggu_dtl_compute_lq(i.docid, 1);
+    p_pinggu_dtl_compute_lq(i.docid);
     p_pinggu_compute_lq(i.docid);
   END LOOP;
 END;
 /
 
--- 备份成本核算表(液体)
+-- 澶囦唤鎴愭湰鏍哥畻琛?娑蹭綋)
 CREATE OR REPLACE PROCEDURE sp_backup_pinggu_tables_lq AS
 BEGIN
   INSERT INTO t_cost_pinggu_his_lq (goodsid, goodsname, strength, ma_no, apex_pl, mah, p_perpack, form, s_perback, packtype,
@@ -397,3 +454,6 @@ BEGIN
   COMMIT;
 END;
 /
+
+
+

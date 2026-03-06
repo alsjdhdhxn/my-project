@@ -1,7 +1,7 @@
 <!-- gitnexus:start -->
 # GitNexus MCP
 
-This project is indexed by GitNexus as **my-project** (2357 symbols, 6019 relationships, 170 execution flows).
+This project is indexed by GitNexus as **my-project** (2372 symbols, 6090 relationships, 172 execution flows).
 
 GitNexus provides a knowledge graph over this codebase — call chains, blast radius, execution flows, and semantic search.
 
@@ -60,3 +60,9 @@ RETURN caller.name, caller.filePath
 ```
 
 <!-- gitnexus:end -->
+
+## Global Encoding Note
+
+- Project encoding standard: `UTF-8`.
+- Any file read/write/edit operation must preserve UTF-8 encoding and must not introduce mojibake.
+- Do not use shell/file-write defaults that may change encoding (for example, PowerShell `Set-Content` without explicit encoding).
