@@ -4,6 +4,7 @@ import {
   NModal, NButton, NSpace, NSwitch, NInputNumber, NInput, NSelect,
   NEmpty, NPopconfirm, NTag, NIcon, NCollapse, NCollapseItem, NAutoComplete, useMessage
 } from 'naive-ui';
+import { fetchLookupConfig } from '@/service/api';
 import { fetchColumnsByTableId, fetchTablesByPageCode, savePageRule, fetchAllLookupConfigs } from '@/service/api/meta-config';
 
 const props = defineProps<{
@@ -34,15 +35,33 @@ type OverrideItem = {
   aggFunc?: string;
   precision?: number | null;
   roundMode?: string;
+  lookupMappingPairs?: LookupMappingPair[];
+};
+
+type LookupOption = {
+  label: string;
+  value: string;
+  dataSource?: string;
+};
+
+type LookupFieldOption = {
+  label: string;
+  value: string;
+};
+
+type LookupMappingPair = {
+  local: string;
+  remote: string;
 };
 
 const items = ref<OverrideItem[]>([]);
 const availableFields = ref<{ label: string; value: string }[]>([]);
 const fieldLabelMap = ref<Map<string, string>>(new Map());
 const numericFields = ref<Set<string>>(new Set());
-const lookupOptionsRaw = ref<Array<{ label: string; value: string }>>([]);
+const lookupOptionsRaw = ref<LookupOption[]>([]);
 const loadingFields = ref(false);
 const addFieldValue = ref<string | null>(null);
+const lookupFieldOptionsCache = new Map<string, LookupFieldOption[]>();
 
 const cellEditorOptions = [
   { label: '(无)', value: '' },
@@ -69,20 +88,24 @@ watch(() => props.show, async (val) => {
   // 解析已有规则
   try {
     const arr = props.rulesJson ? JSON.parse(props.rulesJson) : [];
-    items.value = (Array.isArray(arr) ? arr : []).map((r: any) => ({
-      field: r.field || r.fieldName || '',
-      fieldName: r.fieldName || '',
-      visible: r.visible ?? true,
-      editable: r.editable ?? undefined,
-      searchable: r.searchable ?? undefined,
-      required: r.required ?? undefined,
-      width: r.width != null ? String(r.width) : null,
-      cellEditor: r.cellEditor || '',
-      cellEditorParams: normalizeCellEditorParams(r.cellEditorParams),
-      aggFunc: r.aggFunc || undefined,
-      precision: r.precision ?? null,
-      roundMode: r.roundMode || 'round',
-    }));
+    items.value = (Array.isArray(arr) ? arr : []).map((r: any) => {
+      const cellEditorParams = normalizeCellEditorParams(r.cellEditorParams);
+      return {
+        field: r.field || r.fieldName || '',
+        fieldName: r.fieldName || '',
+        visible: r.visible ?? true,
+        editable: r.editable ?? undefined,
+        searchable: r.searchable ?? undefined,
+        required: r.required ?? undefined,
+        width: r.width != null ? String(r.width) : null,
+        cellEditor: r.cellEditor || '',
+        cellEditorParams,
+        aggFunc: r.aggFunc || undefined,
+        precision: r.precision ?? null,
+        roundMode: r.roundMode || 'round',
+        lookupMappingPairs: toLookupMappingPairs(cellEditorParams?.mapping)
+      };
+    });
   } catch {
     items.value = [];
   }
@@ -91,6 +114,8 @@ watch(() => props.show, async (val) => {
   expandedRows.clear();
   // 加载关联表的列和 lookup 配置
   await Promise.all([loadAvailableFields(), loadLookupOptions()]);
+  normalizeLookupCodesInItems();
+  await preloadLookupFieldOptions();
 });
 
 async function loadAvailableFields() {
@@ -152,19 +177,241 @@ async function loadLookupOptions() {
     const list = await fetchAllLookupConfigs();
     lookupOptionsRaw.value = list.map((item: any) => ({
       label: item.lookupName || item.lookupCode,
-      value: item.lookupCode
+      value: item.lookupCode,
+      dataSource: item.dataSource || ''
     }));
   } catch {
     lookupOptionsRaw.value = [];
   }
 }
 
-function getLookupAutoOptions(input: string): Array<{ label: string; value: string }> {
-  if (!input) return lookupOptionsRaw.value;
-  const keyword = input.toLowerCase();
-  return lookupOptionsRaw.value.filter(
-    o => o.label.toLowerCase().includes(keyword) || o.value.toLowerCase().includes(keyword)
+async function preloadLookupFieldOptions() {
+  const lookupCodes = Array.from(new Set(
+    items.value
+      .filter(item => isLookupEditor(item.cellEditor))
+      .map(item => normalizeLookupCode(item.cellEditorParams?.lookupCode))
+      .filter((lookupCode): lookupCode is string => Boolean(lookupCode))
+  ));
+  await Promise.all(lookupCodes.map(lookupCode => ensureLookupFieldOptions(lookupCode)));
+}
+
+function normalizeLookupCode(raw: unknown): string {
+  const value = typeof raw === 'string' ? raw.trim() : '';
+  if (!value) return '';
+
+  const keyword = value.toLowerCase();
+  const matchedByCode = lookupOptionsRaw.value.find(option => option.value.toLowerCase() === keyword);
+  if (matchedByCode) return matchedByCode.value;
+
+  const matchedByLabel = lookupOptionsRaw.value.filter(option => option.label.toLowerCase() === keyword);
+  if (matchedByLabel.length === 1) {
+    return matchedByLabel[0].value;
+  }
+
+  return value;
+}
+
+function normalizeLookupCodesInItems() {
+  for (const item of items.value) {
+    if (!isLookupEditor(item.cellEditor) || !item.cellEditorParams?.lookupCode) continue;
+    const normalizedLookupCode = normalizeLookupCode(item.cellEditorParams.lookupCode);
+    if (normalizedLookupCode && normalizedLookupCode !== item.cellEditorParams.lookupCode) {
+      item.cellEditorParams = {
+        ...item.cellEditorParams,
+        lookupCode: normalizedLookupCode
+      };
+    }
+  }
+}
+
+function filterLookupOption(pattern: string, option: any): boolean {
+  const keyword = pattern.trim().toLowerCase();
+  if (!keyword) return true;
+  const label = typeof option?.label === 'string' ? option.label : '';
+  const value = typeof option?.value === 'string' ? option.value : '';
+  return label.toLowerCase().includes(keyword) || value.toLowerCase().includes(keyword);
+}
+
+function filterTextOptions<T extends { label?: string; value?: string }>(pattern: string, options: T[]): T[] {
+  const keyword = pattern.trim().toLowerCase();
+  if (!keyword) return options;
+  return options.filter(option => {
+    const label = typeof option.label === 'string' ? option.label : '';
+    const value = typeof option.value === 'string' ? option.value : '';
+    return label.toLowerCase().includes(keyword) || value.toLowerCase().includes(keyword);
+  });
+}
+
+function getAvailableFieldAutoOptions(input: string) {
+  return filterTextOptions(input, availableFields.value);
+}
+
+function getLookupFieldAutoOptions(item: OverrideItem, input: string) {
+  const lookupCode = normalizeLookupCode(item.cellEditorParams?.lookupCode);
+  if (!lookupCode) return [];
+  const options = lookupFieldOptionsCache.get(lookupCode) || [];
+  return filterTextOptions(input, options);
+}
+
+function getLookupDataSource(item: OverrideItem): string {
+  const lookupCode = normalizeLookupCode(item.cellEditorParams?.lookupCode);
+  if (!lookupCode) return '';
+  const matched = lookupOptionsRaw.value.find(option => option.value === lookupCode);
+  return matched?.dataSource || '';
+}
+
+async function copyLookupDataSource(item: OverrideItem, event: MouseEvent) {
+  const text = getLookupDataSource(item);
+  if (!text) return;
+
+  const input = event.currentTarget as HTMLInputElement | null;
+  input?.focus();
+  input?.select();
+
+  try {
+    await navigator.clipboard.writeText(text);
+    message.success('视图名已复制');
+  } catch {
+    try {
+      document.execCommand('copy');
+      message.success('视图名已复制');
+    } catch {
+      message.error('复制失败，请手动复制');
+    }
+  }
+}
+
+function toLookupMappingPairs(mapping: any): LookupMappingPair[] {
+  if (!mapping || typeof mapping !== 'object') return [];
+  return Object.entries(mapping).map(([local, remote]) => ({ local, remote: String(remote ?? '') }));
+}
+
+function toLookupMappingObject(pairs: LookupMappingPair[]): Record<string, string> {
+  const mapping: Record<string, string> = {};
+  for (const pair of pairs) {
+    if (pair.local && pair.remote) {
+      mapping[pair.local] = pair.remote;
+    }
+  }
+  return mapping;
+}
+
+function buildLookupFieldOptions(config: any): LookupFieldOption[] {
+  const result: LookupFieldOption[] = [];
+  const seen = new Set<string>();
+  const addField = (field?: string, label?: string) => {
+    const value = typeof field === 'string' ? field.trim() : '';
+    if (!value) return;
+    const key = value.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    result.push({
+      value,
+      label: label ? `${value} (${label})` : value
+    });
+  };
+
+  for (const column of config?.displayColumns || []) {
+    addField(column?.field, column?.header);
+  }
+  addField(config?.valueField, '值字段');
+  addField(config?.labelField, '显示字段');
+
+  return result;
+}
+
+async function ensureLookupFieldOptions(lookupCode: string): Promise<LookupFieldOption[]> {
+  if (!lookupCode) return [];
+  const cached = lookupFieldOptionsCache.get(lookupCode);
+  if (cached) return cached;
+
+  try {
+    const { data } = await fetchLookupConfig(lookupCode);
+    const options = buildLookupFieldOptions(data);
+    lookupFieldOptionsCache.set(lookupCode, options);
+    return options;
+  } catch {
+    return [];
+  }
+}
+
+function buildAutoLookupMappingPairs(item: OverrideItem, lookupFields: LookupFieldOption[]): LookupMappingPair[] {
+  if (lookupFields.length === 0) return [];
+
+  const remoteFieldMap = new Map(
+    lookupFields.map(option => [option.value.toLowerCase(), option.value])
   );
+  const pairs: LookupMappingPair[] = [];
+  const seenLocals = new Set<string>();
+
+  const addPair = (localField?: string) => {
+    const local = typeof localField === 'string' ? localField.trim() : '';
+    if (!local) return;
+    const localKey = local.toLowerCase();
+    const remote = remoteFieldMap.get(localKey);
+    if (!remote || seenLocals.has(localKey)) return;
+    seenLocals.add(localKey);
+    pairs.push({ local, remote });
+  };
+
+  addPair(item.field);
+  availableFields.value.forEach(field => addPair(field.value));
+
+  return pairs;
+}
+
+function mergeLookupMappingPairs(autoPairs: LookupMappingPair[], existingPairs: LookupMappingPair[]): LookupMappingPair[] {
+  if (existingPairs.length === 0) return autoPairs.map(pair => ({ ...pair }));
+
+  const result = autoPairs.map(pair => ({ ...pair }));
+  const indexByLocal = new Map<string, number>();
+  result.forEach((pair, index) => {
+    if (pair.local) indexByLocal.set(pair.local.toLowerCase(), index);
+  });
+
+  for (const pair of existingPairs) {
+    const normalizedPair = {
+      local: pair.local || '',
+      remote: pair.remote || ''
+    };
+    const localKey = normalizedPair.local.trim().toLowerCase();
+
+    if (localKey && indexByLocal.has(localKey)) {
+      result[indexByLocal.get(localKey)!] = normalizedPair;
+      continue;
+    }
+
+    if (normalizedPair.local || normalizedPair.remote) {
+      result.push(normalizedPair);
+    }
+  }
+
+  return result;
+}
+
+async function onLookupCodeChange(item: OverrideItem, value: string) {
+  const previousLookupCode = normalizeLookupCode(item.cellEditorParams?.lookupCode);
+  const lookupCode = normalizeLookupCode(value);
+  setParam(item, 'lookupCode', lookupCode);
+
+  if (!lookupCode) {
+    setLookupMapping(item, []);
+    return;
+  }
+
+  const lookupFields = await ensureLookupFieldOptions(lookupCode);
+  if (normalizeLookupCode(item.cellEditorParams?.lookupCode) !== lookupCode) return;
+
+  const autoPairs = buildAutoLookupMappingPairs(item, lookupFields);
+  if (previousLookupCode !== lookupCode) {
+    setLookupMapping(item, autoPairs);
+    return;
+  }
+
+  const currentPairs = getLookupMapping(item);
+  if (autoPairs.length === 0 && currentPairs.length === 0) return;
+  const nextPairs = mergeLookupMappingPairs(autoPairs, currentPairs);
+  setLookupMapping(item, nextPairs);
 }
 
 function addField() {
@@ -333,18 +580,27 @@ function setStaticValuesStr(item: OverrideItem, value: string) {
 
 // Lookup mapping 管理
 function getLookupMapping(item: OverrideItem): Array<{ local: string; remote: string }> {
-  const mapping = item.cellEditorParams?.mapping;
-  if (!mapping || typeof mapping !== 'object') return [];
-  return Object.entries(mapping).map(([local, remote]) => ({ local, remote: remote as string }));
+  if (!item.lookupMappingPairs) {
+    item.lookupMappingPairs = toLookupMappingPairs(item.cellEditorParams?.mapping);
+  }
+  return item.lookupMappingPairs;
 }
 
 function setLookupMapping(item: OverrideItem, pairs: Array<{ local: string; remote: string }>) {
   if (!item.cellEditorParams) item.cellEditorParams = { lookupCode: '', mapping: {} };
-  const mapping: Record<string, string> = {};
-  for (const p of pairs) {
-    if (p.local && p.remote) mapping[p.local] = p.remote;
+
+  item.lookupMappingPairs = pairs.map(pair => ({
+    local: pair.local || '',
+    remote: pair.remote || ''
+  }));
+
+  const mapping = toLookupMappingObject(item.lookupMappingPairs);
+  if (Object.keys(mapping).length > 0) {
+    item.cellEditorParams = { ...item.cellEditorParams, mapping };
+  } else {
+    const { mapping: _, ...rest } = item.cellEditorParams;
+    item.cellEditorParams = rest;
   }
-  item.cellEditorParams = { ...item.cellEditorParams, mapping };
 }
 
 function addLookupMappingPair(item: OverrideItem) {
@@ -388,6 +644,9 @@ async function handleSave() {
       if (i.roundMode && i.roundMode !== 'round') obj.roundMode = i.roundMode;
       if (i.cellEditorParams && Object.keys(i.cellEditorParams).length > 0) {
         const params = { ...i.cellEditorParams };
+        if (params.lookupCode) {
+          params.lookupCode = normalizeLookupCode(params.lookupCode);
+        }
         // 清理 lookup mapping 中的空项
         if (params.mapping && typeof params.mapping === 'object') {
           const cleaned: Record<string, string> = {};
@@ -634,13 +893,21 @@ async function handleSave() {
         <!-- 弹窗选择参数配置区（可折叠） -->
         <div v-if="isLookupEditor(item.cellEditor) && expandedRows.has(index)" class="editor-params">
           <div class="params-row">
-            <span class="params-label">lookupCode</span>
-            <NAutoComplete
-              :value="item.cellEditorParams?.lookupCode || ''"
-              @update:value="setParam(item, 'lookupCode', $event || '')"
-              :options="getLookupAutoOptions(item.cellEditorParams?.lookupCode || '')"
-              :get-show="() => true"
-              size="small" clearable placeholder="搜索Lookup" style="width: 200px"
+            <span class="params-label">弹窗</span>
+            <NSelect
+              :value="item.cellEditorParams?.lookupCode || null"
+              @update:value="onLookupCodeChange(item, $event || '')"
+              :options="lookupOptionsRaw"
+              :filter="filterLookupOption"
+              size="small" filterable clearable placeholder="选择弹窗" style="width: 200px"
+            />
+            <input
+              v-if="getLookupDataSource(item)"
+              class="lookup-data-source-input"
+              :value="`视图：${getLookupDataSource(item)}`"
+              readonly
+              :title="`${getLookupDataSource(item)}（双击复制）`"
+              @dblclick="copyLookupDataSource(item, $event)"
             />
             <span class="params-label">禁止回填</span>
             <NSwitch
@@ -651,11 +918,11 @@ async function handleSave() {
           </div>
           <div class="params-row">
             <span class="params-label">筛选字段(行)</span>
-            <NSelect
-              :value="item.cellEditorParams?.filterField || null"
+            <NAutoComplete
+              :value="item.cellEditorParams?.filterField || ''"
               @update:value="setParam(item, 'filterField', $event || '')"
-              :options="availableFields"
-              size="small" filterable clearable placeholder="可选" style="width: 140px"
+              :options="getAvailableFieldAutoOptions(item.cellEditorParams?.filterField || '')"
+              size="small" clearable placeholder="可选" style="width: 140px"
             />
             <span class="params-label">筛选列(SQL)</span>
             <NInput
@@ -675,17 +942,18 @@ async function handleSave() {
             <span class="params-label" style="margin-top: 4px">字段映射</span>
             <div style="flex: 1; display: flex; flex-direction: column; gap: 4px">
               <div v-for="(pair, pi) in getLookupMapping(item)" :key="pi" style="display: flex; gap: 4px; align-items: center">
-                <NSelect
-                  :value="pair.local || null"
+                <NAutoComplete
+                  :value="pair.local"
                   @update:value="updateLookupMappingPair(item, pi, 'local', $event || '')"
-                  :options="availableFields"
-                  size="small" filterable placeholder="本表字段" style="width: 150px"
+                  :options="getAvailableFieldAutoOptions(pair.local || '')"
+                  size="small" clearable placeholder="本表字段" style="width: 150px"
                 />
                 <span style="color: #999">→</span>
-                <NInput
+                <NAutoComplete
                   :value="pair.remote"
                   @update:value="updateLookupMappingPair(item, pi, 'remote', $event)"
-                  size="small" placeholder="弹窗字段" style="width: 150px"
+                  :options="getLookupFieldAutoOptions(item, pair.remote || '')"
+                  size="small" clearable placeholder="弹窗字段" style="width: 150px"
                 />
                 <NButton text size="small" type="error" @click="removeLookupMappingPair(item, pi)">删</NButton>
               </div>
@@ -738,6 +1006,27 @@ async function handleSave() {
   gap: 6px;
   padding: 6px 8px;
   transition: background 0.15s;
+}
+
+.lookup-data-source-input {
+  width: 260px;
+  max-width: 260px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid #d9d9d9;
+  border-radius: 6px;
+  background: #f8fbff;
+  color: #3f54ff;
+  font-size: 12px;
+  line-height: 28px;
+  cursor: copy;
+  user-select: all;
+}
+
+.lookup-data-source-input:focus {
+  outline: none;
+  border-color: #6370ff;
+  box-shadow: 0 0 0 2px rgb(99 112 255 / 14%);
 }
 
 .col-field {

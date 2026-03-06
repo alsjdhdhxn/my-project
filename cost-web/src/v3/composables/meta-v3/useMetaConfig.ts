@@ -1,4 +1,4 @@
-﻿import { shallowRef } from 'vue';
+import { shallowRef } from 'vue';
 import type { ColDef } from 'ag-grid-community';
 import { fetchPageComponents } from '@/service/api';
 import { loadTableMeta, extractLookupRules, filterColumnsByVariant, type LookupRule } from '@/composables/useMetaColumns';
@@ -29,12 +29,8 @@ import {
   parseToolbarRule,
   parseCellEditableRule,
   attachGroupCellRenderer,
-  parseColumnOverrideConfig,
-  applyColumnOverrides,
-  extractLookupFromColumnOverride,
   parseGridStyleRule,
-  applyCellStyleRules,
-  extractSumFields
+  applyCellStyleRules
 } from '@/v3/composables/meta-v3/usePageRules';
 import {
   normalizeGridOptions,
@@ -118,7 +114,7 @@ function collectComponentKeysByType(components: PageComponentWithRules[], type: 
 }
 
 /**
- * 鏍规嵁 componentKey 鏌ユ壘缁勪欢
+ * 根据 componentKey 查找组件
  */
 function findComponentByKey(components: PageComponentWithRules[], key: string): PageComponentWithRules | null {
   for (const component of components) {
@@ -132,7 +128,7 @@ function findComponentByKey(components: PageComponentWithRules[], key: string): 
 }
 
 /**
- * 鑾峰彇缁勪欢鐨?componentConfig
+ * 获取组件的 componentConfig
  */
 function getComponentConfig(components: PageComponentWithRules[], key: string): string | undefined {
   const component = findComponentByKey(components, key);
@@ -140,7 +136,7 @@ function getComponentConfig(components: PageComponentWithRules[], key: string): 
 }
 
 /**
- * 鑾峰彇 DETAIL_GRID 缁勪欢鐨?componentConfig锛堟寜 componentKey 鏌ユ壘锛? */
+ * 获取 DETAIL_GRID 组件的 componentConfig（按 componentKey 查找） */
 function getDetailGridComponentConfig(components: PageComponentWithRules[], key: string): string | undefined {
   return getComponentConfig(components, key);
 }
@@ -196,7 +192,8 @@ function resolveLayoutKeys(
 
   if (!detailTabsKey) {
     const detailGridKeys = collectComponentKeysByType(components, 'DETAIL_GRID');
-    if (detailGridKeys.length > 0) detailTabsKey = 'detailTabs'; // 鍗犱綅绗︼紝瀹為檯 tab 浠?DETAIL_GRID 瑙ｆ瀽
+    // 占位 key，实际 tab key 会在 DETAIL_GRID 解析后确定
+    if (detailGridKeys.length > 0) detailTabsKey = 'detailTabs';
   }
 
   return {
@@ -228,6 +225,39 @@ function collectRulesByKeys(
     if (rules && rules.length > 0) result.push(...rules);
   }
   return result;
+}
+
+function extractSumFieldsFromMetadata(columns: Array<{ fieldName?: string; rulesConfig?: string }>): string[] {
+  const result: string[] = [];
+  const seen = new Set<string>();
+  for (const col of columns || []) {
+    if (!col.fieldName || seen.has(col.fieldName) || !col.rulesConfig) continue;
+    try {
+      const config = JSON.parse(col.rulesConfig);
+      if (config?.aggFunc === 'sum') {
+        result.push(col.fieldName);
+        seen.add(col.fieldName);
+      }
+    } catch {
+      // ignore invalid rulesConfig
+    }
+  }
+  return result;
+}
+
+function mergeLookupRules(metadataRules: LookupRule[], pageRules: LookupRule[]): LookupRule[] {
+  const map = new Map<string, LookupRule>();
+  for (const rule of metadataRules || []) {
+    if (rule?.fieldName) {
+      map.set(rule.fieldName, rule);
+    }
+  }
+  for (const rule of pageRules || []) {
+    if (rule?.fieldName) {
+      map.set(rule.fieldName, rule);
+    }
+  }
+  return Array.from(map.values());
 }
 
 function mergeNestedConfig(base: NestedConfig | undefined, override: NestedConfig): NestedConfig {
@@ -357,7 +387,7 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
 
     const rulesMap = rulesByComponent.value;
 
-    // 浠庝富琛ㄨ鍒欎腑璇诲彇 broadcast/summary 绛夊叏灞€閰嶇疆瑕嗙洊
+    // 从主表规则中读取 broadcast/summary 等全局配置覆盖
     const masterRuleKeysForGlobal = uniqueKeys([resolvedMasterGridKey, 'master', 'masterGrid']);
     const masterRulesForGlobal = collectRulesByKeys(rulesMap, masterRuleKeysForGlobal);
     const masterRuleLabelForGlobal = resolvedMasterGridKey || 'master';
@@ -367,7 +397,7 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
       config.nestedConfig = mergeNestedConfig(config.nestedConfig, summaryOverride);
     }
 
-    // 浠庤〃绾у埆鐨勫叏灞€瑙勫垯锛坉etailTabs 绾у埆鐨勮鍒欎粛鐒舵敮鎸侊級
+    // 从表级别的全局规则仍然支持通过 detailTabs 统一下发
     const detailGridKeys = collectComponentKeysByType(components, 'DETAIL_GRID');
     let detailTabsRules: PageRule[] = [];
     let detailTabsRuleLabel = resolvedDetailTabsKey || 'detailTabs';
@@ -375,7 +405,7 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
     if (resolvedDetailTabsKey) {
       detailTabsRules = getComponentRules(rulesMap, [resolvedDetailTabsKey]);
     } else if (detailGridKeys.length > 0) {
-      // 灏濊瘯浠?detailTabs key 璇诲彇鍏ㄥ眬浠庤〃瑙勫垯
+      // 尝试使用 detailTabs key 读取全局从表规则
       detailTabsRules = getComponentRules(rulesMap, ['detailTabs']);
     }
 
@@ -392,12 +422,12 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
     const masterRuleLabel = resolvedMasterGridKey || 'master';
     const masterGridRuleOptions = normalizeGridOptions(parseGridOptionsRule(masterRuleLabel, masterRules));
     const mergedMasterOptions = mergeGridOptions(enterpriseOptions, masterGridRuleOptions);
-    // V3 寮哄埗涓昏〃浣跨敤 SSRM锛屾棤璁哄厓鏁版嵁鎬庝箞閰嶇疆
+    // V3 强制主表使用 SSRM，不接受元数据中的其他 rowModelType
     if (mergedMasterOptions.rowModelType && mergedMasterOptions.rowModelType !== 'serverSide') {
-      console.warn(`[V3] 涓昏〃 rowModelType 閰嶇疆涓?"${mergedMasterOptions.rowModelType}"锛屽凡寮哄埗瑕嗙洊涓?"serverSide"`);
+      console.warn(`[V3] 主表 rowModelType 配置为 "${mergedMasterOptions.rowModelType}"，已强制覆盖为 "serverSide"`);
     }
     mergedMasterOptions.rowModelType = 'serverSide';
-    // SSRM 榛樿閰嶇疆
+    // SSRM 默认分页块大小
     if (!mergedMasterOptions.cacheBlockSize) {
       mergedMasterOptions.cacheBlockSize = 100;
     }
@@ -414,11 +444,12 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
       const tabRules = getComponentRules(rulesMap, [tab.key]);
       const tabGridRuleOptions = normalizeGridOptions(parseGridOptionsRule(tab.key, tabRules));
       const mergedTabOptions = mergeGridOptions(detailBaseOptions, tabGridRuleOptions);
-      // V3 寮哄埗鏄庣粏琛ㄤ娇鐢?Client-Side锛屾棤璁哄厓鏁版嵁鎬庝箞閰嶇疆
+      // V3 强制明细表使用 Client-Side，不接受元数据中的其他 rowModelType
       if (mergedTabOptions.rowModelType && mergedTabOptions.rowModelType !== 'clientSide') {
-        console.warn(`[V3] 鏄庣粏琛?${tab.key} rowModelType 閰嶇疆涓?"${mergedTabOptions.rowModelType}"锛屽凡寮哄埗瑕嗙洊涓?"clientSide"`);
+        console.warn(`[V3] 明细表 ${tab.key} rowModelType 配置为 "${mergedTabOptions.rowModelType}"，已强制覆盖为 "clientSide"`);
       }
-      delete mergedTabOptions.rowModelType; // 鍒犻櫎 rowModelType锛岄粯璁ゅ氨鏄?clientSide
+      // 删除 rowModelType，保留 ag-grid 默认的 clientSide 模式
+      delete mergedTabOptions.rowModelType;
       detailGridOptionsByTab.value[tab.key] = mergedTabOptions;
     }
 
@@ -430,7 +461,6 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
 
     const config = pageConfig.value;
     const resolvedMasterGridKey = masterGridKey.value ?? undefined;
-    const rulesMap = rulesByComponent.value;
     
     const masterMeta = await loadTableMeta(config.masterTableCode, pageCode, resolvedMasterGridKey ?? 'masterGrid');
     if (!masterMeta) {
@@ -438,20 +468,11 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
       return false;
     }
 
-    // 瑙ｆ瀽涓昏〃 COLUMN_OVERRIDE 瑙勫垯
-    const masterRuleKeys = uniqueKeys([resolvedMasterGridKey, 'master', 'masterGrid']);
-    const masterRules = collectRulesByKeys(rulesMap, masterRuleKeys);
-    const masterRuleLabel = resolvedMasterGridKey || 'master';
-    const masterColumnOverrides = parseColumnOverrideConfig(masterRuleLabel, masterRules);
-
     const masterColumns = mergeCellClassRules(
       attachGroupCellRenderer(
-        applyColumnOverrides(
-          applyGroupByColumns(
-            masterMeta.columns,
-            masterGridOptions.value?.groupBy
-          ),
-          masterColumnOverrides
+        applyGroupByColumns(
+          masterMeta.columns,
+          masterGridOptions.value?.groupBy
         )
       ),
       DIRTY_CELL_CLASS_RULES
@@ -459,7 +480,7 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
     masterColumnDefs.value = masterColumns;
     masterRowClassGetter.value = masterMeta.getRowClass;
     masterColumnMeta.value = masterMeta.rawColumns || [];
-    masterSumFields.value = extractSumFields(masterColumnOverrides);
+    masterSumFields.value = extractSumFieldsFromMetadata(masterMeta.rawColumns || []);
 
     detailColumnsByTab.value = {};
     detailRowClassGetterByTab.value = {};
@@ -477,27 +498,20 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
         continue;
       }
 
-      // 瑙ｆ瀽鏄庣粏琛?COLUMN_OVERRIDE 瑙勫垯
-      const tabRules = getComponentRules(rulesMap, [tab.key]);
-      const tabColumnOverrides = parseColumnOverrideConfig(tab.key, tabRules);
-
       const tabGridOptions = detailGridOptionsByTab.value[tab.key];
       detailColumnsByTab.value[tab.key] = mergeCellClassRules(
-        applyColumnOverrides(
-          applyGroupByColumns(
-            filterColumnsByVariant(
-              detailMeta.columns,
-              tab.variantKey,
-              detailMeta.rawColumns || []
-            ),
-            tabGridOptions?.groupBy
+        applyGroupByColumns(
+          filterColumnsByVariant(
+            detailMeta.columns,
+            tab.variantKey,
+            detailMeta.rawColumns || []
           ),
-          tabColumnOverrides
+          tabGridOptions?.groupBy
         ),
         DIRTY_CELL_CLASS_RULES
       );
       detailRowClassGetterByTab.value[tab.key] = detailMeta.getRowClass;
-      detailSumFieldsByTab.value[tab.key] = extractSumFields(tabColumnOverrides);
+      detailSumFieldsByTab.value[tab.key] = extractSumFieldsFromMetadata(detailMeta.rawColumns || []);
 
       const fkColumnName = detailMeta.metadata.parentFkColumn;
       detailFkColumnByTab.value[tab.key] = fkColumnName
@@ -525,18 +539,12 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
     masterValidationRules.value = masterValidation.length > 0 ? masterValidation : parseValidationRules(masterColumnMeta.value);
 
     const masterLookup = parseLookupRuleConfig(masterRuleLabel, masterRules);
-    const masterColumnOverridesForLookup = parseColumnOverrideConfig(masterRuleLabel, masterRules);
-    const masterLookupFromOverride = extractLookupFromColumnOverride(masterColumnOverridesForLookup);
-    const mergedMasterLookup = [...masterLookup, ...masterLookupFromOverride];
-    // 鍘婚噸锛欳OLUMN_OVERRIDE 涓殑閰嶇疆浼樺厛锛堝悗闈㈢殑瑕嗙洊鍓嶉潰鐨勫悓鍚嶅瓧娈碉級
-    const masterLookupMap = new Map<string, LookupRule>();
-    for (const r of mergedMasterLookup) {
-      masterLookupMap.set(r.fieldName, r);
-    }
-    const finalMasterLookup = Array.from(masterLookupMap.values());
-    masterLookupRules.value = finalMasterLookup.length > 0 ? finalMasterLookup : extractLookupRules(masterColumnMeta.value);
+    masterLookupRules.value = mergeLookupRules(
+      extractLookupRules(masterColumnMeta.value),
+      masterLookup
+    );
 
-    // 缁欐湁 lookup 鐨勫垪娣诲姞楂樹寒鏍峰紡
+    // 给有 lookup 的列添加高亮样式
     const lookupFields = new Set(masterLookupRules.value.map(r => r.fieldName));
     if (lookupFields.size > 0) {
       masterColumnDefs.value = masterColumnDefs.value.map(col => {
@@ -568,14 +576,13 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
     detailCalcRulesByTab.value = {};
     detailContextMenuByTab.value = {};
 
-    // 鑾峰彇涓昏〃缁勪欢閰嶇疆锛堢敤浜庤鍙栨寜閽級
+    // 获取主表组件配置，用于读取工具栏、右键菜单等规则
     const masterComponentConfig = getComponentConfig(pageComponents.value || [], resolvedMasterGridKey || 'masterGrid');
-
     masterContextMenu.value = parseContextMenuRule(masterRuleLabel, masterRules, masterComponentConfig);
     masterRowEditableRules.value = parseRowEditableRule(masterRuleLabel, masterRules);
     masterCellEditableRules.value = parseCellEditableRule(masterRuleLabel, masterRules);
     masterRowClassRules.value = parseGridStyleRule(masterRuleLabel, masterRules);
-    // 搴旂敤涓昏〃鍗曞厓鏍肩骇鏍峰紡瑙勫垯
+    // 应用主表单元格级样式规则
     masterColumnDefs.value = applyCellStyleRules(masterColumnDefs.value, masterRowClassRules.value);
     masterToolbar.value = parseToolbarRule(masterRuleLabel, masterRules, masterComponentConfig);
     detailContextMenuDefault.value = null;
@@ -591,19 +598,12 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
         : parseValidationRules(rawColumns);
 
       const detailLookup = parseLookupRuleConfig(tab.key, tabRules);
-      const tabColumnOverridesForLookup = parseColumnOverrideConfig(tab.key, tabRules);
-      const detailLookupFromOverride = extractLookupFromColumnOverride(tabColumnOverridesForLookup);
-      const mergedDetailLookup = [...detailLookup, ...detailLookupFromOverride];
-      const detailLookupMap = new Map<string, LookupRule>();
-      for (const r of mergedDetailLookup) {
-        detailLookupMap.set(r.fieldName, r);
-      }
-      const finalDetailLookup = Array.from(detailLookupMap.values());
-      detailLookupRulesByTab.value[tab.key] = finalDetailLookup.length > 0
-        ? finalDetailLookup
-        : extractLookupRules(rawColumns);
+      detailLookupRulesByTab.value[tab.key] = mergeLookupRules(
+        extractLookupRules(rawColumns),
+        detailLookup
+      );
 
-      // 缁欐湁 lookup 鐨勫垪娣诲姞楂樹寒鏍峰紡
+      // 给有 lookup 的列添加高亮样式
       const detailLookupFields = new Set(detailLookupRulesByTab.value[tab.key].map(r => r.fieldName));
       if (detailLookupFields.size > 0 && detailColumnsByTab.value[tab.key]) {
         detailColumnsByTab.value[tab.key] = detailColumnsByTab.value[tab.key].map(col => {
