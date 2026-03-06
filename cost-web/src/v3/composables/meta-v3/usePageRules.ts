@@ -334,8 +334,16 @@ export function parseContextMenuRule(componentKey: string, rules: PageRule[], co
   return contextItems.length > 0 ? { items: contextItems } : null;
 }
 
-export function applyColumnOverrides(columns: ColDef[], overrides: ColumnOverrideRule[]): ColDef[] {
+type ColumnOverrideApplyMode = 'full' | 'uiOnly';
+
+export function applyColumnOverrides(
+  columns: ColDef[],
+  overrides: ColumnOverrideRule[],
+  options?: { mode?: ColumnOverrideApplyMode }
+): ColDef[] {
   if (!overrides || overrides.length === 0) return columns;
+  const applyMode = options?.mode || 'full';
+  const applyStructuralOverrides = applyMode === 'full';
   const overrideMap = new Map<string, ColumnOverrideRule>();
   for (const override of overrides) {
     const key = override.field || override.fieldName;
@@ -348,11 +356,13 @@ export function applyColumnOverrides(columns: ColDef[], overrides: ColumnOverrid
     const override = overrideMap.get(field);
     if (!override) return col;
     const updated: ColDef = { ...col };
-    if (override.width != null) updated.width = override.width;
-    if (override.visible != null) updated.hide = override.visible === false;
-    if (override.editable === false) updated.editable = false;
-    if (override.searchable === false) updated.filter = false;
-    if (override.searchable === true && updated.filter === false) updated.filter = true;
+    if (applyStructuralOverrides) {
+      if (override.width != null) updated.width = override.width;
+      if (override.visible != null) updated.hide = override.visible === false;
+      if (override.editable === false) updated.editable = false;
+      if (override.searchable === false) updated.filter = false;
+      if (override.searchable === true && updated.filter === false) updated.filter = true;
+    }
     // 支持下拉框编辑器
     if (override.cellEditor && override.cellEditor !== 'lookup') updated.cellEditor = override.cellEditor;
     if (override.cellEditorParams) {
@@ -384,7 +394,7 @@ export function applyColumnOverrides(columns: ColDef[], overrides: ColumnOverrid
     // 显示精度（仅影响显示，不影响底层数据）
     if (override.precision != null) {
       const precision = override.precision;
-      const mode = override.roundMode || 'round';
+      const roundMode = override.roundMode || 'round';
       updated.valueFormatter = (params: any) => {
         const val = params.value;
         if (val == null || val === '') return '';
@@ -392,7 +402,7 @@ export function applyColumnOverrides(columns: ColDef[], overrides: ColumnOverrid
         if (!Number.isFinite(num)) return String(val);
         let rounded: number;
         const factor = Math.pow(10, precision);
-        switch (mode) {
+        switch (roundMode) {
           case 'ceil':
             rounded = Math.ceil(num * factor) / factor;
             break;
@@ -422,18 +432,20 @@ export function applyColumnOverrides(columns: ColDef[], overrides: ColumnOverrid
   });
 
   // 按 COLUMN_OVERRIDE 中的顺序重排列
-  const orderMap = new Map<string, number>();
-  overrides.forEach((o, i) => {
-    const key = o.field || o.fieldName;
-    if (key) orderMap.set(key, i);
-  });
-  if (orderMap.size > 0) {
-    const maxOrder = orderMap.size;
-    result.sort((a, b) => {
-      const oa = a.field ? (orderMap.get(a.field) ?? maxOrder) : maxOrder;
-      const ob = b.field ? (orderMap.get(b.field) ?? maxOrder) : maxOrder;
-      return oa - ob;
+  if (applyStructuralOverrides) {
+    const orderMap = new Map<string, number>();
+    overrides.forEach((o, i) => {
+      const key = o.field || o.fieldName;
+      if (key) orderMap.set(key, i);
     });
+    if (orderMap.size > 0) {
+      const maxOrder = orderMap.size;
+      result.sort((a, b) => {
+        const oa = a.field ? (orderMap.get(a.field) ?? maxOrder) : maxOrder;
+        const ob = b.field ? (orderMap.get(b.field) ?? maxOrder) : maxOrder;
+        return oa - ob;
+      });
+    }
   }
 
   return result;
