@@ -49,7 +49,11 @@ export function metaToColDef(col: ColumnMetadata): ColDef {
     headerName: col.headerText,
     editable: Boolean(col.editable),
     sortable: true,
-    resizable: true
+    resizable: true,
+    context: {
+      metaColumnId: col.id,
+      fieldName: col.fieldName
+    }
   };
 
   // 宽度：只有明确设置了宽度才使用，否则让 flex 生效
@@ -136,6 +140,7 @@ export function metaToColDef(col: ColumnMetadata): ColDef {
         
         // 存储样式规则用于 CSS 注入
         colDef.context = {
+          ...(colDef.context || {}),
           styleRules: config.style,
           fieldName: col.fieldName
         };

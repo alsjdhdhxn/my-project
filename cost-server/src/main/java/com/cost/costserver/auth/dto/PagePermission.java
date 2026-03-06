@@ -1,6 +1,5 @@
 package com.cost.costserver.auth.dto;
 
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -10,7 +9,7 @@ import java.util.Set;
 public record PagePermission(
     String pageCode,
     Set<String> buttons,                      // 允许的按钮，["*"] 表示全部
-    Map<String, ColumnPermission> columns,    // fieldName -> 列权限
+    Map<String, ColumnPermission> columns,    // 支持按 columnId / fieldName 两种键存取
     String rowFilter                          // 行权限SQL条件，如 "DEPT_ID = 1" 或 "CREATE_BY = '${username}'"
 ) {
     /**
@@ -23,26 +22,57 @@ public record PagePermission(
     /**
      * 获取列权限，不存在则返回默认（可见可编辑）
      */
-    public ColumnPermission getColumnPermission(String fieldName) {
-        if (columns == null || !columns.containsKey(fieldName)) {
-            return ColumnPermission.defaultPermission();
-        }
-        return columns.get(fieldName);
-    }
-
-    /**
-     * 获取列权限（优先匹配 tableKey:fieldName，其次匹配 fieldName）
-     */
-    public ColumnPermission getColumnPermission(String tableKey, String fieldName) {
+    public ColumnPermission getColumnPermission(Long columnId, String fieldName) {
         if (columns == null) {
             return ColumnPermission.defaultPermission();
         }
+        ColumnPermission merged = resolveColumnPermission(columnId, fieldName);
+        return merged != null ? merged : ColumnPermission.defaultPermission();
+    }
+
+    /**
+     * 获取列权限（优先匹配 tableKey + columnId，其次匹配 tableKey + fieldName，最后匹配全局键）
+     */
+    public ColumnPermission getColumnPermission(String tableKey, Long columnId, String fieldName) {
+        if (columns == null) {
+            return ColumnPermission.defaultPermission();
+        }
+        ColumnPermission merged = null;
         if (tableKey != null) {
-            String scopedKey = tableKey + ":" + fieldName;
-            if (columns.containsKey(scopedKey)) {
-                return columns.get(scopedKey);
+            if (columnId != null) {
+                merged = mergePermission(merged, columns.get(tableKey + ":id:" + columnId));
+            }
+            if (fieldName != null) {
+                merged = mergePermission(merged, columns.get(tableKey + ":field:" + fieldName));
+                merged = mergePermission(merged, columns.get(tableKey + ":" + fieldName));
             }
         }
-        return getColumnPermission(fieldName);
+        merged = mergePermission(merged, resolveColumnPermission(columnId, fieldName));
+        return merged != null ? merged : ColumnPermission.defaultPermission();
+    }
+
+    private ColumnPermission resolveColumnPermission(Long columnId, String fieldName) {
+        ColumnPermission merged = null;
+        if (columnId != null) {
+            merged = mergePermission(merged, columns.get("id:" + columnId));
+        }
+        if (fieldName != null) {
+            merged = mergePermission(merged, columns.get("field:" + fieldName));
+            merged = mergePermission(merged, columns.get(fieldName));
+        }
+        return merged;
+    }
+
+    private ColumnPermission mergePermission(ColumnPermission current, ColumnPermission next) {
+        if (next == null) {
+            return current;
+        }
+        if (current == null) {
+            return next;
+        }
+        return new ColumnPermission(
+            current.visible() || next.visible(),
+            current.editable() || next.editable()
+        );
     }
 }

@@ -582,7 +582,7 @@ public class RoleManageService {
             }
 
             String rulesJson = resolveOverrideRules(componentKey, columnOverrideRules);
-            Map<String, ColumnOverrideSetting> overrideMap = parseColumnOverrideSettings(rulesJson);
+            ColumnOverrideSettingIndex overrideMap = parseColumnOverrideSettings(rulesJson);
             List<PageColumnVO> baseColumns = refTableCode != null
                 ? baseColumnsByTableCode.getOrDefault(refTableCode, Collections.emptyList())
                 : Collections.emptyList();
@@ -635,7 +635,7 @@ public class RoleManageService {
                 String tabTitle = tab.getStr("title");
                 String tableCode = tab.getStr("tableCode");
                 String rulesJson = resolveOverrideRules(tabKey, columnOverrideRules);
-                Map<String, ColumnOverrideSetting> overrideMap = parseColumnOverrideSettings(rulesJson);
+                ColumnOverrideSettingIndex overrideMap = parseColumnOverrideSettings(rulesJson);
                 List<PageColumnVO> baseColumns = tableCode != null
                     ? baseColumnsByTableCode.getOrDefault(tableCode, Collections.emptyList())
                     : Collections.emptyList();
@@ -672,7 +672,7 @@ public class RoleManageService {
             .collect(Collectors.joining(","));
 
         List<Map<String, Object>> columnMetas = dynamicMapper.selectList(
-            "SELECT m.TABLE_CODE, c.FIELD_NAME, c.HEADER_TEXT " +
+            "SELECT m.TABLE_CODE, c.ID AS COLUMN_ID, c.FIELD_NAME, c.HEADER_TEXT " +
             "FROM T_COST_COLUMN_METADATA c " +
             "JOIN T_COST_TABLE_METADATA m ON c.TABLE_METADATA_ID = m.ID " +
             "WHERE m.TABLE_CODE IN (" + tableCodeList + ") AND c.DELETED = 0 " +
@@ -688,6 +688,7 @@ public class RoleManageService {
             }
 
             PageColumnVO vo = new PageColumnVO();
+            vo.setId(numberValue(cm.get("COLUMN_ID")));
             vo.setFieldName(fieldName);
             vo.setHeaderText((String) cm.get("HEADER_TEXT"));
             // T_COST_COLUMN_METADATA 没有 visible/editable 字段，基线默认为可见可编辑。
@@ -698,35 +699,43 @@ public class RoleManageService {
         return result;
     }
 
-    private Map<String, ColumnOverrideSetting> parseColumnOverrideSettings(String rulesJson) {
-        Map<String, ColumnOverrideSetting> result = new HashMap<>();
+    private ColumnOverrideSettingIndex parseColumnOverrideSettings(String rulesJson) {
+        Map<Long, ColumnOverrideSetting> byId = new HashMap<>();
+        Map<String, ColumnOverrideSetting> byField = new HashMap<>();
         if (rulesJson == null || rulesJson.isBlank()) {
-            return result;
+            return new ColumnOverrideSettingIndex(byId, byField);
         }
         try {
             cn.hutool.json.JSONArray arr = cn.hutool.json.JSONUtil.parseArray(rulesJson);
             for (int i = 0; i < arr.size(); i++) {
                 cn.hutool.json.JSONObject col = arr.getJSONObject(i);
+                Long columnId = col.getLong("columnId");
                 String field = col.getStr("field");
                 if (field == null) field = col.getStr("fieldName");
-                if (field == null) continue;
-                result.put(field, new ColumnOverrideSetting(col.getBool("visible"), col.getBool("editable")));
+                if (columnId == null && field == null) continue;
+                ColumnOverrideSetting setting = new ColumnOverrideSetting(col.getBool("visible"), col.getBool("editable"));
+                if (columnId != null) {
+                    byId.put(columnId, setting);
+                }
+                if (field != null) {
+                    byField.put(field, setting);
+                }
             }
         } catch (Exception e) {
             log.warn("解析COLUMN_OVERRIDE规则失败: {}", e.getMessage());
         }
-        return result;
+        return new ColumnOverrideSettingIndex(byId, byField);
     }
 
     private List<PageColumnVO> applyOverrideRestrictions(
             List<PageColumnVO> baseColumns,
-            Map<String, ColumnOverrideSetting> overrideMap) {
+            ColumnOverrideSettingIndex overrideMap) {
         List<PageColumnVO> result = new ArrayList<>();
         for (PageColumnVO base : baseColumns) {
             boolean visible = base.getVisible() == null || base.getVisible();
             boolean editable = base.getEditable() == null || base.getEditable();
 
-            ColumnOverrideSetting override = overrideMap.get(base.getFieldName());
+            ColumnOverrideSetting override = overrideMap.find(base);
             if (override != null) {
                 // COLUMN_OVERRIDE 只允许收紧，不允许放开上层配置。
                 if (Boolean.FALSE.equals(override.visible())) {
@@ -741,6 +750,7 @@ public class RoleManageService {
             }
 
             PageColumnVO merged = new PageColumnVO();
+            merged.setId(base.getId());
             merged.setFieldName(base.getFieldName());
             merged.setHeaderText(base.getHeaderText() != null ? base.getHeaderText() : base.getFieldName());
             merged.setVisible(visible);
@@ -752,6 +762,38 @@ public class RoleManageService {
 
     private record ColumnOverrideSetting(Boolean visible, Boolean editable) {
     }
+    
+    private record ColumnOverrideSettingIndex(
+            Map<Long, ColumnOverrideSetting> byId,
+            Map<String, ColumnOverrideSetting> byField) {
+        ColumnOverrideSetting find(PageColumnVO column) {
+            if (column == null) {
+                return null;
+            }
+            if (column.getId() != null) {
+                ColumnOverrideSetting matchedById = byId.get(column.getId());
+                if (matchedById != null) {
+                    return matchedById;
+                }
+            }
+            return byField.get(column.getFieldName());
+        }
+    }
+
+    private Long numberValue(Object value) {
+        if (value instanceof Number number) {
+            return number.longValue();
+        }
+        if (value instanceof String text && !text.isBlank()) {
+            try {
+                return Long.parseLong(text);
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
+        }
+        return null;
+    }
+
     public List<RowFilterFieldVO> listRowFilterFields(String pageCode) {
         List<RowFilterFieldVO> result = new ArrayList<>();
         

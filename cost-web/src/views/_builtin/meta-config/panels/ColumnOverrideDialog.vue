@@ -23,6 +23,7 @@ const emit = defineEmits<{
 const message = useMessage();
 
 type OverrideItem = {
+  columnId?: number | null;
   field: string;
   fieldName?: string;
   visible?: boolean;
@@ -44,6 +45,12 @@ type LookupOption = {
   dataSource?: string;
 };
 
+type AvailableFieldOption = {
+  label: string;
+  value: string;
+  columnId: number;
+};
+
 type LookupFieldOption = {
   label: string;
   value: string;
@@ -55,9 +62,11 @@ type LookupMappingPair = {
 };
 
 const items = ref<OverrideItem[]>([]);
-const availableFields = ref<{ label: string; value: string }[]>([]);
+const availableFields = ref<AvailableFieldOption[]>([]);
 const fieldLabelMap = ref<Map<string, string>>(new Map());
 const numericFields = ref<Set<string>>(new Set());
+const availableFieldMapById = ref<Map<number, AvailableFieldOption>>(new Map());
+const availableFieldMapByField = ref<Map<string, AvailableFieldOption>>(new Map());
 const lookupOptionsRaw = ref<LookupOption[]>([]);
 const loadingFields = ref(false);
 const addFieldValue = ref<string | null>(null);
@@ -75,11 +84,17 @@ const cellEditorOptions = [
 ];
 
 // 已配置的字段集合
-const configuredFields = computed(() => new Set(items.value.map(i => i.field)));
+const configuredFields = computed(() => new Set(
+  items.value.map(i => {
+    const matched = findAvailableFieldForItem(i);
+    if (matched) return `id:${matched.columnId}`;
+    return typeof i.columnId === 'number' ? `id:${i.columnId}` : `field:${i.field}`;
+  })
+));
 
 // 可添加的字段（排除已配置的）
 const addableFields = computed(() =>
-  availableFields.value.filter(f => !configuredFields.value.has(f.value))
+  availableFields.value.filter(f => !configuredFields.value.has(`id:${f.columnId}`))
 );
 
 // 初始化
@@ -91,6 +106,7 @@ watch(() => props.show, async (val) => {
     items.value = (Array.isArray(arr) ? arr : []).map((r: any) => {
       const cellEditorParams = normalizeCellEditorParams(r.cellEditorParams);
       return {
+        columnId: parseColumnId(r.columnId),
         field: r.field || r.fieldName || '',
         fieldName: r.fieldName || '',
         visible: r.visible ?? true,
@@ -118,6 +134,43 @@ watch(() => props.show, async (val) => {
   await preloadLookupFieldOptions();
 });
 
+function parseColumnId(value: unknown): number | null {
+  const parsed = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function findAvailableFieldForItem(item: OverrideItem): AvailableFieldOption | undefined {
+  if (typeof item.columnId === 'number') {
+    const matchedById = availableFieldMapById.value.get(item.columnId);
+    if (matchedById) return matchedById;
+  }
+  return item.field ? availableFieldMapByField.value.get(item.field) : undefined;
+}
+
+function syncItemWithAvailableField(item: OverrideItem) {
+  const matched = findAvailableFieldForItem(item);
+  if (!matched) return;
+  item.columnId = matched.columnId;
+  item.field = matched.value;
+  item.fieldName = matched.value;
+}
+
+function syncItemsWithAvailableFields() {
+  items.value.forEach(syncItemWithAvailableField);
+}
+
+function getFieldDisplayText(item: OverrideItem) {
+  const matched = findAvailableFieldForItem(item);
+  if (matched) {
+    return fieldLabelMap.value.get(matched.value) || matched.value;
+  }
+  return item.field;
+}
+
+function isBoundToAvailableField(item: OverrideItem) {
+  return Boolean(findAvailableFieldForItem(item));
+}
+
 async function loadAvailableFields() {
   loadingFields.value = true;
   try {
@@ -141,6 +194,8 @@ async function loadAvailableFields() {
 
     if (!targetTable?.id) {
       availableFields.value = [];
+      availableFieldMapById.value = new Map();
+      availableFieldMapByField.value = new Map();
       return;
     }
 
@@ -149,12 +204,22 @@ async function loadAvailableFields() {
       .filter((col: any) => col.fieldName)
       .map((col: any) => ({
         label: `${col.fieldName} (${col.headerText || col.columnName})`,
-        value: col.fieldName
+        value: col.fieldName,
+        columnId: Number(col.id)
       }));
+    availableFieldMapById.value = new Map(
+      availableFields.value
+        .filter(field => Number.isFinite(field.columnId))
+        .map(field => [field.columnId, field])
+    );
+    availableFieldMapByField.value = new Map(
+      availableFields.value.map(field => [field.value, field])
+    );
     // 建立 fieldName → 中文名 映射
     fieldLabelMap.value = new Map(
       cols.filter((col: any) => col.fieldName).map((col: any) => [col.fieldName, col.headerText || col.columnName || col.fieldName])
     );
+    syncItemsWithAvailableFields();
     // 记录数字类型字段（兼容大小写和多种类型名）
     const numericTypes = new Set(['number', 'integer', 'decimal', 'float', 'double', 'numeric', 'int', 'bigint']);
     numericFields.value = new Set(
@@ -167,6 +232,8 @@ async function loadAvailableFields() {
     }
   } catch {
     availableFields.value = [];
+    availableFieldMapById.value = new Map();
+    availableFieldMapByField.value = new Map();
   } finally {
     loadingFields.value = false;
   }
@@ -419,8 +486,9 @@ function addField() {
   const field = addFieldValue.value;
   const meta = availableFields.value.find(f => f.value === field);
   items.value.push({
+    columnId: meta?.columnId ?? null,
     field,
-    fieldName: meta?.label?.match(/\((.+)\)/)?.[1] || '',
+    fieldName: field,
     visible: true,
     editable: undefined,
     searchable: undefined,
@@ -436,6 +504,7 @@ function addField() {
 
 function addCustomField() {
   items.value.push({
+    columnId: null,
     field: '',
     visible: true,
     editable: undefined,
@@ -632,7 +701,12 @@ async function handleSave() {
   const result = items.value
     .filter(i => i.field)
     .map(i => {
-      const obj: any = { field: i.field };
+      const matched = findAvailableFieldForItem(i);
+      const resolvedField = matched?.value || i.field;
+      const obj: any = { field: resolvedField };
+      if (typeof (matched?.columnId ?? i.columnId) === 'number') {
+        obj.columnId = matched?.columnId ?? i.columnId;
+      }
       if (i.visible === false) obj.visible = false;
       if (i.editable != null) obj.editable = i.editable;
       if (i.searchable != null) obj.searchable = i.searchable;
@@ -756,8 +830,8 @@ async function handleSave() {
           <span class="seq-num">{{ index + 1 }}</span>
         </div>
         <div class="col-field">
-          <NInput v-if="!availableFields.find(f => f.value === item.field)" v-model:value="item.field" size="small" placeholder="fieldName" />
-          <NTag v-else size="small" :bordered="false">{{ fieldLabelMap.get(item.field) || item.field }}</NTag>
+          <NInput v-if="!isBoundToAvailableField(item)" v-model:value="item.field" size="small" placeholder="fieldName" />
+          <NTag v-else size="small" :bordered="false">{{ getFieldDisplayText(item) }}</NTag>
         </div>
         <div class="col-check">
           <NSwitch v-model:value="item.visible" size="small" />

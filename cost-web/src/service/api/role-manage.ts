@@ -163,6 +163,7 @@ export async function fetchPageButtons(pageCode: string) {
 // ==================== 列权限配置 ====================
 
 export interface PageColumnVO {
+  id?: number;
   fieldName: string;
   headerText: string;
   visible: boolean;

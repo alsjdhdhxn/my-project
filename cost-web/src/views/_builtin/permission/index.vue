@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, h } from 'vue';
 import { NButton, NTabs, NTabPane, NEmpty, NTag, NPopconfirm, NModal, NForm, NFormItem, NInput, NSelect, useMessage, NScrollbar, NCheckbox, NSpace, NPopover, NDataTable, NTree, NRadioGroup, NRadio, NDivider } from 'naive-ui';
-import type { TreeOption, TreeRenderProps, SelectOption } from 'naive-ui';
+import type { TreeOption, SelectOption } from 'naive-ui';
 import { Icon } from '@iconify/vue';
 import {
   fetchRoles, createRole, updateRole, deleteRole,
@@ -34,6 +34,8 @@ interface SearchCondition {
   enabled: boolean;
   visible: boolean;
 }
+
+type TreeLabelRenderProps = { option: TreeOption };
 
 const searchConditions = ref<SearchCondition[]>([
   { field: 'roleCode', fieldLabel: '角色编码', operator: 'like', value: '', enabled: false, visible: true },
@@ -347,7 +349,7 @@ function isAllButtonsPolicy(policy: string | undefined): boolean {
 }
 
 // 自定义树节点渲染
-function renderTreeLabel({ option }: TreeRenderProps) {
+function renderTreeLabel({ option }: TreeLabelRenderProps) {
   const opt = option as ExtendedTreeOption;
   const raw = opt.raw;
   const isPage = raw?.resourceType === 'PAGE';
@@ -480,8 +482,39 @@ const editingColumn = ref(false);
 const loadingColumns = ref(false);
 const pageTableColumns = ref<PageTableColumnsVO[]>([]);
 const activeColumnTab = ref<string>('');
-// 列权限状态：{ tableKey: { fieldName: { visible: boolean, editable: boolean } } }
-const columnPermissions = ref<Record<string, Record<string, { visible: boolean; editable: boolean }>>>({});
+type ColumnPermissionState = { fieldName?: string; visible: boolean; editable: boolean };
+// 列权限状态：{ tableKey: { columnId|string(fieldName): { visible, editable, fieldName } } }
+const columnPermissions = ref<Record<string, Record<string, ColumnPermissionState>>>({});
+
+function getColumnPolicyKey(column: Pick<PageColumnVO, 'id' | 'fieldName'>): string {
+  return typeof column.id === 'number' ? String(column.id) : column.fieldName;
+}
+
+function getColumnPermissionState(tableKey: string, column: Pick<PageColumnVO, 'id' | 'fieldName'>) {
+  return columnPermissions.value[tableKey]?.[getColumnPolicyKey(column)];
+}
+
+function getBaseColumnConfig(tableKey: string, column: Pick<PageColumnVO, 'id' | 'fieldName'>): { visible: boolean; editable: boolean } {
+  const table = pageTableColumns.value.find(t => t.tableKey === tableKey);
+  const col = table?.columns.find(c => getColumnPolicyKey(c) === getColumnPolicyKey(column));
+  return { visible: col?.visible ?? true, editable: col?.editable ?? true };
+}
+
+function ensureColumnPermissionState(tableKey: string, column: Pick<PageColumnVO, 'id' | 'fieldName'>, base?: { visible: boolean; editable: boolean }) {
+  if (!columnPermissions.value[tableKey]) {
+    columnPermissions.value[tableKey] = {};
+  }
+  const key = getColumnPolicyKey(column);
+  if (!columnPermissions.value[tableKey][key]) {
+    const resolvedBase = base ?? getBaseColumnConfig(tableKey, column);
+    columnPermissions.value[tableKey][key] = {
+      fieldName: column.fieldName,
+      visible: resolvedBase.visible,
+      editable: resolvedBase.editable
+    };
+  }
+  return columnPermissions.value[tableKey][key];
+}
 
 // 编辑行权限弹窗
 const showEditRowModal = ref(false);
@@ -663,30 +696,33 @@ async function openEditColumn(resource: ResourcePermissionVO) {
       activeColumnTab.value = pageTableColumns.value[0].tableKey;
     }
     
-    // 解析已有的列权限配置
-    columnPermissions.value = {};
+    // 解析已有的列权限配置，并按当前列 id / fieldName 归一
+    let rawPolicy: Record<string, any> = {};
     if (resource.columnPolicy) {
       try {
-        const policy = JSON.parse(resource.columnPolicy);
-        columnPermissions.value = policy;
+        rawPolicy = JSON.parse(resource.columnPolicy);
       } catch {
-        columnPermissions.value = {};
+        rawPolicy = {};
       }
     }
+    columnPermissions.value = {};
     
     // 初始化每个表格的列权限（如果没有配置，则使用 COLUMN_OVERRIDE 的默认值）
     for (const table of pageTableColumns.value) {
-      if (!columnPermissions.value[table.tableKey]) {
-        columnPermissions.value[table.tableKey] = {};
-      }
+      columnPermissions.value[table.tableKey] = {};
+      const scopedPolicy = rawPolicy?.[table.tableKey] && typeof rawPolicy[table.tableKey] === 'object'
+        ? rawPolicy[table.tableKey]
+        : {};
       for (const col of table.columns) {
-        if (!columnPermissions.value[table.tableKey][col.fieldName]) {
-          // 默认使用 COLUMN_OVERRIDE 中的值
-          columnPermissions.value[table.tableKey][col.fieldName] = {
-            visible: col.visible,
-            editable: col.editable
-          };
-        }
+        const rawPerm = scopedPolicy?.[getColumnPolicyKey(col)]
+          ?? scopedPolicy?.[col.fieldName]
+          ?? rawPolicy?.[getColumnPolicyKey(col)]
+          ?? rawPolicy?.[col.fieldName];
+        columnPermissions.value[table.tableKey][getColumnPolicyKey(col)] = {
+          fieldName: col.fieldName,
+          visible: typeof rawPerm?.visible === 'boolean' ? rawPerm.visible : col.visible,
+          editable: typeof rawPerm?.editable === 'boolean' ? rawPerm.editable : col.editable
+        };
       }
     }
   } catch (e) {
@@ -779,49 +815,34 @@ async function handleUpdateButton() {
   }
 }
 
-// 获取列的基础配置（从 COLUMN_OVERRIDE）
-function getBaseColumnConfig(tableKey: string, fieldName: string): { visible: boolean; editable: boolean } {
-  const table = pageTableColumns.value.find(t => t.tableKey === tableKey);
-  const col = table?.columns.find(c => c.fieldName === fieldName);
-  return { visible: col?.visible ?? true, editable: col?.editable ?? true };
-}
-
 // 切换列可见性
-function toggleColumnVisible(tableKey: string, fieldName: string, checked: boolean) {
-  const base = getBaseColumnConfig(tableKey, fieldName);
+function toggleColumnVisible(tableKey: string, column: PageColumnVO, checked: boolean) {
+  const base = getBaseColumnConfig(tableKey, column);
   // 只能缩小权限：如果基础配置是不可见，则不能设为可见
   if (!base.visible && checked) {
     message.warning('该列在基础配置中已设为不可见，无法通过权限放大');
     return;
   }
-  if (!columnPermissions.value[tableKey]) {
-    columnPermissions.value[tableKey] = {};
-  }
-  if (!columnPermissions.value[tableKey][fieldName]) {
-    columnPermissions.value[tableKey][fieldName] = { visible: base.visible, editable: base.editable };
-  }
-  columnPermissions.value[tableKey][fieldName].visible = checked;
+  const state = ensureColumnPermissionState(tableKey, column, base);
+  state.fieldName = column.fieldName;
+  state.visible = checked;
   // 如果设为不可见，则编辑也要设为 false
   if (!checked) {
-    columnPermissions.value[tableKey][fieldName].editable = false;
+    state.editable = false;
   }
 }
 
 // 切换列可编辑性
-function toggleColumnEditable(tableKey: string, fieldName: string, checked: boolean) {
-  const base = getBaseColumnConfig(tableKey, fieldName);
+function toggleColumnEditable(tableKey: string, column: PageColumnVO, checked: boolean) {
+  const base = getBaseColumnConfig(tableKey, column);
   // 只能缩小权限：如果基础配置是不可编辑，则不能设为可编辑
   if (!base.editable && checked) {
     message.warning('该列在基础配置中已设为不可编辑，无法通过权限放大');
     return;
   }
-  if (!columnPermissions.value[tableKey]) {
-    columnPermissions.value[tableKey] = {};
-  }
-  if (!columnPermissions.value[tableKey][fieldName]) {
-    columnPermissions.value[tableKey][fieldName] = { visible: base.visible, editable: base.editable };
-  }
-  columnPermissions.value[tableKey][fieldName].editable = checked;
+  const state = ensureColumnPermissionState(tableKey, column, base);
+  state.fieldName = column.fieldName;
+  state.editable = checked;
 }
 
 // 计算当前表格的全选状态
@@ -832,7 +853,7 @@ function isAllVisibleChecked(tableKey: string): boolean {
   const checkableCols = table.columns.filter(col => col.visible);
   if (checkableCols.length === 0) return false;
   return checkableCols.every(col => {
-    return columnPermissions.value[tableKey]?.[col.fieldName]?.visible ?? col.visible;
+    return getColumnPermissionState(tableKey, col)?.visible ?? col.visible;
   });
 }
 
@@ -842,12 +863,12 @@ function isAllEditableChecked(tableKey: string): boolean {
   // 只检查基础配置可编辑且当前可见的列
   const checkableCols = table.columns.filter(col => {
     if (!col.editable) return false; // 基础配置不可编辑的跳过
-    const visible = columnPermissions.value[tableKey]?.[col.fieldName]?.visible ?? col.visible;
+    const visible = getColumnPermissionState(tableKey, col)?.visible ?? col.visible;
     return visible; // 只检查可见的列
   });
   if (checkableCols.length === 0) return false;
   return checkableCols.every(col => {
-    return columnPermissions.value[tableKey]?.[col.fieldName]?.editable ?? col.editable;
+    return getColumnPermissionState(tableKey, col)?.editable ?? col.editable;
   });
 }
 
@@ -862,13 +883,12 @@ function toggleAllVisible(tableKey: string, checked: boolean) {
   
   for (const col of table.columns) {
     if (!col.visible) continue; // 基础配置不可见的不能操作
-    if (!columnPermissions.value[tableKey][col.fieldName]) {
-      columnPermissions.value[tableKey][col.fieldName] = { visible: col.visible, editable: col.editable };
-    }
-    columnPermissions.value[tableKey][col.fieldName].visible = checked;
+    const state = ensureColumnPermissionState(tableKey, col, { visible: col.visible, editable: col.editable });
+    state.fieldName = col.fieldName;
+    state.visible = checked;
     // 如果设为不可见，则编辑也要设为 false
     if (!checked) {
-      columnPermissions.value[tableKey][col.fieldName].editable = false;
+      state.editable = false;
     }
   }
 }
@@ -884,13 +904,12 @@ function toggleAllEditable(tableKey: string, checked: boolean) {
   
   for (const col of table.columns) {
     if (!col.editable) continue; // 基础配置不可编辑的不能操作
-    const visible = columnPermissions.value[tableKey]?.[col.fieldName]?.visible ?? col.visible;
+    const visible = getColumnPermissionState(tableKey, col)?.visible ?? col.visible;
     if (!visible) continue; // 不可见的不能编辑
     
-    if (!columnPermissions.value[tableKey][col.fieldName]) {
-      columnPermissions.value[tableKey][col.fieldName] = { visible: col.visible, editable: col.editable };
-    }
-    columnPermissions.value[tableKey][col.fieldName].editable = checked;
+    const state = ensureColumnPermissionState(tableKey, col, { visible: col.visible, editable: col.editable });
+    state.fieldName = col.fieldName;
+    state.editable = checked;
   }
 }
 
@@ -906,11 +925,11 @@ async function handleUpdateColumn() {
       if (!tablePerms) continue;
       
       for (const col of table.columns) {
-        const perm = tablePerms[col.fieldName];
+        const perm = tablePerms[getColumnPolicyKey(col)];
         if (!perm) continue;
         
         // 只保存与基础配置不同的值
-        const diff: { visible?: boolean; editable?: boolean } = {};
+        const diff: { fieldName?: string; columnId?: number; visible?: boolean; editable?: boolean } = {};
         if (perm.visible !== col.visible) {
           diff.visible = perm.visible;
         }
@@ -922,7 +941,11 @@ async function handleUpdateColumn() {
           if (!policyToSave[table.tableKey]) {
             policyToSave[table.tableKey] = {};
           }
-          policyToSave[table.tableKey][col.fieldName] = diff;
+          if (typeof col.id === 'number') {
+            diff.columnId = col.id;
+          }
+          diff.fieldName = col.fieldName;
+          policyToSave[table.tableKey][getColumnPolicyKey(col)] = diff;
         }
       }
     }
@@ -1277,9 +1300,9 @@ loadRoles();
                     key: 'visible', 
                     width: 100,
                     render: (row: PageColumnVO) => h(NCheckbox, {
-                      checked: columnPermissions[table.tableKey]?.[row.fieldName]?.visible ?? row.visible,
+                      checked: getColumnPermissionState(table.tableKey, row)?.visible ?? row.visible,
                       disabled: !row.visible,
-                      onUpdateChecked: (checked: boolean) => toggleColumnVisible(table.tableKey, row.fieldName, checked)
+                      onUpdateChecked: (checked: boolean) => toggleColumnVisible(table.tableKey, row, checked)
                     })
                   },
                   { 
@@ -1293,9 +1316,9 @@ loadRoles();
                     key: 'editable', 
                     width: 100,
                     render: (row: PageColumnVO) => h(NCheckbox, {
-                      checked: columnPermissions[table.tableKey]?.[row.fieldName]?.editable ?? row.editable,
-                      disabled: !row.editable || !(columnPermissions[table.tableKey]?.[row.fieldName]?.visible ?? row.visible),
-                      onUpdateChecked: (checked: boolean) => toggleColumnEditable(table.tableKey, row.fieldName, checked)
+                      checked: getColumnPermissionState(table.tableKey, row)?.editable ?? row.editable,
+                      disabled: !row.editable || !(getColumnPermissionState(table.tableKey, row)?.visible ?? row.visible),
+                      onUpdateChecked: (checked: boolean) => toggleColumnEditable(table.tableKey, row, checked)
                     })
                   }
                 ]"

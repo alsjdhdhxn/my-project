@@ -112,7 +112,7 @@ public class MetadataService {
         }
         List<ColumnMetadataDTO> result = new ArrayList<>();
         for (ColumnMetadataDTO col : columns) {
-            ColumnPermission colPerm = permission.getColumnPermission(gridKey, col.fieldName());
+            ColumnPermission colPerm = permission.getColumnPermission(gridKey, col.id(), col.fieldName());
             if (colPerm != null && !colPerm.visible()) {
                 continue;
             }
@@ -144,7 +144,7 @@ public class MetadataService {
         if (preferences.isEmpty()) {
             return columns;
         }
-        int maxOrder = preferences.values().stream()
+        int maxOrder = new java.util.LinkedHashSet<>(preferences.values()).stream()
                 .map(ColumnPreference::order)
                 .filter(Objects::nonNull)
                 .max(Integer::compareTo)
@@ -153,7 +153,7 @@ public class MetadataService {
         List<ColumnMetadataDTO> result = new ArrayList<>();
         int index = 0;
         for (ColumnMetadataDTO col : columns) {
-            ColumnPreference pref = preferences.get(col.fieldName());
+            ColumnPreference pref = findColumnPreference(preferences, col);
             Integer displayOrder = col.displayOrder();
             if (pref != null && pref.order() != null) {
                 displayOrder = pref.order();
@@ -193,14 +193,14 @@ public class MetadataService {
 
     private List<ColumnMetadataDTO> applyColumnOverrides(
             List<ColumnMetadataDTO> columns,
-            Map<String, ColumnOverride> overrides) {
+            ColumnOverrideIndex overrides) {
         if (overrides == null || overrides.isEmpty()) {
             return columns;
         }
 
         List<ColumnMetadataDTO> result = new ArrayList<>();
         for (ColumnMetadataDTO col : columns) {
-            ColumnOverride override = overrides.get(col.fieldName());
+            ColumnOverride override = overrides.find(col);
             if (override == null) {
                 result.add(col);
                 continue;
@@ -244,9 +244,9 @@ public class MetadataService {
         return baseAllowed && tightenWith;
     }
 
-    private Map<String, ColumnOverride> loadColumnOverrides(String pageCode, String gridKey) {
+    private ColumnOverrideIndex loadColumnOverrides(String pageCode, String gridKey) {
         if (StrUtil.isBlank(pageCode) || StrUtil.isBlank(gridKey)) {
-            return Collections.emptyMap();
+            return ColumnOverrideIndex.empty();
         }
         List<String> componentKeys = new ArrayList<>();
         componentKeys.add(gridKey);
@@ -266,7 +266,7 @@ public class MetadataService {
                         .orderByAsc(PageRule::getSortOrder));
 
         if (rules.isEmpty()) {
-            return Collections.emptyMap();
+            return ColumnOverrideIndex.empty();
         }
 
         PageRule selected = null;
@@ -282,25 +282,27 @@ public class MetadataService {
         }
 
         if (selected == null || StrUtil.isBlank(selected.getRules())) {
-            return Collections.emptyMap();
+            return ColumnOverrideIndex.empty();
         }
         return parseColumnOverrides(selected.getRules());
     }
 
-    private Map<String, ColumnOverride> parseColumnOverrides(String rules) {
+    private ColumnOverrideIndex parseColumnOverrides(String rules) {
         try {
             JsonNode root = objectMapper.readTree(rules);
             if (!root.isArray()) {
                 log.warn("COLUMN_OVERRIDE rules is not an array");
-                return Collections.emptyMap();
+                return ColumnOverrideIndex.empty();
             }
-            Map<String, ColumnOverride> result = new HashMap<>();
+            Map<Long, ColumnOverride> byId = new HashMap<>();
+            Map<String, ColumnOverride> byField = new HashMap<>();
             for (JsonNode node : root) {
+                Long columnId = longNumber(node, "columnId");
                 String field = text(node, "field");
                 if (StrUtil.isBlank(field)) {
                     field = text(node, "fieldName");
                 }
-                if (StrUtil.isBlank(field))
+                if (columnId == null && StrUtil.isBlank(field))
                     continue;
                 ColumnOverride override = new ColumnOverride(
                         number(node, "width"),
@@ -319,12 +321,17 @@ public class MetadataService {
                         parseOverrideConfig(node.get("cellEditorParams"), "cellEditorParams"),
                         text(node, "aggFunc"),
                         parseOverrideConfig(node.get("rulesConfig"), "rulesConfig"));
-                result.put(field, override);
+                if (columnId != null) {
+                    byId.put(columnId, override);
+                }
+                if (StrUtil.isNotBlank(field)) {
+                    byField.put(field, override);
+                }
             }
-            return result;
+            return new ColumnOverrideIndex(byId, byField);
         } catch (Exception e) {
             log.warn("Failed to parse COLUMN_OVERRIDE rules: {}", e.getMessage());
-            return Collections.emptyMap();
+            return ColumnOverrideIndex.empty();
         }
     }
 
@@ -336,6 +343,19 @@ public class MetadataService {
         if ("right".equalsIgnoreCase(value))
             return "right";
         return null;
+    }
+
+    private ColumnPreference findColumnPreference(Map<String, ColumnPreference> preferences, ColumnMetadataDTO col) {
+        if (preferences == null || preferences.isEmpty() || col == null) {
+            return null;
+        }
+        if (col.id() != null) {
+            ColumnPreference matchedById = preferences.get("id:" + col.id());
+            if (matchedById != null) {
+                return matchedById;
+            }
+        }
+        return preferences.get("field:" + col.fieldName());
     }
 
     private Integer number(JsonNode node, String... keys) {
@@ -373,6 +393,24 @@ public class MetadataService {
             if ("1".equals(text)) return true;
             if ("0".equals(text)) return false;
             return Boolean.parseBoolean(text);
+        }
+        return null;
+    }
+
+    private Long longNumber(JsonNode node, String... keys) {
+        for (String key : keys) {
+            JsonNode value = node.get(key);
+            if (value == null || value.isNull())
+                continue;
+            if (value.isNumber())
+                return value.longValue();
+            if (value.isTextual()) {
+                try {
+                    return Long.parseLong(value.asText());
+                } catch (NumberFormatException ignored) {
+                    return null;
+                }
+            }
         }
         return null;
     }
@@ -610,6 +648,31 @@ public class MetadataService {
             JsonNode cellEditorParams,
             String aggFunc,
             JsonNode rulesConfig) {
+    }
+
+    private record ColumnOverrideIndex(
+            Map<Long, ColumnOverride> byId,
+            Map<String, ColumnOverride> byField) {
+        static ColumnOverrideIndex empty() {
+            return new ColumnOverrideIndex(Collections.emptyMap(), Collections.emptyMap());
+        }
+
+        boolean isEmpty() {
+            return byId.isEmpty() && byField.isEmpty();
+        }
+
+        ColumnOverride find(ColumnMetadataDTO col) {
+            if (col == null) {
+                return null;
+            }
+            if (col.id() != null) {
+                ColumnOverride matchedById = byId.get(col.id());
+                if (matchedById != null) {
+                    return matchedById;
+                }
+            }
+            return byField.get(col.fieldName());
+        }
     }
 
     public boolean isValidTable(String tableCode) {

@@ -3,6 +3,7 @@
 type NotifyFn = (message: string) => void;
 
 type ColumnPreference = {
+  columnId?: number;
   field: string;
   width?: number;
   order?: number;
@@ -21,12 +22,82 @@ type GridApiRef = {
   columnApi?: any;
 };
 
-function normalizeColumns(source: any[]): ColumnPreference[] {
+function parseColumnId(value: unknown): number | undefined {
+  const parsed = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function getRuntimeField(source: any): string {
+  return String(source?.field ?? source?.colId ?? '').trim();
+}
+
+function getMetaColumnId(source: any): number | undefined {
+  return parseColumnId(source?.columnId ?? source?.metaColumnId ?? source?.context?.metaColumnId);
+}
+
+function getPreferenceKey(source: { columnId?: number; field?: string }): string | null {
+  if (typeof source.columnId === 'number') {
+    return `id:${source.columnId}`;
+  }
+  const field = String(source.field ?? '').trim();
+  return field ? `field:${field}` : null;
+}
+
+function buildPreferenceLookup(columns: ColumnPreference[]) {
+  const result = new Map<string, ColumnPreference>();
+  columns.forEach(column => {
+    const identityKey = getPreferenceKey(column);
+    if (identityKey) {
+      result.set(identityKey, column);
+    }
+    const fieldKey = column.field ? `field:${column.field}` : null;
+    if (fieldKey && !result.has(fieldKey)) {
+      result.set(fieldKey, column);
+    }
+  });
+  return result;
+}
+
+function getColumnDefIdentity(def: any): string | null {
+  const columnId = getMetaColumnId(def);
+  if (typeof columnId === 'number') {
+    return `id:${columnId}`;
+  }
+  const field = getRuntimeField(def);
+  return field ? `field:${field}` : null;
+}
+
+function buildColumnDefLookup(columnDefs: any[]) {
+  const result = new Map<string, any>();
+  columnDefs.forEach(def => {
+    const identityKey = getColumnDefIdentity(def);
+    if (identityKey) {
+      result.set(identityKey, def);
+    }
+    const field = getRuntimeField(def);
+    if (field) {
+      const fieldKey = `field:${field}`;
+      if (!result.has(fieldKey)) {
+        result.set(fieldKey, def);
+      }
+    }
+  });
+  return result;
+}
+
+function normalizeColumns(source: any[], columnDefs: any[] = []): ColumnPreference[] {
   const result: ColumnPreference[] = [];
+  const columnDefByField = new Map(
+    columnDefs
+      .map(def => [getRuntimeField(def), def] as const)
+      .filter(([field]) => Boolean(field))
+  );
   source.forEach((col: any, index: number) => {
-    const field = col?.field ?? col?.colId;
+    const field = getRuntimeField(col);
     if (!field) return;
+    const matchedDef = columnDefByField.get(field);
     result.push({
+      columnId: getMetaColumnId(col) ?? getMetaColumnId(matchedDef),
       field,
       width: typeof col.width === 'number' ? col.width : undefined,
       order: typeof col.order === 'number' ? col.order : index,
@@ -100,14 +171,16 @@ export function useUserGridConfig(params: {
     const applyFn = api?.applyColumnState ?? colApi?.applyColumnState;
     if (!applyFn) return;
 
-    const prefMap = new Map(payload.columns.map(col => [col.field, col]));
     const currentDefs = (api?.getColumnDefs?.() ?? []) as Array<any>;
+    const prefMap = buildPreferenceLookup(payload.columns);
+    const currentDefsByIdentity = buildColumnDefLookup(currentDefs);
     const lockedHiddenColumns = new Set<string>();
     let needPatchDefs = false;
     const patchedDefs = currentDefs.map(def => {
-      const field = String(def?.field ?? def?.colId ?? '').trim();
+      const field = getRuntimeField(def);
       if (!field) return def;
-      const hiddenByUser = prefMap.get(field)?.hidden === true;
+      const pref = prefMap.get(getColumnDefIdentity(def) || '') ?? prefMap.get(`field:${field}`);
+      const hiddenByUser = pref?.hidden === true;
       const hiddenByBase = def?.hide === true;
       const backendLocked = def?.lockVisible === true || def?.suppressColumnsToolPanel === true;
       const shouldLock = backendLocked || (hiddenByBase && !hiddenByUser);
@@ -132,15 +205,22 @@ export function useUserGridConfig(params: {
     }
 
     applyFn.call(api?.applyColumnState ? api : colApi, {
-      state: payload.columns.map((col, index) => ({
-        colId: col.field,
-        width: col.width,
-        // 用户个性化只允许收紧：
-        // hidden=true 时隐藏；hidden=false/undefined 不允许反向放开后端权限结果。
-        hide: col.hidden === true ? true : undefined,
-        pinned: col.pinned ?? null,
-        order: col.order ?? index
-      })),
+      state: payload.columns
+        .map((col, index) => {
+          const def = currentDefsByIdentity.get(getPreferenceKey(col) || '') ?? currentDefsByIdentity.get(`field:${col.field}`);
+          const runtimeField = getRuntimeField(def);
+          if (!runtimeField) return null;
+          return {
+            colId: runtimeField,
+            width: col.width,
+            // 用户个性化只允许收紧：
+            // hidden=true 时隐藏；hidden=false/undefined 不允许反向放开后端权限结果。
+            hide: col.hidden === true ? true : undefined,
+            pinned: col.pinned ?? null,
+            order: col.order ?? index
+          };
+        })
+        .filter((col): col is NonNullable<typeof col> => Boolean(col)),
       applyOrder: true
     });
     
@@ -159,7 +239,8 @@ export function useUserGridConfig(params: {
       return;
     }
 
-    const payload: GridConfigPayload = { columns: normalizeColumns(state) };
+    const currentDefs = (api?.getColumnDefs?.() ?? []) as Array<any>;
+    const payload: GridConfigPayload = { columns: normalizeColumns(state, currentDefs) };
     const { error } = await saveUserGridConfig(pageCode, resolvedKey, payload.columns);
     if (error) {
       notifyError('保存列配置失败');
@@ -186,7 +267,8 @@ export function useUserGridConfig(params: {
       const state = ref.api?.getColumnState?.() ?? colApi?.getColumnState?.();
       if (!state || !Array.isArray(state)) continue;
       
-      const payload: GridConfigPayload = { columns: normalizeColumns(state) };
+      const currentDefs = (ref.api?.getColumnDefs?.() ?? []) as Array<any>;
+      const payload: GridConfigPayload = { columns: normalizeColumns(state, currentDefs) };
       promises.push(
         saveUserGridConfig(pageCode, key, payload.columns).then(({ error }) => {
           if (!error) {

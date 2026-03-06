@@ -115,8 +115,7 @@ const columnDefs = computed<ColDef[]>(() => {
   return config.value.displayColumns.map(col => ({
     field: col.field,
     headerName: col.header,
-    // 只有配置了 width 才设置固定宽度，否则由 autoSize 自动计算
-    ...(col.width ? { width: col.width } : {}),
+    ...(col.width ? { width: col.width } : { flex: 1, minWidth: 120 }),
     sortable: true,
     resizable: true
   }));

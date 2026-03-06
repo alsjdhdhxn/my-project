@@ -78,8 +78,12 @@ public class UserGridConfigService {
 
         Map<String, ColumnPreference> result = new HashMap<>();
         for (ColumnPreference preference : preferences) {
-            if (StrUtil.isBlank(preference.field())) continue;
-            result.put(preference.field(), preference);
+            if (preference.columnId() != null) {
+                result.put("id:" + preference.columnId(), preference);
+            }
+            if (StrUtil.isNotBlank(preference.field())) {
+                result.put("field:" + preference.field(), preference);
+            }
         }
         return result;
     }
@@ -172,7 +176,7 @@ public class UserGridConfigService {
         int index = 0;
         for (JsonNode node : arrayNode) {
             ColumnPreference preference = toPreference(node, index++);
-            if (preference != null && StrUtil.isNotBlank(preference.field())) {
+            if (preference != null && (preference.columnId() != null || StrUtil.isNotBlank(preference.field()))) {
                 preferences.add(preference);
             }
         }
@@ -181,11 +185,15 @@ public class UserGridConfigService {
 
     private ColumnPreference toPreference(JsonNode node, int index) {
         if (node == null || node.isNull()) return null;
+        Long columnId = longNumber(node, "columnId");
         String field = text(node, "field");
+        if (StrUtil.isBlank(field)) {
+            field = text(node, "fieldName");
+        }
         if (StrUtil.isBlank(field)) {
             field = text(node, "colId");
         }
-        if (StrUtil.isBlank(field)) return null;
+        if (columnId == null && StrUtil.isBlank(field)) return null;
 
         Integer width = number(node, "width");
         Integer order = number(node, "order");
@@ -203,7 +211,7 @@ public class UserGridConfigService {
             pinned = pinned.toLowerCase();
         }
 
-        return new ColumnPreference(field, width, order, hidden, pinned);
+        return new ColumnPreference(columnId, field, width, order, hidden, pinned);
     }
 
     private String text(JsonNode node, String key) {
@@ -214,6 +222,20 @@ public class UserGridConfigService {
     private Integer number(JsonNode node, String key) {
         JsonNode value = node.get(key);
         return value != null && value.isNumber() ? value.intValue() : null;
+    }
+
+    private Long longNumber(JsonNode node, String key) {
+        JsonNode value = node.get(key);
+        if (value == null || value.isNull()) return null;
+        if (value.isNumber()) return value.longValue();
+        if (value.isTextual()) {
+            try {
+                return Long.parseLong(value.asText());
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
+        }
+        return null;
     }
 
     private Boolean bool(JsonNode node, String key) {

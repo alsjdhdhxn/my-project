@@ -111,7 +111,7 @@ const columnDefs = computed<ColDef[]>(() => {
   return config.value.displayColumns.map(col => ({
     field: col.field,
     headerName: col.header,
-    ...(col.width ? { width: col.width } : {}),
+    ...(col.width ? { width: col.width } : { flex: 1, minWidth: 120 }),
     sortable: true,
     resizable: true
   }));

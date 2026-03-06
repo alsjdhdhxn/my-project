@@ -336,6 +336,23 @@ export function parseContextMenuRule(componentKey: string, rules: PageRule[], co
 
 type ColumnOverrideApplyMode = 'full' | 'uiOnly';
 
+function getOverrideMatchKey(override: ColumnOverrideRule): string | null {
+  if (typeof override.columnId === 'number' && Number.isFinite(override.columnId)) {
+    return `id:${override.columnId}`;
+  }
+  const field = override.field || override.fieldName;
+  return field ? `field:${field}` : null;
+}
+
+function getColDefMatchKey(col: ColDef): string | null {
+  const metaColumnId = (col.context as { metaColumnId?: unknown } | undefined)?.metaColumnId;
+  if (typeof metaColumnId === 'number' && Number.isFinite(metaColumnId)) {
+    return `id:${metaColumnId}`;
+  }
+  const field = col.field as string | undefined;
+  return field ? `field:${field}` : null;
+}
+
 export function applyColumnOverrides(
   columns: ColDef[],
   overrides: ColumnOverrideRule[],
@@ -346,14 +363,14 @@ export function applyColumnOverrides(
   const applyStructuralOverrides = applyMode === 'full';
   const overrideMap = new Map<string, ColumnOverrideRule>();
   for (const override of overrides) {
-    const key = override.field || override.fieldName;
+    const key = getOverrideMatchKey(override);
     if (!key) continue;
     overrideMap.set(key, override);
   }
   const result = columns.map(col => {
     const field = col.field as string | undefined;
     if (!field) return col;
-    const override = overrideMap.get(field);
+    const override = overrideMap.get(getColDefMatchKey(col) || '');
     if (!override) return col;
     const updated: ColDef = { ...col };
     if (applyStructuralOverrides) {
@@ -435,14 +452,14 @@ export function applyColumnOverrides(
   if (applyStructuralOverrides) {
     const orderMap = new Map<string, number>();
     overrides.forEach((o, i) => {
-      const key = o.field || o.fieldName;
+      const key = getOverrideMatchKey(o);
       if (key) orderMap.set(key, i);
     });
     if (orderMap.size > 0) {
       const maxOrder = orderMap.size;
       result.sort((a, b) => {
-        const oa = a.field ? (orderMap.get(a.field) ?? maxOrder) : maxOrder;
-        const ob = b.field ? (orderMap.get(b.field) ?? maxOrder) : maxOrder;
+        const oa = orderMap.get(getColDefMatchKey(a) || '') ?? maxOrder;
+        const ob = orderMap.get(getColDefMatchKey(b) || '') ?? maxOrder;
         return oa - ob;
       });
     }

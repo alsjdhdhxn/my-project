@@ -15,6 +15,7 @@ export type PageComponentWithRules = Api.Metadata.PageComponent & {
 };
 
 export type ColumnOverrideRule = {
+  columnId?: number;
   field?: string;
   fieldName?: string;
   width?: number;
