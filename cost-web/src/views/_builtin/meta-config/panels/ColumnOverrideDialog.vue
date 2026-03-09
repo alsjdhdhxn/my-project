@@ -24,8 +24,7 @@ const message = useMessage();
 
 type OverrideItem = {
   columnId?: number | null;
-  field: string;
-  fieldName?: string;
+  columnName: string;
   visible?: boolean;
   editable?: boolean;
   searchable?: boolean;
@@ -88,7 +87,7 @@ const configuredFields = computed(() => new Set(
   items.value.map(i => {
     const matched = findAvailableFieldForItem(i);
     if (matched) return `id:${matched.columnId}`;
-    return typeof i.columnId === 'number' ? `id:${i.columnId}` : `field:${i.field}`;
+    return typeof i.columnId === 'number' ? `id:${i.columnId}` : `column:${i.columnName}`;
   })
 ));
 
@@ -107,8 +106,7 @@ watch(() => props.show, async (val) => {
       const cellEditorParams = normalizeCellEditorParams(r.cellEditorParams);
       return {
         columnId: parseColumnId(r.columnId),
-        field: r.field || r.fieldName || '',
-        fieldName: r.fieldName || '',
+        columnName: r.columnName || '',
         visible: r.visible ?? true,
         editable: r.editable ?? undefined,
         searchable: r.searchable ?? undefined,
@@ -144,15 +142,14 @@ function findAvailableFieldForItem(item: OverrideItem): AvailableFieldOption | u
     const matchedById = availableFieldMapById.value.get(item.columnId);
     if (matchedById) return matchedById;
   }
-  return item.field ? availableFieldMapByField.value.get(item.field) : undefined;
+  return item.columnName ? availableFieldMapByField.value.get(item.columnName) : undefined;
 }
 
 function syncItemWithAvailableField(item: OverrideItem) {
   const matched = findAvailableFieldForItem(item);
   if (!matched) return;
   item.columnId = matched.columnId;
-  item.field = matched.value;
-  item.fieldName = matched.value;
+  item.columnName = matched.value;
 }
 
 function syncItemsWithAvailableFields() {
@@ -164,7 +161,7 @@ function getFieldDisplayText(item: OverrideItem) {
   if (matched) {
     return fieldLabelMap.value.get(matched.value) || matched.value;
   }
-  return item.field;
+  return item.columnName;
 }
 
 function isBoundToAvailableField(item: OverrideItem) {
@@ -201,10 +198,10 @@ async function loadAvailableFields() {
 
     const cols = await fetchColumnsByTableId(targetTable.id);
     availableFields.value = cols
-      .filter((col: any) => col.fieldName)
+      .filter((col: any) => col.columnName)
       .map((col: any) => ({
-        label: `${col.fieldName} (${col.headerText || col.columnName})`,
-        value: col.fieldName,
+        label: `${col.columnName} (${col.headerText || col.columnName})`,
+        value: col.columnName,
         columnId: Number(col.id)
       }));
     availableFieldMapById.value = new Map(
@@ -215,20 +212,22 @@ async function loadAvailableFields() {
     availableFieldMapByField.value = new Map(
       availableFields.value.map(field => [field.value, field])
     );
-    // 建立 fieldName → 中文名 映射
+    // 建立 columnName → 中文名 映射
     fieldLabelMap.value = new Map(
-      cols.filter((col: any) => col.fieldName).map((col: any) => [col.fieldName, col.headerText || col.columnName || col.fieldName])
+      cols
+        .filter((col: any) => col.columnName)
+        .map((col: any) => [col.columnName, col.headerText || col.columnName])
     );
     syncItemsWithAvailableFields();
     // 记录数字类型字段（兼容大小写和多种类型名）
     const numericTypes = new Set(['number', 'integer', 'decimal', 'float', 'double', 'numeric', 'int', 'bigint']);
     numericFields.value = new Set(
-      cols.filter((col: any) => col.fieldName && col.dataType && numericTypes.has(col.dataType.toLowerCase()))
-        .map((col: any) => col.fieldName)
+      cols.filter((col: any) => col.columnName && col.dataType && numericTypes.has(col.dataType.toLowerCase()))
+        .map((col: any) => col.columnName)
     );
     // 已配置 aggFunc 的字段也标记为数字（兼容元数据缺失 dataType 的情况）
     for (const item of items.value) {
-      if (item.aggFunc) numericFields.value.add(item.field);
+      if (item.aggFunc) numericFields.value.add(item.columnName);
     }
   } catch {
     availableFields.value = [];
@@ -421,7 +420,7 @@ function buildAutoLookupMappingPairs(item: OverrideItem, lookupFields: LookupFie
     pairs.push({ local, remote });
   };
 
-  addPair(item.field);
+  addPair(item.columnName);
   availableFields.value.forEach(field => addPair(field.value));
 
   return pairs;
@@ -483,12 +482,11 @@ async function onLookupCodeChange(item: OverrideItem, value: string) {
 
 function addField() {
   if (!addFieldValue.value) return;
-  const field = addFieldValue.value;
-  const meta = availableFields.value.find(f => f.value === field);
+  const columnName = addFieldValue.value;
+  const meta = availableFields.value.find(f => f.value === columnName);
   items.value.push({
     columnId: meta?.columnId ?? null,
-    field,
-    fieldName: field,
+    columnName,
     visible: true,
     editable: undefined,
     searchable: undefined,
@@ -505,7 +503,7 @@ function addField() {
 function addCustomField() {
   items.value.push({
     columnId: null,
-    field: '',
+    columnName: '',
     visible: true,
     editable: undefined,
     width: null,
@@ -699,11 +697,11 @@ const expandedRows = reactive(new Set<number>());
 
 async function handleSave() {
   const result = items.value
-    .filter(i => i.field)
+    .filter(i => i.columnName)
     .map(i => {
       const matched = findAvailableFieldForItem(i);
-      const resolvedField = matched?.value || i.field;
-      const obj: any = { field: resolvedField };
+      const resolvedColumnName = matched?.value || i.columnName;
+      const obj: any = { columnName: resolvedColumnName };
       if (typeof (matched?.columnId ?? i.columnId) === 'number') {
         obj.columnId = matched?.columnId ?? i.columnId;
       }
@@ -830,7 +828,7 @@ async function handleSave() {
           <span class="seq-num">{{ index + 1 }}</span>
         </div>
         <div class="col-field">
-          <NInput v-if="!isBoundToAvailableField(item)" v-model:value="item.field" size="small" placeholder="fieldName" />
+          <NInput v-if="!isBoundToAvailableField(item)" v-model:value="item.columnName" size="small" placeholder="columnName" />
           <NTag v-else size="small" :bordered="false">{{ getFieldDisplayText(item) }}</NTag>
         </div>
         <div class="col-check">
@@ -847,7 +845,7 @@ async function handleSave() {
         </div>
         <div class="col-check">
           <NSwitch
-            v-if="numericFields.has(item.field)"
+            v-if="numericFields.has(item.columnName)"
             :value="item.aggFunc === 'sum'"
             @update:value="(v: boolean) => item.aggFunc = v ? 'sum' : undefined"
             size="small"
@@ -856,7 +854,7 @@ async function handleSave() {
         </div>
         <div class="col-precision">
           <NInputNumber
-            v-if="numericFields.has(item.field)"
+            v-if="numericFields.has(item.columnName)"
             v-model:value="item.precision"
             size="small"
             :min="0"
@@ -870,7 +868,7 @@ async function handleSave() {
         </div>
         <div class="col-roundmode">
           <NSelect
-            v-if="numericFields.has(item.field) && item.precision != null"
+            v-if="numericFields.has(item.columnName) && item.precision != null"
             v-model:value="item.roundMode"
             :options="[
               { label: '四舍五入', value: 'round' },

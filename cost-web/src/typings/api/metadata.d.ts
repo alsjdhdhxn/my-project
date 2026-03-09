@@ -17,8 +17,9 @@ declare namespace Api {
     /** 列元数据 */
     interface ColumnMetadata {
       id: number;
-      fieldName: string;
       columnName: string;
+      queryColumn?: string;
+      targetColumn?: string;
       headerText: string;
       dataType: 'text' | 'number' | 'date' | 'datetime' | 'select' | 'lookup';
       displayOrder: number;
@@ -30,6 +31,7 @@ declare namespace Api {
       width?: number;
       dictType?: string;
       lookupCode?: string;
+      defaultValue?: any;
       rulesConfig?: string;
       /** 是否虚拟列：不存不取，只有公式计算 */
       isVirtual?: boolean;

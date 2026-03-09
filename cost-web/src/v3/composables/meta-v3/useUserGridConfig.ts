@@ -4,7 +4,7 @@ type NotifyFn = (message: string) => void;
 
 type ColumnPreference = {
   columnId?: number;
-  field: string;
+  columnName: string;
   width?: number;
   order?: number;
   hidden?: boolean;
@@ -27,7 +27,7 @@ function parseColumnId(value: unknown): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
-function getRuntimeField(source: any): string {
+function getRuntimeColumnName(source: any): string {
   return String(source?.field ?? source?.colId ?? '').trim();
 }
 
@@ -35,12 +35,12 @@ function getMetaColumnId(source: any): number | undefined {
   return parseColumnId(source?.columnId ?? source?.metaColumnId ?? source?.context?.metaColumnId);
 }
 
-function getPreferenceKey(source: { columnId?: number; field?: string }): string | null {
+function getPreferenceKey(source: { columnId?: number; columnName?: string }): string | null {
   if (typeof source.columnId === 'number') {
     return `id:${source.columnId}`;
   }
-  const field = String(source.field ?? '').trim();
-  return field ? `field:${field}` : null;
+  const columnName = String(source.columnName ?? '').trim();
+  return columnName ? `column:${columnName}` : null;
 }
 
 function buildPreferenceLookup(columns: ColumnPreference[]) {
@@ -49,10 +49,6 @@ function buildPreferenceLookup(columns: ColumnPreference[]) {
     const identityKey = getPreferenceKey(column);
     if (identityKey) {
       result.set(identityKey, column);
-    }
-    const fieldKey = column.field ? `field:${column.field}` : null;
-    if (fieldKey && !result.has(fieldKey)) {
-      result.set(fieldKey, column);
     }
   });
   return result;
@@ -63,8 +59,8 @@ function getColumnDefIdentity(def: any): string | null {
   if (typeof columnId === 'number') {
     return `id:${columnId}`;
   }
-  const field = getRuntimeField(def);
-  return field ? `field:${field}` : null;
+  const columnName = getRuntimeColumnName(def);
+  return columnName ? `column:${columnName}` : null;
 }
 
 function buildColumnDefLookup(columnDefs: any[]) {
@@ -74,13 +70,6 @@ function buildColumnDefLookup(columnDefs: any[]) {
     if (identityKey) {
       result.set(identityKey, def);
     }
-    const field = getRuntimeField(def);
-    if (field) {
-      const fieldKey = `field:${field}`;
-      if (!result.has(fieldKey)) {
-        result.set(fieldKey, def);
-      }
-    }
   });
   return result;
 }
@@ -89,16 +78,16 @@ function normalizeColumns(source: any[], columnDefs: any[] = []): ColumnPreferen
   const result: ColumnPreference[] = [];
   const columnDefByField = new Map(
     columnDefs
-      .map(def => [getRuntimeField(def), def] as const)
-      .filter(([field]) => Boolean(field))
+      .map(def => [getRuntimeColumnName(def), def] as const)
+      .filter(([columnName]) => Boolean(columnName))
   );
   source.forEach((col: any, index: number) => {
-    const field = getRuntimeField(col);
-    if (!field) return;
-    const matchedDef = columnDefByField.get(field);
+    const columnName = getRuntimeColumnName(col);
+    if (!columnName) return;
+    const matchedDef = columnDefByField.get(columnName);
     result.push({
       columnId: getMetaColumnId(col) ?? getMetaColumnId(matchedDef),
-      field,
+      columnName,
       width: typeof col.width === 'number' ? col.width : undefined,
       order: typeof col.order === 'number' ? col.order : index,
       hidden: typeof col.hidden === 'boolean' ? col.hidden : typeof col.hide === 'boolean' ? col.hide : undefined,
@@ -177,9 +166,9 @@ export function useUserGridConfig(params: {
     const lockedHiddenColumns = new Set<string>();
     let needPatchDefs = false;
     const patchedDefs = currentDefs.map(def => {
-      const field = getRuntimeField(def);
+      const field = getRuntimeColumnName(def);
       if (!field) return def;
-      const pref = prefMap.get(getColumnDefIdentity(def) || '') ?? prefMap.get(`field:${field}`);
+      const pref = prefMap.get(getColumnDefIdentity(def) || '') ?? prefMap.get(`column:${field}`);
       const hiddenByUser = pref?.hidden === true;
       const hiddenByBase = def?.hide === true;
       const backendLocked = def?.lockVisible === true || def?.suppressColumnsToolPanel === true;
@@ -207,8 +196,8 @@ export function useUserGridConfig(params: {
     applyFn.call(api?.applyColumnState ? api : colApi, {
       state: payload.columns
         .map((col, index) => {
-          const def = currentDefsByIdentity.get(getPreferenceKey(col) || '') ?? currentDefsByIdentity.get(`field:${col.field}`);
-          const runtimeField = getRuntimeField(def);
+          const def = currentDefsByIdentity.get(getPreferenceKey(col) || '') ?? currentDefsByIdentity.get(`column:${col.columnName}`);
+          const runtimeField = getRuntimeColumnName(def);
           if (!runtimeField) return null;
           return {
             colId: runtimeField,

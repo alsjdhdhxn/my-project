@@ -105,7 +105,7 @@ public class DynamicDataService {
         }
 
         List<Map<String, Object>> list = dynamicMapper.selectList(dataSql);
-        list = list.stream().map(row -> convertToCamelCase(row, columnMap)).collect(Collectors.toList());
+        list = list.stream().map(this::normalizeResultRow).collect(Collectors.toList());
 
         // 合并历史对比数据
         mergeHistoryData(list, metadata, columnMap);
@@ -165,7 +165,7 @@ public class DynamicDataService {
                 refJoin.selectClause(), metadata.queryView(), refJoin.joinClause(), whereClause, orderClause);
         }
         List<Map<String, Object>> list = dynamicMapper.selectList(sql);
-        return list.stream().map(row -> convertToCamelCase(row, columnMap)).collect(Collectors.toList());
+        return list.stream().map(this::normalizeResultRow).collect(Collectors.toList());
     }
 
     private String buildDataRuleClause(PagePermission permission, Map<String, ColumnMetadataDTO> columnMap) {
@@ -187,7 +187,7 @@ public class DynamicDataService {
         String sql = String.format("SELECT * FROM %s WHERE DELETED = 0 %s", metadata.queryView(), orderClause);
 
         List<Map<String, Object>> list = dynamicMapper.selectList(sql);
-        return list.stream().map(row -> convertToCamelCase(row, columnMap)).collect(Collectors.toList());
+        return list.stream().map(this::normalizeResultRow).collect(Collectors.toList());
     }
 
     /**
@@ -222,7 +222,7 @@ public class DynamicDataService {
             String sql = String.format("SELECT * FROM %s%s", dataSource, whereClause);
             List<Map<String, Object>> list = dynamicMapper.selectList(sql);
             List<Map<String, Object>> result = list.stream()
-                    .map(this::convertToCamelCaseSimple)
+                    .map(this::normalizeResultRow)
                     .collect(Collectors.toList());
             return new PageResult<>(result, total == null ? result.size() : total, 1, result.size());
         }
@@ -234,7 +234,7 @@ public class DynamicDataService {
 
         List<Map<String, Object>> list = dynamicMapper.selectList(dataSql);
         List<Map<String, Object>> result = list.stream()
-                .map(this::convertToCamelCaseSimple)
+                .map(this::normalizeResultRow)
                 .collect(Collectors.toList());
 
         return new PageResult<>(result, total == null ? 0 : total, currentPage, pSize);
@@ -251,7 +251,7 @@ public class DynamicDataService {
         if (list.isEmpty()) {
             throw new BusinessException(400, "数据不存在");
         }
-        return convertToCamelCase(list.get(0), columnMap);
+        return normalizeResultRow(list.get(0));
     }
 
     public Long insert(String tableCode, Map<String, Object> data) {
@@ -259,16 +259,16 @@ public class DynamicDataService {
         Map<String, ColumnMetadataDTO> columnMap = buildColumnMap(metadata);
 
         Long id = dynamicMapper.getNextSequenceValue(metadata.sequenceName());
-        data.put("id", id);
+        data.put(resolveRuntimeColumnName(metadata, metadata.pkColumn()), id);
 
         String now = LocalDateTime.now().format(DT_FORMATTER);
-        data.put("createTime", now);
-        data.put("updateTime", now);
-        data.put("deleted", 0);
+        data.put("CREATE_TIME", now);
+        data.put("UPDATE_TIME", now);
+        data.put("DELETED", 0);
         String currentUser = SecurityUtils.getCurrentUsername();
         String operator = StrUtil.isNotBlank(currentUser) ? currentUser : "system";
-        data.put("createBy", operator);
-        data.put("updateBy", operator);
+        data.put("CREATE_BY", operator);
+        data.put("UPDATE_BY", operator);
 
         StringBuilder columns = new StringBuilder();
         StringBuilder values = new StringBuilder();
@@ -333,7 +333,7 @@ public class DynamicDataService {
                 if (StrUtil.isBlank(fkColumn)) {
                     throw new BusinessException(400, "从表 " + detail.getTableCode() + " 未配置外键列 PARENT_FK_COLUMN");
                 }
-                String fkFieldName = underscoreToCamel(fkColumn);
+                String fkFieldName = resolveRuntimeColumnName(detailMeta, fkColumn);
 
                 for (Map<String, Object> row : detail.getRows()) {
                     if (row == null)
@@ -364,13 +364,13 @@ public class DynamicDataService {
         TableMetadataDTO metadata = metadataService.getTableMetadata(tableCode);
         Map<String, ColumnMetadataDTO> columnMap = buildColumnMap(metadata);
 
-        data.put("updateTime", LocalDateTime.now().format(DT_FORMATTER));
+        data.put("UPDATE_TIME", LocalDateTime.now().format(DT_FORMATTER));
         String currentUser = SecurityUtils.getCurrentUsername();
-        data.put("updateBy", StrUtil.isNotBlank(currentUser) ? currentUser : "system");
-        data.remove("id");
-        data.remove("createTime");
-        data.remove("createBy");
-        data.remove("deleted");
+        data.put("UPDATE_BY", StrUtil.isNotBlank(currentUser) ? currentUser : "system");
+        data.remove(resolveRuntimeColumnName(metadata, metadata.pkColumn()));
+        data.remove("CREATE_TIME");
+        data.remove("CREATE_BY");
+        data.remove("DELETED");
 
         StringBuilder setClause = new StringBuilder();
         for (Map.Entry<String, Object> entry : data.entrySet()) {
@@ -443,7 +443,11 @@ public class DynamicDataService {
 
     private Map<String, ColumnMetadataDTO> buildColumnMap(TableMetadataDTO metadata) {
         return metadata.columns().stream()
-                .collect(Collectors.toMap(ColumnMetadataDTO::fieldName, c -> c));
+                .collect(Collectors.toMap(
+                        col -> normalizeRuntimeColumnName(col.columnName()),
+                        c -> c,
+                        (left, right) -> left,
+                        LinkedHashMap::new));
     }
 
     private String buildWhereClause(List<QueryParam.QueryCondition> conditions,
@@ -458,17 +462,17 @@ public class DynamicDataService {
                 continue;
             }
 
-            String fieldName = cond.getField();
-            ColumnMetadataDTO col = columnMap.get(fieldName);
+            String runtimeColumnName = normalizeRuntimeColumnName(cond.getField());
+            ColumnMetadataDTO col = columnMap.get(runtimeColumnName);
 
             // Metadata columns + audit fields
             String columnName;
             if (col != null) {
-                columnName = col.columnName();
-            } else if (isAuditField(fieldName)) {
-                columnName = camelToUnderscore(fieldName);
+                columnName = resolveQueryColumnName(col);
+            } else if (isAuditField(runtimeColumnName)) {
+                columnName = runtimeColumnName;
             } else {
-                log.warn("invalid query field: {}", fieldName);
+                log.warn("invalid query field: {}", runtimeColumnName);
                 continue;
             }
 
@@ -482,22 +486,22 @@ public class DynamicDataService {
             String clause = null;
             switch (op) {
                 case "eq" ->
-                    clause = columnName + (value == null ? " IS NULL" : " = " + formatValue(value, col, fieldName));
+                    clause = columnName + (value == null ? " IS NULL" : " = " + formatValue(value, col, runtimeColumnName));
                 case "ne" -> clause = columnName
-                        + (value == null ? " IS NOT NULL" : " <> " + formatValue(value, col, fieldName));
-                case "gt" -> clause = columnName + " > " + formatValue(value, col, fieldName);
-                case "ge" -> clause = columnName + " >= " + formatValue(value, col, fieldName);
-                case "lt" -> clause = columnName + " < " + formatValue(value, col, fieldName);
-                case "le" -> clause = columnName + " <= " + formatValue(value, col, fieldName);
+                        + (value == null ? " IS NOT NULL" : " <> " + formatValue(value, col, runtimeColumnName));
+                case "gt" -> clause = columnName + " > " + formatValue(value, col, runtimeColumnName);
+                case "ge" -> clause = columnName + " >= " + formatValue(value, col, runtimeColumnName);
+                case "lt" -> clause = columnName + " < " + formatValue(value, col, runtimeColumnName);
+                case "le" -> clause = columnName + " <= " + formatValue(value, col, runtimeColumnName);
                 case "like" -> clause = columnName + " LIKE '%" + escapeSql(value.toString()) + "%'";
                 case "between" -> {
                     if (cond.getValue2() != null) {
-                        clause = columnName + " BETWEEN " + formatValue(value, col, fieldName) + " AND "
-                                + formatValue(cond.getValue2(), col, fieldName);
+                        clause = columnName + " BETWEEN " + formatValue(value, col, runtimeColumnName) + " AND "
+                                + formatValue(cond.getValue2(), col, runtimeColumnName);
                     }
                 }
                 case "in" -> {
-                    String inClause = buildInClause(value, col, fieldName);
+                    String inClause = buildInClause(value, col, runtimeColumnName);
                     if (inClause != null) {
                         clause = columnName + " IN (" + inClause + ")";
                     }
@@ -512,7 +516,7 @@ public class DynamicDataService {
         return sb.toString();
     }
 
-    private String buildInClause(Object value, ColumnMetadataDTO col, String fieldName) {
+    private String buildInClause(Object value, ColumnMetadataDTO col, String runtimeColumnName) {
         if (value == null) {
             return null;
         }
@@ -532,7 +536,7 @@ public class DynamicDataService {
         }
         java.util.List<String> parts = new java.util.ArrayList<>(values.size());
         for (Object item : values) {
-            parts.add(formatValue(item, col, fieldName));
+            parts.add(formatValue(item, col, runtimeColumnName));
         }
         return String.join(", ", parts);
     }
@@ -558,28 +562,28 @@ public class DynamicDataService {
             // 没有排序字段时，默认按主键排序以确保分页稳定性
             return " ORDER BY " + pk + " ASC";
         }
-        ColumnMetadataDTO col = columnMap.get(sortField);
+        ColumnMetadataDTO col = columnMap.get(normalizeRuntimeColumnName(sortField));
         if (col == null || !Boolean.TRUE.equals(col.sortable())) {
             // 排序字段无效时，默认按主键排序
             return " ORDER BY " + pk + " ASC";
         }
         String order = "desc".equalsIgnoreCase(sortOrder) ? "DESC" : "ASC";
         // 添加主键作为二级排序，确保分页结果稳定（避免排序字段值重复时返回不确定的结果）
-        return " ORDER BY " + col.columnName() + " " + order + ", " + pk + " " + order;
+        return " ORDER BY " + resolveQueryColumnName(col) + " " + order + ", " + pk + " " + order;
     }
 
-    private String formatValue(Object value, ColumnMetadataDTO col, String fieldName) {
+    private String formatValue(Object value, ColumnMetadataDTO col, String runtimeColumnName) {
         if (value == null) {
             return "NULL";
         }
         String strValue = escapeSql(value.toString());
 
         // 审计字段中的时间字段
-        if ("createTime".equals(fieldName) || "updateTime".equals(fieldName)) {
+        if ("CREATE_TIME".equals(runtimeColumnName) || "UPDATE_TIME".equals(runtimeColumnName)) {
             return String.format("TO_TIMESTAMP('%s', 'YYYY-MM-DD HH24:MI:SS')", strValue);
         }
         // 审计字段中的数字字段
-        if ("id".equals(fieldName) || "deleted".equals(fieldName)) {
+        if ("ID".equals(runtimeColumnName) || "DELETED".equals(runtimeColumnName)) {
             return validateAndFormatNumber(strValue);
         }
 
@@ -623,26 +627,11 @@ public class DynamicDataService {
     /**
      * 简化版：将下划线列名转换为 camelCase（不依赖元数据）
      */
-    private Map<String, Object> convertToCamelCaseSimple(Map<String, Object> row) {
+    private Map<String, Object> normalizeResultRow(Map<String, Object> row) {
         Map<String, Object> result = new LinkedHashMap<>();
         for (Map.Entry<String, Object> entry : row.entrySet()) {
-            String fieldName = underscoreToCamel(entry.getKey());
             Object value = convertOracleType(entry.getValue());
-            result.put(fieldName, value);
-        }
-        return result;
-    }
-
-    private Map<String, Object> convertToCamelCase(Map<String, Object> row, Map<String, ColumnMetadataDTO> columnMap) {
-        Map<String, Object> result = new LinkedHashMap<>();
-        Map<String, String> reverseMap = columnMap.values().stream()
-                .collect(Collectors.toMap(c -> c.columnName().toUpperCase(), ColumnMetadataDTO::fieldName));
-
-        for (Map.Entry<String, Object> entry : row.entrySet()) {
-            String key = entry.getKey().toUpperCase();
-            String fieldName = reverseMap.getOrDefault(key, underscoreToCamel(entry.getKey()));
-            Object value = convertOracleType(entry.getValue());
-            result.put(fieldName, value);
+            result.put(normalizeRuntimeColumnName(entry.getKey()), value);
         }
         return result;
     }
@@ -688,48 +677,48 @@ public class DynamicDataService {
         return value;
     }
 
-    private String underscoreToCamel(String name) {
-        StringBuilder sb = new StringBuilder();
-        boolean upper = false;
-        for (char c : name.toLowerCase().toCharArray()) {
-            if (c == '_') {
-                upper = true;
-            } else {
-                sb.append(upper ? Character.toUpperCase(c) : c);
-                upper = false;
-            }
-        }
-        return sb.toString();
+    private String normalizeRuntimeColumnName(String name) {
+        return name == null ? "" : name.trim().toUpperCase(Locale.ROOT);
     }
 
-    private String camelToUnderscore(String name) {
-        StringBuilder sb = new StringBuilder();
-        for (char c : name.toCharArray()) {
-            if (Character.isUpperCase(c)) {
-                sb.append('_').append(c);
-            } else {
-                sb.append(Character.toUpperCase(c));
-            }
-        }
-        return sb.toString();
-    }
-
-    private boolean isAuditField(String fieldName) {
-        return Set.of("id", "deleted", "createTime", "updateTime", "createBy", "updateBy").contains(fieldName);
+    private boolean isAuditField(String columnName) {
+        return Set.of("ID", "DELETED", "CREATE_TIME", "UPDATE_TIME", "CREATE_BY", "UPDATE_BY")
+                .contains(normalizeRuntimeColumnName(columnName));
     }
 
     /**
      * 获取目标列名（用于 INSERT/UPDATE）
      * 优先级：targetColumn > columnName > 驼峰转下划线
      */
-    private String getTargetColumnName(ColumnMetadataDTO col, String fieldName) {
+    private String getTargetColumnName(ColumnMetadataDTO col, String runtimeColumnName) {
         if (col == null) {
-            return camelToUnderscore(fieldName);
+            return normalizeRuntimeColumnName(runtimeColumnName);
         }
         if (StrUtil.isNotBlank(col.targetColumn())) {
             return col.targetColumn();
         }
         return col.columnName();
+    }
+
+    private String resolveQueryColumnName(ColumnMetadataDTO col) {
+        if (col == null) {
+            return null;
+        }
+        return StrUtil.isNotBlank(col.queryColumn()) ? col.queryColumn() : col.columnName();
+    }
+
+    private String resolveRuntimeColumnName(TableMetadataDTO metadata, String targetColumnName) {
+        if (metadata == null || StrUtil.isBlank(targetColumnName)) {
+            return normalizeRuntimeColumnName(targetColumnName);
+        }
+        String normalizedTarget = normalizeRuntimeColumnName(targetColumnName);
+        for (ColumnMetadataDTO col : metadata.columns()) {
+            String candidateTarget = StrUtil.isNotBlank(col.targetColumn()) ? col.targetColumn() : col.columnName();
+            if (normalizedTarget.equals(normalizeRuntimeColumnName(candidateTarget))) {
+                return col.columnName();
+            }
+        }
+        return normalizedTarget;
     }
 
     private Long extractTempId(Map<String, Object> data) {
@@ -792,7 +781,8 @@ public class DynamicDataService {
             if (!"deleted".equals(master.getStatus())) {
                 Map<String, Object> validateData = new HashMap<>(master.getData());
                 if (master.getId() != null) {
-                    validateData.put("id", master.getId());
+                    TableMetadataDTO masterMeta = metadataService.getTableMetadata(masterTableCode);
+                    validateData.put(resolveRuntimeColumnName(masterMeta, masterMeta.pkColumn()), master.getId());
                 }
                 masterValidationReport = validationService.validate(masterTableCode, "save", validateData);
                 if (!masterValidationReport.isPassed()) {
@@ -846,20 +836,7 @@ public class DynamicDataService {
 
                     TableMetadataDTO detailMeta = metadataService.getTableMetadata(detailTableCode);
                     String fkColumn = detailMeta.parentFkColumn();
-                    // 根据 TARGET_COLUMN 查找对应的 FIELD_NAME
-                    String fkFieldName = null;
-                    if (StrUtil.isNotBlank(fkColumn)) {
-                        for (ColumnMetadataDTO col : detailMeta.columns()) {
-                            if (fkColumn.equalsIgnoreCase(col.targetColumn())) {
-                                fkFieldName = col.fieldName();
-                                break;
-                            }
-                        }
-                        // 如果没找到，回退到驼峰转换
-                        if (fkFieldName == null) {
-                            fkFieldName = underscoreToCamel(fkColumn);
-                        }
-                    }
+                    String fkFieldName = resolveRuntimeColumnName(detailMeta, fkColumn);
 
                     for (var item : items) {
                         if (item == null || "unchanged".equals(item.getStatus()))
@@ -870,7 +847,7 @@ public class DynamicDataService {
                         if (!"deleted".equals(item.getStatus())) {
                             Map<String, Object> validateData = new HashMap<>(item.getData());
                             if (item.getId() != null) {
-                                validateData.put("id", item.getId());
+                                validateData.put(resolveRuntimeColumnName(detailMeta, detailMeta.pkColumn()), item.getId());
                             }
                             detailValidationReport = validationService.validate(detailTableCode, "save", validateData);
                             if (!detailValidationReport.isPassed()) {
@@ -921,8 +898,13 @@ public class DynamicDataService {
                     QueryParam queryParam = new QueryParam();
                     queryParam.setLookup(true); // 跳过权限检查
                     // 使用 id 字段查询（元数据统一映射主键为 id）
+                    TableMetadataDTO masterMeta = metadataService.getTableMetadata(masterTableCode);
                     queryParam.setConditions(List.of(
-                        new QueryParam.QueryCondition("id", "eq", masterId, null)
+                        new QueryParam.QueryCondition(
+                                resolveRuntimeColumnName(masterMeta, masterMeta.pkColumn()),
+                                "eq",
+                                masterId,
+                                null)
                     ));
                     PageResult<Map<String, Object>> queryResult = query(masterTableCode, queryParam);
                     if (queryResult.getList() != null && !queryResult.getList().isEmpty()) {
@@ -968,7 +950,6 @@ public class DynamicDataService {
 
                 String mode = compare.getStr("mode", "viewField");
                 CompareConfig compareConfig = new CompareConfig(
-                        col.fieldName(),
                         col.columnName(),
                         compare.getStr("compareField"),
                         compare.getStr("compareDataSource"),
@@ -982,7 +963,7 @@ public class DynamicDataService {
                     viewFieldConfigs.add(compareConfig);
                 }
             } catch (Exception e) {
-                log.warn("解析 compare 配置失败: {}", col.fieldName(), e);
+                log.warn("解析 compare 配置失败: {}", col.columnName(), e);
             }
         }
 
@@ -1023,18 +1004,13 @@ public class DynamicDataService {
             Map<String, ColumnMetadataDTO> columnMap) {
         for (Map<String, Object> row : list) {
             for (CompareConfig config : configs) {
-                Object currentValue = row.get(config.fieldName);
+                Object currentValue = row.get(config.columnName);
                 
-                // 获取对比字段的值（可能是驼峰或下划线格式）
-                String compareFieldName = config.compareField;
+                String compareFieldName = normalizeRuntimeColumnName(config.compareField);
                 Object compareValue = row.get(compareFieldName);
-                if (compareValue == null) {
-                    // 尝试下划线转驼峰
-                    compareValue = row.get(underscoreToCamel(compareFieldName));
-                }
 
                 // 计算差值
-                calculateAndSetDiff(row, config.fieldName, currentValue, compareValue);
+                calculateAndSetDiff(row, config.columnName, currentValue, compareValue);
             }
         }
     }
@@ -1076,7 +1052,7 @@ public class DynamicDataService {
                 boolean valid = true;
                 
                 for (JoinCondition jc : joinConditions) {
-                    Object value = row.get(jc.currentField);
+                    Object value = row.get(normalizeRuntimeColumnName(jc.currentField));
                     if (value == null) {
                         valid = false;
                         break;
@@ -1150,7 +1126,7 @@ public class DynamicDataService {
                 StringBuilder keyBuilder = new StringBuilder();
                 boolean valid = true;
                 for (JoinCondition jc : joinConditions) {
-                    Object value = row.get(jc.currentField);
+                    Object value = row.get(normalizeRuntimeColumnName(jc.currentField));
                     if (value == null) {
                         valid = false;
                         break;
@@ -1163,7 +1139,7 @@ public class DynamicDataService {
                 Map<String, Object> compareRow = compareDataMap.get(keyBuilder.toString());
 
                 for (CompareConfig config : dataSourceConfigs) {
-                    Object currentValue = row.get(config.fieldName);
+                    Object currentValue = row.get(config.columnName);
                     Object compareValue = null;
                     if (compareRow != null) {
                         compareValue = compareRow.get(config.compareField.toUpperCase());
@@ -1171,7 +1147,7 @@ public class DynamicDataService {
                             compareValue = compareRow.get(config.compareField);
                         }
                     }
-                    calculateAndSetDiff(row, config.fieldName, currentValue, compareValue);
+                    calculateAndSetDiff(row, config.columnName, currentValue, compareValue);
                 }
             }
         }
@@ -1180,9 +1156,9 @@ public class DynamicDataService {
     /**
      * 计算并设置差值字段
      */
-    private void calculateAndSetDiff(Map<String, Object> row, String fieldName, Object currentValue, Object compareValue) {
+    private void calculateAndSetDiff(Map<String, Object> row, String columnName, Object currentValue, Object compareValue) {
         // 添加对比值字段
-        row.put(fieldName + "Compare", compareValue);
+        row.put(columnName + "Compare", compareValue);
 
         // 计算差值（仅数值类型）
         if (currentValue instanceof Number && compareValue instanceof Number) {
@@ -1190,11 +1166,11 @@ public class DynamicDataService {
             double compare = ((Number) compareValue).doubleValue();
             double diff = current - compare;
 
-            row.put(fieldName + "Diff", diff);
+            row.put(columnName + "Diff", diff);
 
             if (compare != 0) {
                 double percent = (diff / compare) * 100;
-                row.put(fieldName + "DiffPercent", Math.round(percent * 100) / 100.0);
+                row.put(columnName + "DiffPercent", Math.round(percent * 100) / 100.0);
             }
         }
     }
@@ -1210,7 +1186,6 @@ public class DynamicDataService {
 
     /** 对比配置 */
     private record CompareConfig(
-            String fieldName,
             String columnName,
             String compareField,
             String compareDataSource,
@@ -1281,7 +1256,10 @@ public class DynamicDataService {
                 cn.hutool.json.JSONObject params = rule.getJSONObject("cellEditorParams");
                 if (params == null || !"ref".equals(params.getStr("mode"))) continue;
 
-                String field = rule.getStr("field");
+                String field = rule.getStr("columnName");
+                if (StrUtil.isBlank(field)) {
+                    field = rule.getStr("field");
+                }
                 String refTable = params.getStr("refTable");
                 String refField = params.getStr("refField");
                 String labelField = params.getStr("labelField");
@@ -1301,8 +1279,8 @@ public class DynamicDataService {
                 validateIdentifier(labelField, "labelField");
                 validateIdentifier(valueField, "valueField");
 
-                String columnName = camelToUnderscore(field);
-                String localColumnName = camelToUnderscore(localField);
+                String columnName = normalizeRuntimeColumnName(field);
+                String localColumnName = normalizeRuntimeColumnName(localField);
                 configs.add(new RefJoinConfig(field, columnName, localField, localColumnName, refTable, refField, labelField, valueField, filter));
             }
 

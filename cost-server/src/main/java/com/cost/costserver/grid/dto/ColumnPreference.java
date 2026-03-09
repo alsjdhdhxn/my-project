@@ -2,7 +2,7 @@ package com.cost.costserver.grid.dto;
 
 public record ColumnPreference(
     Long columnId,
-    String field,
+    String columnName,
     Integer width,
     Integer order,
     Boolean hidden,

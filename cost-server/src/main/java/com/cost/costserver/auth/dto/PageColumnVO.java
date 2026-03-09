@@ -8,7 +8,7 @@ import lombok.Data;
 @Data
 public class PageColumnVO {
     private Long id;
-    private String fieldName;
+    private String columnName;
     private String headerText;
     private Boolean visible;
     private Boolean editable;

@@ -342,16 +342,16 @@ public class CustomExportService {
                 continue;
             }
 
-            String fieldName = cond.getField();
-            ColumnMetadataDTO col = columnMap.get(fieldName);
+            String columnKey = cond.getField();
+            ColumnMetadataDTO col = columnMap.get(columnKey);
 
             String columnName;
             if (col != null) {
                 columnName = col.columnName();
-            } else if (isAuditField(fieldName)) {
-                columnName = camelToUnderscore(fieldName);
+            } else if (isAuditField(columnKey)) {
+                columnName = columnKey;
             } else {
-                log.warn("invalid query field: {}", fieldName);
+                log.warn("invalid query field: {}", columnKey);
                 continue;
             }
 
@@ -366,22 +366,22 @@ public class CustomExportService {
             String clause = null;
             switch (op) {
                 case "eq" ->
-                    clause = qualified + (value == null ? " IS NULL" : " = " + formatValue(value, col, fieldName));
+                    clause = qualified + (value == null ? " IS NULL" : " = " + formatValue(value, col, columnKey));
                 case "ne" ->
-                    clause = qualified + (value == null ? " IS NOT NULL" : " <> " + formatValue(value, col, fieldName));
-                case "gt" -> clause = qualified + " > " + formatValue(value, col, fieldName);
-                case "ge" -> clause = qualified + " >= " + formatValue(value, col, fieldName);
-                case "lt" -> clause = qualified + " < " + formatValue(value, col, fieldName);
-                case "le" -> clause = qualified + " <= " + formatValue(value, col, fieldName);
+                    clause = qualified + (value == null ? " IS NOT NULL" : " <> " + formatValue(value, col, columnKey));
+                case "gt" -> clause = qualified + " > " + formatValue(value, col, columnKey);
+                case "ge" -> clause = qualified + " >= " + formatValue(value, col, columnKey);
+                case "lt" -> clause = qualified + " < " + formatValue(value, col, columnKey);
+                case "le" -> clause = qualified + " <= " + formatValue(value, col, columnKey);
                 case "like" -> clause = qualified + " LIKE '%" + escapeSql(value.toString()) + "%'";
                 case "between" -> {
                     if (cond.getValue2() != null) {
-                        clause = qualified + " BETWEEN " + formatValue(value, col, fieldName) + " AND "
-                                + formatValue(cond.getValue2(), col, fieldName);
+                        clause = qualified + " BETWEEN " + formatValue(value, col, columnKey) + " AND "
+                                + formatValue(cond.getValue2(), col, columnKey);
                     }
                 }
                 case "in" -> {
-                    String inClause = buildInClause(value, col, fieldName);
+                    String inClause = buildInClause(value, col, columnKey);
                     if (inClause != null) {
                         clause = qualified + " IN (" + inClause + ")";
                     }
@@ -492,8 +492,8 @@ public class CustomExportService {
         }
         Map<String, ColumnMetadataDTO> map = new HashMap<>();
         for (ColumnMetadataDTO column : metadata.columns()) {
-            if (column != null && StrUtil.isNotBlank(column.fieldName())) {
-                map.put(column.fieldName(), column);
+            if (column != null && StrUtil.isNotBlank(column.columnName())) {
+                map.put(column.columnName(), column);
             }
         }
         return map;
@@ -879,9 +879,6 @@ public class CustomExportService {
         if (value == null) {
             value = row.get(field.toUpperCase(Locale.ROOT));
         }
-        if (value == null) {
-            value = row.get(camelToUnderscore(field));
-        }
         return value;
     }
 
@@ -1042,16 +1039,16 @@ public class CustomExportService {
         response.setHeader("Access-Control-Expose-Headers", "Content-Disposition");
     }
 
-    private String formatValue(Object value, ColumnMetadataDTO col, String fieldName) {
+    private String formatValue(Object value, ColumnMetadataDTO col, String columnName) {
         if (value == null) {
             return "NULL";
         }
         String strValue = escapeSql(value.toString());
 
-        if ("createTime".equals(fieldName) || "updateTime".equals(fieldName)) {
+        if ("CREATE_TIME".equalsIgnoreCase(columnName) || "UPDATE_TIME".equalsIgnoreCase(columnName)) {
             return String.format("TO_TIMESTAMP('%s', 'YYYY-MM-DD HH24:MI:SS')", strValue);
         }
-        if ("id".equals(fieldName) || "deleted".equals(fieldName)) {
+        if ("ID".equalsIgnoreCase(columnName) || "DELETED".equalsIgnoreCase(columnName)) {
             return validateAndFormatNumber(strValue);
         }
 
@@ -1064,7 +1061,7 @@ public class CustomExportService {
         return "'" + strValue + "'";
     }
 
-    private String buildInClause(Object value, ColumnMetadataDTO col, String fieldName) {
+    private String buildInClause(Object value, ColumnMetadataDTO col, String columnName) {
         if (value == null) {
             return null;
         }
@@ -1084,7 +1081,7 @@ public class CustomExportService {
         }
         List<String> parts = new ArrayList<>(values.size());
         for (Object item : values) {
-            parts.add(formatValue(item, col, fieldName));
+            parts.add(formatValue(item, col, columnName));
         }
         return String.join(", ", parts);
     }
@@ -1307,26 +1304,12 @@ public class CustomExportService {
         return style;
     }
 
-    private String camelToUnderscore(String name) {
-        if (name == null)
-            return null;
-        StringBuilder sb = new StringBuilder();
-        for (char c : name.toCharArray()) {
-            if (Character.isUpperCase(c)) {
-                sb.append('_').append(c);
-            } else {
-                sb.append(Character.toUpperCase(c));
-            }
-        }
-        return sb.toString();
-    }
-
-    private boolean isAuditField(String fieldName) {
-        if (fieldName == null) {
+    private boolean isAuditField(String columnName) {
+        if (columnName == null) {
             return false;
         }
-        return Set.of("id", "deleted", "createTime", "updateTime", "createBy", "updateBy")
-                .contains(fieldName);
+        return Set.of("ID", "DELETED", "CREATE_TIME", "UPDATE_TIME", "CREATE_BY", "UPDATE_BY")
+                .contains(columnName.toUpperCase(Locale.ROOT));
     }
 
     private String sanitizeSheetName(String sheetName) {

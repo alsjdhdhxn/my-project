@@ -482,25 +482,25 @@ const editingColumn = ref(false);
 const loadingColumns = ref(false);
 const pageTableColumns = ref<PageTableColumnsVO[]>([]);
 const activeColumnTab = ref<string>('');
-type ColumnPermissionState = { fieldName?: string; visible: boolean; editable: boolean };
-// 列权限状态：{ tableKey: { columnId|string(fieldName): { visible, editable, fieldName } } }
+type ColumnPermissionState = { columnName?: string; visible: boolean; editable: boolean };
+// 列权限状态：{ tableKey: { columnId|string(columnName): { visible, editable, columnName } } }
 const columnPermissions = ref<Record<string, Record<string, ColumnPermissionState>>>({});
 
-function getColumnPolicyKey(column: Pick<PageColumnVO, 'id' | 'fieldName'>): string {
-  return typeof column.id === 'number' ? String(column.id) : column.fieldName;
+function getColumnPolicyKey(column: Pick<PageColumnVO, 'id' | 'columnName'>): string {
+  return typeof column.id === 'number' ? String(column.id) : column.columnName;
 }
 
-function getColumnPermissionState(tableKey: string, column: Pick<PageColumnVO, 'id' | 'fieldName'>) {
+function getColumnPermissionState(tableKey: string, column: Pick<PageColumnVO, 'id' | 'columnName'>) {
   return columnPermissions.value[tableKey]?.[getColumnPolicyKey(column)];
 }
 
-function getBaseColumnConfig(tableKey: string, column: Pick<PageColumnVO, 'id' | 'fieldName'>): { visible: boolean; editable: boolean } {
+function getBaseColumnConfig(tableKey: string, column: Pick<PageColumnVO, 'id' | 'columnName'>): { visible: boolean; editable: boolean } {
   const table = pageTableColumns.value.find(t => t.tableKey === tableKey);
   const col = table?.columns.find(c => getColumnPolicyKey(c) === getColumnPolicyKey(column));
   return { visible: col?.visible ?? true, editable: col?.editable ?? true };
 }
 
-function ensureColumnPermissionState(tableKey: string, column: Pick<PageColumnVO, 'id' | 'fieldName'>, base?: { visible: boolean; editable: boolean }) {
+function ensureColumnPermissionState(tableKey: string, column: Pick<PageColumnVO, 'id' | 'columnName'>, base?: { visible: boolean; editable: boolean }) {
   if (!columnPermissions.value[tableKey]) {
     columnPermissions.value[tableKey] = {};
   }
@@ -508,7 +508,7 @@ function ensureColumnPermissionState(tableKey: string, column: Pick<PageColumnVO
   if (!columnPermissions.value[tableKey][key]) {
     const resolvedBase = base ?? getBaseColumnConfig(tableKey, column);
     columnPermissions.value[tableKey][key] = {
-      fieldName: column.fieldName,
+      columnName: column.columnName,
       visible: resolvedBase.visible,
       editable: resolvedBase.editable
     };
@@ -696,7 +696,7 @@ async function openEditColumn(resource: ResourcePermissionVO) {
       activeColumnTab.value = pageTableColumns.value[0].tableKey;
     }
     
-    // 解析已有的列权限配置，并按当前列 id / fieldName 归一
+    // 解析已有的列权限配置，并按当前列 id / columnName 归一
     let rawPolicy: Record<string, any> = {};
     if (resource.columnPolicy) {
       try {
@@ -715,11 +715,11 @@ async function openEditColumn(resource: ResourcePermissionVO) {
         : {};
       for (const col of table.columns) {
         const rawPerm = scopedPolicy?.[getColumnPolicyKey(col)]
-          ?? scopedPolicy?.[col.fieldName]
+          ?? scopedPolicy?.[col.columnName]
           ?? rawPolicy?.[getColumnPolicyKey(col)]
-          ?? rawPolicy?.[col.fieldName];
+          ?? rawPolicy?.[col.columnName];
         columnPermissions.value[table.tableKey][getColumnPolicyKey(col)] = {
-          fieldName: col.fieldName,
+          columnName: col.columnName,
           visible: typeof rawPerm?.visible === 'boolean' ? rawPerm.visible : col.visible,
           editable: typeof rawPerm?.editable === 'boolean' ? rawPerm.editable : col.editable
         };
@@ -824,7 +824,7 @@ function toggleColumnVisible(tableKey: string, column: PageColumnVO, checked: bo
     return;
   }
   const state = ensureColumnPermissionState(tableKey, column, base);
-  state.fieldName = column.fieldName;
+  state.columnName = column.columnName;
   state.visible = checked;
   // 如果设为不可见，则编辑也要设为 false
   if (!checked) {
@@ -841,7 +841,7 @@ function toggleColumnEditable(tableKey: string, column: PageColumnVO, checked: b
     return;
   }
   const state = ensureColumnPermissionState(tableKey, column, base);
-  state.fieldName = column.fieldName;
+  state.columnName = column.columnName;
   state.editable = checked;
 }
 
@@ -884,7 +884,7 @@ function toggleAllVisible(tableKey: string, checked: boolean) {
   for (const col of table.columns) {
     if (!col.visible) continue; // 基础配置不可见的不能操作
     const state = ensureColumnPermissionState(tableKey, col, { visible: col.visible, editable: col.editable });
-    state.fieldName = col.fieldName;
+    state.columnName = col.columnName;
     state.visible = checked;
     // 如果设为不可见，则编辑也要设为 false
     if (!checked) {
@@ -908,7 +908,7 @@ function toggleAllEditable(tableKey: string, checked: boolean) {
     if (!visible) continue; // 不可见的不能编辑
     
     const state = ensureColumnPermissionState(tableKey, col, { visible: col.visible, editable: col.editable });
-    state.fieldName = col.fieldName;
+    state.columnName = col.columnName;
     state.editable = checked;
   }
 }
@@ -929,7 +929,7 @@ async function handleUpdateColumn() {
         if (!perm) continue;
         
         // 只保存与基础配置不同的值
-        const diff: { fieldName?: string; columnId?: number; visible?: boolean; editable?: boolean } = {};
+        const diff: { columnName?: string; columnId?: number; visible?: boolean; editable?: boolean } = {};
         if (perm.visible !== col.visible) {
           diff.visible = perm.visible;
         }
@@ -944,7 +944,7 @@ async function handleUpdateColumn() {
           if (typeof col.id === 'number') {
             diff.columnId = col.id;
           }
-          diff.fieldName = col.fieldName;
+          diff.columnName = col.columnName;
           policyToSave[table.tableKey][getColumnPolicyKey(col)] = diff;
         }
       }
@@ -1288,7 +1288,7 @@ loadRoles();
               <NDataTable
                 :columns="[
                   { title: '列名', key: 'headerText', width: 150 },
-                  { title: '字段名', key: 'fieldName', width: 150 },
+                  { title: '列名', key: 'columnName', width: 150 },
                   { 
                     title: () => h('div', { class: 'column-header-with-checkbox' }, [
                       h(NCheckbox, {

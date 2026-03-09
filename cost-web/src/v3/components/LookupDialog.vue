@@ -110,10 +110,14 @@ const dragStartY = ref(0);
 const startWidth = ref(0);
 const startHeight = ref(0);
 
+function normalizeColumnName(name?: string | null): string {
+  return String(name || '').trim().toUpperCase();
+}
+
 const columnDefs = computed<ColDef[]>(() => {
   if (!config.value?.displayColumns) return [];
   return config.value.displayColumns.map(col => ({
-    field: col.field,
+    field: normalizeColumnName(col.field),
     headerName: col.header,
     ...(col.width ? { width: col.width } : { flex: 1, minWidth: 120 }),
     sortable: true,
@@ -243,7 +247,7 @@ function handleConfirm() {
   if (!selectedRow.value) return;
   const fillData: Record<string, any> = {};
   for (const [targetField, sourceField] of Object.entries(props.mapping)) {
-    fillData[targetField] = selectedRow.value[sourceField];
+    fillData[targetField] = selectedRow.value[normalizeColumnName(sourceField)];
   }
   visible.value = false;
   emit('select', fillData);

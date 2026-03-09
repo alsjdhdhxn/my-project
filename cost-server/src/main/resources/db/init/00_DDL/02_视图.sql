@@ -86,48 +86,93 @@ WHERE a.USEFLAG = '产成品' AND (a.DELETED = 0 OR a.DELETED IS NULL);
 -- 按物料查产品视图
 CREATE OR REPLACE VIEW V_COST_GOODS_BY_APEX AS
 SELECT c.GOODSID AS P_GOODSID, c.GOODSNAME, c.GOODSTYPE, c.PACKTYPE, c.TRANPOSID, c.TRANPOSNAME,
-       c.ZX_CUSTOMERID, c.CUSTOMNAME, c.ZONE, a.APEX_GOODSID AS GOODSID, 0 AS DELETED
+       c.ZX_CUSTOMERID, c.CUSTOMNAME, c.ZONE, a.GOODSID AS GOODSID, 0 AS DELETED
 FROM T_COST_PINGGU_DTL a, T_COST_PINGGU b, T_COST_GOODS_V c
 WHERE a.DOCID = b.DOCID AND b.GOODSID = c.GOODSID;
 
 -- 物料成本核算明细视图(关联主表)
 CREATE OR REPLACE VIEW T_COST_PINGGU_DTL_V AS
-SELECT a.docid, a.apex_goodsid, a.apex_goodsname, a.dtl_useflag, a.spec, a.per_hl, a.exadd_mater,
-       a.batch_qty, a.price, a.cost_batch, a.memo, a.dtlid, a.apex_factoryname, a.apex_factoryid,
-       a.modifydate, a.base_price, a.suqty, a.goodstype, a.goodsname_en,
-       b.APEX_PL, b.P_PERPACK, b.S_PERBACK, b.X_PERBACK
+SELECT a.DOCID, a.GOODSID, a.PER_HL, a.EXADD_MATER, a.BATCH_QTY, a.PRICE, a.COST_BATCH,
+       a.MEMO, a.DTLID, a.MODIFYDATE, a.BASE_PRICE, a.SUQTY, a.DELETED, a.CREATE_TIME,
+       a.UPDATE_TIME, a.CREATE_BY, a.UPDATE_BY, a.FACTORYID,
+       b.APEX_PL, b.P_PERPACK, b.S_PERBACK, b.X_PERBACK, b.M_PERPACK
 FROM t_cost_pinggu_dtl a, t_cost_pinggu b
 WHERE a.docid = b.docid;
 
 -- 原辅料明细视图
 CREATE OR REPLACE VIEW V_COST_PINGGU_MATERIAL AS
-SELECT d.DTLID AS ID, d.DOCID AS MASTER_ID, d.APEX_GOODSID, d.APEX_GOODSNAME, d.DTL_USEFLAG,
-    d.SPEC, d.PER_HL, d.PRICE, d.BATCH_QTY, d.COST_BATCH, d.APEX_FACTORYNAME,
-    d.BASE_PRICE, d.GOODSTYPE, d.EXADD_MATER, d.MEMO, d.DELETED, d.CREATE_TIME, d.UPDATE_TIME,
-    d.CREATE_BY, d.UPDATE_BY,
-    CASE WHEN d.DTL_USEFLAG = '辅料' AND REGEXP_LIKE(d.APEX_GOODSNAME, '胶囊') THEN 'B'
-         WHEN d.DTL_USEFLAG IN ('原料', '辅料') THEN 'C' ELSE NULL END AS FORMULA_TYPE
-FROM T_COST_PINGGU_DTL d
-WHERE d.DTL_USEFLAG IN ('原料', '辅料') AND (d.DELETED = 0 OR d.DELETED IS NULL);
+SELECT d.DTLID,
+       d.DOCID,
+       d.GOODSID,
+       d.PER_HL,
+       d.PRICE,
+       d.BATCH_QTY,
+       d.COST_BATCH,
+       d.EXADD_MATER,
+       d.MEMO,
+       d.DELETED,
+       d.CREATE_TIME,
+       d.UPDATE_TIME,
+       d.CREATE_BY,
+       d.UPDATE_BY,
+       f.GOODSNAME_EN,
+       f.PRICE BASE_PRICE,
+       f.SUQTY,
+       f.GOODSNAME,
+       f.USEFLAG DTL_USEFLAG,
+       f.STANDARDTYPE,
+       f.FACTORYNAME,
+       f.GOODSTYPE
+FROM T_COST_PINGGU_DTL d, T_COST_GOODS f
+WHERE f.USEFLAG IN ('原料', '辅料')
+  AND (d.DELETED = 0 OR d.DELETED IS NULL)
+  AND d.GOODSID = f.GOODSID;
 
 -- 包材明细视图
 CREATE OR REPLACE VIEW V_COST_PINGGU_PACKAGE AS
-SELECT d.DTLID AS ID, d.DOCID AS MASTER_ID, d.APEX_GOODSID, d.APEX_GOODSNAME, d.DTL_USEFLAG,
-    d.SPEC, d.PER_HL, d.EXADD_MATER, d.PRICE, d.BATCH_QTY, d.COST_BATCH, d.SUQTY,
-    d.APEX_FACTORYNAME, d.MEMO, d.DELETED, d.CREATE_TIME, d.UPDATE_TIME, d.CREATE_BY, d.UPDATE_BY,
-    CASE WHEN REGEXP_LIKE(d.APEX_GOODSNAME, '桶|说明书|小盒|标签|瓶|盖') THEN 'A'
-         WHEN REGEXP_LIKE(d.APEX_GOODSNAME, '硬片|铝箔|复合膜') THEN 'D'
-         WHEN REGEXP_LIKE(d.APEX_GOODSNAME, '大纸箱') THEN 'E'
-         WHEN REGEXP_LIKE(d.APEX_GOODSNAME, '托盘') THEN 'F' ELSE NULL END AS FORMULA_TYPE
-FROM T_COST_PINGGU_DTL d
-WHERE d.DTL_USEFLAG IN ('非印字包材', '印字包材') AND (d.DELETED = 0 OR d.DELETED IS NULL);
+SELECT d.DTLID,
+       d.DOCID,
+       d.GOODSID,
+       d.PER_HL,
+       d.EXADD_MATER,
+       d.PRICE,
+       d.BATCH_QTY,
+       d.COST_BATCH,
+       d.MEMO,
+       d.DELETED,
+       d.CREATE_TIME,
+       d.UPDATE_TIME,
+       d.CREATE_BY,
+       d.UPDATE_BY,
+       f.GOODSNAME_EN,
+       f.PRICE BASE_PRICE,
+       f.SUQTY,
+       f.GOODSNAME,
+       f.USEFLAG DTL_USEFLAG,
+       f.STANDARDTYPE,
+       f.FACTORYNAME,
+       f.GOODSTYPE
+FROM T_COST_PINGGU_DTL d, T_COST_GOODS f
+WHERE f.USEFLAG IN ('非印字包材', '印字包材')
+  AND (d.DELETED = 0 OR d.DELETED IS NULL)
+  AND d.GOODSID = f.GOODSID;
 
 -- 按物料查成品视图
 CREATE OR REPLACE VIEW V_COST_PGOODS_BY_MGOODS AS
-SELECT a.apex_goodsid goodsid, a.apex_goodsname, a.dtl_useflag, b.factoryname, a.price, b.goodsno,
-       d.goodsid pgoodsid, d.goodsno pgoodsno, d.goodsname, c.apex_pl, a.batch_qty, a.deleted
+SELECT a.GOODSID,
+       b.GOODSNAME,
+       b.USEFLAG DTL_USEFLAG,
+       b.FACTORYNAME,
+       a.PRICE,
+       b.GOODSNO,
+       d.GOODSID PGOODSID,
+       d.GOODSNO PGOODSNO,
+       d.GOODSNAME PGOODSNAME,
+       c.APEX_PL,
+       a.BATCH_QTY,
+       a.DELETED
 FROM T_COST_PINGGU_DTL a, t_cost_goods b, t_cost_pinggu c, t_cost_goods d
-WHERE a.apex_goodsid = b.goodsid AND a.docid = c.docid AND c.goodsid = d.goodsid
+WHERE a.goodsid = b.goodsid AND a.docid = c.docid AND c.goodsid = d.goodsid
   AND a.deleted = 0 AND b.deleted = 0 AND c.deleted = 0 AND d.deleted = 0;
 
 -- 角色视图
@@ -180,40 +225,86 @@ WHERE a.goodsid = b.goodsid;
 
 -- 物料成本核算明细视图_液体(关联主表)
 CREATE OR REPLACE VIEW T_COST_PINGGU_DTL_LQ_V AS
-SELECT a.docid, a.apex_goodsid, a.apex_goodsname, a.dtl_useflag, a.spec, a.per_hl, a.exadd_mater,
-       a.batch_qty, a.price, a.cost_batch, a.memo, a.dtlid, a.apex_factoryname, a.apex_factoryid,
-       a.modifydate, a.base_price, a.suqty, a.goodstype, a.goodsname_en,
-       b.APEX_PL, b.P_PERPACK, b.S_PERBACK, b.X_PERBACK
+SELECT a.DOCID, a.GOODSID, a.GOODSNAME, a.DTL_USEFLAG, a.STANDARDTYPE, a.PER_HL,
+       a.EXADD_MATER, a.BATCH_QTY, a.PRICE, a.COST_BATCH, a.MEMO, a.DTLID,
+       a.FACTORYNAME, a.FACTORYID, a.MODIFYDATE, a.BASE_PRICE, a.SUQTY, a.GOODSTYPE,
+       a.GOODSNAME_EN, a.DELETED, a.CREATE_TIME, a.UPDATE_TIME, a.CREATE_BY, a.UPDATE_BY,
+       b.APEX_PL, b.P_PERPACK, b.S_PERBACK, b.X_PERBACK, b.M_PERPACK
 FROM t_cost_pinggu_dtl_lq a, t_cost_pinggu_lq b
 WHERE a.docid = b.docid;
 
 -- 原辅料明细视图_液体
 CREATE OR REPLACE VIEW V_COST_PINGGU_MATERIAL_LQ AS
-SELECT d.DTLID AS ID, d.DOCID AS MASTER_ID, d.APEX_GOODSID, d.APEX_GOODSNAME, d.DTL_USEFLAG,
-    d.SPEC, d.PER_HL, d.PRICE, d.BATCH_QTY, d.COST_BATCH, d.APEX_FACTORYNAME,
-    d.BASE_PRICE, d.GOODSTYPE, d.EXADD_MATER, d.MEMO, d.DELETED, d.CREATE_TIME, d.UPDATE_TIME,
-    d.CREATE_BY, d.UPDATE_BY,
-    CASE WHEN d.DTL_USEFLAG = '辅料' AND REGEXP_LIKE(d.APEX_GOODSNAME, '胶囊') THEN 'B'
-         WHEN d.DTL_USEFLAG IN ('原料', '辅料') THEN 'C' ELSE NULL END AS FORMULA_TYPE
-FROM T_COST_PINGGU_DTL_LQ d
-WHERE d.DTL_USEFLAG IN ('原料', '辅料') AND (d.DELETED = 0 OR d.DELETED IS NULL);
+SELECT d.DTLID,
+       d.DOCID,
+       d.GOODSID,
+       d.PER_HL,
+       d.PRICE,
+       d.BATCH_QTY,
+       d.COST_BATCH,
+       d.EXADD_MATER,
+       d.MEMO,
+       d.DELETED,
+       d.CREATE_TIME,
+       d.UPDATE_TIME,
+       d.CREATE_BY,
+       d.UPDATE_BY,
+       f.GOODSNAME_EN,
+       f.PRICE BASE_PRICE,
+       f.SUQTY,
+       f.GOODSNAME,
+       f.USEFLAG DTL_USEFLAG,
+       f.STANDARDTYPE,
+       f.FACTORYNAME,
+       f.GOODSTYPE
+FROM T_COST_PINGGU_DTL_LQ d, T_COST_GOODS f
+WHERE f.USEFLAG IN ('原料', '辅料')
+  AND (d.DELETED = 0 OR d.DELETED IS NULL)
+  AND d.GOODSID = f.GOODSID;
 
 -- 包材明细视图_液体
 CREATE OR REPLACE VIEW V_COST_PINGGU_PACKAGE_LQ AS
-SELECT d.DTLID AS ID, d.DOCID AS MASTER_ID, d.APEX_GOODSID, d.APEX_GOODSNAME, d.DTL_USEFLAG,
-    d.SPEC, d.PER_HL, d.EXADD_MATER, d.PRICE, d.BATCH_QTY, d.COST_BATCH, d.SUQTY,
-    d.APEX_FACTORYNAME, d.MEMO, d.DELETED, d.CREATE_TIME, d.UPDATE_TIME, d.CREATE_BY, d.UPDATE_BY,
-    CASE WHEN REGEXP_LIKE(d.APEX_GOODSNAME, '桶|说明书|小盒|标签|瓶|盖') THEN 'A'
-         WHEN REGEXP_LIKE(d.APEX_GOODSNAME, '硬片|铝箔|复合膜') THEN 'D'
-         WHEN REGEXP_LIKE(d.APEX_GOODSNAME, '大纸箱') THEN 'E'
-         WHEN REGEXP_LIKE(d.APEX_GOODSNAME, '托盘') THEN 'F' ELSE NULL END AS FORMULA_TYPE
-FROM T_COST_PINGGU_DTL_LQ d
-WHERE d.DTL_USEFLAG IN ('非印字包材', '印字包材') AND (d.DELETED = 0 OR d.DELETED IS NULL);
+SELECT d.DTLID,
+       d.DOCID,
+       d.GOODSID,
+       d.PER_HL,
+       d.EXADD_MATER,
+       d.PRICE,
+       d.BATCH_QTY,
+       d.COST_BATCH,
+       d.MEMO,
+       d.DELETED,
+       d.CREATE_TIME,
+       d.UPDATE_TIME,
+       d.CREATE_BY,
+       d.UPDATE_BY,
+       f.GOODSNAME_EN,
+       f.PRICE BASE_PRICE,
+       f.SUQTY,
+       f.GOODSNAME,
+       f.USEFLAG DTL_USEFLAG,
+       f.STANDARDTYPE SPEC,
+       f.FACTORYNAME,
+       f.GOODSTYPE
+FROM T_COST_PINGGU_DTL_LQ d, T_COST_GOODS f
+WHERE f.USEFLAG IN ('非印字包材', '印字包材')
+  AND (d.DELETED = 0 OR d.DELETED IS NULL)
+  AND d.GOODSID = f.GOODSID;
 
 -- 按物料查成品视图_液体
 CREATE OR REPLACE VIEW V_COST_PGOODS_BY_MGOODS_LQ AS
-SELECT a.apex_goodsid goodsid, a.apex_goodsname, a.dtl_useflag, b.factoryname, a.price, b.goodsno,
-       d.goodsid pgoodsid, d.goodsno pgoodsno, d.goodsname, c.apex_pl, a.batch_qty, a.deleted
+SELECT a.GOODSID,
+       NVL(a.GOODSNAME, b.GOODSNAME) GOODSNAME,
+       NVL(a.DTL_USEFLAG, b.USEFLAG) DTL_USEFLAG,
+       NVL(a.FACTORYNAME, b.FACTORYNAME) FACTORYNAME,
+       a.PRICE,
+       b.GOODSNO,
+       d.GOODSID PGOODSID,
+       d.GOODSNO PGOODSNO,
+       d.GOODSNAME PGOODSNAME,
+       c.APEX_PL,
+       a.BATCH_QTY,
+       a.DELETED
 FROM T_COST_PINGGU_DTL_LQ a, t_cost_goods b, t_cost_pinggu_lq c, t_cost_goods d
-WHERE a.apex_goodsid = b.goodsid AND a.docid = c.docid AND c.goodsid = d.goodsid
+WHERE a.goodsid = b.goodsid AND a.docid = c.docid AND c.goodsid = d.goodsid
   AND a.deleted = 0 AND b.deleted = 0 AND c.deleted = 0 AND d.deleted = 0;

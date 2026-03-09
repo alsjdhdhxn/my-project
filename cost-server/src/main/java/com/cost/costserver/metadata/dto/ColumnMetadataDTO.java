@@ -7,7 +7,6 @@ import com.cost.costserver.metadata.entity.ColumnMetadata;
  */
 public record ColumnMetadataDTO(
     Long id,
-    String fieldName,
     String columnName,
     String queryColumn,
     String targetColumn,
@@ -30,7 +29,6 @@ public record ColumnMetadataDTO(
     public static ColumnMetadataDTO from(ColumnMetadata entity) {
         return new ColumnMetadataDTO(
             entity.getId(),
-            entity.getFieldName(),
             entity.getColumnName(),
             entity.getQueryColumn(),
             entity.getTargetColumn(),
@@ -61,7 +59,7 @@ public record ColumnMetadataDTO(
      */
     public ColumnMetadataDTO withPermission(boolean visible, boolean editable) {
         return new ColumnMetadataDTO(
-            this.id, this.fieldName, this.columnName, this.queryColumn, this.targetColumn,
+            this.id, this.columnName, this.queryColumn, this.targetColumn,
             this.headerText, this.dataType, this.displayOrder, this.width,
             visible, editable,
             this.required, this.searchable, this.sortable, this.pinned, this.dictType, this.lookupConfigId,

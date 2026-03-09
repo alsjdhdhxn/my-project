@@ -125,10 +125,9 @@ public class PermissionService {
     /**
      * 解析列权限 JSON
      * 新格式：
-     * {"masterGrid": {"123": {"fieldName":"goodsName","visible": true, "editable": false}}, "material": {...}}
-     * 兼容旧格式：
-     * {"masterGrid": {"fieldName": {"visible": true, "editable": false}}, "material": {...}}
-     * {"fieldName": {"visible": true, "editable": false}, ...}
+     * {"masterGrid": {"123": {"columnName":"GOODSNAME","visible": true, "editable": false}}, "material": {...}}
+     * {"masterGrid": {"GOODSNAME": {"visible": true, "editable": false}}, "material": {...}}
+     * {"GOODSNAME": {"visible": true, "editable": false}, ...}
      */
     private Map<String, ColumnPermission> parseColumns(String columnPolicy) {
         if (StrUtil.isBlank(columnPolicy)) {
@@ -156,30 +155,30 @@ public class PermissionService {
                     }
                     
                     if (isNewFormat) {
-                        // 新格式：key 是表格名，colOrTable 是列映射（列 id 或 fieldName）
+                        // 新格式：key 是表格名，colOrTable 是列映射（列 id 或 columnName）
                         for (String columnKey : colOrTable.keySet()) {
-                            JSONObject fieldConfig = colOrTable.getJSONObject(columnKey);
-                            if (fieldConfig != null) {
-                                boolean visible = fieldConfig.getBool("visible", true);
-                                boolean editable = fieldConfig.getBool("editable", true);
-                                Long columnId = parseColumnId(columnKey, fieldConfig);
-                                String fieldName = fieldConfig.getStr("fieldName");
-                                if (StrUtil.isBlank(fieldName) && columnId == null) {
-                                    fieldName = columnKey;
+                            JSONObject columnConfig = colOrTable.getJSONObject(columnKey);
+                            if (columnConfig != null) {
+                                boolean visible = columnConfig.getBool("visible", true);
+                                boolean editable = columnConfig.getBool("editable", true);
+                                Long columnId = parseColumnId(columnKey, columnConfig);
+                                String columnName = columnConfig.getStr("columnName");
+                                if (StrUtil.isBlank(columnName) && columnId == null) {
+                                    columnName = columnKey;
                                 }
-                                putColumnPermission(result, key, columnId, fieldName, new ColumnPermission(visible, editable));
+                                putColumnPermission(result, key, columnId, columnName, new ColumnPermission(visible, editable));
                             }
                         }
                     } else {
-                        // 旧格式：key 是字段名，colOrTable 是权限配置
+                        // 简化格式：key 是列名，colOrTable 是权限配置
                         boolean visible = colOrTable.getBool("visible", true);
                         boolean editable = colOrTable.getBool("editable", true);
                         Long columnId = parseColumnId(key, colOrTable);
-                        String fieldName = colOrTable.getStr("fieldName");
-                        if (StrUtil.isBlank(fieldName) && columnId == null) {
-                            fieldName = key;
+                        String columnName = colOrTable.getStr("columnName");
+                        if (StrUtil.isBlank(columnName) && columnId == null) {
+                            columnName = key;
                         }
-                        putColumnPermission(result, null, columnId, fieldName, new ColumnPermission(visible, editable));
+                        putColumnPermission(result, null, columnId, columnName, new ColumnPermission(visible, editable));
                     }
                 }
             }
@@ -209,7 +208,7 @@ public class PermissionService {
             Map<String, ColumnPermission> target,
             String tableKey,
             Long columnId,
-            String fieldName,
+            String columnName,
             ColumnPermission permission) {
         if (target == null || permission == null) {
             return;
@@ -218,17 +217,17 @@ public class PermissionService {
             if (columnId != null) {
                 target.put(tableKey + ":id:" + columnId, permission);
             }
-            if (StrUtil.isNotBlank(fieldName)) {
-                target.put(tableKey + ":field:" + fieldName, permission);
-                target.put(tableKey + ":" + fieldName, permission);
+            if (StrUtil.isNotBlank(columnName)) {
+                target.put(tableKey + ":column:" + columnName, permission);
+                target.put(tableKey + ":" + columnName, permission);
             }
         }
         if (columnId != null) {
             target.put("id:" + columnId, permission);
         }
-        if (StrUtil.isNotBlank(fieldName)) {
-            target.put("field:" + fieldName, permission);
-            target.put(fieldName, permission);
+        if (StrUtil.isNotBlank(columnName)) {
+            target.put("column:" + columnName, permission);
+            target.put(columnName, permission);
         }
     }
 
@@ -305,15 +304,15 @@ public class PermissionService {
      */
     private void mergeColumns(Map<String, ColumnPermission> target, Map<String, ColumnPermission> source) {
         for (Map.Entry<String, ColumnPermission> entry : source.entrySet()) {
-            String fieldName = entry.getKey();
+            String columnKey = entry.getKey();
             ColumnPermission newPerm = entry.getValue();
-            ColumnPermission existingPerm = target.get(fieldName);
+            ColumnPermission existingPerm = target.get(columnKey);
             
             if (existingPerm == null) {
-                target.put(fieldName, newPerm);
+                target.put(columnKey, newPerm);
             } else {
                 // 取并集：任一为 true 则为 true
-                target.put(fieldName, new ColumnPermission(
+                target.put(columnKey, new ColumnPermission(
                     existingPerm.visible() || newPerm.visible(),
                     existingPerm.editable() || newPerm.editable()
                 ));

@@ -34,7 +34,7 @@ export interface StyleCondition {
 
 /** 行样式规则（用于 getRowClass） */
 export interface RowStyleRule {
-  fieldName: string;
+  columnName: string;
   condition: StyleCondition;
   rowStyle: Record<string, string>;
   className: string;
@@ -45,14 +45,14 @@ export interface RowStyleRule {
  */
 export function metaToColDef(col: ColumnMetadata): ColDef {
   const colDef: ColDef = {
-    field: col.fieldName,
+    field: col.columnName,
     headerName: col.headerText,
     editable: Boolean(col.editable),
     sortable: true,
     resizable: true,
     context: {
       metaColumnId: col.id,
-      fieldName: col.fieldName
+      columnName: col.columnName
     }
   };
 
@@ -125,7 +125,7 @@ export function metaToColDef(col: ColumnMetadata): ColDef {
         const cellClassRules: Record<string, (params: any) => boolean> = {};
         
         config.style.forEach((rule: StyleRule, index: number) => {
-          const className = `meta-cell-${col.fieldName}-${index}`;
+          const className = `meta-cell-${col.columnName}-${index}`;
           const condition = rule.condition;
           
           // 为每个规则创建判断函数
@@ -142,7 +142,7 @@ export function metaToColDef(col: ColumnMetadata): ColDef {
         colDef.context = {
           ...(colDef.context || {}),
           styleRules: config.style,
-          fieldName: col.fieldName
+          columnName: col.columnName
         };
       }
       
@@ -154,11 +154,11 @@ export function metaToColDef(col: ColumnMetadata): ColDef {
           downColor: config.compare.downColor || '#43a047' // 下跌颜色（默认绿色）
         };
         colDef.cellRenderer = (params: any) => {
-          return renderCompareValue(params, col.fieldName, compareConfig);
+          return renderCompareValue(params, col.columnName, compareConfig);
         };
       }
     } catch (e) {
-      console.warn(`[useMetaColumns] 解析 rulesConfig 失败: ${col.fieldName}`, e);
+      console.warn(`[useMetaColumns] 解析 rulesConfig 失败: ${col.columnName}`, e);
     }
   }
 
@@ -288,17 +288,17 @@ interface CompareRenderConfig {
 /**
  * 渲染对比值（带箭头和颜色）
  * @param params AG Grid cellRenderer 参数
- * @param fieldName 字段名
+ * @param columnName 字段名
  * @param config 对比配置
  */
-function renderCompareValue(params: any, fieldName: string, config: CompareRenderConfig): string {
+function renderCompareValue(params: any, columnName: string, config: CompareRenderConfig): string {
   const value = params.value;
   const data = params.data;
   
   if (value == null) return '';
   
-  const diff = data?.[`${fieldName}Diff`];
-  const diffPercent = data?.[`${fieldName}DiffPercent`];
+  const diff = data?.[`${columnName}Diff`];
+  const diffPercent = data?.[`${columnName}DiffPercent`];
   
   // 没有对比数据，直接显示当前值
   if (diff == null && diffPercent == null) {
@@ -344,10 +344,10 @@ export function extractRowStyleRules(columns: ColumnMetadata[]): RowStyleRule[] 
         // 只提取有 rowStyle 的规则
         if (rule.rowStyle && Object.keys(rule.rowStyle).length > 0) {
           rules.push({
-            fieldName: col.fieldName,
+            columnName: col.columnName,
             condition: rule.condition,
             rowStyle: rule.rowStyle,
-            className: `meta-row-${col.fieldName}-${index}`
+            className: `meta-row-${col.columnName}-${index}`
           });
         }
       });
@@ -371,7 +371,7 @@ export function createRowClassGetter(rules: RowStyleRule[]) {
     if (!data) return undefined;
     
     for (const rule of rules) {
-      const value = data[rule.fieldName];
+      const value = data[rule.columnName];
       if (value != null && matchStyleRule(value, rule.condition)) {
         return rule.className;
       }
@@ -406,7 +406,7 @@ export function extractCalcRules(columns: ColumnMetadata[]): CalcRule[] {
           // 多公式模式
           if (calc.formulaField && calc.formulas) {
             rules.push({
-              field: col.fieldName,
+              field: col.columnName,
               expression: '', // 多公式模式不使用单一表达式
               triggerFields: [], // 触发字段在各公式中定义
               formulaField: calc.formulaField,
@@ -417,7 +417,7 @@ export function extractCalcRules(columns: ColumnMetadata[]): CalcRule[] {
           // 单公式模式
           else if (calc.expression) {
             rules.push({
-              field: col.fieldName,
+              field: col.columnName,
               expression: calc.expression,
               triggerFields: calc.triggerFields || [],
               order: index
@@ -425,7 +425,7 @@ export function extractCalcRules(columns: ColumnMetadata[]): CalcRule[] {
           }
         }
       } catch (e) {
-        console.warn(`[useMetaColumns] 解析 rulesConfig 失败: ${col.fieldName}`, e);
+        console.warn(`[useMetaColumns] 解析 rulesConfig 失败: ${col.columnName}`, e);
       }
     }
   });
@@ -441,9 +441,9 @@ export function extractDefaultValues(columns: ColumnMetadata[]): Record<string, 
   
   columns.forEach(col => {
     if (col.dataType === 'number') {
-      defaults[col.fieldName] = 0;
+      defaults[col.columnName] = 0;
     } else {
-      defaults[col.fieldName] = '';
+      defaults[col.columnName] = '';
     }
   });
 
@@ -466,7 +466,7 @@ export function extractDefaultValues(columns: ColumnMetadata[]): Record<string, 
  *   'cell': 用你点击的单元格的值（不需要 filterField）
  */
 export interface LookupRule {
-  fieldName: string;
+  columnName: string;
   lookupCode: string;
   mapping: Record<string, string>;
   /** 是否禁止回填（仅查看模式） */
@@ -492,7 +492,7 @@ export function extractLookupRules(columns: ColumnMetadata[]): LookupRule[] {
       const config = JSON.parse(col.rulesConfig);
       if (config.lookup?.code && config.lookup?.mapping) {
         rules.push({
-          fieldName: col.fieldName,
+          columnName: col.columnName,
           lookupCode: config.lookup.code,
           mapping: config.lookup.mapping,
           noFillback: config.lookup.noFillback,
@@ -529,7 +529,7 @@ export function filterColumnsByVariant(
       try {
         const config = JSON.parse(col.rulesConfig);
         if (config.variantKey) {
-          variantMap.set(col.fieldName, config.variantKey);
+          variantMap.set(col.columnName, config.variantKey);
         }
       } catch (e) {
         // 忽略解析错误
@@ -607,11 +607,11 @@ function injectDynamicStyles(columns: ColDef[], rowStyleRules: RowStyleRule[] = 
   // 1. 单元格样式
   columns.forEach(col => {
     const styleRules = col.context?.styleRules as StyleRule[] | undefined;
-    const fieldName = col.context?.fieldName;
+    const columnName = col.context?.columnName;
     
-    if (styleRules && fieldName) {
+    if (styleRules && columnName) {
       styleRules.forEach((rule: StyleRule, index: number) => {
-        const className = `meta-cell-${fieldName}-${index}`;
+        const className = `meta-cell-${columnName}-${index}`;
         
         // 跳过已存在的规则
         if (existingRules.has(className)) return;

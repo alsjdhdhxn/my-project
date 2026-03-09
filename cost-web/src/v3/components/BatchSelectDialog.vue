@@ -104,12 +104,16 @@ const dragStartY = ref(0);
 const startWidth = ref(0);
 const startHeight = ref(0);
 
+function normalizeColumnName(name?: string | null): string {
+  return String(name || '').trim().toUpperCase();
+}
+
 const dialogTitle = computed(() => currentConfig.value?.title || config.value?.lookupName || '选择数据');
 
 const columnDefs = computed<ColDef[]>(() => {
   if (!config.value?.displayColumns) return [];
   return config.value.displayColumns.map(col => ({
-    field: col.field,
+    field: normalizeColumnName(col.field),
     headerName: col.header,
     ...(col.width ? { width: col.width } : { flex: 1, minWidth: 120 }),
     sortable: true,
@@ -141,8 +145,8 @@ const dialogStyle = computed(() => ({
 const gridHeight = computed(() => dialogHeight.value - 200);
 
 function getRowId(params: any) {
-  const valueField = currentConfig.value?.valueField || config.value?.valueField || 'id';
-  return String(params.data?.[valueField] ?? params.data?.id ?? Math.random());
+  const valueField = normalizeColumnName(currentConfig.value?.valueField || config.value?.valueField || 'ID');
+  return String(params.data?.[valueField] ?? params.data?.ID ?? Math.random());
 }
 
 // 拖拽移动
@@ -252,12 +256,12 @@ function handleConfirm() {
     if (mapping && Object.keys(mapping).length > 0) {
       // 有 mapping：按映射转换字段
       for (const [targetField, sourceField] of Object.entries(mapping)) {
-        newRow[targetField] = row[sourceField];
+        newRow[targetField] = row[normalizeColumnName(sourceField)];
       }
     } else {
       // 无 mapping：直接复制所有字段（排除 id，让系统生成新 id）
       for (const [key, value] of Object.entries(row)) {
-        if (key !== 'id') {
+        if (key !== 'ID') {
           newRow[key] = value;
         }
       }

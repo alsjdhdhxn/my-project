@@ -191,6 +191,8 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     pageCode,
     pageConfig: meta.pageConfig,
     detailFkColumnByTab: meta.detailFkColumnByTab,
+    masterPkColumn: meta.masterPkColumn,
+    detailPkColumnByTab: meta.detailPkColumnByTab,
     masterGridApi,
     detailGridApisByTab,
     notifyError,

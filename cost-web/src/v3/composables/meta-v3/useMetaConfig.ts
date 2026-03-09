@@ -227,16 +227,16 @@ function collectRulesByKeys(
   return result;
 }
 
-function extractSumFieldsFromMetadata(columns: Array<{ fieldName?: string; rulesConfig?: string }>): string[] {
+function extractSumFieldsFromMetadata(columns: Array<{ columnName?: string; rulesConfig?: string }>): string[] {
   const result: string[] = [];
   const seen = new Set<string>();
   for (const col of columns || []) {
-    if (!col.fieldName || seen.has(col.fieldName) || !col.rulesConfig) continue;
+    if (!col.columnName || seen.has(col.columnName) || !col.rulesConfig) continue;
     try {
       const config = JSON.parse(col.rulesConfig);
       if (config?.aggFunc === 'sum') {
-        result.push(col.fieldName);
-        seen.add(col.fieldName);
+        result.push(col.columnName);
+        seen.add(col.columnName);
       }
     } catch {
       // ignore invalid rulesConfig
@@ -248,13 +248,13 @@ function extractSumFieldsFromMetadata(columns: Array<{ fieldName?: string; rules
 function mergeLookupRules(metadataRules: LookupRule[], pageRules: LookupRule[]): LookupRule[] {
   const map = new Map<string, LookupRule>();
   for (const rule of metadataRules || []) {
-    if (rule?.fieldName) {
-      map.set(rule.fieldName, rule);
+    if (rule?.columnName) {
+      map.set(rule.columnName, rule);
     }
   }
   for (const rule of pageRules || []) {
-    if (rule?.fieldName) {
-      map.set(rule.fieldName, rule);
+    if (rule?.columnName) {
+      map.set(rule.columnName, rule);
     }
   }
   return Array.from(map.values());
@@ -305,6 +305,8 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
   const detailColumnsByTab = shallowRef<Record<string, ColDef[]>>({});
   const detailCalcRulesByTab = shallowRef<Record<string, ReturnType<typeof compileCalcRules>>>({});
   const detailFkColumnByTab = shallowRef<Record<string, string>>({});
+  const masterPkColumn = shallowRef<string>('ID');
+  const detailPkColumnByTab = shallowRef<Record<string, string>>({});
   const compiledAggRules = shallowRef<ReturnType<typeof compileAggRules>>([]);
   const compiledMasterCalcRules = shallowRef<ReturnType<typeof compileCalcRules>>([]);
   const masterRowClassGetter = shallowRef<((params: any) => string | undefined) | undefined>(undefined);
@@ -338,6 +340,19 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
   const detailToolbarByTab = shallowRef<Record<string, ToolbarRule | null>>({});
   const masterSumFields = shallowRef<string[]>([]);
   const detailSumFieldsByTab = shallowRef<Record<string, string[]>>({});
+
+  function resolveRuntimeColumnName(rawColumns: any[], targetColumn?: string | null, fallback = 'ID') {
+    const normalizedTarget = String(targetColumn || '').trim().toUpperCase();
+    if (normalizedTarget) {
+      const byTarget = rawColumns.find(col => String(col?.targetColumn || '').trim().toUpperCase() === normalizedTarget);
+      if (byTarget?.columnName) return String(byTarget.columnName);
+      const byColumn = rawColumns.find(col => String(col?.columnName || '').trim().toUpperCase() === normalizedTarget);
+      if (byColumn?.columnName) return String(byColumn.columnName);
+      const byQuery = rawColumns.find(col => String(col?.queryColumn || '').trim().toUpperCase() === normalizedTarget);
+      if (byQuery?.columnName) return String(byQuery.columnName);
+    }
+    return fallback;
+  }
 
   async function loadComponents() {
     const pageRes = await fetchPageComponents(pageCode);
@@ -480,12 +495,14 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
     masterColumnDefs.value = masterColumns;
     masterRowClassGetter.value = masterMeta.getRowClass;
     masterColumnMeta.value = masterMeta.rawColumns || [];
+    masterPkColumn.value = resolveRuntimeColumnName(masterMeta.rawColumns || [], masterMeta.metadata.pkColumn, 'ID');
     masterSumFields.value = extractSumFieldsFromMetadata(masterMeta.rawColumns || []);
 
     detailColumnsByTab.value = {};
     detailRowClassGetterByTab.value = {};
     detailColumnMetaByTab.value = {};
     detailFkColumnByTab.value = {};
+    detailPkColumnByTab.value = {};
     detailSumFieldsByTab.value = {};
 
     for (const tab of config.tabs || []) {
@@ -515,9 +532,14 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
 
       const fkColumnName = detailMeta.metadata.parentFkColumn;
       detailFkColumnByTab.value[tab.key] = fkColumnName
-        ? (detailMeta.rawColumns.find(col => col.columnName.toUpperCase() === fkColumnName.toUpperCase())?.fieldName || 'masterId')
-        : 'masterId';
+        ? (detailMeta.rawColumns.find(col => col.columnName.toUpperCase() === fkColumnName.toUpperCase())?.columnName || fkColumnName)
+        : 'MASTER_ID';
 
+      detailPkColumnByTab.value[tab.key] = resolveRuntimeColumnName(
+        detailMeta.rawColumns || [],
+        detailMeta.metadata.pkColumn,
+        'ID'
+      );
       detailColumnMetaByTab.value[tab.key] = detailMeta.rawColumns || [];
     }
 
@@ -545,7 +567,7 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
     );
 
     // 给有 lookup 的列添加高亮样式
-    const lookupFields = new Set(masterLookupRules.value.map(r => r.fieldName));
+    const lookupFields = new Set(masterLookupRules.value.map(r => r.columnName));
     if (lookupFields.size > 0) {
       masterColumnDefs.value = masterColumnDefs.value.map(col => {
         if (col.field && lookupFields.has(col.field)) {
@@ -604,7 +626,7 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
       );
 
       // 给有 lookup 的列添加高亮样式
-      const detailLookupFields = new Set(detailLookupRulesByTab.value[tab.key].map(r => r.fieldName));
+      const detailLookupFields = new Set(detailLookupRulesByTab.value[tab.key].map(r => r.columnName));
       if (detailLookupFields.size > 0 && detailColumnsByTab.value[tab.key]) {
         detailColumnsByTab.value[tab.key] = detailColumnsByTab.value[tab.key].map(col => {
           if (col.field && detailLookupFields.has(col.field)) {
@@ -650,6 +672,8 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
     detailColumnsByTab,
     detailCalcRulesByTab,
     detailFkColumnByTab,
+    masterPkColumn,
+    detailPkColumnByTab,
     compiledAggRules,
     compiledMasterCalcRules,
     masterRowClassGetter,

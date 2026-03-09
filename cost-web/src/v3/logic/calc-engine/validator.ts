@@ -33,7 +33,7 @@ export interface ValidationResult {
 
 /** 列元数据（含验证规则） */
 export interface ColumnMetadata {
-  fieldName: string;
+  columnName: string;
   headerText: string;
   dataType: string;
   rulesConfig?: string; // JSON 字符串
@@ -59,7 +59,7 @@ export function parseValidationRules(columns: ColumnMetadata[]): ValidationRule[
           validation.min !== undefined || validation.max !== undefined ||
           validation.pattern) {
         rules.push({
-          field: col.fieldName,
+          field: col.columnName,
           required: validation.required,
           notZero: validation.notZero,
           min: validation.min,
@@ -69,7 +69,7 @@ export function parseValidationRules(columns: ColumnMetadata[]): ValidationRule[
         });
       }
     } catch (e) {
-      console.warn(`[Validator] 解析 ${col.fieldName} 的 rulesConfig 失败:`, e);
+      console.warn(`[Validator] 解析 ${col.columnName} 的 rulesConfig 失败:`, e);
     }
   }
 
@@ -91,7 +91,7 @@ export function validateRow(
 
   for (const rule of rules) {
     const value = row[rule.field];
-    const col = columns.find(c => c.fieldName === rule.field);
+    const col = columns.find(c => c.columnName === rule.field);
     const fieldLabel = col?.headerText || rule.field;
 
     // required: 必填

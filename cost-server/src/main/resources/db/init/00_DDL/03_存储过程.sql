@@ -83,11 +83,9 @@ BEGIN
     IF v_raw_goodsid IS NULL THEN RAISE_APPLICATION_ERROR(-20003, '璇ヤ骇鍝佸湪ERP涓笉瀛樺湪BOM'); END IF;
     v_goodsid := '-' || v_raw_goodsid || '-';
     DELETE FROM t_cost_pinggu_dtl WHERE docid = p_docid;
-    INSERT INTO t_cost_pinggu_dtl (dtlid, docid, apex_goodsid, spec, batch_qty, price, BASE_PRICE, modifydate, cost_batch,
-                                   DTL_USEFLAG, APEX_GOODSNAME, APEX_FACTORYNAME, GOODSTYPE)
-    SELECT SEQ_COST_PINGGU_DTL.NEXTVAL, p_docid, v.goodsid, v.standardtype, v.useqty, f.PRICE, f.PRICE, sysdate,
-           nvl(v.useqty,0)*nvl(f.price,0), decode(v.useflag,4,'鍘熸枡',2,'杈呮枡',3,'闈炲嵃瀛楀寘鏉?,5,'鍗板瓧鍖呮潗'),
-           f.GOODSNAME, f.FACTORYNAME, f.GOODSTYPE
+    INSERT INTO t_cost_pinggu_dtl (dtlid, docid, goodsid, batch_qty, price, base_price, modifydate, cost_batch)
+    SELECT SEQ_COST_PINGGU_DTL.NEXTVAL, p_docid, v.goodsid, v.useqty, f.PRICE, f.PRICE, sysdate,
+           nvl(v.useqty,0)*nvl(f.price,0)
     FROM t_cost_bom_goods_tree_v v, PUB_GOODS_V f
     WHERE v.treeid LIKE v_goodsid||'%' AND v.pid <> '-1' AND v.USEFLAG NOT IN (0,1) AND v.goodsid = f.goodsid(+);
     p_pinggu_dtl_compute(p_docid);
@@ -142,7 +140,8 @@ END p_pinggu_compute;
 -- 鎵归噺璁＄畻鎵€鏈夋垚鏈牳绠?
 CREATE OR REPLACE PROCEDURE p_pinggu_compute_all AS
 BEGIN
-  UPDATE t_cost_pinggu_dtl a SET a.price = (SELECT PRICE FROM t_cost_goods_price x WHERE x.GOODSID = a.apex_goodsid AND x.USEFLAG NOT IN ('浜ф垚鍝?));
+  UPDATE t_cost_pinggu_dtl a
+     SET a.price = (SELECT PRICE FROM t_cost_goods_price x WHERE x.GOODSID = a.goodsid AND x.USEFLAG NOT IN ('浜ф垚鍝?));
   FOR i IN (SELECT DOCID FROM t_cost_pinggu) LOOP
     p_pinggu_dtl_compute(i.docid);
     p_pinggu_compute(i.docid);
@@ -162,9 +161,10 @@ BEGIN
   MERGE INTO t_cost_pinggu_dtl a
   USING (
     SELECT d.dtlid, d.batch_qty
-      FROM t_cost_pinggu_dtl d
+      FROM t_cost_pinggu_dtl d, t_cost_goods g
      WHERE d.docid = p_docid
-       AND d.dtl_useflag IN ('鍘熸枡', '杈呮枡')
+       AND d.goodsid = g.goodsid
+       AND g.useflag IN ('鍘熸枡', '杈呮枡')
   ) p
      ON (a.dtlid = p.dtlid)
   WHEN MATCHED THEN
@@ -174,10 +174,11 @@ BEGIN
   MERGE INTO t_cost_pinggu_dtl a
   USING (
     SELECT d.dtlid, d.batch_qty
-      FROM t_cost_pinggu_dtl d
+      FROM t_cost_pinggu_dtl d, t_cost_goods g
      WHERE d.docid = p_docid
-       AND d.dtl_useflag IN ('鍗板瓧鍖呮潗', '闈炲嵃瀛楀寘鏉?)
-       AND REGEXP_LIKE(d.apex_goodsname, '纭墖|閾濈當')
+       AND d.goodsid = g.goodsid
+       AND g.useflag IN ('鍗板瓧鍖呮潗', '闈炲嵃瀛楀寘鏉?)
+       AND REGEXP_LIKE(g.goodsname, '纭墖|閾濈當')
   ) q
      ON (a.dtlid = q.dtlid)
   WHEN MATCHED THEN
@@ -242,12 +243,11 @@ BEGIN
     t.y_jg_re, t.y_ml, t.y_sale, t.customid, t.customname, t.country, t.projectno, t.useflag, t.yield_time, t.apex_pl_time,
     t.fmname, t.fmrate, t.goodsname_en, t.livery, t.deleted, t.create_time, t.update_time, t.create_by, t.update_by,
     t.cost_perbox, SYSDATE FROM t_cost_pinggu t;
-  INSERT INTO t_cost_pinggu_dtl_his (docid, apex_goodsid, apex_goodsname, dtl_useflag, spec, per_hl, exadd_mater, batch_qty,
-    price, cost_batch, memo, dtlid, apex_factoryname, apex_factoryid, modifydate, base_price, suqty, goodstype, goodsname_en,
-    deleted, create_time, update_time, create_by, update_by, backup_time)
-  SELECT t.docid, t.apex_goodsid, t.apex_goodsname, t.dtl_useflag, t.spec, t.per_hl, t.exadd_mater, t.batch_qty, t.price,
-    t.cost_batch, t.memo, t.dtlid, t.apex_factoryname, t.apex_factoryid, t.modifydate, t.base_price, t.suqty, t.goodstype,
-    t.goodsname_en, t.deleted, t.create_time, t.update_time, t.create_by, t.update_by, SYSDATE FROM t_cost_pinggu_dtl t;
+  INSERT INTO t_cost_pinggu_dtl_his (docid, goodsid, per_hl, exadd_mater, batch_qty, price, cost_batch, memo, dtlid,
+    modifydate, base_price, suqty, deleted, create_time, update_time, create_by, update_by, backup_time, factoryid)
+  SELECT t.docid, t.goodsid, t.per_hl, t.exadd_mater, t.batch_qty, t.price, t.cost_batch, t.memo, t.dtlid,
+    t.modifydate, t.base_price, t.suqty, t.deleted, t.create_time, t.update_time, t.create_by, t.update_by, SYSDATE, t.factoryid
+  FROM t_cost_pinggu_dtl t;
   COMMIT;
 END;
 /
@@ -323,7 +323,7 @@ BEGIN
              THEN ROUND(b.per_hl * (1 + NVL(b.exadd_mater, 0) / 100) / 1000000, 4)
 
              WHEN b.dtl_useflag IN ('印字包材', '非印字包材')
-               AND REGEXP_LIKE(b.apex_goodsname, '桶|说明书|小盒|标签|瓶|盖注射器|适配器|量杯|勺|分度器')
+               AND REGEXP_LIKE(b.goodsname, '桶|说明书|小盒|标签|瓶|盖注射器|适配器|量杯|勺|分度器')
              THEN ROUND((b.apex_pl / NULLIF(b.p_perpack, 0)) *
                         (1 + NVL(b.exadd_mater, 0) / 100), 4)
 
@@ -407,11 +407,12 @@ BEGIN
     IF v_raw_goodsid IS NULL THEN RAISE_APPLICATION_ERROR(-20003, '璇ヤ骇鍝佸湪ERP涓笉瀛樺湪BOM'); END IF;
     v_goodsid := '-' || v_raw_goodsid || '-';
     DELETE FROM t_cost_pinggu_dtl_lq WHERE docid = p_docid;
-    INSERT INTO t_cost_pinggu_dtl_lq (dtlid, docid, apex_goodsid, spec, batch_qty, price, BASE_PRICE, modifydate, cost_batch,
-                                   DTL_USEFLAG, APEX_GOODSNAME, APEX_FACTORYNAME, GOODSTYPE)
-    SELECT SEQ_COST_PINGGU_DTL_LQ.NEXTVAL, p_docid, v.goodsid, v.standardtype, v.useqty, f.PRICE, f.PRICE, sysdate,
-           nvl(v.useqty,0)*nvl(f.price,0), decode(v.useflag,4,'鍘熸枡',2,'杈呮枡',3,'闈炲嵃瀛楀寘鏉?,5,'鍗板瓧鍖呮潗'),
-           f.GOODSNAME, f.FACTORYNAME, f.GOODSTYPE
+    INSERT INTO t_cost_pinggu_dtl_lq (dtlid, docid, goodsid, goodsname, dtl_useflag, standardtype, batch_qty, price,
+                                   base_price, modifydate, cost_batch, factoryname, goodstype)
+    SELECT SEQ_COST_PINGGU_DTL_LQ.NEXTVAL, p_docid, v.goodsid, f.GOODSNAME,
+           decode(v.useflag,4,'鍘熸枡',2,'杈呮枡',3,'闈炲嵃瀛楀寘鏉?,5,'鍗板瓧鍖呮潗'),
+           f.standardtype, v.useqty, f.PRICE, f.PRICE, sysdate,
+           nvl(v.useqty,0)*nvl(f.price,0), f.FACTORYNAME, f.GOODSTYPE
     FROM t_cost_bom_goods_tree_v v, PUB_GOODS_V f
     WHERE v.treeid LIKE v_goodsid||'%' AND v.pid <> '-1' AND v.USEFLAG NOT IN (0,1) AND v.goodsid = f.goodsid(+);
     p_pinggu_dtl_compute_lq(p_docid);
@@ -423,7 +424,8 @@ END P_COST_BOM_INSERT_LQ;
 -- 鎵归噺璁＄畻鎵€鏈夋垚鏈牳绠?娑蹭綋)
 CREATE OR REPLACE PROCEDURE p_pinggu_compute_all_lq AS
 BEGIN
-  UPDATE t_cost_pinggu_dtl_lq a SET a.price = (SELECT PRICE FROM t_cost_goods_price x WHERE x.GOODSID = a.apex_goodsid AND x.USEFLAG NOT IN ('浜ф垚鍝?));
+  UPDATE t_cost_pinggu_dtl_lq a
+     SET a.price = (SELECT PRICE FROM t_cost_goods_price x WHERE x.GOODSID = a.goodsid AND x.USEFLAG NOT IN ('浜ф垚鍝?));
   FOR i IN (SELECT DOCID FROM t_cost_pinggu_lq) LOOP
     p_pinggu_dtl_compute_lq(i.docid);
     p_pinggu_compute_lq(i.docid);
@@ -445,11 +447,11 @@ BEGIN
     t.y_jg_re, t.y_ml, t.y_sale, t.customid, t.customname, t.country, t.projectno, t.useflag, t.yield_time, t.apex_pl_time,
     t.fmname, t.fmrate, t.goodsname_en, t.livery, t.deleted, t.create_time, t.update_time, t.create_by, t.update_by,
     t.cost_perbox, SYSDATE FROM t_cost_pinggu_lq t;
-  INSERT INTO t_cost_pinggu_dtl_his_lq (docid, apex_goodsid, apex_goodsname, dtl_useflag, spec, per_hl, exadd_mater, batch_qty,
-    price, cost_batch, memo, dtlid, apex_factoryname, apex_factoryid, modifydate, base_price, suqty, goodstype, goodsname_en,
+  INSERT INTO t_cost_pinggu_dtl_his_lq (docid, goodsid, goodsname, dtl_useflag, standardtype, per_hl, exadd_mater, batch_qty,
+    price, cost_batch, memo, dtlid, factoryname, factoryid, modifydate, base_price, suqty, goodstype, goodsname_en,
     deleted, create_time, update_time, create_by, update_by, backup_time)
-  SELECT t.docid, t.apex_goodsid, t.apex_goodsname, t.dtl_useflag, t.spec, t.per_hl, t.exadd_mater, t.batch_qty, t.price,
-    t.cost_batch, t.memo, t.dtlid, t.apex_factoryname, t.apex_factoryid, t.modifydate, t.base_price, t.suqty, t.goodstype,
+  SELECT t.docid, t.goodsid, t.goodsname, t.dtl_useflag, t.standardtype, t.per_hl, t.exadd_mater, t.batch_qty, t.price,
+    t.cost_batch, t.memo, t.dtlid, t.factoryname, t.factoryid, t.modifydate, t.base_price, t.suqty, t.goodstype,
     t.goodsname_en, t.deleted, t.create_time, t.update_time, t.create_by, t.update_by, SYSDATE FROM t_cost_pinggu_dtl_lq t;
   COMMIT;
 END;

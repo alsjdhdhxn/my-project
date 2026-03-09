@@ -20,7 +20,7 @@ DELETE FROM t_cost_page_component WHERE component_type = 'TABS' AND deleted = 0;
 -- wmsQty: 库存汇总
 INSERT INTO t_cost_page_component (ID, PAGE_CODE, COMPONENT_KEY, COMPONENT_TYPE, PARENT_KEY, COMPONENT_CONFIG, REF_TABLE_CODE, SLOT_NAME, SORT_ORDER, DELETED, CREATE_BY, UPDATE_BY)
 VALUES (SEQ_COST_PAGE_COMPONENT.NEXTVAL, 'wms-shipping', 'wmsQty', 'DETAIL_GRID', 'root',
-'{"title":"库存汇总","buttons":[{"action":"batchSelect","label":"从库存添加","batchSelectConfig":{"lookupCode":"wmsQtyLookup","title":"选择库存","mapping":{"goodsid":"goodsid","goodsgp":"goodsgp","lotno":"lotno","goodsno":"goodsno","packsize":"packsize","qtyShow":"qty_show","pcs":"pcs"}}},{"action":"deleteRow","label":"删除","requiresRow":true},{"type":"separator"},{"action":"save","label":"保存"},{"type":"separator"},{"action":"clipboard.copy"},{"action":"clipboard.paste"}]}',
+'{"title":"库存汇总","buttons":[{"action":"batchSelect","label":"从库存添加","batchSelectConfig":{"lookupCode":"wmsQtyLookup","title":"选择库存","mapping":{"GOODSID":"GOODSID","GOODSGP":"GOODSGP","LOTNO":"LOTNO","GOODSNO":"GOODSNO","PACKSIZE":"PACKSIZE","QTY_SHOW":"QTY_SHOW","PCS":"PCS"}}},{"action":"deleteRow","label":"删除","requiresRow":true},{"type":"separator"},{"action":"save","label":"保存"},{"type":"separator"},{"action":"clipboard.copy"},{"action":"clipboard.paste"}]}',
 'WmsQty', NULL, 2, 0, 'system', 'system');
 
 -- wmsQtyDetail: 库存明细

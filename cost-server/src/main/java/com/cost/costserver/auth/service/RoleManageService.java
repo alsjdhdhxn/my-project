@@ -672,7 +672,7 @@ public class RoleManageService {
             .collect(Collectors.joining(","));
 
         List<Map<String, Object>> columnMetas = dynamicMapper.selectList(
-            "SELECT m.TABLE_CODE, c.ID AS COLUMN_ID, c.FIELD_NAME, c.HEADER_TEXT " +
+            "SELECT m.TABLE_CODE, c.ID AS COLUMN_ID, c.COLUMN_NAME, c.HEADER_TEXT " +
             "FROM T_COST_COLUMN_METADATA c " +
             "JOIN T_COST_TABLE_METADATA m ON c.TABLE_METADATA_ID = m.ID " +
             "WHERE m.TABLE_CODE IN (" + tableCodeList + ") AND c.DELETED = 0 " +
@@ -682,14 +682,14 @@ public class RoleManageService {
         Map<String, List<PageColumnVO>> result = new HashMap<>();
         for (Map<String, Object> cm : columnMetas) {
             String tableCode = (String) cm.get("TABLE_CODE");
-            String fieldName = (String) cm.get("FIELD_NAME");
-            if (tableCode == null || fieldName == null) {
+            String columnName = (String) cm.get("COLUMN_NAME");
+            if (tableCode == null || columnName == null) {
                 continue;
             }
 
             PageColumnVO vo = new PageColumnVO();
             vo.setId(numberValue(cm.get("COLUMN_ID")));
-            vo.setFieldName(fieldName);
+            vo.setColumnName(columnName);
             vo.setHeaderText((String) cm.get("HEADER_TEXT"));
             // T_COST_COLUMN_METADATA 没有 visible/editable 字段，基线默认为可见可编辑。
             vo.setVisible(true);
@@ -710,15 +710,14 @@ public class RoleManageService {
             for (int i = 0; i < arr.size(); i++) {
                 cn.hutool.json.JSONObject col = arr.getJSONObject(i);
                 Long columnId = col.getLong("columnId");
-                String field = col.getStr("field");
-                if (field == null) field = col.getStr("fieldName");
-                if (columnId == null && field == null) continue;
+                String columnName = col.getStr("columnName");
+                if (columnId == null && columnName == null) continue;
                 ColumnOverrideSetting setting = new ColumnOverrideSetting(col.getBool("visible"), col.getBool("editable"));
                 if (columnId != null) {
                     byId.put(columnId, setting);
                 }
-                if (field != null) {
-                    byField.put(field, setting);
+                if (columnName != null) {
+                    byField.put(columnName, setting);
                 }
             }
         } catch (Exception e) {
@@ -751,8 +750,8 @@ public class RoleManageService {
 
             PageColumnVO merged = new PageColumnVO();
             merged.setId(base.getId());
-            merged.setFieldName(base.getFieldName());
-            merged.setHeaderText(base.getHeaderText() != null ? base.getHeaderText() : base.getFieldName());
+            merged.setColumnName(base.getColumnName());
+            merged.setHeaderText(base.getHeaderText() != null ? base.getHeaderText() : base.getColumnName());
             merged.setVisible(visible);
             merged.setEditable(editable);
             result.add(merged);
@@ -776,7 +775,7 @@ public class RoleManageService {
                     return matchedById;
                 }
             }
-            return byField.get(column.getFieldName());
+            return byField.get(column.getColumnName());
         }
     }
 
@@ -818,7 +817,7 @@ public class RoleManageService {
         
         // 2. 查询该表的列元数据
         List<Map<String, Object>> columns = dynamicMapper.selectList(
-            "SELECT c.COLUMN_NAME, c.FIELD_NAME, c.HEADER_TEXT, c.DATA_TYPE " +
+            "SELECT c.COLUMN_NAME, c.HEADER_TEXT, c.DATA_TYPE " +
             "FROM T_COST_COLUMN_METADATA c " +
             "JOIN T_COST_TABLE_METADATA m ON c.TABLE_METADATA_ID = m.ID " +
             "WHERE m.TABLE_CODE = '" + refTableCode.replace("'", "''") + "' " +

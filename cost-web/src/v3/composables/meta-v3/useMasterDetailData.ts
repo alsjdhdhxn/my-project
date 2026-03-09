@@ -11,6 +11,8 @@ export function useMasterDetailData(params: {
   pageCode: string;
   pageConfig: Ref<ParsedPageConfig | null>;
   detailFkColumnByTab: Ref<Record<string, string>>;
+  masterPkColumn: Ref<string>;
+  detailPkColumnByTab: Ref<Record<string, string>>;
   masterGridApi: ShallowRef<GridApi | null>;
   detailGridApisByTab?: Ref<Record<string, any>>;
   notifyError: (message: string) => void;
@@ -22,6 +24,8 @@ export function useMasterDetailData(params: {
     pageCode,
     pageConfig,
     detailFkColumnByTab,
+    masterPkColumn,
+    detailPkColumnByTab,
     masterGridApi,
     detailGridApisByTab,
     notifyError,
@@ -189,7 +193,7 @@ export function useMasterDetailData(params: {
         grouped[tab.key] = [];
         continue;
       }
-      grouped[tab.key] = (data?.list || []).map((row: any) => initRowData(row));
+      grouped[tab.key] = (data?.list || []).map((row: any) => initRowData(row, false, detailPkColumnByTab.value[tab.key]));
       debugLog('detail response', { tabKey: tab.key, count: grouped[tab.key].length });
     }
 
@@ -504,7 +508,7 @@ export function useMasterDetailData(params: {
               return;
             }
 
-            const rows = (data?.list || []).map((row: any) => initRowData(row));
+            const rows = (data?.list || []).map((row: any) => initRowData(row, false, masterPkColumn.value));
             const total = data?.total;
 
             // 缓存 rowCount，只在第一次请求或排序/过滤变化时更新

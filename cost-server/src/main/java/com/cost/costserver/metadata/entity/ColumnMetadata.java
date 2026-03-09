@@ -12,7 +12,6 @@ public class ColumnMetadata {
     private Long id;
 
     private Long tableMetadataId;
-    private String fieldName;
     private String columnName;
     private String queryColumn;
     private String targetColumn;

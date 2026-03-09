@@ -81,8 +81,8 @@ public class UserGridConfigService {
             if (preference.columnId() != null) {
                 result.put("id:" + preference.columnId(), preference);
             }
-            if (StrUtil.isNotBlank(preference.field())) {
-                result.put("field:" + preference.field(), preference);
+            if (StrUtil.isNotBlank(preference.columnName())) {
+                result.put("column:" + preference.columnName(), preference);
             }
         }
         return result;
@@ -176,7 +176,7 @@ public class UserGridConfigService {
         int index = 0;
         for (JsonNode node : arrayNode) {
             ColumnPreference preference = toPreference(node, index++);
-            if (preference != null && (preference.columnId() != null || StrUtil.isNotBlank(preference.field()))) {
+            if (preference != null && (preference.columnId() != null || StrUtil.isNotBlank(preference.columnName()))) {
                 preferences.add(preference);
             }
         }
@@ -186,14 +186,11 @@ public class UserGridConfigService {
     private ColumnPreference toPreference(JsonNode node, int index) {
         if (node == null || node.isNull()) return null;
         Long columnId = longNumber(node, "columnId");
-        String field = text(node, "field");
-        if (StrUtil.isBlank(field)) {
-            field = text(node, "fieldName");
+        String columnName = text(node, "columnName");
+        if (StrUtil.isBlank(columnName)) {
+            columnName = text(node, "colId");
         }
-        if (StrUtil.isBlank(field)) {
-            field = text(node, "colId");
-        }
-        if (columnId == null && StrUtil.isBlank(field)) return null;
+        if (columnId == null && StrUtil.isBlank(columnName)) return null;
 
         Integer width = number(node, "width");
         Integer order = number(node, "order");
@@ -211,7 +208,7 @@ public class UserGridConfigService {
             pinned = pinned.toLowerCase();
         }
 
-        return new ColumnPreference(columnId, field, width, order, hidden, pinned);
+        return new ColumnPreference(columnId, columnName, width, order, hidden, pinned);
     }
 
     private String text(JsonNode node, String key) {

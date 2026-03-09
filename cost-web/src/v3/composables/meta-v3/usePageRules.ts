@@ -106,7 +106,7 @@ export function parseValidationRuleConfig(componentKey: string, rules: PageRule[
   const items = parseRuleArray<Record<string, any>>(rule, `${componentKey}.VALIDATION`);
   return items
     .map(item => ({
-      field: item.field ?? item.fieldName,
+      field: item.field ?? item.columnName,
       required: item.required,
       notZero: item.notZero,
       min: item.min,
@@ -136,9 +136,9 @@ export function parseLookupRuleConfig(componentKey: string, rules: PageRule[]): 
   const rule = getRuleByType(rules, 'LOOKUP');
   const items = parseRuleArray<LookupRuleConfig>(rule, `${componentKey}.LOOKUP`);
   return items
-    .filter(item => Boolean(item.field || item.fieldName))
+    .filter(item => Boolean(item.columnName))
     .map(item => ({
-      fieldName: item.field ?? item.fieldName ?? '',
+      columnName: item.columnName,
       lookupCode: item.lookupCode,
       mapping: item.mapping,
       noFillback: item.noFillback,
@@ -172,11 +172,11 @@ export function extractLookupFromColumnOverride(overrides: ColumnOverrideRule[])
   const result: LookupRule[] = [];
   for (const override of overrides) {
     if (override.cellEditor !== 'lookup') continue;
-    const field = override.field || override.fieldName;
+    const columnName = override.columnName;
     const params = override.cellEditorParams;
-    if (!field || !params?.lookupCode) continue;
+    if (!columnName || !params?.lookupCode) continue;
     result.push({
-      fieldName: field,
+      columnName,
       lookupCode: params.lookupCode,
       mapping: params.mapping || {},
       noFillback: params.noFillback,
@@ -340,8 +340,7 @@ function getOverrideMatchKey(override: ColumnOverrideRule): string | null {
   if (typeof override.columnId === 'number' && Number.isFinite(override.columnId)) {
     return `id:${override.columnId}`;
   }
-  const field = override.field || override.fieldName;
-  return field ? `field:${field}` : null;
+  return override.columnName ? `field:${override.columnName}` : null;
 }
 
 function getColDefMatchKey(col: ColDef): string | null {
@@ -828,8 +827,8 @@ export function parseToolbarRule(componentKey: string, rules: PageRule[], compon
 export function extractSumFields(overrides: ColumnOverrideRule[]): string[] {
   if (!overrides || overrides.length === 0) return [];
   return overrides
-    .filter(o => o.aggFunc === 'sum' && (o.field || o.fieldName))
-    .map(o => (o.field || o.fieldName)!);
+    .filter(o => o.aggFunc === 'sum' && o.columnName)
+    .map(o => o.columnName!);
 }
 
 /** 根据数据行计算求和汇总行（用于 pinnedBottomRowData） */

@@ -139,12 +139,12 @@ public class MetaConfigService {
             return;
         }
 
-        String previousFieldName = StrUtil.blankToDefault(existing.getFieldName(), current.getFieldName());
-        String currentFieldName = StrUtil.blankToDefault(current.getFieldName(), existing.getFieldName());
+        String previousColumnName = StrUtil.blankToDefault(existing.getColumnName(), current.getColumnName());
+        String currentColumnName = StrUtil.blankToDefault(current.getColumnName(), existing.getColumnName());
 
-        migrateColumnOverrideRules(bindings, current.getId(), previousFieldName, currentFieldName);
-        migrateRoleColumnPolicies(bindings, current.getId(), previousFieldName, currentFieldName);
-        migrateUserGridConfigs(bindings, current.getId(), previousFieldName, currentFieldName);
+        migrateColumnOverrideRules(bindings, current.getId(), previousColumnName, currentColumnName);
+        migrateRoleColumnPolicies(bindings, current.getId(), previousColumnName, currentColumnName);
+        migrateUserGridConfigs(bindings, current.getId(), previousColumnName, currentColumnName);
     }
 
     private List<GridBinding> findGridBindingsByTableCode(String tableCode) {
@@ -195,8 +195,8 @@ public class MetaConfigService {
     private void migrateColumnOverrideRules(
             List<GridBinding> bindings,
             Long columnId,
-            String oldFieldName,
-            String newFieldName) {
+            String oldColumnName,
+            String newColumnName) {
         if (bindings == null || bindings.isEmpty()) {
             return;
         }
@@ -226,7 +226,7 @@ public class MetaConfigService {
             if (matched == null) {
                 continue;
             }
-            String migrated = migrateColumnOverrideJson(rule.getRules(), columnId, oldFieldName, newFieldName);
+            String migrated = migrateColumnOverrideJson(rule.getRules(), columnId, oldColumnName, newColumnName);
             if (migrated != null) {
                 rule.setRules(migrated);
                 pageRuleMapper.updateById(rule);
@@ -237,8 +237,8 @@ public class MetaConfigService {
     private void migrateRoleColumnPolicies(
             List<GridBinding> bindings,
             Long columnId,
-            String oldFieldName,
-            String newFieldName) {
+            String oldColumnName,
+            String newColumnName) {
         if (bindings == null || bindings.isEmpty()) {
             return;
         }
@@ -260,8 +260,8 @@ public class MetaConfigService {
                 rolePage.getColumnPolicy(),
                 tableKeysByPage.getOrDefault(rolePage.getPageCode(), Collections.emptySet()),
                 columnId,
-                oldFieldName,
-                newFieldName
+                oldColumnName,
+                newColumnName
             );
             if (migrated != null) {
                 rolePage.setColumnPolicy(migrated);
@@ -273,8 +273,8 @@ public class MetaConfigService {
     private void migrateUserGridConfigs(
             List<GridBinding> bindings,
             Long columnId,
-            String oldFieldName,
-            String newFieldName) {
+            String oldColumnName,
+            String newColumnName) {
         if (bindings == null || bindings.isEmpty()) {
             return;
         }
@@ -302,7 +302,7 @@ public class MetaConfigService {
             if (matched == null) {
                 continue;
             }
-            String migrated = migrateUserGridConfigJson(config.getConfigData(), columnId, oldFieldName, newFieldName);
+            String migrated = migrateUserGridConfigJson(config.getConfigData(), columnId, oldColumnName, newColumnName);
             if (migrated != null) {
                 config.setConfigData(migrated);
                 userGridConfigMapper.updateById(config);
@@ -310,7 +310,7 @@ public class MetaConfigService {
         }
     }
 
-    private String migrateColumnOverrideJson(String raw, Long columnId, String oldFieldName, String newFieldName) {
+    private String migrateColumnOverrideJson(String raw, Long columnId, String oldColumnName, String newColumnName) {
         try {
             JsonNode root = objectMapper.readTree(raw);
             if (!(root instanceof ArrayNode arrayNode)) {
@@ -318,12 +318,11 @@ public class MetaConfigService {
             }
             boolean changed = false;
             for (JsonNode item : arrayNode) {
-                if (!(item instanceof ObjectNode objectNode) || !matchesColumnReference(objectNode, columnId, oldFieldName, newFieldName)) {
+                if (!(item instanceof ObjectNode objectNode) || !matchesColumnReference(objectNode, columnId, oldColumnName, newColumnName)) {
                     continue;
                 }
                 objectNode.put("columnId", columnId);
-                objectNode.put("field", newFieldName);
-                objectNode.put("fieldName", newFieldName);
+                objectNode.put("columnName", newColumnName);
                 changed = true;
             }
             return changed ? objectMapper.writeValueAsString(arrayNode) : null;
@@ -336,18 +335,18 @@ public class MetaConfigService {
             String raw,
             Set<String> tableKeys,
             Long columnId,
-            String oldFieldName,
-            String newFieldName) {
+            String oldColumnName,
+            String newColumnName) {
         try {
             JsonNode root = objectMapper.readTree(raw);
             if (!(root instanceof ObjectNode rootObject)) {
                 return null;
             }
-            boolean changed = migratePermissionContainer(rootObject, columnId, oldFieldName, newFieldName);
+            boolean changed = migratePermissionContainer(rootObject, columnId, oldColumnName, newColumnName);
             for (String tableKey : tableKeys) {
                 JsonNode tableNode = rootObject.get(tableKey);
                 if (tableNode instanceof ObjectNode tableObject) {
-                    changed = migratePermissionContainer(tableObject, columnId, oldFieldName, newFieldName) || changed;
+                    changed = migratePermissionContainer(tableObject, columnId, oldColumnName, newColumnName) || changed;
                 }
             }
             return changed ? objectMapper.writeValueAsString(rootObject) : null;
@@ -359,8 +358,8 @@ public class MetaConfigService {
     private boolean migratePermissionContainer(
             ObjectNode container,
             Long columnId,
-            String oldFieldName,
-            String newFieldName) {
+            String oldColumnName,
+            String newColumnName) {
         if (container == null) {
             return false;
         }
@@ -372,7 +371,7 @@ public class MetaConfigService {
             if (!(entry.getValue() instanceof ObjectNode permissionNode) || !looksLikePermissionNode(permissionNode)) {
                 continue;
             }
-            if (!matchesPolicyReference(entry.getKey(), permissionNode, columnId, oldFieldName, newFieldName)) {
+            if (!matchesPolicyReference(entry.getKey(), permissionNode, columnId, oldColumnName, newColumnName)) {
                 continue;
             }
             matchedKeys.add(entry.getKey());
@@ -385,26 +384,26 @@ public class MetaConfigService {
         }
         String canonicalKey = String.valueOf(columnId);
         matchedNode.put("columnId", columnId);
-        matchedNode.put("fieldName", newFieldName);
+        matchedNode.put("columnName", newColumnName);
         matchedKeys.forEach(container::remove);
         container.set(canonicalKey, matchedNode);
         return true;
     }
 
-    private String migrateUserGridConfigJson(String raw, Long columnId, String oldFieldName, String newFieldName) {
+    private String migrateUserGridConfigJson(String raw, Long columnId, String oldColumnName, String newColumnName) {
         try {
             JsonNode root = objectMapper.readTree(raw);
             boolean changed = false;
             if (root instanceof ArrayNode arrayNode) {
-                changed = migratePreferenceArray(arrayNode, columnId, oldFieldName, newFieldName);
+                changed = migratePreferenceArray(arrayNode, columnId, oldColumnName, newColumnName);
             } else if (root instanceof ObjectNode objectNode) {
                 JsonNode columnsNode = objectNode.get("columns");
                 if (columnsNode instanceof ArrayNode columnsArray) {
-                    changed = migratePreferenceArray(columnsArray, columnId, oldFieldName, newFieldName);
+                    changed = migratePreferenceArray(columnsArray, columnId, oldColumnName, newColumnName);
                 }
                 JsonNode stateNode = objectNode.get("columnState");
                 if (stateNode instanceof ArrayNode stateArray) {
-                    changed = migratePreferenceArray(stateArray, columnId, oldFieldName, newFieldName) || changed;
+                    changed = migratePreferenceArray(stateArray, columnId, oldColumnName, newColumnName) || changed;
                 }
             }
             return changed ? objectMapper.writeValueAsString(root) : null;
@@ -413,38 +412,32 @@ public class MetaConfigService {
         }
     }
 
-    private boolean migratePreferenceArray(ArrayNode arrayNode, Long columnId, String oldFieldName, String newFieldName) {
+    private boolean migratePreferenceArray(ArrayNode arrayNode, Long columnId, String oldColumnName, String newColumnName) {
         boolean changed = false;
         for (JsonNode node : arrayNode) {
-            if (!(node instanceof ObjectNode objectNode) || !matchesPreferenceReference(objectNode, columnId, oldFieldName, newFieldName)) {
+            if (!(node instanceof ObjectNode objectNode) || !matchesPreferenceReference(objectNode, columnId, oldColumnName, newColumnName)) {
                 continue;
             }
             objectNode.put("columnId", columnId);
-            objectNode.put("field", newFieldName);
-            if (objectNode.has("fieldName")) {
-                objectNode.put("fieldName", newFieldName);
-            }
+            objectNode.put("columnName", newColumnName);
             if (objectNode.has("colId")) {
-                objectNode.put("colId", newFieldName);
+                objectNode.put("colId", newColumnName);
             }
             changed = true;
         }
         return changed;
     }
 
-    private boolean matchesColumnReference(ObjectNode node, Long columnId, String oldFieldName, String newFieldName) {
+    private boolean matchesColumnReference(ObjectNode node, Long columnId, String oldColumnName, String newColumnName) {
         Long existingColumnId = longValue(node.get("columnId"));
         if (columnId != null && columnId.equals(existingColumnId)) {
             return true;
         }
-        String field = text(node.get("field"));
-        if (StrUtil.isBlank(field)) {
-            field = text(node.get("fieldName"));
-        }
-        return StrUtil.isNotBlank(field) && (StrUtil.equals(field, oldFieldName) || StrUtil.equals(field, newFieldName));
+        String columnName = text(node.get("columnName"));
+        return StrUtil.isNotBlank(columnName) && (StrUtil.equals(columnName, oldColumnName) || StrUtil.equals(columnName, newColumnName));
     }
 
-    private boolean matchesPolicyReference(String key, ObjectNode node, Long columnId, String oldFieldName, String newFieldName) {
+    private boolean matchesPolicyReference(String key, ObjectNode node, Long columnId, String oldColumnName, String newColumnName) {
         Long existingColumnId = longValue(node.get("columnId"));
         if (columnId != null && columnId.equals(existingColumnId)) {
             return true;
@@ -452,42 +445,39 @@ public class MetaConfigService {
         if (columnId != null && StrUtil.equals(key, String.valueOf(columnId))) {
             return true;
         }
-        String fieldName = text(node.get("fieldName"));
-        if (StrUtil.isBlank(fieldName)) {
-            fieldName = key;
+        String columnName = text(node.get("columnName"));
+        if (StrUtil.isBlank(columnName)) {
+            columnName = key;
         }
-        return StrUtil.isNotBlank(fieldName)
-            && (StrUtil.equals(fieldName, oldFieldName) || StrUtil.equals(fieldName, newFieldName));
+        return StrUtil.isNotBlank(columnName)
+            && (StrUtil.equals(columnName, oldColumnName) || StrUtil.equals(columnName, newColumnName));
     }
 
-    private boolean matchesPreferenceReference(ObjectNode node, Long columnId, String oldFieldName, String newFieldName) {
+    private boolean matchesPreferenceReference(ObjectNode node, Long columnId, String oldColumnName, String newColumnName) {
         Long existingColumnId = longValue(node.get("columnId"));
         if (columnId != null && columnId.equals(existingColumnId)) {
             return true;
         }
-        String field = text(node.get("field"));
-        if (StrUtil.isBlank(field)) {
-            field = text(node.get("fieldName"));
+        String columnName = text(node.get("columnName"));
+        if (StrUtil.isBlank(columnName)) {
+            columnName = text(node.get("colId"));
         }
-        if (StrUtil.isBlank(field)) {
-            field = text(node.get("colId"));
-        }
-        return StrUtil.isNotBlank(field) && (StrUtil.equals(field, oldFieldName) || StrUtil.equals(field, newFieldName));
+        return StrUtil.isNotBlank(columnName) && (StrUtil.equals(columnName, oldColumnName) || StrUtil.equals(columnName, newColumnName));
     }
 
     private boolean looksLikePermissionNode(ObjectNode node) {
-        return node.has("visible") || node.has("editable") || node.has("columnId") || node.has("fieldName");
+        return node.has("visible") || node.has("editable") || node.has("columnId") || node.has("columnName");
     }
 
     private String text(JsonNode node) {
         return node != null && !node.isNull() && node.isTextual() ? node.asText() : null;
     }
 
-    private String text(JsonNode node, String fieldName) {
-        if (node == null || StrUtil.isBlank(fieldName)) {
+    private String text(JsonNode node, String key) {
+        if (node == null || StrUtil.isBlank(key)) {
             return null;
         }
-        return text(node.get(fieldName));
+        return text(node.get(key));
     }
 
     private Long longValue(JsonNode node) {

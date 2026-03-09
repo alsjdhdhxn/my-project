@@ -84,13 +84,13 @@ public class AuditLogService {
                           Long recordId, Map<String, Object> data) {
         // 新增时，记录所有非系统字段
         StringBuilder sb = new StringBuilder();
-        Map<String, String> fieldNameMap = getFieldNameMap(tableCode);
+        Map<String, String> columnLabelMap = getColumnLabelMap(tableCode);
         
         for (Map.Entry<String, Object> entry : data.entrySet()) {
             String field = entry.getKey();
             if (isSystemField(field)) continue;
             
-            String fieldLabel = fieldNameMap.getOrDefault(field, field);
+            String fieldLabel = columnLabelMap.getOrDefault(field, field);
             Object value = entry.getValue();
             
             if (sb.length() > 0) sb.append("；");
@@ -128,11 +128,11 @@ public class AuditLogService {
     private String formatChanges(String tableCode, List<SaveParam.FieldChange> changes) {
         if (changes == null || changes.isEmpty()) return null;
         
-        Map<String, String> fieldNameMap = getFieldNameMap(tableCode);
+        Map<String, String> columnLabelMap = getColumnLabelMap(tableCode);
         
         StringBuilder sb = new StringBuilder();
         for (SaveParam.FieldChange change : changes) {
-            String fieldLabel = fieldNameMap.getOrDefault(change.getField(), change.getField());
+            String fieldLabel = columnLabelMap.getOrDefault(change.getField(), change.getField());
             
             if (sb.length() > 0) sb.append("；");
             sb.append("字段「").append(fieldLabel).append("」")
@@ -146,12 +146,12 @@ public class AuditLogService {
     /**
      * 获取字段名到中文名的映射
      */
-    private Map<String, String> getFieldNameMap(String tableCode) {
+    private Map<String, String> getColumnLabelMap(String tableCode) {
         try {
             TableMetadataDTO meta = metadataService.getTableMetadata(tableCode);
             return meta.columns().stream()
                 .collect(Collectors.toMap(
-                    ColumnMetadataDTO::fieldName,
+                    ColumnMetadataDTO::columnName,
                     ColumnMetadataDTO::headerText,
                     (a, b) -> a
                 ));
@@ -167,8 +167,8 @@ public class AuditLogService {
     }
 
     private boolean isSystemField(String field) {
-        return "id".equals(field) || "createTime".equals(field) || "updateTime".equals(field)
-            || "createBy".equals(field) || "updateBy".equals(field) || "deleted".equals(field)
+        return "ID".equals(field) || "CREATE_TIME".equals(field) || "UPDATE_TIME".equals(field)
+            || "CREATE_BY".equals(field) || "UPDATE_BY".equals(field) || "DELETED".equals(field)
             || field.startsWith("_");
     }
 

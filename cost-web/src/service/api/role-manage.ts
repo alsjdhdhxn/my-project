@@ -164,7 +164,7 @@ export async function fetchPageButtons(pageCode: string) {
 
 export interface PageColumnVO {
   id?: number;
-  fieldName: string;
+  columnName: string;
   headerText: string;
   visible: boolean;
   editable: boolean;

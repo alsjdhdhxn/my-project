@@ -207,10 +207,18 @@ export function ensureRowKey(row: RowData): string {
   return row._rowKey;
 }
 
+function resolveInternalRowId(row: Record<string, any>, runtimePkColumn?: string | null): number | null {
+  const pkField = runtimePkColumn && runtimePkColumn.trim().length > 0 ? runtimePkColumn.trim() : null;
+  const candidate = row.id ?? (pkField ? row[pkField] : undefined) ?? row.ID ?? null;
+  if (candidate == null || candidate === '') return null;
+  const parsed = typeof candidate === 'number' ? candidate : Number(candidate);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 /**
  * 初始化行数据（添加内部状态字段）
  */
-export function initRowData(row: Record<string, any>, isNew = false): RowData {
+export function initRowData(row: Record<string, any>, isNew = false, runtimePkColumn?: string | null): RowData {
   // 过滤内部字段创建原始值快照
   const originalValues: Record<string, any> = {};
   for (const [key, value] of Object.entries(row)) {
@@ -221,7 +229,7 @@ export function initRowData(row: Record<string, any>, isNew = false): RowData {
 
   const nextRow: RowData = {
     ...row,
-    id: row.id ?? null,
+    id: resolveInternalRowId(row, runtimePkColumn),
     _isNew: isNew,
     _isDeleted: false,
     _changeType: {},

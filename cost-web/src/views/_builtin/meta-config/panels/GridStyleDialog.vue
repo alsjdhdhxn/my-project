@@ -102,10 +102,10 @@ async function loadAvailableFields() {
     if (!targetTable?.id) { availableFields.value = []; return; }
     const cols = await fetchColumnsByTableId(targetTable.id);
     availableFields.value = cols
-      .filter((col: any) => col.fieldName)
+      .filter((col: any) => col.columnName)
       .map((col: any) => ({
-        label: `${col.fieldName} (${col.headerText || col.columnName})`,
-        value: col.fieldName
+        label: `${col.columnName} (${col.headerText || col.columnName})`,
+        value: col.columnName
       }));
   } catch {
     availableFields.value = [];

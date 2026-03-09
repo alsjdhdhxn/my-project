@@ -112,7 +112,7 @@ public class MetadataService {
         }
         List<ColumnMetadataDTO> result = new ArrayList<>();
         for (ColumnMetadataDTO col : columns) {
-            ColumnPermission colPerm = permission.getColumnPermission(gridKey, col.id(), col.fieldName());
+            ColumnPermission colPerm = permission.getColumnPermission(gridKey, col.id(), col.columnName());
             if (colPerm != null && !colPerm.visible()) {
                 continue;
             }
@@ -295,14 +295,11 @@ public class MetadataService {
                 return ColumnOverrideIndex.empty();
             }
             Map<Long, ColumnOverride> byId = new HashMap<>();
-            Map<String, ColumnOverride> byField = new HashMap<>();
+            Map<String, ColumnOverride> byColumnName = new HashMap<>();
             for (JsonNode node : root) {
                 Long columnId = longNumber(node, "columnId");
-                String field = text(node, "field");
-                if (StrUtil.isBlank(field)) {
-                    field = text(node, "fieldName");
-                }
-                if (columnId == null && StrUtil.isBlank(field))
+                String columnName = text(node, "columnName");
+                if (columnId == null && StrUtil.isBlank(columnName))
                     continue;
                 ColumnOverride override = new ColumnOverride(
                         number(node, "width"),
@@ -324,11 +321,11 @@ public class MetadataService {
                 if (columnId != null) {
                     byId.put(columnId, override);
                 }
-                if (StrUtil.isNotBlank(field)) {
-                    byField.put(field, override);
+                if (StrUtil.isNotBlank(columnName)) {
+                    byColumnName.put(columnName, override);
                 }
             }
-            return new ColumnOverrideIndex(byId, byField);
+            return new ColumnOverrideIndex(byId, byColumnName);
         } catch (Exception e) {
             log.warn("Failed to parse COLUMN_OVERRIDE rules: {}", e.getMessage());
             return ColumnOverrideIndex.empty();
@@ -355,7 +352,7 @@ public class MetadataService {
                 return matchedById;
             }
         }
-        return preferences.get("field:" + col.fieldName());
+        return preferences.get("column:" + col.columnName());
     }
 
     private Integer number(JsonNode node, String... keys) {
@@ -610,7 +607,6 @@ public class MetadataService {
             String rulesConfig) {
         return new ColumnMetadataDTO(
                 col.id(),
-                col.fieldName(),
                 col.columnName(),
                 col.queryColumn(),
                 col.targetColumn(),
@@ -652,13 +648,13 @@ public class MetadataService {
 
     private record ColumnOverrideIndex(
             Map<Long, ColumnOverride> byId,
-            Map<String, ColumnOverride> byField) {
+            Map<String, ColumnOverride> byColumnName) {
         static ColumnOverrideIndex empty() {
             return new ColumnOverrideIndex(Collections.emptyMap(), Collections.emptyMap());
         }
 
         boolean isEmpty() {
-            return byId.isEmpty() && byField.isEmpty();
+            return byId.isEmpty() && byColumnName.isEmpty();
         }
 
         ColumnOverride find(ColumnMetadataDTO col) {
@@ -671,7 +667,7 @@ public class MetadataService {
                     return matchedById;
                 }
             }
-            return byField.get(col.fieldName());
+            return byColumnName.get(col.columnName());
         }
     }
 

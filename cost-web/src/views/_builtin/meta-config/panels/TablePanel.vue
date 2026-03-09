@@ -124,26 +124,6 @@ function shouldAutoSyncByOldColumn(currentValue: unknown, oldColumnName: unknown
   return normalizeDbColumnName(current) === normalizeDbColumnName(oldColumn);
 }
 
-function shouldAutoSyncFieldName(row: any, oldColumnName: unknown): boolean {
-  const currentFieldName = typeof row?.fieldName === 'string' ? row.fieldName.trim() : '';
-  if (!currentFieldName) return true;
-
-  const oldColumn = typeof oldColumnName === 'string' ? oldColumnName.trim() : '';
-  if (!oldColumn) return false;
-
-  return currentFieldName === toCamelCase(oldColumn);
-}
-
-function syncFieldNameFromColumnName(row: any, oldColumnName: unknown, newColumnName: unknown) {
-  if (!row) return;
-
-  const nextColumnName = typeof newColumnName === 'string' ? newColumnName.trim() : '';
-  if (!nextColumnName) return;
-  if (!shouldAutoSyncFieldName(row, oldColumnName)) return;
-
-  row.fieldName = toCamelCase(nextColumnName);
-}
-
 function syncQueryColumnFromColumnName(row: any, oldColumnName: unknown, newColumnName: unknown) {
   if (!row) return;
 
@@ -169,7 +149,6 @@ function syncTargetColumnFromColumnName(row: any, oldColumnName: unknown, newCol
 }
 
 function syncLinkedFieldsFromColumnName(row: any, oldColumnName: unknown, newColumnName: unknown) {
-  syncFieldNameFromColumnName(row, oldColumnName, newColumnName);
   syncQueryColumnFromColumnName(row, oldColumnName, newColumnName);
   syncTargetColumnFromColumnName(row, oldColumnName, newColumnName);
 }
@@ -189,7 +168,7 @@ function setColumnNameValue(params: any): boolean {
 
   params.api.refreshCells({
     rowNodes: params.node ? [params.node] : undefined,
-    columns: ['fieldName', 'columnName', 'queryColumn', 'targetColumn'],
+    columns: ['columnName', 'queryColumn', 'targetColumn'],
     force: true
   });
 
@@ -198,7 +177,6 @@ function setColumnNameValue(params: any): boolean {
 
 const colColDefs: ColDef[] = [
   { field: 'id', headerName: 'ID', width: 70, editable: false },
-  { field: 'fieldName', headerName: 'fieldName', width: 120, editable: true },
   {
     field: 'columnName',
     headerName: 'columnName',
@@ -500,7 +478,6 @@ function addColumn() {
     _isNew: true,
     id: null,
     tableMetadataId: selectedTable.value.id,
-    fieldName: '',
     columnName: '',
     queryColumn: '',
     targetColumn: '',
@@ -517,7 +494,7 @@ function addColumn() {
   setTimeout(() => {
     const idx = colRows.value.length - 1;
     colGridApi.value?.ensureIndexVisible(idx);
-    colGridApi.value?.startEditingCell({ rowIndex: idx, colKey: 'fieldName' });
+    colGridApi.value?.startEditingCell({ rowIndex: idx, colKey: 'columnName' });
   }, 100);
 }
 
@@ -531,8 +508,8 @@ async function saveColumn() {
   }
 
   for (const row of dirtyRows) {
-    if (!row.fieldName || !row.columnName) {
-      message.warning('fieldName和columnName不能为空');
+    if (!row.columnName) {
+      message.warning('columnName不能为空');
       return;
     }
   }
@@ -579,7 +556,7 @@ function markDirty(event: CellValueChangedEvent) {
     }
     event.api.refreshCells({
       rowNodes: event.node ? [event.node] : undefined,
-      columns: ['fieldName', 'columnName', 'queryColumn', 'targetColumn'],
+      columns: ['columnName', 'queryColumn', 'targetColumn'],
       force: true
     });
   }
@@ -615,10 +592,6 @@ function mapOracleType(oracleType: string): string {
     return 'date';
   }
   return 'text';
-}
-
-function toCamelCase(col: string): string {
-  return col.toLowerCase().replace(/_([a-z])/g, (_, c) => c.toUpperCase());
 }
 
 async function openViewColModal() {
@@ -678,9 +651,8 @@ function confirmAddViewCols() {
       _isNew: true,
       id: null,
       tableMetadataId: selectedTable.value.id,
-      fieldName: toCamelCase(colName),
       columnName: colName,
-      queryColumn: inTarget ? colName : '',
+      queryColumn: colName,
       targetColumn: inTarget ? colName : '',
       headerText: colName,
       dataType: mapOracleType(r.DATA_TYPE),

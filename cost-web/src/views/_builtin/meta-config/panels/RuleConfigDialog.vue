@@ -33,7 +33,7 @@ type AggItem = {
   filter?: string; expression?: string; sourceTab?: string; isExpression: boolean;
 };
 type ValidationItem = { field: string; rule: string; message: string; value?: any };
-type FieldInfo = { fieldName: string; headerText: string; columnName: string };
+type FieldInfo = { columnName: string; headerText: string };
 type TableFieldGroup = { tableCode: string; label: string; isMaster: boolean; isCurrent: boolean; fields: FieldInfo[] };
 
 // ==================== 状态 ====================
@@ -45,14 +45,32 @@ const fieldGroups = ref<TableFieldGroup[]>([]);
 const saving = ref(false);
 const sidebarFilter = ref('');
 const currentTableCode = ref('');
+const expandedInputKey = ref<string | null>(null);
 
 // ==================== 字段插入联动 ====================
 // 记录当前聚焦的输入框信息，点击侧边栏字段时追加到该输入框
-type ActiveInput = { getValue: () => string; setValue: (v: string) => void; el: HTMLInputElement | null };
+type ActiveInput = { getValue: () => string; setValue: (v: string) => void; el: HTMLInputElement | HTMLTextAreaElement | null };
 const activeInput = ref<ActiveInput | null>(null);
 
-function trackFocus(getValue: () => string, setValue: (v: string) => void, event: FocusEvent) {
-  activeInput.value = { getValue, setValue, el: event.target as HTMLInputElement };
+function trackFocus(key: string, getValue: () => string, setValue: (v: string) => void, event: FocusEvent) {
+  expandedInputKey.value = key;
+  activeInput.value = { getValue, setValue, el: event.target as HTMLInputElement | HTMLTextAreaElement };
+}
+
+function trackBlur(key: string) {
+  window.setTimeout(() => {
+    if (expandedInputKey.value === key) expandedInputKey.value = null;
+  }, 100);
+}
+
+function isExpanded(key: string) {
+  return expandedInputKey.value === key;
+}
+
+function getInputAutosize(key: string) {
+  return isExpanded(key)
+    ? { minRows: 4, maxRows: 12 }
+    : { minRows: 1, maxRows: 1 };
 }
 
 function insertField(fieldRef: string) {
@@ -73,11 +91,77 @@ function insertField(fieldRef: string) {
   }
 }
 
-function formatFieldRef(tableCode: string, fieldName: string): string {
+function formatFieldRef(tableCode: string, columnName: string): string {
   if (isValidIdentifier(tableCode)) {
-    return `${tableCode}.${fieldName}`;
+    return `${tableCode}.${columnName}`;
   }
-  return fieldName;
+  return columnName;
+}
+
+function formatDisplayFieldRef(tableCode: string, field: FieldInfo): string {
+  const displayName = field.headerText || field.columnName;
+  if (isValidIdentifier(tableCode)) {
+    return `${tableCode}.【${displayName}】`;
+  }
+  return `【${displayName}】`;
+}
+
+type FieldRefPair = { raw: string; display: string };
+
+const qualifiedDisplayPairs = computed<FieldRefPair[]>(() =>
+  fieldGroups.value
+    .flatMap(group => group.fields.map(field => ({
+      raw: formatFieldRef(group.tableCode, field.columnName),
+      display: formatDisplayFieldRef(group.tableCode, field),
+    })))
+    .sort((a, b) => b.raw.length - a.raw.length)
+);
+
+const currentBareDisplayPairs = computed<FieldRefPair[]>(() => {
+  const currentGroup = fieldGroups.value.find(group => group.tableCode === currentTableCode.value);
+  if (!currentGroup) return [];
+  return currentGroup.fields
+    .map(field => ({
+      raw: field.columnName,
+      display: `【${field.headerText || field.columnName}】`,
+    }))
+    .sort((a, b) => b.raw.length - a.raw.length);
+});
+
+function replaceQualifiedRefsWithDisplay(text: string): string {
+  return text.replace(/\b([A-Za-z_]\w*)\.([A-Za-z_]\w*)\b/g, (full, tableCode: string, columnName: string) => {
+    const pair = qualifiedDisplayPairs.value.find(item => item.raw === `${tableCode}.${columnName}`);
+    return pair?.display || full;
+  });
+}
+
+function replaceBareRefsWithDisplay(text: string): string {
+  return text.replace(/\b([A-Za-z_]\w*)\b/g, (full, identifier: string) => {
+    const pair = currentBareDisplayPairs.value.find(item => item.raw === identifier);
+    return pair?.display || full;
+  });
+}
+
+function toDisplayExpression(text?: string): string {
+  if (!text) return '';
+  return replaceBareRefsWithDisplay(replaceQualifiedRefsWithDisplay(text));
+}
+
+function replaceAll(value: string, from: string, to: string): string {
+  if (!from || from === to) return value;
+  return value.split(from).join(to);
+}
+
+function toStoredExpression(text?: string): string {
+  if (!text) return '';
+  let value = text;
+  for (const pair of qualifiedDisplayPairs.value) {
+    value = replaceAll(value, pair.display, pair.raw);
+  }
+  for (const pair of currentBareDisplayPairs.value) {
+    value = replaceAll(value, pair.display, pair.raw);
+  }
+  return value;
 }
 
 const titleMap: Record<string, string> = { CALC: '行级计算规则', AGGREGATE: '聚合规则', VALIDATION: '校验规则' };
@@ -124,16 +208,20 @@ const visibleFieldGroups = computed(() => {
   return groups.map(g => ({
     ...g,
     fields: g.fields.filter(f =>
-      f.fieldName.toLowerCase().includes(kw) || f.headerText.toLowerCase().includes(kw)
+      f.columnName.toLowerCase().includes(kw) || f.headerText.toLowerCase().includes(kw)
     ),
   })).filter(g => g.fields.length > 0);
 });
 
 watch(() => props.show, async (val) => {
-  if (!val) return;
+  if (!val) {
+    activeInput.value = null;
+    expandedInputKey.value = null;
+    return;
+  }
   sidebarFilter.value = '';
-  parseRulesJson();
   await loadAvailableFields();
+  parseRulesJson();
 });
 
 // ==================== 解析 ====================
@@ -149,20 +237,20 @@ function parseRulesJson() {
           for (const [mapKey, f] of Object.entries(r.formulas as Record<string, any>)) {
             formulas.push({
               key: f.key || mapKey,
-              expression: f.expression || '',
+              expression: toDisplayExpression(f.expression || ''),
               matchType: normalizeFormulaMatchType(f.matchType)
             });
           }
         }
-        return { field: r.field || '', expression: isMulti ? '' : (r.expression || ''),
-          condition: r.condition || '', order: r.order,
+        return { field: r.field || '', expression: isMulti ? '' : toDisplayExpression(r.expression || ''),
+          condition: toDisplayExpression(r.condition || ''), order: r.order,
           isMultiFormula: isMulti, formulaField: r.formulaField || '', formulas };
       });
     } else if (props.ruleType === 'AGGREGATE') {
       aggItems.value = list.map((r: any) => ({
         sourceField: r.sourceField || '', targetField: r.targetField || '',
-        algorithm: r.algorithm || 'SUM', filter: r.filter || '',
-        expression: r.expression || '', sourceTab: r.sourceTab || '',
+        algorithm: r.algorithm || 'SUM', filter: toDisplayExpression(r.filter || ''),
+        expression: toDisplayExpression(r.expression || ''), sourceTab: r.sourceTab || '',
         isExpression: Boolean(r.expression && !r.algorithm),
       }));
     } else {
@@ -191,12 +279,12 @@ async function loadAvailableFields() {
     const currentTable = currentRef ? tables.find((t: any) => t.tableCode === currentRef) : null;
     if (currentTable?.id) {
       const cols = await fetchColumnsByTableId(currentTable.id);
-      const fields = cols.filter((c: any) => c.fieldName).map((c: any) => ({
-        fieldName: c.fieldName, headerText: c.headerText || '', columnName: c.columnName || '',
+      const fields = cols.filter((c: any) => c.columnName).map((c: any) => ({
+        columnName: c.columnName, headerText: c.headerText || '',
       }));
       const isMaster = currentRef === masterRef;
       fieldGroups.value.push({ tableCode: currentRef || '', label: isMaster ? `主表 (${currentRef})` : `当前表 (${currentRef})`, isMaster, isCurrent: true, fields });
-      availableFields.value = fields.map(f => ({ label: `${f.fieldName} (${f.headerText || f.columnName})`, value: f.fieldName }));
+      availableFields.value = fields.map(f => ({ label: `${f.headerText || f.columnName} (${f.columnName})`, value: f.columnName }));
     }
 
     // 如果当前不是主表，额外加载主表
@@ -204,8 +292,8 @@ async function loadAvailableFields() {
       const masterTable = tables.find((t: any) => t.tableCode === masterRef);
       if (masterTable?.id) {
         const cols = await fetchColumnsByTableId(masterTable.id);
-        const fields = cols.filter((c: any) => c.fieldName).map((c: any) => ({
-          fieldName: c.fieldName, headerText: c.headerText || '', columnName: c.columnName || '',
+        const fields = cols.filter((c: any) => c.columnName).map((c: any) => ({
+          columnName: c.columnName, headerText: c.headerText || '',
         }));
         fieldGroups.value.unshift({ tableCode: masterRef, label: `主表 (${masterRef})`, isMaster: true, isCurrent: false, fields });
       }
@@ -222,8 +310,8 @@ async function loadAvailableFields() {
         const table = tables.find((t: any) => t.tableCode === comp.refTableCode);
         if (!table?.id) continue;
         const cols = await fetchColumnsByTableId(table.id);
-        const fields = cols.filter((c: any) => c.fieldName).map((c: any) => ({
-          fieldName: c.fieldName, headerText: c.headerText || '', columnName: c.columnName || '',
+        const fields = cols.filter((c: any) => c.columnName).map((c: any) => ({
+          columnName: c.columnName, headerText: c.headerText || '',
         }));
         fieldGroups.value.push({ tableCode: comp.refTableCode, label: `${comp.componentKey} (${comp.refTableCode})`, isMaster: false, isCurrent: false, fields });
       }
@@ -243,7 +331,7 @@ function addItem() {
 }
 
 function extractIdentifiers(expression: string): string[] {
-  return Array.from(extractFieldRefsFromExpression(expression, currentTableCode.value || undefined));
+  return Array.from(extractFieldRefsFromExpression(toStoredExpression(expression), currentTableCode.value || undefined));
 }
 
 function buildJson(): string {
@@ -255,28 +343,28 @@ function buildJson(): string {
           if (f.key) {
             formulas[`__branch_${branchIndex}`] = {
               key: f.key,
-              expression: f.expression,
+              expression: toStoredExpression(f.expression),
               triggerFields: extractIdentifiers(f.expression),
               matchType: normalizeFormulaMatchType(f.matchType)
             };
           }
         }
         const r: any = { field: item.field, formulaField: item.formulaField, formulas };
-        if (item.condition) r.condition = item.condition;
+        if (item.condition) r.condition = toStoredExpression(item.condition);
         if (item.order != null) r.order = item.order;
         return r;
       }
-      const r: any = { field: item.field, expression: item.expression, triggerFields: extractIdentifiers(item.expression) };
-      if (item.condition) r.condition = item.condition;
+      const r: any = { field: item.field, expression: toStoredExpression(item.expression), triggerFields: extractIdentifiers(item.expression) };
+      if (item.condition) r.condition = toStoredExpression(item.condition);
       if (item.order != null) r.order = item.order;
       return r;
     }));
   }
   if (props.ruleType === 'AGGREGATE') {
     return JSON.stringify(aggItems.value.map(item => {
-      if (item.isExpression) return { targetField: item.targetField, expression: item.expression };
+      if (item.isExpression) return { targetField: item.targetField, expression: toStoredExpression(item.expression) };
       const r: any = { sourceField: item.sourceField, targetField: item.targetField, algorithm: item.algorithm };
-      if (item.filter) r.filter = item.filter;
+      if (item.filter) r.filter = toStoredExpression(item.filter);
       if (item.sourceTab) r.sourceTab = item.sourceTab;
       return r;
     }));
@@ -367,10 +455,10 @@ async function handleSave() {
             <div class="rule-row">
               <div class="rule-field"><span class="field-label">目标字段</span><NSelect v-model:value="item.field" :options="availableFields" size="small" filterable tag placeholder="输入或选择" style="width:200px" /></div>
               <div class="rule-field"><span class="field-label">排序</span><NInputNumber v-model:value="item.order" size="small" style="width:80px" /></div>
-              <div class="rule-field" style="flex:1"><span class="field-label">条件 (可选)</span><NInput v-model:value="item.condition" size="small" placeholder="如: useFlag !== '包材'" @focus="(e: FocusEvent) => trackFocus(() => item.condition || '', (v) => item.condition = v, e)" /></div>
+              <div class="rule-field" style="flex:1"><span class="field-label">条件 (可选)</span><NInput v-model:value="item.condition" type="textarea" :autosize="getInputAutosize(`calc-condition-${idx}`)" size="small" placeholder="如: 【生产属性】 !== '包材'" @focus="(e: FocusEvent) => trackFocus(`calc-condition-${idx}`, () => item.condition || '', (v) => item.condition = v, e)" @blur="trackBlur(`calc-condition-${idx}`)" /></div>
             </div>
             <template v-if="!item.isMultiFormula">
-              <div class="rule-row"><div class="rule-field" style="flex:1"><span class="field-label">表达式</span><NInput v-model:value="item.expression" size="small" placeholder="如: batchQty * price" @focus="(e: FocusEvent) => trackFocus(() => item.expression, (v) => item.expression = v, e)" /></div></div>
+              <div class="rule-row"><div class="rule-field" style="flex:1"><span class="field-label">表达式</span><NInput v-model:value="item.expression" type="textarea" :autosize="getInputAutosize(`calc-expression-${idx}`)" size="small" placeholder="如: CostMaterial.【每批数量】 * CostMaterial.【单价】" @focus="(e: FocusEvent) => trackFocus(`calc-expression-${idx}`, () => item.expression, (v) => item.expression = v, e)" @blur="trackBlur(`calc-expression-${idx}`)" /></div></div>
             </template>
             <template v-else>
               <div class="rule-row"><div class="rule-field"><span class="field-label">分支字段</span><NSelect v-model:value="item.formulaField" :options="availableFields" size="small" filterable tag placeholder="选择分支依据" style="width:220px" /></div></div>
@@ -389,7 +477,7 @@ async function handleSave() {
                       style="width:180px"
                     />
                   </div>
-                  <div class="rule-field" style="flex:1"><span class="field-label">表达式</span><NInput v-model:value="f.expression" size="small" placeholder="如: apexPl / pPerpack" @focus="(e: FocusEvent) => trackFocus(() => f.expression, (v) => f.expression = v, e)" /></div>
+                  <div class="rule-field" style="flex:1"><span class="field-label">表达式</span><NInput v-model:value="f.expression" type="textarea" :autosize="getInputAutosize(`calc-branch-${idx}-${fi}`)" size="small" placeholder="如: CostPinggu.【批量】 / CostPinggu.【每盒片数】" @focus="(e: FocusEvent) => trackFocus(`calc-branch-${idx}-${fi}`, () => f.expression, (v) => f.expression = v, e)" @blur="trackBlur(`calc-branch-${idx}-${fi}`)" /></div>
                   <NPopconfirm @positive-click="item.formulas.splice(fi, 1)"><template #trigger><NButton size="tiny" quaternary type="error" style="align-self:flex-end">删除</NButton></template>删除此分支？</NPopconfirm>
                 </div>
               </div>
@@ -417,11 +505,11 @@ async function handleSave() {
               </div>
               <div class="rule-row">
                 <div class="rule-field"><span class="field-label">来源Tab (可选)</span><NInput v-model:value="item.sourceTab" size="small" placeholder="如: CostMaterial" style="width:180px" /></div>
-                <div class="rule-field" style="flex:1"><span class="field-label">过滤条件 (可选)</span><NInput v-model:value="item.filter" size="small" placeholder="如: useFlag === '原料'" @focus="(e: FocusEvent) => trackFocus(() => item.filter || '', (v) => item.filter = v, e)" /></div>
+                <div class="rule-field" style="flex:1"><span class="field-label">过滤条件 (可选)</span><NInput v-model:value="item.filter" type="textarea" :autosize="getInputAutosize(`agg-filter-${idx}`)" size="small" placeholder="如: 【用途】 === '原料'" @focus="(e: FocusEvent) => trackFocus(`agg-filter-${idx}`, () => item.filter || '', (v) => item.filter = v, e)" @blur="trackBlur(`agg-filter-${idx}`)" /></div>
               </div>
             </template>
             <template v-else>
-              <div class="rule-row"><div class="rule-field" style="flex:1"><span class="field-label">表达式</span><NInput v-model:value="item.expression" size="small" placeholder="如: totalYl + totalFl" @focus="(e: FocusEvent) => trackFocus(() => item.expression || '', (v) => item.expression = v, e)" /></div></div>
+              <div class="rule-row"><div class="rule-field" style="flex:1"><span class="field-label">表达式</span><NInput v-model:value="item.expression" type="textarea" :autosize="getInputAutosize(`agg-expression-${idx}`)" size="small" placeholder="如: 【原辅料成本】 + 【包材成本】" @focus="(e: FocusEvent) => trackFocus(`agg-expression-${idx}`, () => item.expression || '', (v) => item.expression = v, e)" @blur="trackBlur(`agg-expression-${idx}`)" /></div></div>
             </template>
           </div>
         </template>
@@ -458,13 +546,13 @@ async function handleSave() {
             </div>
             <div
               v-for="f in group.fields"
-              :key="f.fieldName"
+              :key="f.columnName"
               class="field-item"
               :title="f.columnName"
-              @mousedown.prevent="insertField(formatFieldRef(group.tableCode, f.fieldName))"
+              @mousedown.prevent="insertField(formatDisplayFieldRef(group.tableCode, f))"
             >
-              <span class="field-name">{{ f.fieldName }}</span>
-              <span class="field-desc">{{ f.headerText }}</span>
+              <span class="field-name">{{ f.headerText || f.columnName }}</span>
+              <span class="field-desc">{{ f.columnName }}</span>
             </div>
           </div>
           <NEmpty v-if="visibleFieldGroups.length === 0" description="无字段" size="small" />

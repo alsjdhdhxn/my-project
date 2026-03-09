@@ -74,7 +74,7 @@ END;
 --   'cost-pinggu',
 --   'masterGrid',
 --   q'~[
---     {"field":"salemoney","expression":"T_COST_PINGGU.outPriceRmb / T_COST_PINGGU.pPerpack * T_COST_PINGGU.apexPl * (T_COST_PINGGU.yield / 100)","triggerFields":["T_COST_PINGGU.outPriceRmb","T_COST_PINGGU.pPerpack","T_COST_PINGGU.apexPl","T_COST_PINGGU.yield"]}
+--     {"field":"SALEMONEY","expression":"CostPinggu.OUT_PRICE_RMB / CostPinggu.P_PERPACK * CostPinggu.APEX_PL * (CostPinggu.YIELD / 100)","triggerFields":["CostPinggu.OUT_PRICE_RMB","CostPinggu.P_PERPACK","CostPinggu.APEX_PL","CostPinggu.YIELD"]}
 --   ]~',
 --   'migrated by tableCode.field script'
 -- );

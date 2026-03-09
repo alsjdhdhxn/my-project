@@ -71,7 +71,7 @@ export function useLookupDialog(params: {
     const rowData = event.data;
     if (!field || !rowData) return;
 
-    const rule = masterLookupRules.value.find(r => r.fieldName === field);
+    const rule = masterLookupRules.value.find(r => r.columnName === field);
     if (!rule) return;
 
     if (isRowEditable && !isRowEditable(rowData) && !rule.noFillback) return;
@@ -92,7 +92,7 @@ export function useLookupDialog(params: {
     const rowData = event.data;
     if (!field || !rowData) return;
 
-    const rule = detailLookupRulesByTab.value[tabKey]?.find(r => r.fieldName === field);
+    const rule = detailLookupRulesByTab.value[tabKey]?.find(r => r.columnName === field);
     if (!rule) return;
 
     if (isDetailRowEditable && !isDetailRowEditable(rowData, tabKey) && !rule.noFillback) return;

@@ -16,8 +16,7 @@ export type PageComponentWithRules = Api.Metadata.PageComponent & {
 
 export type ColumnOverrideRule = {
   columnId?: number;
-  field?: string;
-  fieldName?: string;
+  columnName?: string;
   width?: number;
   visible?: boolean;
   editable?: boolean;
@@ -60,8 +59,7 @@ export type ColumnOverrideRule = {
  *   'cell': 用你点击的单元格的值（不需要 filterField）
  */
 export type LookupRuleConfig = {
-  field?: string;
-  fieldName?: string;
+  columnName: string;
   lookupCode: string;
   mapping: Record<string, string>;
   /** 是否禁止回填（仅查看模式） */

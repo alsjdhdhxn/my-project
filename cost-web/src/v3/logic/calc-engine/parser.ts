@@ -320,16 +320,16 @@ function parseComponentConfig<T>(configStr?: string): T | null {
  * 从列元数据提取默认值
  */
 export function extractDefaultValues(
-  columns: Array<{ fieldName: string; dataType: string; defaultValue?: any }>
+  columns: Array<{ columnName: string; dataType: string; defaultValue?: any }>
 ): Record<string, any> {
   const defaults: Record<string, any> = {};
 
   for (const col of columns) {
     if (col.defaultValue !== undefined && col.defaultValue !== null) {
-      defaults[col.fieldName] = col.defaultValue;
+      defaults[col.columnName] = col.defaultValue;
     } else {
       // 约定：数字类型默认 0，文本类型默认空字符串
-      defaults[col.fieldName] = col.dataType === 'number' ? 0 : '';
+      defaults[col.columnName] = col.dataType === 'number' ? 0 : '';
     }
   }
 
@@ -339,14 +339,14 @@ export function extractDefaultValues(
 /**
  * 过滤列定义（根据 Tab 的 columns 配置）
  */
-export function filterColumns<T extends { field?: string; fieldName?: string }>(
+export function filterColumns<T extends { field?: string; columnName?: string }>(
   allColumns: T[],
   visibleFields: string[]
 ): T[] {
   if (!visibleFields || visibleFields.length === 0) return allColumns;
 
   return allColumns.filter(col => {
-    const field = col.field || col.fieldName;
+    const field = col.field || col.columnName;
     return field && visibleFields.includes(field);
   });
 }

@@ -60,9 +60,7 @@ public class DynamicDataController {
                 continue;
             }
             if (entry.getValue() != null && !entry.getValue().isEmpty()) {
-                // 支持大写下划线格式，自动转为小驼峰
-                String fieldName = key.contains("_") ? underscoreToCamel(key) : key;
-                conditions.add(new QueryParam.QueryCondition(fieldName, "eq", entry.getValue(), null));
+                conditions.add(new QueryParam.QueryCondition(key, "eq", entry.getValue(), null));
             }
         }
         param.setConditions(conditions);
@@ -166,19 +164,5 @@ public class DynamicDataController {
             request.getActionCode(),
             request.getData()
         ));
-    }
-
-    private String underscoreToCamel(String name) {
-        StringBuilder sb = new StringBuilder();
-        boolean upper = false;
-        for (char c : name.toLowerCase().toCharArray()) {
-            if (c == '_') {
-                upper = true;
-            } else {
-                sb.append(upper ? Character.toUpperCase(c) : c);
-                upper = false;
-            }
-        }
-        return sb.toString();
     }
 }

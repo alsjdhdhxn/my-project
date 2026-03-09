@@ -444,6 +444,12 @@ const activeDetailTab = ref<string>('');
 
 const masterGridOptionsValue = computed(() => masterGridOptions?.value || null);
 
+function normalizeMasterId(value: unknown): number | null {
+  if (value == null || value === '') return null;
+  const parsed = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 // 确保 dataSource 只创建一次，避免因响应式重新计算导致 AG Grid 重置
 let cachedDataSource: any = null;
 function getDataSource() {
@@ -485,9 +491,9 @@ const {
   onSelectionChanged: async (rows) => {
     if (!isSplitMode.value || !hasDetailTabs.value) return;
     const selected = rows?.[0];
-    const nextId = selected?.id ?? null;
+    const nextId = normalizeMasterId(selected?.id);
     const nextRowKey = selected ? ensureRowKey(selected) : null;
-    activeMasterId.value = typeof nextId === 'number' ? nextId : (nextId != null ? Number(nextId) : null);
+    activeMasterId.value = nextId;
     activeMasterRowKey.value = nextRowKey ? String(nextRowKey) : null;
     if (runtimeActiveMasterRowKey) {
       runtimeActiveMasterRowKey.value = activeMasterRowKey.value;
@@ -689,8 +695,7 @@ function onDetailRowOpened(event: any) {
   if (isSplitMode.value) return;
   if (!event?.node?.master) return;
   
-  const masterIdRaw = event.node?.data?.id;
-  const masterId = typeof masterIdRaw === 'number' ? masterIdRaw : Number(masterIdRaw);
+  const masterId = normalizeMasterId(event.node?.data?.id);
   const api = event.api;
   const currentNode = event.node;
   
@@ -753,7 +758,7 @@ function onDetailRowOpened(event: any) {
   
   // 加载数据，完成后刷新行高
   const masterRowKey = currentNode?.data ? String(ensureRowKey(currentNode.data)) : null;
-  if (!Number.isNaN(masterId) && masterRowKey && !detailCache.get(masterRowKey)) {
+  if (masterId != null && masterRowKey && !detailCache.get(masterRowKey)) {
     loadDetailData(masterId, masterRowKey).then(() => {
       // 数据加载完成后重新计算行高
       api?.resetRowHeights();
