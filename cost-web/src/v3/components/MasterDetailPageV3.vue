@@ -4,7 +4,6 @@ import { NEmpty, NSpin, useMessage } from 'naive-ui';
 import { useWebSocket } from '@/composables/useWebSocket';
 import MetaPageRendererV3 from '@/v3/components/meta-v3/renderers/MetaPageRendererV3.vue';
 import LookupDialog from '@/v3/components/LookupDialog.vue';
-import BatchSelectDialog from '@/v3/components/BatchSelectDialog.vue';
 import { useMetaRuntime } from '@/v3/composables/meta-v3/useMetaRuntime';
 
 const props = defineProps<{ pageCode: string }>();
@@ -26,7 +25,6 @@ const {
   onLookupSelect,
   onLookupCancel
 } = runtime as any;
-const { batchSelectDialogRef, onBatchSelectConfirm, onBatchSelectCancel } = runtime as any;
 const pageError = (runtime as any).pageError;
 
 // WebSocket 订阅：元数据配置变更时热重载
@@ -65,7 +63,6 @@ onMounted(async () => {
       @select="onLookupSelect"
       @cancel="onLookupCancel"
     />
-    <BatchSelectDialog ref="batchSelectDialogRef" @select="onBatchSelectConfirm" @cancel="onBatchSelectCancel" />
   </div>
 </template>
 

@@ -1,6 +1,5 @@
 import type { CustomExportConfig } from '@/service/api/export-config';
 import type { ContextMenuItemRule, ContextMenuRule } from '@/v3/composables/meta-v3/types';
-import type { BatchSelectConfig } from '@/v3/components/BatchSelectDialog.vue';
 import { resolveRefreshMode } from '@/v3/composables/meta-v3/useToolbarAction';
 
 const LABEL_ADD = '新增';
@@ -9,7 +8,15 @@ const LABEL_DELETE = '删除';
 const LABEL_SAVE = '保存';
 const LABEL_SAVE_GRID = '保存列配置';
 const LABEL_CUSTOM_EXPORT = '自定义导出';
-const LABEL_BATCH_SELECT = '批量选择';
+
+const REMOVED_ACTIONS = new Set([
+  'clipboard.copy',
+  'clipboard_copy',
+  'clipboard.paste',
+  'clipboard_paste',
+  'batchSelect',
+  'batch_select'
+]);
 
 type MenuConfigInput = ContextMenuRule | { value?: ContextMenuRule | null } | null | undefined;
 
@@ -42,14 +49,6 @@ export function useGridContextMenu(params: {
     actionCode: string,
     options?: { data?: Record<string, any>; selectedRow?: Record<string, any> | null }
   ) => Promise<void>;
-  /** 打开批量选择弹窗 */
-  openBatchSelect?: (
-    config: BatchSelectConfig,
-    context: { masterId: number | null; masterRowKey: string | null; tabKey: string },
-    filterValue?: any
-  ) => void;
-  /** 获取当前主表选中行 */
-  getActiveMaster?: () => { id: number | null; rowKey: string | null };
   /** 主表行是否可编辑的回调（用于控制删除权限） */
   isRowEditable?: (row: any) => boolean;
   /** 从表行是否可编辑的回调（按tabKey） */
@@ -74,8 +73,6 @@ export function useGridContextMenu(params: {
     customExportConfigs,
     executeCustomExport,
     executeAction,
-    openBatchSelect,
-    getActiveMaster,
     isRowEditable,
     isDetailRowEditableByTab,
     notifyError
@@ -111,6 +108,7 @@ export function useGridContextMenu(params: {
     const key = action.trim();
     if (!key) return null;
     const normalized = key.replace(/\s+/g, '');
+    if (REMOVED_ACTIONS.has(normalized)) return null;
     switch (normalized) {
       case 'add':
       case 'addRow':
@@ -127,15 +125,6 @@ export function useGridContextMenu(params: {
       case 'saveGridConfig':
       case 'saveColumnConfig':
         return 'saveGridConfig';
-      case 'clipboard.copy':
-      case 'clipboard_copy':
-        return 'clipboardCopy';
-      case 'clipboard.paste':
-      case 'clipboard_paste':
-        return 'clipboardPaste';
-      case 'batchSelect':
-      case 'batch_select':
-        return 'batchSelect';
       case 'separator':
         return 'separator';
       default:
@@ -149,7 +138,6 @@ export function useGridContextMenu(params: {
   ): {
     label?: string;
     handler?: () => void;
-    builtIn?: 'copy' | 'paste';
     requiresRow?: boolean;
     requiresSelection?: boolean;
   } | null {
@@ -275,72 +263,9 @@ export function useGridContextMenu(params: {
           handler: () => saveGridConfig(key, ctx.params?.api, ctx.params?.columnApi)
         };
       }
-      case 'clipboardCopy':
-        return { builtIn: 'copy' };
-      case 'clipboardPaste':
-        return { builtIn: 'paste' };
       default:
         return null;
     }
-  }
-
-  /**
-   * 解析 batchSelect action 配置
-   * 配置格式：action: "batchSelect", batchSelectConfig: { lookupCode, mapping, filterColumn, filterField, title }
-   */
-  function resolveBatchSelectAction(
-    item: ContextMenuItemRule,
-    ctx: MenuScope
-  ): {
-    label: string;
-    handler: () => void;
-  } | null {
-    if (!openBatchSelect) return null;
-
-    const batchConfig = (item as any).batchSelectConfig as BatchSelectConfig | undefined;
-    if (!batchConfig?.lookupCode) {
-      console.warn('[useGridContextMenu] batchSelect action 缺少 batchSelectConfig.lookupCode');
-      return null;
-    }
-
-    return {
-      label: item.label || batchConfig.title || LABEL_BATCH_SELECT,
-      handler: () => {
-        // 从表右键菜单时，ctx 中已经有 masterId 和 masterRowKey
-        // 主表右键菜单时，需要从 getActiveMaster 获取
-        let masterId: number | null = ctx.masterId ?? null;
-        let masterRowKey: string | null = ctx.masterRowKey ?? null;
-
-        // 如果 ctx 中没有（主表场景），则从 getActiveMaster 获取
-        if (masterId == null || !masterRowKey) {
-          const master = getActiveMaster?.();
-          masterId = master?.id ?? null;
-          masterRowKey = master?.rowKey ?? null;
-        }
-
-        if (masterId == null || !masterRowKey) {
-          notifyError?.('请先选择主表记录');
-          return;
-        }
-
-        // 获取筛选值
-        let filterValue: any = null;
-        if (batchConfig.filterField) {
-          // 从主表行数据获取筛选值
-          const masterRow = ctx.params?.api?.getSelectedRows?.()?.[0];
-          if (masterRow) {
-            filterValue = masterRow[batchConfig.filterField];
-          }
-        }
-
-        // 打开批量选择弹窗
-        openBatchSelect(
-          { ...batchConfig, targetTab: ctx.tabKey },
-          { masterId, masterRowKey, tabKey: ctx.tabKey || batchConfig.targetTab || '' },
-          filterValue
-        );
-      }
-    };
   }
 
   function resolveChildren(item: ContextMenuItemRule): ContextMenuItemRule[] {
@@ -361,10 +286,7 @@ export function useGridContextMenu(params: {
     'copyRow',
     'deleteRow',
     'save',
-    'saveGridConfig',
-    'clipboardCopy',
-    'clipboardPaste',
-    'batchSelect'
+    'saveGridConfig'
   ];
 
   function buildMenuItems(items: ContextMenuItemRule[], ctx: MenuScope): any[] {
@@ -389,19 +311,6 @@ export function useGridContextMenu(params: {
       const actionKey = normalizeAction(item.action);
       if (!actionKey || actionKey === 'separator') continue;
 
-      // 特殊处理 batchSelect action
-      if (actionKey === 'batchSelect') {
-        const batchAction = resolveBatchSelectAction(item, ctx);
-        if (batchAction) {
-          built.push({
-            name: batchAction.label,
-            action: batchAction.handler,
-            disabled: Boolean(item.disabled)
-          });
-        }
-        continue;
-      }
-
       const resolved = resolveAction(actionKey, ctx);
       if (resolved) {
         // 内置 action
@@ -410,12 +319,6 @@ export function useGridContextMenu(params: {
 
         const needsSelection = item.requiresSelection ?? resolved.requiresSelection ?? false;
         const disabled = item.disabled || (needsSelection && !hasSelection(ctx.params));
-
-        if (resolved.builtIn) {
-          if (disabled) continue;
-          built.push(resolved.builtIn);
-          continue;
-        }
 
         built.push({
           name: item.label || resolved.label || actionKey,

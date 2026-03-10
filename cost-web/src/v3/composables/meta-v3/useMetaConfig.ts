@@ -562,7 +562,7 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
       detailFkColumnByTab.value[tab.key] = fkColumnName
         ? detailMeta.rawColumns.find(col => col.columnName.toUpperCase() === fkColumnName.toUpperCase())?.columnName ||
           fkColumnName
-        : 'MASTER_ID';
+        : masterPkColumn.value;
 
       detailPkColumnByTab.value[tab.key] = resolveRuntimeColumnName(
         detailMeta.rawColumns || [],

@@ -506,6 +506,9 @@ public class CustomExportService {
         if (StrUtil.isNotBlank(config.getMasterLinkColumn())) {
             return config.getMasterLinkColumn();
         }
+        if (StrUtil.isNotBlank(config.getPageFkColumn())) {
+            return config.getPageFkColumn();
+        }
         return config.getPkColumn();
     }
 
@@ -994,7 +997,16 @@ public class CustomExportService {
         if (detail != null && StrUtil.isNotBlank(detail.getDetailLinkColumn())) {
             return detail.getDetailLinkColumn();
         }
-        return config != null ? config.getMasterLinkColumn() : null;
+        if (config == null) {
+            return null;
+        }
+        if (StrUtil.isNotBlank(config.getPageFkColumn())) {
+            return config.getPageFkColumn();
+        }
+        if (StrUtil.isNotBlank(config.getMasterLinkColumn())) {
+            return config.getMasterLinkColumn();
+        }
+        return config.getPkColumn();
     }
 
     private static String escapeSheetName(String sheetName) {

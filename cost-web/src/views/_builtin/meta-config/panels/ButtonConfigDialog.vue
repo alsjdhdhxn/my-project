@@ -1,13 +1,11 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import {
   NButton,
-  NCard,
   NDivider,
   NEmpty,
   NForm,
   NFormItem,
-  NIcon,
   NInput,
   NModal,
   NPopconfirm,
@@ -50,12 +48,6 @@ type ButtonItem = {
   params?: { source: string; mode: string; jdbcType: string }[];
 };
 
-type TabButtons = {
-  tabKey: string;
-  tabTitle: string;
-  buttons: ButtonItem[];
-};
-
 // 当前编辑的按钮列表
 const buttons = ref<ButtonItem[]>([]);
 // 当前展开编辑的按钮索引
@@ -71,13 +63,29 @@ const builtinActions = [
   { label: '删除 (deleteRow)', value: 'deleteRow' },
   { label: '保存 (save)', value: 'save' },
   { label: '保存列配置 (saveGridConfig)', value: 'saveGridConfig' },
-  { label: '高级查询 (advancedSearch)', value: 'advancedSearch' },
-  { label: '复制到剪贴板 (clipboard.copy)', value: 'clipboard.copy' },
-  { label: '从剪贴板粘贴 (clipboard.paste)', value: 'clipboard.paste' },
-  { label: '批量选择 (batchSelect)', value: 'batchSelect' }
+  { label: '高级查询 (advancedSearch)', value: 'advancedSearch' }
 ];
 
 const BUILTIN_ACTION_SET = new Set(builtinActions.map(a => a.value));
+const REMOVED_ACTION_SET = new Set([
+  'clipboard.copy',
+  'clipboard_copy',
+  'clipboard.paste',
+  'clipboard_paste',
+  'batchSelect',
+  'batch_select'
+]);
+
+function getBuiltinActionOptions(currentIndex: number) {
+  const currentAction = buttons.value[currentIndex]?.action || '';
+  const usedActions = new Set(
+    buttons.value
+      .map((btn, index) => (index === currentIndex ? '' : btn.action))
+      .filter(action => BUILTIN_ACTION_SET.has(action))
+  );
+
+  return builtinActions.filter(action => action.value === currentAction || !usedActions.has(action.value));
+}
 
 const positionOptions = [
   { label: '右键菜单', value: 'context' },
@@ -136,6 +144,10 @@ function parseButtonFromRaw(raw: any): ButtonItem {
   };
 }
 
+function isRemovedAction(action?: unknown): boolean {
+  return typeof action === 'string' && REMOVED_ACTION_SET.has(action.trim());
+}
+
 function serializeButton(btn: ButtonItem): any {
   const result: any = { action: btn.action, label: btn.label };
   if (btn.position && btn.position !== 'context') result.position = btn.position;
@@ -165,7 +177,9 @@ watch(
     expandedIndex.value = null;
     try {
       const config = props.componentConfig ? JSON.parse(props.componentConfig) : {};
-      buttons.value = (config.buttons || []).map(parseButtonFromRaw);
+      buttons.value = (config.buttons || [])
+        .filter((btn: any) => !isRemovedAction(btn?.action))
+        .map(parseButtonFromRaw);
     } catch {
       buttons.value = [];
     }
@@ -189,7 +203,7 @@ function addButton() {
 function removeButton(index: number) {
   buttons.value.splice(index, 1);
   if (expandedIndex.value === index) expandedIndex.value = null;
-  else if (expandedIndex.value !== null && expandedIndex.value > index) expandedIndex.value--;
+  else if (expandedIndex.value !== null && expandedIndex.value > index) expandedIndex.value -= 1;
 }
 
 function toggleExpand(index: number) {
@@ -329,7 +343,7 @@ async function handleSave() {
               <NFormItem label="Action" class="form-item-half">
                 <NSelect
                   v-model:value="btn.action"
-                  :options="builtinActions"
+                  :options="getBuiltinActionOptions(index)"
                   filterable
                   tag
                   placeholder="选择或输入自定义action"

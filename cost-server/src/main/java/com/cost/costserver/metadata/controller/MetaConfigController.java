@@ -5,6 +5,8 @@ import com.cost.costserver.common.BusinessException;
 import com.cost.costserver.common.Result;
 import com.cost.costserver.common.SecurityUtils;
 import com.cost.costserver.config.AppWebSocketHandler;
+import com.cost.costserver.export.entity.ExportConfig;
+import com.cost.costserver.export.entity.ExportConfigDetail;
 import com.cost.costserver.metadata.entity.*;
 import com.cost.costserver.metadata.service.MetaConfigService;
 import com.cost.costserver.metadata.service.MetadataService;
@@ -190,6 +192,39 @@ public class MetaConfigController {
     @GetMapping("/lookup-codes-by-page")
     public Result<List<String>> listLookupCodesByPageCode(@RequestParam String pageCode) {
         return Result.ok(metaConfigService.listLookupCodesByPageCode(pageCode));
+    }
+
+    @Operation(summary = "查询视图/表的物理列")
+    @GetMapping("/export-configs")
+    public Result<List<ExportConfig>> listExportConfigs() {
+        return Result.ok(metaConfigService.listExportConfigs());
+    }
+
+    @PostMapping("/export-config")
+    public Result<ExportConfig> saveExportConfig(@RequestBody ExportConfig config) {
+        return Result.ok(metaConfigService.saveExportConfig(config));
+    }
+
+    @DeleteMapping("/export-config/{id}")
+    public Result<Void> deleteExportConfig(@PathVariable Long id) {
+        metaConfigService.deleteExportConfig(id);
+        return Result.ok();
+    }
+
+    @GetMapping("/export-config/{configId}/details")
+    public Result<List<ExportConfigDetail>> listExportConfigDetails(@PathVariable Long configId) {
+        return Result.ok(metaConfigService.listExportConfigDetails(configId));
+    }
+
+    @PostMapping("/export-config-detail")
+    public Result<ExportConfigDetail> saveExportConfigDetail(@RequestBody ExportConfigDetail detail) {
+        return Result.ok(metaConfigService.saveExportConfigDetail(detail));
+    }
+
+    @DeleteMapping("/export-config-detail/{id}")
+    public Result<Void> deleteExportConfigDetail(@PathVariable Long id) {
+        metaConfigService.deleteExportConfigDetail(id);
+        return Result.ok();
     }
 
     @Operation(summary = "查询视图/表的物理列")

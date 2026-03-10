@@ -44,6 +44,7 @@ const props = defineProps<{
 const advancedSearch = computed(() => props.runtime?.advancedSearch || {});
 const searchConditions = computed<SearchCondition[]>(() => unref(advancedSearch.value.searchConditions) || []);
 const visibleConditions = computed<SearchCondition[]>(() => unref(advancedSearch.value.visibleConditions) || []);
+const hiddenConditions = computed<SearchCondition[]>(() => searchConditions.value.filter(cond => !cond.visible));
 const activeFilterSummaries = computed<string[]>(() => unref(advancedSearch.value.activeFilterSummaries) || []);
 const showDialog = computed({
   get: () => Boolean(unref(advancedSearch.value.showDialog)),
@@ -61,6 +62,10 @@ const currentLookupCondition = ref<SearchCondition | null>(null);
 
 const currentLookupCode = computed(() => currentLookupCondition.value?.lookupCode || '');
 const isLookupMultiple = computed(() => isMultiValueOperator(currentLookupCondition.value?.operator));
+const modalStyle = {
+  width: '560px',
+  maxWidth: 'calc(100vw - 48px)'
+};
 const currentLookupMapping = computed(() => {
   const valueField = currentLookupCondition.value?.lookupValueField || currentLookupCondition.value?.field;
   const mapping: Record<string, string> = {};
@@ -155,7 +160,7 @@ function handleOperatorChange(cond: SearchCondition, operator: string) {
 }
 
 function shouldUseLookupInput(cond: SearchCondition) {
-  return cond.inputMode === 'lookup' && !isNullaryOperator(cond.operator);
+  return cond.inputMode === 'lookup' && !isRangeOperator(cond.operator) && !isNullaryOperator(cond.operator);
 }
 
 function shouldUseSelectInput(cond: SearchCondition) {
@@ -164,7 +169,8 @@ function shouldUseSelectInput(cond: SearchCondition) {
 
 function shouldUseNumberInput(cond: SearchCondition) {
   return (
-    cond.inputMode === 'number' &&
+    cond.dataType === 'number' &&
+    cond.inputMode !== 'select' &&
     !isRangeOperator(cond.operator) &&
     !isMultiValueOperator(cond.operator) &&
     !isNullaryOperator(cond.operator) &&
@@ -174,15 +180,23 @@ function shouldUseNumberInput(cond: SearchCondition) {
 }
 
 function shouldUseNumberRangeInput(cond: SearchCondition) {
-  return cond.inputMode === 'number' && isRangeOperator(cond.operator);
+  return cond.dataType === 'number' && cond.inputMode !== 'select' && isRangeOperator(cond.operator);
 }
 
 function shouldUseDateInput(cond: SearchCondition) {
-  return (cond.inputMode === 'date' || cond.inputMode === 'datetime') && !isRangeOperator(cond.operator);
+  return (
+    (cond.dataType === 'date' || cond.dataType === 'datetime') &&
+    cond.inputMode !== 'select' &&
+    !isRangeOperator(cond.operator)
+  );
 }
 
 function shouldUseDateRangeInput(cond: SearchCondition) {
-  return (cond.inputMode === 'date' || cond.inputMode === 'datetime') && isRangeOperator(cond.operator);
+  return (
+    (cond.dataType === 'date' || cond.dataType === 'datetime') &&
+    cond.inputMode !== 'select' &&
+    isRangeOperator(cond.operator)
+  );
 }
 
 function shouldUseTextInput(cond: SearchCondition) {
@@ -226,6 +240,15 @@ function clearConditionValue(cond: SearchCondition) {
   cond.enabled = false;
 }
 
+function hideCondition(cond: SearchCondition) {
+  clearConditionValue(cond);
+  cond.visible = false;
+}
+
+function showCondition(cond: SearchCondition) {
+  cond.visible = true;
+}
+
 function handleSingleValueChange(cond: SearchCondition, value: any) {
   cond.value = value ?? '';
   markEnabled(cond);
@@ -246,15 +269,15 @@ function handleRangeValueChange(cond: SearchCondition, edge: 'start' | 'end', va
 }
 
 function getDatePickerType(cond: SearchCondition) {
-  return cond.inputMode === 'datetime' ? 'datetime' : 'date';
+  return cond.dataType === 'datetime' ? 'datetime' : 'date';
 }
 
 function getDateValueFormat(cond: SearchCondition) {
-  return cond.inputMode === 'datetime' ? 'yyyy-MM-dd HH:mm:ss' : 'yyyy-MM-dd';
+  return cond.dataType === 'datetime' ? 'yyyy-MM-dd HH:mm:ss' : 'yyyy-MM-dd';
 }
 
 function getDateRangePickerType(cond: SearchCondition) {
-  return cond.inputMode === 'datetime' ? 'datetimerange' : 'daterange';
+  return cond.dataType === 'datetime' ? 'datetimerange' : 'daterange';
 }
 
 function formatSingleDateValue(value: unknown) {
@@ -332,7 +355,7 @@ function handleLookupCancel() {
 </script>
 
 <template>
-  <NModal v-model:show="showDialog" preset="card" class="advanced-search-modal">
+  <NModal v-model:show="showDialog" preset="card" class="advanced-search-modal" :style="modalStyle">
     <template #header>
       <div class="advanced-search-header">
         <span>查询条件</span>
@@ -346,8 +369,13 @@ function handleLookupCancel() {
           </template>
           <div class="field-settings">
             <div class="settings-title">显示字段</div>
-            <div v-for="cond in searchConditions" :key="cond.key" class="field-setting-item">
-              <NCheckbox v-model:checked="cond.visible" size="small">
+            <div v-if="hiddenConditions.length === 0" class="field-settings-empty">当前没有可恢复的条件</div>
+            <div v-for="cond in hiddenConditions" :key="cond.key" class="field-setting-item">
+              <NCheckbox
+                :checked="cond.visible"
+                size="small"
+                @update:checked="checked => checked && showCondition(cond)"
+              >
                 {{ cond.tableLabel }} · {{ cond.fieldLabel }}
               </NCheckbox>
             </div>
@@ -358,6 +386,11 @@ function handleLookupCancel() {
 
     <div class="advanced-search-body">
       <div v-for="cond in visibleConditions" :key="cond.key" class="search-condition-row">
+        <NButton quaternary circle size="tiny" class="condition-remove" @click="hideCondition(cond)">
+          <template #icon>
+            <Icon icon="mdi:close" />
+          </template>
+        </NButton>
         <div class="condition-label-wrap">
           <NCheckbox v-model:checked="cond.enabled" class="condition-label">
             {{ cond.fieldLabel }}
@@ -378,6 +411,7 @@ function handleLookupCancel() {
             size="small"
             class="condition-value"
             :placeholder="isMultiValueOperator(cond.operator) ? '多个值用逗号分隔' : '请输入'"
+            :show-count="false"
             @input="() => markEnabled(cond)"
             @keyup.enter="advancedSearch.executeSearch"
           />
@@ -390,6 +424,7 @@ function handleLookupCancel() {
               :placeholder="
                 isMultiValueOperator(cond.operator) ? '可输入多个值，或点右侧选择' : '可直接输入，或点右侧选择'
               "
+              :show-count="false"
               clearable
               @update:value="value => handleLookupInputChange(cond, value)"
               @clear="clearConditionValue(cond)"
@@ -421,6 +456,7 @@ function handleLookupCancel() {
             size="small"
             class="condition-value"
             clearable
+            :show-button="false"
             @update:value="value => handleSingleValueChange(cond, value)"
           />
 
@@ -430,6 +466,7 @@ function handleLookupCancel() {
               size="small"
               class="range-value-item"
               clearable
+              :show-button="false"
               @update:value="value => handleRangeValueChange(cond, 'start', value)"
             />
             <span class="range-separator">至</span>
@@ -438,6 +475,7 @@ function handleLookupCancel() {
               size="small"
               class="range-value-item"
               clearable
+              :show-button="false"
               @update:value="value => handleRangeValueChange(cond, 'end', value)"
             />
           </div>
@@ -494,8 +532,7 @@ function handleLookupCancel() {
 
 <style scoped>
 .advanced-search-modal {
-  width: 760px;
-  max-width: calc(100vw - 48px);
+  width: 560px;
 }
 
 .advanced-search-header {
@@ -512,10 +549,18 @@ function handleLookupCancel() {
 
 .search-condition-row {
   display: grid;
-  grid-template-columns: 180px 120px minmax(280px, 360px);
+  grid-template-columns: 24px 126px 110px minmax(200px, 240px);
   gap: 12px;
   align-items: center;
   margin-bottom: 12px;
+}
+
+.condition-remove {
+  color: #909399;
+}
+
+.condition-remove:hover {
+  color: #e03131;
 }
 
 .condition-label-wrap {
@@ -537,7 +582,7 @@ function handleLookupCancel() {
 
 .condition-value-wrap {
   min-width: 0;
-  max-width: 360px;
+  max-width: 240px;
 }
 
 .condition-value {
@@ -569,6 +614,11 @@ function handleLookupCancel() {
   max-height: 320px;
   min-width: 280px;
   overflow-y: auto;
+}
+
+.field-settings-empty {
+  color: #8c8c8c;
+  font-size: 12px;
 }
 
 .settings-title {

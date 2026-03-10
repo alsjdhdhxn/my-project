@@ -121,3 +121,41 @@ export async function deleteLookupConfig(id: number) {
   const { error } = await request<any>({ url: `/meta-config/lookup/${id}`, method: 'DELETE' });
   if (error) throw error;
 }
+
+// ==================== 导出配置管理 ====================
+
+export async function fetchAllExportConfigs() {
+  const { data } = await request<any[]>({ url: '/meta-config/export-configs' });
+  return data || [];
+}
+
+export async function saveExportConfig(data: Record<string, any>) {
+  const { data: res, error } = await request<any>({ url: '/meta-config/export-config', method: 'POST', data });
+  if (error) throw error;
+  return res;
+}
+
+export async function deleteExportConfig(id: number) {
+  const { error } = await request<any>({ url: `/meta-config/export-config/${id}`, method: 'DELETE' });
+  if (error) throw error;
+}
+
+export async function fetchExportConfigDetails(configId: number) {
+  const { data } = await request<any[]>({ url: `/meta-config/export-config/${configId}/details` });
+  return data || [];
+}
+
+export async function saveExportConfigDetail(data: Record<string, any>) {
+  const { data: res, error } = await request<any>({
+    url: '/meta-config/export-config-detail',
+    method: 'POST',
+    data
+  });
+  if (error) throw error;
+  return res;
+}
+
+export async function deleteExportConfigDetail(id: number) {
+  const { error } = await request<any>({ url: `/meta-config/export-config-detail/${id}`, method: 'DELETE' });
+  if (error) throw error;
+}

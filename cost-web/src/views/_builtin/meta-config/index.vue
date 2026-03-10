@@ -5,6 +5,7 @@ import DirectoryPanel from './panels/DirectoryPanel.vue';
 import TablePanel from './panels/TablePanel.vue';
 import PagePanel from './panels/PagePanel.vue';
 import LookupPanel from './panels/LookupPanel.vue';
+import ExportConfigPanel from './panels/ExportConfigPanel.vue';
 
 const activeTab = ref('directory');
 
@@ -34,6 +35,9 @@ provide('filterState', filterState);
       </NTabPane>
       <NTabPane name="lookup" tab="Lookup管理">
         <LookupPanel />
+      </NTabPane>
+      <NTabPane name="export" tab="导出配置">
+        <ExportConfigPanel />
       </NTabPane>
     </NTabs>
   </div>

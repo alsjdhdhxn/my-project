@@ -261,6 +261,41 @@ type ComponentConfigWithButtons = {
   buttons?: ButtonItemRule[];
 };
 
+const REMOVED_BUTTON_ACTIONS = new Set([
+  'clipboard.copy',
+  'clipboard_copy',
+  'clipboard.paste',
+  'clipboard_paste',
+  'batchSelect',
+  'batch_select'
+]);
+
+function stripRemovedButtonActions(items: ButtonItemRule[] | null | undefined): ButtonItemRule[] {
+  if (!Array.isArray(items) || items.length === 0) return [];
+
+  const result: ButtonItemRule[] = [];
+
+  for (const item of items) {
+    if (!item) continue;
+    const action = typeof item.action === 'string' ? item.action.trim() : '';
+    if (action && REMOVED_BUTTON_ACTIONS.has(action)) {
+      continue;
+    }
+
+    if (Array.isArray(item.items) && item.items.length > 0) {
+      const nextChildren = stripRemovedButtonActions(item.items);
+      if (item.type === 'group' || nextChildren.length > 0) {
+        result.push({ ...item, items: nextChildren });
+      }
+      continue;
+    }
+
+    result.push(item);
+  }
+
+  return result;
+}
+
 /**
  * 解析组件配置中的按钮
  */
@@ -269,7 +304,7 @@ function parseComponentConfigButtons(componentConfig?: string): ButtonItemRule[]
   try {
     const config = JSON.parse(componentConfig) as ComponentConfigWithButtons;
     if (Array.isArray(config.buttons)) {
-      return config.buttons;
+      return stripRemovedButtonActions(config.buttons);
     }
     return null;
   } catch {
@@ -295,12 +330,12 @@ export function parseButtonRule(componentKey: string, rules: PageRule[], compone
   try {
     const raw = typeof rule.rules === 'string' ? JSON.parse(rule.rules) : rule.rules;
     if (Array.isArray(raw)) {
-      return { items: raw };
+      return { items: stripRemovedButtonActions(raw) };
     }
     if (raw && typeof raw === 'object') {
       const obj = raw as { items?: unknown };
       if (Array.isArray(obj.items)) {
-        return { items: obj.items };
+        return { items: stripRemovedButtonActions(obj.items) };
       }
     }
     console.warn(`[PageRule] ${componentKey}.BUTTON is not a valid object`);

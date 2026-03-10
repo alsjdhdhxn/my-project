@@ -7,6 +7,10 @@ import com.cost.costserver.auth.entity.RolePage;
 import com.cost.costserver.auth.mapper.ResourceMapper;
 import com.cost.costserver.auth.mapper.RolePageMapper;
 import com.cost.costserver.dynamic.mapper.DynamicMapper;
+import com.cost.costserver.export.entity.ExportConfig;
+import com.cost.costserver.export.entity.ExportConfigDetail;
+import com.cost.costserver.export.mapper.ExportConfigDetailMapper;
+import com.cost.costserver.export.mapper.ExportConfigMapper;
 import com.cost.costserver.grid.entity.UserGridConfig;
 import com.cost.costserver.grid.mapper.UserGridConfigMapper;
 import com.cost.costserver.metadata.entity.*;
@@ -38,6 +42,8 @@ public class MetaConfigService {
     private final PageComponentMapper pageComponentMapper;
     private final PageRuleMapper pageRuleMapper;
     private final LookupConfigMapper lookupConfigMapper;
+    private final ExportConfigMapper exportConfigMapper;
+    private final ExportConfigDetailMapper exportConfigDetailMapper;
     private final UserGridConfigMapper userGridConfigMapper;
     private final DynamicMapper dynamicMapper;
     private final ObjectMapper objectMapper;
@@ -699,6 +705,64 @@ public class MetaConfigService {
             } catch (Exception ignored) {}
         }
         return new java.util.ArrayList<>(codes);
+    }
+
+    public List<ExportConfig> listExportConfigs() {
+        return exportConfigMapper.selectList(
+            new LambdaQueryWrapper<ExportConfig>()
+                .eq(ExportConfig::getDeleted, 0)
+                .orderByAsc(ExportConfig::getPageCode)
+                .orderByAsc(ExportConfig::getDisplayOrder)
+                .orderByAsc(ExportConfig::getId)
+        );
+    }
+
+    @Transactional
+    public ExportConfig saveExportConfig(ExportConfig config) {
+        if (config.getId() == null) {
+            config.setId(nextId("SEQ_COST_EXPORT_CONFIG"));
+            if (config.getDeleted() == null) {
+                config.setDeleted(0);
+            }
+            exportConfigMapper.insert(config);
+        } else {
+            exportConfigMapper.updateById(config);
+        }
+        return config;
+    }
+
+    @Transactional
+    public void deleteExportConfig(Long id) {
+        exportConfigDetailMapper.delete(
+            new LambdaQueryWrapper<ExportConfigDetail>()
+                .eq(ExportConfigDetail::getExportConfigId, id)
+        );
+        exportConfigMapper.deleteById(id);
+    }
+
+    public List<ExportConfigDetail> listExportConfigDetails(Long exportConfigId) {
+        return exportConfigDetailMapper.selectList(
+            new LambdaQueryWrapper<ExportConfigDetail>()
+                .eq(ExportConfigDetail::getExportConfigId, exportConfigId)
+                .orderByAsc(ExportConfigDetail::getDisplayOrder)
+                .orderByAsc(ExportConfigDetail::getId)
+        );
+    }
+
+    @Transactional
+    public ExportConfigDetail saveExportConfigDetail(ExportConfigDetail detail) {
+        if (detail.getId() == null) {
+            detail.setId(nextId("SEQ_COST_EXPORT_CONFIG_DTL"));
+            exportConfigDetailMapper.insert(detail);
+        } else {
+            exportConfigDetailMapper.updateById(detail);
+        }
+        return detail;
+    }
+
+    @Transactional
+    public void deleteExportConfigDetail(Long id) {
+        exportConfigDetailMapper.deleteById(id);
     }
 
     private TableMetadata mapToTableMetadata(Map<String, Object> row) {

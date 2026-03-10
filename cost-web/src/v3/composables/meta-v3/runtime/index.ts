@@ -5,7 +5,6 @@ import { useMetaConfig } from '@/v3/composables/meta-v3/useMetaConfig';
 import { useMasterDetailData } from '@/v3/composables/meta-v3/useMasterDetailData';
 import { useCalcBroadcast } from '@/v3/composables/meta-v3/useCalcBroadcast';
 import { useLookupDialog } from '@/v3/composables/meta-v3/useLookupDialog';
-import { useBatchSelect } from '@/v3/composables/meta-v3/useBatchSelect';
 import { useAdvancedSearch } from '@/v3/composables/meta-v3/useAdvancedSearch';
 import { useSave } from '@/v3/composables/meta-v3/useSave';
 import { useUserGridConfig } from '@/v3/composables/meta-v3/useUserGridConfig';
@@ -268,22 +267,6 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     notifyInfo
   });
 
-  // Batch select dialog
-  const batchSelect = useBatchSelect({
-    detailCache: data.detailCache,
-    detailFkColumnByTab: meta.detailFkColumnByTab,
-    detailGridApisByTab,
-    afterAddDetailRows: (masterId, tabKey, rows) => {
-      // Recalculate each newly added detail row
-      rows.forEach(row => {
-        const api = detailGridApisByTab.value?.[tabKey];
-        calc.runDetailCalc(null, api, row, masterId, tabKey);
-      });
-      // Recalculate aggregates
-      recalcAggregatesProxy(masterId);
-    }
-  });
-
   const { save, isSaving } = useSave({
     pageCode,
     pageConfig: meta.pageConfig,
@@ -450,8 +433,6 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
       if (!resolvedFeatures.value.lookup) return;
       lookup.onLookupCancel();
     },
-    // Batch select
-    ...batchSelect,
     advancedSearch,
     executeAction,
     registerActionHandler,
