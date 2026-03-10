@@ -160,6 +160,27 @@ export function parseColumnOverrideConfig(componentKey: string, rules: PageRule[
   return parseRuleArray<ColumnOverrideRule>(rule, `${componentKey}.COLUMN_OVERRIDE`);
 }
 
+function normalizeSelectCellEditorParams(editorType: string | undefined, params: Record<string, any>) {
+  if (!params || typeof params !== 'object') return params;
+  if (editorType !== 'agSelectCellEditor' && editorType !== 'agRichSelectCellEditor') {
+    return params;
+  }
+
+  const normalized = { ...params };
+  if (Array.isArray(normalized.values)) {
+    return normalized;
+  }
+  if (typeof normalized.values === 'string') {
+    normalized.values = normalized.values
+      .split(',')
+      .map((value: string) => value.trim())
+      .filter((value: string) => value.length > 0);
+    return normalized;
+  }
+  normalized.values = [];
+  return normalized;
+}
+
 /**
  * 从 COLUMN_OVERRIDE 中提取 lookup 配置（cellEditor === 'lookup'）
  * 返回 LookupRule[] 格式，可与传统 LOOKUP 规则合并
@@ -384,7 +405,7 @@ export function applyColumnOverrides(
     // 支持下拉框编辑器
     if (override.cellEditor && override.cellEditor !== 'lookup') updated.cellEditor = override.cellEditor;
     if (override.cellEditorParams) {
-      const params = override.cellEditorParams;
+      const params = normalizeSelectCellEditorParams(override.cellEditor, override.cellEditorParams);
       if (params.mode === 'static') {
         // 纯值模式：values 可能是数组或逗号分隔字符串
         const values = Array.isArray(params.values)

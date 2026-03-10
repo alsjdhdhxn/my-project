@@ -636,7 +636,11 @@ public class DynamicDataService {
             String op = cond.getOperator();
             Object value = cond.getValue();
 
-            if (value == null && !"eq".equals(op) && !"ne".equals(op)) {
+            if (value == null
+                    && !"eq".equals(op)
+                    && !"ne".equals(op)
+                    && !"isNull".equals(op)
+                    && !"isNotNull".equals(op)) {
                 continue;
             }
 
@@ -651,11 +655,18 @@ public class DynamicDataService {
                 case "lt" -> clause = columnName + " < " + formatValue(value, col, runtimeColumnName);
                 case "le" -> clause = columnName + " <= " + formatValue(value, col, runtimeColumnName);
                 case "like" -> clause = columnName + " LIKE '%" + escapeSql(value.toString()) + "%'";
+                case "notLike" -> clause = columnName + " NOT LIKE '%" + escapeSql(value.toString()) + "%'";
                 case "likeLeft" -> clause = columnName + " LIKE '" + escapeSql(value.toString()) + "%'";
                 case "likeRight" -> clause = columnName + " LIKE '%" + escapeSql(value.toString()) + "'";
                 case "between" -> {
                     if (cond.getValue2() != null) {
                         clause = columnName + " BETWEEN " + formatValue(value, col, runtimeColumnName) + " AND "
+                                + formatValue(cond.getValue2(), col, runtimeColumnName);
+                    }
+                }
+                case "notBetween" -> {
+                    if (cond.getValue2() != null) {
+                        clause = columnName + " NOT BETWEEN " + formatValue(value, col, runtimeColumnName) + " AND "
                                 + formatValue(cond.getValue2(), col, runtimeColumnName);
                     }
                 }
@@ -665,6 +676,14 @@ public class DynamicDataService {
                         clause = columnName + " IN (" + inClause + ")";
                     }
                 }
+                case "notIn" -> {
+                    String inClause = buildInClause(value, col, runtimeColumnName);
+                    if (inClause != null) {
+                        clause = columnName + " NOT IN (" + inClause + ")";
+                    }
+                }
+                case "isNull" -> clause = columnName + " IS NULL";
+                case "isNotNull" -> clause = columnName + " IS NOT NULL";
                 default -> log.warn("unsupported operator: {}", op);
             }
 

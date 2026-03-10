@@ -2,7 +2,7 @@
 import { computed, onUnmounted, ref, watch } from 'vue';
 import { NButton, NInput, NModal, NSpace } from 'naive-ui';
 import { AgGridVue } from 'ag-grid-vue3';
-import type { ColDef, GridApi, GridReadyEvent, RowDoubleClickedEvent, SelectionChangedEvent } from 'ag-grid-community';
+import type { ColDef, GridApi, GridReadyEvent, SelectionChangedEvent } from 'ag-grid-community';
 import { fetchLookupConfig } from '@/service/api';
 import { request } from '@/service/request';
 import SvgIcon from '@/components/custom/svg-icon.vue';
@@ -28,6 +28,7 @@ const props = withDefaults(
   defineProps<{
     lookupCode: string;
     mapping?: Record<string, string>;
+    multiple?: boolean;
     /** 当前行数据，用于 filterValueFrom='row' 时取值 */
     rowData?: Record<string, any>;
     /** 从当前行取哪个字段的值作为筛选值 */
@@ -40,17 +41,28 @@ const props = withDefaults(
     filterValue?: any;
   }>(),
   {
-    mapping: () => ({})
+    mapping: () => ({}),
+    multiple: false,
+    rowData: undefined,
+    filterField: undefined,
+    filterColumn: undefined,
+    filterValueFrom: undefined,
+    filterValue: undefined
   }
 );
-const emit = defineEmits<{ (e: 'select', data: Record<string, any>): void; (e: 'cancel'): void }>();
+const emit = defineEmits<{
+  (e: 'select', data: Record<string, any>): void;
+  (e: 'select', data: Record<string, any>[]): void;
+  (e: 'cancel'): void;
+}>();
 
 const visible = ref(false);
 const config = ref<Api.Metadata.LookupConfig | null>(null);
 const lastLookupCode = ref('');
-const rowData = ref<Record<string, any>[]>([]);
+const tableRows = ref<Record<string, any>[]>([]);
 const searchText = ref('');
 const selectedRow = ref<Record<string, any> | null>(null);
+const selectedRows = ref<Record<string, any>[]>([]);
 let gridApi: GridApi | null = null;
 
 const dialogWidth = ref(1050);
@@ -84,8 +96,16 @@ const columnDefs = computed<ColDef[]>(() => {
 });
 
 const defaultColDef: ColDef = { sortable: true, resizable: true, suppressHeaderMenuButton: true };
-const rowSelection = { mode: 'singleRow' as const, enableClickSelection: true, checkboxes: false };
+const rowSelection = computed(() => ({
+  mode: props.multiple ? ('multiRow' as const) : ('singleRow' as const),
+  enableClickSelection: true,
+  checkboxes: props.multiple
+}));
 const hasMapping = computed(() => props.mapping && Object.keys(props.mapping).length > 0);
+const confirmDisabled = computed(() => {
+  if (!hasMapping.value) return true;
+  return props.multiple ? selectedRows.value.length === 0 : !selectedRow.value;
+});
 
 const dialogStyle = computed(() => ({
   width: `${dialogWidth.value}px`,
@@ -147,6 +167,7 @@ function stopResize() {
 async function open() {
   visible.value = true;
   selectedRow.value = null;
+  selectedRows.value = [];
   searchText.value = '';
   dialogX.value = 0;
   dialogY.value = 0;
@@ -183,7 +204,7 @@ async function loadData() {
   }
 
   // 有筛选列名且筛选值不为空时，传给后端
-  if (props.filterColumn && filterValue != null) {
+  if (props.filterColumn && filterValue !== null && filterValue !== undefined) {
     params.filterColumn = props.filterColumn;
     params.filterValue = filterValue;
   }
@@ -192,7 +213,7 @@ async function loadData() {
     url: `/api/lookup/${props.lookupCode}/data`,
     params
   });
-  rowData.value = data?.list || [];
+  tableRows.value = data?.list || [];
 }
 
 function handleSearch() {
@@ -205,13 +226,27 @@ function handleCancel() {
 }
 
 function handleConfirm() {
-  if (!selectedRow.value) return;
-  const fillData: Record<string, any> = {};
-  for (const [targetField, sourceField] of Object.entries(props.mapping)) {
-    fillData[targetField] = selectedRow.value[normalizeColumnName(sourceField)];
+  const buildFillData = (row: Record<string, any>) => {
+    const fillData: Record<string, any> = {};
+    for (const [targetField, sourceField] of Object.entries(props.mapping)) {
+      fillData[targetField] = row[normalizeColumnName(sourceField)];
+    }
+    return fillData;
+  };
+
+  if (props.multiple) {
+    if (selectedRows.value.length === 0) return;
+    visible.value = false;
+    emit(
+      'select',
+      selectedRows.value.map(row => buildFillData(row))
+    );
+    return;
   }
+
+  if (!selectedRow.value) return;
   visible.value = false;
-  emit('select', fillData);
+  emit('select', buildFillData(selectedRow.value));
 }
 
 function onGridReady(params: GridReadyEvent) {
@@ -222,10 +257,12 @@ function onGridReady(params: GridReadyEvent) {
   }, 100);
 }
 function onRowDoubleClicked() {
+  if (props.multiple) return;
   if (selectedRow.value && hasMapping.value) handleConfirm();
 }
 function onSelectionChanged(event: SelectionChangedEvent) {
   const rows = event.api.getSelectedRows();
+  selectedRows.value = rows;
   selectedRow.value = rows.length > 0 ? rows[0] : null;
 }
 
@@ -263,7 +300,7 @@ defineExpose({ open });
           <AgGridVue
             class="ag-theme-quartz"
             style="width: 100%; height: 100%"
-            :row-data="rowData"
+            :row-data="tableRows"
             :column-defs="columnDefs"
             :default-col-def="defaultColDef"
             :row-selection="rowSelection"
@@ -278,7 +315,7 @@ defineExpose({ open });
       <div class="lookup-dialog-footer">
         <NSpace justify="end">
           <NButton @click="handleCancel">取消</NButton>
-          <NButton type="primary" :disabled="!selectedRow || !hasMapping" @click="handleConfirm">确定</NButton>
+          <NButton type="primary" :disabled="confirmDisabled" @click="handleConfirm">确定</NButton>
         </NSpace>
       </div>
 

@@ -205,6 +205,27 @@ function formatNumberValue(value: any, format?: NumberFormatConfig): string {
   return text;
 }
 
+function normalizeSelectEditorParams(editorType: string, editorParams: any) {
+  if (!editorParams || typeof editorParams !== 'object') return editorParams;
+  if (editorType !== 'agSelectCellEditor' && editorType !== 'agRichSelectCellEditor') {
+    return editorParams;
+  }
+
+  const normalized = { ...editorParams };
+  if (Array.isArray(normalized.values)) {
+    return normalized;
+  }
+  if (typeof normalized.values === 'string') {
+    normalized.values = normalized.values
+      .split(',')
+      .map((value: string) => value.trim())
+      .filter((value: string) => value.length > 0);
+    return normalized;
+  }
+  normalized.values = [];
+  return normalized;
+}
+
 function applyEditorConfig(colDef: ColDef, config: any) {
   if (!config || typeof config !== 'object') return;
   const editorType = config.editor?.type || config.cellEditor;
@@ -214,7 +235,7 @@ function applyEditorConfig(colDef: ColDef, config: any) {
   }
   colDef.cellEditor = editorType;
   if (editorParams && typeof editorParams === 'object') {
-    colDef.cellEditorParams = editorParams;
+    colDef.cellEditorParams = normalizeSelectEditorParams(editorType, editorParams);
   }
 }
 

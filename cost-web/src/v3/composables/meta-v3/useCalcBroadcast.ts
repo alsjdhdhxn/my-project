@@ -1,10 +1,7 @@
 import type { Ref, ShallowRef } from 'vue';
 import type { GridApi } from 'ag-grid-community';
-import type {
-  type CalcRuleDependency,
-  type CalcRuntimeScope,
-  type ParsedPageConfig,
-  type RowData,
+import type { CalcRuleDependency, CalcRuntimeScope, ParsedPageConfig, RowData } from '@/v3/logic/calc-engine';
+import {
   buildCalcRuleDependencies,
   calcAggregates,
   calcRowFields,

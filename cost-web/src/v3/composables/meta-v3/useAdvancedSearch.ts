@@ -299,11 +299,36 @@ function getDefaultOperator(field: AdvancedSearchField) {
   return 'eq';
 }
 
+function isRangeOperator(operator?: string) {
+  return operator === 'between' || operator === 'notBetween';
+}
+
+function isMultiValueOperator(operator?: string) {
+  return operator === 'in' || operator === 'notIn';
+}
+
+function isNullaryOperator(operator?: string) {
+  return operator === 'isNull' || operator === 'isNotNull';
+}
+
+function getEmptyConditionValue(inputMode: SearchInputMode, operator: string) {
+  if (isMultiValueOperator(operator) && (inputMode === 'select' || inputMode === 'lookup')) {
+    return [];
+  }
+  if (inputMode === 'select') {
+    return null;
+  }
+  return '';
+}
+
 function hasConditionValue(condition: AdvancedSearchCondition) {
-  if (condition.operator === 'between') {
+  if (isNullaryOperator(condition.operator)) {
+    return true;
+  }
+  if (isRangeOperator(condition.operator)) {
     return condition.value !== null && condition.value !== '' && condition.value2 !== null && condition.value2 !== '';
   }
-  if (condition.operator === 'in') {
+  if (isMultiValueOperator(condition.operator)) {
     if (Array.isArray(condition.value)) {
       return condition.value.length > 0;
     }
@@ -421,12 +446,13 @@ export function useAdvancedSearch(params: {
 
     searchConditions.value = definitions.map(definition => {
       const existing = previous.get(definition.key);
+      const operator = existing?.operator || getDefaultOperator(definition);
       return {
         ...definition,
         options: definition.options.length > 0 ? definition.options : existing?.options || [],
         lookupValueField: definition.lookupValueField || existing?.lookupValueField,
-        operator: existing?.operator || getDefaultOperator(definition),
-        value: existing?.value ?? (definition.inputMode === 'select' ? null : ''),
+        operator,
+        value: existing?.value ?? getEmptyConditionValue(definition.inputMode, operator),
         value2: existing?.value2 ?? '',
         enabled: existing?.enabled || false,
         visible: existing?.visible ?? true,
@@ -442,7 +468,7 @@ export function useAdvancedSearch(params: {
       .filter(condition => condition.enabled && hasConditionValue(condition))
       .map(condition => {
         const value = condition.value;
-        if (condition.operator === 'between') {
+        if (isRangeOperator(condition.operator)) {
           return {
             tableKey: condition.tableKey,
             field: condition.field,
@@ -451,12 +477,20 @@ export function useAdvancedSearch(params: {
             value2: condition.value2
           };
         }
-        if (condition.operator === 'in') {
+        if (isMultiValueOperator(condition.operator)) {
           return {
             tableKey: condition.tableKey,
             field: condition.field,
             operator: condition.operator,
             value: Array.isArray(value) ? value : splitInValue(String(value ?? ''))
+          };
+        }
+        if (isNullaryOperator(condition.operator)) {
+          return {
+            tableKey: condition.tableKey,
+            field: condition.field,
+            operator: condition.operator,
+            value: null
           };
         }
         return {
@@ -488,7 +522,7 @@ export function useAdvancedSearch(params: {
   function clearSearch() {
     searchConditions.value = searchConditions.value.map(condition => ({
       ...condition,
-      value: condition.inputMode === 'select' ? null : '',
+      value: getEmptyConditionValue(condition.inputMode, condition.operator),
       value2: '',
       enabled: false
     }));
