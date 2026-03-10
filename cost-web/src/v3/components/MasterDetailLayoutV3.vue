@@ -40,6 +40,7 @@ const {
   detailRowClassGetterByTab,
   detailRowClassRulesByTab,
   detailRowEditableRulesByTab,
+  detailCellEditableRulesByTab,
   masterGridOptions,
   detailGridOptionsByTab,
   detailSumFieldsByTab,
@@ -470,6 +471,8 @@ const gridContext = {
     tabs: detailTabs,
     detailCache,
     detailColumnsByTab,
+    detailRowEditableRulesByTab,
+    detailCellEditableRulesByTab,
     detailRowClassByTab: mergedDetailRowClassByTab,
     detailGridOptionsByTab,
     detailSumFieldsByTab,
@@ -743,6 +746,8 @@ onUnmounted(() => {
           :active-master-row-key="activeMasterRowKey"
           :detail-cache="detailCache"
           :detail-columns-by-tab="detailColumnsByTab"
+          :detail-row-editable-rules-by-tab="detailRowEditableRulesByTab"
+          :detail-cell-editable-rules-by-tab="detailCellEditableRulesByTab"
           :detail-row-class-by-tab="mergedDetailRowClassByTab"
           :detail-grid-options-by-tab="detailGridOptionsByTab"
           :detail-sum-fields-by-tab="detailSumFieldsByTab"

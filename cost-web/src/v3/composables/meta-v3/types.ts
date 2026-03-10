@@ -144,29 +144,42 @@ export type ContextMenuItemRule = ButtonItemRule;
 /** @deprecated 使用 ButtonRule 代替 */
 export type ContextMenuRule = ButtonRule;
 
-/** 行级可编辑规则 */
-export type RowEditableRule = {
-  field: string;
-  operator: 'notNull' | 'eq' | 'ne' | 'in' | 'notIn';
-  value?: any;
-};
-
-/** 单元格级可编辑规则 - 条件匹配时只允许编辑指定字段 */
-export type CellEditableCondition = {
+export type EditableCondition = {
   field: string;
   operator: 'notNull' | 'isNull' | 'eq' | 'ne' | 'in' | 'notIn';
   value?: any;
 };
 
+/** 行级可编辑规则 */
+export type RowEditableRule = {
+  logic?: 'AND' | 'OR';
+  conditions?: EditableCondition[];
+  condition?: EditableCondition;
+  /** SQL 判断（后端执行） */
+  sqlCheck?: string;
+};
+
+/** 单元格级可编辑规则 - 条件匹配时只允许编辑指定字段 */
+export type CellEditableCondition = EditableCondition;
+
 export type CellEditableRule = {
   /** 新格式：多条件 + 逻辑组合 */
   logic?: 'AND' | 'OR';
-  conditions?: CellEditableCondition[];
+  conditions?: EditableCondition[];
   /** 旧格式兼容：单条件 */
-  condition?: CellEditableCondition;
+  condition?: EditableCondition;
   /** SQL 判断（后端执行） */
   sqlCheck?: string;
   editableFields: string[];
+};
+
+export type EditableRule = {
+  scope: 'row' | 'cell';
+  logic?: 'AND' | 'OR';
+  conditions?: EditableCondition[];
+  condition?: EditableCondition;
+  sqlCheck?: string;
+  editableFields?: string[];
 };
 
 /** Grid 样式规则（行颜色、单元格颜色、字体颜色） */

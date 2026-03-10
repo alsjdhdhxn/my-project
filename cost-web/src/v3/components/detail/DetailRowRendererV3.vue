@@ -20,6 +20,8 @@ const masterRowKey = computed<string | null>(() => {
 const tabs = computed(() => unref(panelContext.value.tabs) || []);
 const detailCache = computed(() => panelContext.value.detailCache || new Map());
 const detailColumnsByTab = computed(() => unref(panelContext.value.detailColumnsByTab) || {});
+const detailRowEditableRulesByTab = computed(() => unref(panelContext.value.detailRowEditableRulesByTab) || {});
+const detailCellEditableRulesByTab = computed(() => unref(panelContext.value.detailCellEditableRulesByTab) || {});
 const detailRowClassByTab = computed(() => unref(panelContext.value.detailRowClassByTab) || {});
 const detailGridOptionsByTab = computed(() => unref(panelContext.value.detailGridOptionsByTab) || {});
 const detailSumFieldsByTab = computed(() => unref(panelContext.value.detailSumFieldsByTab) || {});
@@ -72,6 +74,8 @@ function onMouseLeave() {
       :active-master-row-key="masterRowKey"
       :detail-cache="detailCache"
       :detail-columns-by-tab="detailColumnsByTab"
+      :detail-row-editable-rules-by-tab="detailRowEditableRulesByTab"
+      :detail-cell-editable-rules-by-tab="detailCellEditableRulesByTab"
       :detail-row-class-by-tab="detailRowClassByTab"
       :detail-grid-options-by-tab="detailGridOptionsByTab"
       :detail-sum-fields-by-tab="detailSumFieldsByTab"

@@ -4,10 +4,11 @@ import type { AggRule, CalcRule, NestedConfig, ValidationRule } from '@/v3/logic
 import type {
   ButtonItemRule,
   ButtonRule,
-  CellEditableCondition,
   CellEditableRule,
   ColumnOverrideRule,
   ContextMenuRule,
+  EditableCondition,
+  EditableRule,
   GridOptionsRule,
   GridStyleRule,
   LookupRuleConfig,
@@ -558,19 +559,71 @@ export function attachGroupCellRenderer(columns: ColDef[]): ColDef[] {
   });
 }
 
-/** 解析 ROW_EDITABLE 规则 */
-export function parseRowEditableRule(componentKey: string, rules: PageRule[]): RowEditableRule[] {
-  const rule = rules.find(r => r.ruleType === 'ROW_EDITABLE');
+function normalizeEditableConditions(raw: unknown): EditableCondition[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map(item => {
+      if (!item || typeof item !== 'object') return null;
+      const condition = item as EditableCondition;
+      if (!condition.field || !condition.operator) return null;
+      return {
+        field: condition.field,
+        operator: condition.operator,
+        value: condition.value
+      } satisfies EditableCondition;
+    })
+    .filter(Boolean) as EditableCondition[];
+}
+
+function normalizeEditableRule(raw: unknown): EditableRule | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const item = raw as Record<string, any>;
+  const scope = item.scope === 'row' ? 'row' : item.scope === 'cell' ? 'cell' : null;
+  if (!scope) return null;
+
+  const conditions = normalizeEditableConditions(item.conditions);
+  let condition: EditableCondition | undefined;
+  if (!conditions.length && item.condition && typeof item.condition === 'object') {
+    const [single] = normalizeEditableConditions([item.condition]);
+    condition = single;
+  }
+
+  return {
+    scope,
+    logic: item.logic === 'OR' ? 'OR' : 'AND',
+    conditions,
+    condition,
+    sqlCheck: typeof item.sqlCheck === 'string' ? item.sqlCheck : undefined,
+    editableFields:
+      scope === 'cell' && Array.isArray(item.editableFields)
+        ? item.editableFields.filter((field: unknown) => typeof field === 'string')
+        : undefined
+  };
+}
+
+export function parseEditableRule(componentKey: string, rules: PageRule[]): EditableRule[] {
+  const rule = rules.find(r => r.ruleType === 'EDITABLE');
   if (!rule?.rules) return [];
   try {
     const raw = typeof rule.rules === 'string' ? JSON.parse(rule.rules) : rule.rules;
-    if (Array.isArray(raw)) return raw as RowEditableRule[];
-    if (raw && typeof raw === 'object') return [raw as RowEditableRule];
-    return [];
+    const items = Array.isArray(raw) ? raw : [raw];
+    return items.map(normalizeEditableRule).filter(Boolean) as EditableRule[];
   } catch (error) {
-    console.warn(`[PageRule] Failed to parse ${componentKey}.ROW_EDITABLE`, error);
+    console.warn(`[PageRule] Failed to parse ${componentKey}.EDITABLE`, error);
     return [];
   }
+}
+
+/** 解析 ROW_EDITABLE 规则 */
+export function parseRowEditableRule(componentKey: string, rules: PageRule[]): RowEditableRule[] {
+  return parseEditableRule(componentKey, rules)
+    .filter(rule => rule.scope === 'row')
+    .map(rule => ({
+      logic: rule.logic,
+      conditions: rule.conditions,
+      condition: rule.condition,
+      sqlCheck: rule.sqlCheck
+    }));
 }
 
 /** 根据 ROW_EDITABLE 规则生成 editable 回调 */
@@ -580,48 +633,30 @@ export function buildRowEditableCallback(rules: RowEditableRule[]): ((params: an
     const data = params.data;
     if (!data) return true;
     for (const rule of rules) {
-      const fieldValue = data[rule.field];
-      let passed = true;
-      switch (rule.operator) {
-        case 'notNull':
-          passed = fieldValue != null;
-          break;
-        case 'eq':
-          passed = fieldValue === rule.value;
-          break;
-        case 'ne':
-          passed = fieldValue !== rule.value;
-          break;
-        case 'in':
-          passed = Array.isArray(rule.value) && rule.value.includes(fieldValue);
-          break;
-        case 'notIn':
-          passed = !Array.isArray(rule.value) || !rule.value.includes(fieldValue);
-          break;
+      if (checkRuleConditions(data, rule)) {
+        return true;
       }
-      if (!passed) return false;
     }
-    return true;
+    return false;
   };
 }
 
 /** 解析 CELL_EDITABLE 规则 */
 export function parseCellEditableRule(componentKey: string, rules: PageRule[]): CellEditableRule[] {
-  const rule = rules.find(r => r.ruleType === 'CELL_EDITABLE');
-  if (!rule?.rules) return [];
-  try {
-    const raw = typeof rule.rules === 'string' ? JSON.parse(rule.rules) : rule.rules;
-    if (Array.isArray(raw)) return raw as CellEditableRule[];
-    if (raw && typeof raw === 'object') return [raw as CellEditableRule];
-    return [];
-  } catch (error) {
-    console.warn(`[PageRule] Failed to parse ${componentKey}.CELL_EDITABLE`, error);
-    return [];
-  }
+  return parseEditableRule(componentKey, rules)
+    .filter(rule => rule.scope === 'cell')
+    .map(rule => ({
+      logic: rule.logic,
+      conditions: rule.conditions,
+      condition: rule.condition,
+      sqlCheck: rule.sqlCheck,
+      editableFields: Array.isArray(rule.editableFields) ? rule.editableFields : []
+    }))
+    .filter(rule => rule.editableFields.length > 0);
 }
 
 /** 检查单个条件是否匹配 */
-function checkCondition(data: any, condition: CellEditableCondition): boolean {
+function checkCondition(data: any, condition: EditableCondition): boolean {
   const fieldValue = data[condition.field];
   switch (condition.operator) {
     case 'notNull':
@@ -644,7 +679,7 @@ function checkCondition(data: any, condition: CellEditableCondition): boolean {
 }
 
 /** 检查一条规则的所有前端条件是否匹配 */
-function checkRuleConditions(data: any, rule: CellEditableRule): boolean {
+function checkRuleConditions(data: any, rule: Pick<RowEditableRule, 'logic' | 'conditions' | 'condition'>): boolean {
   // 新格式：多条件
   if (rule.conditions && rule.conditions.length > 0) {
     const logic = rule.logic || 'AND';

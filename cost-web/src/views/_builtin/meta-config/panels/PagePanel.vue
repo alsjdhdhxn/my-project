@@ -30,6 +30,26 @@ const message = useMessage();
 const navigateTo = inject<(tab: string, pageCode: string) => void>('navigateTo')!;
 const filterState = inject<Ref<{ tab: string; pageCode: string } | null>>('filterState');
 
+const ACTIVE_RULE_TYPE_OPTIONS = [
+  'COLUMN_OVERRIDE',
+  'GRID_STYLE',
+  'GRID_OPTIONS',
+  'CALC',
+  'AGGREGATE',
+  'VALIDATION',
+  'EDITABLE'
+] as const;
+
+const ACTIVE_RULE_TYPE_SET = new Set<string>(ACTIVE_RULE_TYPE_OPTIONS);
+
+function resolveRuleTypeEditorValues(currentValue?: unknown) {
+  const currentType = typeof currentValue === 'string' ? currentValue.trim() : '';
+  if (currentType && !ACTIVE_RULE_TYPE_SET.has(currentType)) {
+    return [currentType, ...ACTIVE_RULE_TYPE_OPTIONS];
+  }
+  return [...ACTIVE_RULE_TYPE_OPTIONS];
+}
+
 // ==================== 上半区: 页面组件 ====================
 const compGridApi = ref<GridApi | null>(null);
 const compRows = ref<any[]>([]);
@@ -123,22 +143,9 @@ const ruleColDefs: ColDef[] = [
     width: 140,
     editable: true,
     cellEditor: 'agSelectCellEditor',
-    cellEditorParams: {
-      values: [
-        'COLUMN_OVERRIDE',
-        'GRID_STYLE',
-        'GRID_OPTIONS',
-        'CALC',
-        'VALIDATION',
-        'LOOKUP',
-        'BUTTON',
-        'BATCH_SELECT',
-        'DETAIL_LINK',
-        'ROW_EDITABLE',
-        'CELL_EDITABLE',
-        'SUMMARY_CONFIG'
-      ]
-    }
+    cellEditorParams: (params: any) => ({
+      values: resolveRuleTypeEditorValues(params.data?.ruleType)
+    })
   },
   {
     field: 'rules',
@@ -151,7 +158,7 @@ const ruleColDefs: ColDef[] = [
       params.data?.ruleType !== 'CALC' &&
       params.data?.ruleType !== 'AGGREGATE' &&
       params.data?.ruleType !== 'VALIDATION' &&
-      params.data?.ruleType !== 'CELL_EDITABLE',
+      params.data?.ruleType !== 'EDITABLE',
     cellEditor: 'agLargeTextCellEditor',
     cellEditorPopup: true,
     cellRenderer: (params: ICellRendererParams) => {
@@ -230,8 +237,8 @@ const ruleColDefs: ColDef[] = [
         el.addEventListener('click', () => openRuleConfigDialog(params.data));
         return el;
       }
-      // CELL_EDITABLE 可视化配置
-      if (ruleType === 'CELL_EDITABLE') {
+      // EDITABLE 可视化配置
+      if (ruleType === 'EDITABLE') {
         const el = document.createElement('span');
         let count = 0;
         try {

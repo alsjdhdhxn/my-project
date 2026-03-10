@@ -4,6 +4,7 @@ import type { ColDef } from 'ag-grid-community';
 import type { RowData, TabConfig } from '@/v3/logic/calc-engine';
 import DetailGridV3 from '@/v3/components/detail/DetailGridV3.vue';
 import type { ResolvedGridOptions } from '@/v3/composables/meta-v3/grid-options';
+import type { CellEditableRule, RowEditableRule } from '@/v3/composables/meta-v3/types';
 
 const props = defineProps<{
   tabs: TabConfig[];
@@ -11,6 +12,8 @@ const props = defineProps<{
   activeMasterRowKey: string | null;
   detailCache: Map<string, Record<string, RowData[]>>;
   detailColumnsByTab: Record<string, ColDef[]>;
+  detailRowEditableRulesByTab?: Record<string, RowEditableRule[]>;
+  detailCellEditableRulesByTab?: Record<string, CellEditableRule[]>;
   detailRowClassByTab?: Record<string, ((params: any) => string | undefined) | undefined>;
   detailGridOptionsByTab?: Record<string, ResolvedGridOptions>;
   detailSumFieldsByTab?: Record<string, string[]>;
@@ -162,6 +165,8 @@ function refreshLayout() {
           :tab="activeTabConfig"
           :rows="resolveRows(activeTabConfig.key)"
           :columns="detailColumnsByTab[activeTabConfig.key] || []"
+          :row-editable-rules="detailRowEditableRulesByTab?.[activeTabConfig.key] || []"
+          :cell-editable-rules="detailCellEditableRulesByTab?.[activeTabConfig.key] || []"
           :row-class-getter="detailRowClassByTab?.[activeTabConfig.key]"
           :grid-options="detailGridOptionsByTab?.[activeTabConfig.key]"
           :cell-class-rules="cellClassRules"
@@ -186,6 +191,8 @@ function refreshLayout() {
             :tab="tab"
             :rows="resolveRows(tab.key)"
             :columns="detailColumnsByTab[tab.key] || []"
+            :row-editable-rules="detailRowEditableRulesByTab?.[tab.key] || []"
+            :cell-editable-rules="detailCellEditableRulesByTab?.[tab.key] || []"
             :row-class-getter="detailRowClassByTab?.[tab.key]"
             :grid-options="detailGridOptionsByTab?.[tab.key]"
             :cell-class-rules="cellClassRules"

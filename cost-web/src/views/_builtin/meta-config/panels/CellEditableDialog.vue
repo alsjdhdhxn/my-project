@@ -4,7 +4,6 @@ import {
   NButton,
   NEmpty,
   NInput,
-  NInputNumber,
   NModal,
   NPopconfirm,
   NSelect,
@@ -37,11 +36,12 @@ type Condition = {
 };
 
 type EditableRule = {
+  scope: 'row' | 'cell';
   logic: 'AND' | 'OR';
   conditions: Condition[];
   sqlCheck?: string;
   enableSql: boolean;
-  editableFields: string[];
+  editableFields?: string[];
 };
 
 const items = ref<EditableRule[]>([]);
@@ -55,6 +55,11 @@ const operatorOptions = [
   { label: '为空', value: 'isNull' },
   { label: '包含', value: 'in' },
   { label: '不包含', value: 'notIn' }
+];
+
+const scopeOptions = [
+  { label: '整行可编辑', value: 'row' },
+  { label: '指定字段可编辑', value: 'cell' }
 ];
 
 const needsValue = (op: string) => !['notNull', 'isNull'].includes(op);
@@ -76,29 +81,26 @@ watch(
 
 /** 兼容旧格式（单条件）和新格式（多条件） */
 function normalizeRule(r: any): EditableRule {
-  // 旧格式: { condition: { field, operator, value }, editableFields: [...] }
-  if (r.condition && !r.conditions) {
-    return {
-      logic: 'AND',
-      conditions: [
-        { field: r.condition.field || '', operator: r.condition.operator || 'eq', value: r.condition.value }
-      ],
-      sqlCheck: r.sqlCheck || '',
-      enableSql: Boolean(r.sqlCheck),
-      editableFields: r.editableFields || []
-    };
-  }
-  // 新格式
-  return {
-    logic: r.logic || 'AND',
-    conditions: (r.conditions || []).map((c: any) => ({
+  const scope = r.scope === 'row' ? 'row' : 'cell';
+  const hasConditions = Array.isArray(r.conditions) && r.conditions.length > 0;
+  let conditions: Condition[] = [];
+  if (hasConditions) {
+    conditions = r.conditions.map((c: any) => ({
       field: c.field || '',
       operator: c.operator || 'eq',
       value: c.value
-    })),
+    }));
+  } else if (r.condition) {
+    conditions = [{ field: r.condition.field || '', operator: r.condition.operator || 'eq', value: r.condition.value }];
+  }
+
+  return {
+    scope,
+    logic: r.logic === 'OR' ? 'OR' : 'AND',
+    conditions,
     sqlCheck: r.sqlCheck || '',
     enableSql: Boolean(r.sqlCheck),
-    editableFields: r.editableFields || []
+    editableFields: scope === 'cell' && Array.isArray(r.editableFields) ? r.editableFields : []
   };
 }
 
@@ -135,6 +137,7 @@ async function loadAvailableFields() {
 
 function addRule() {
   items.value.push({
+    scope: 'cell',
     logic: 'AND',
     conditions: [{ field: '', operator: 'eq', value: undefined }],
     sqlCheck: '',
@@ -159,16 +162,19 @@ function buildJson(): string {
   return JSON.stringify(
     items.value.map(rule => {
       const r: any = {
+        scope: rule.scope,
         logic: rule.logic,
         conditions: rule.conditions.map(c => {
           const cond: any = { field: c.field, operator: c.operator };
           if (needsValue(c.operator) && c.value !== undefined && c.value !== '') cond.value = c.value;
           return cond;
-        }),
-        editableFields: rule.editableFields
+        })
       };
       if (rule.enableSql && rule.sqlCheck?.trim()) {
         r.sqlCheck = rule.sqlCheck.trim();
+      }
+      if (rule.scope === 'cell') {
+        r.editableFields = rule.editableFields || [];
       }
       return r;
     })
@@ -187,7 +193,7 @@ async function handleSave() {
         return;
       }
     }
-    if (!rule.editableFields.length) {
+    if (rule.scope === 'cell' && !rule.editableFields?.length) {
       message.warning('请选择可编辑字段');
       return;
     }
@@ -197,7 +203,7 @@ async function handleSave() {
     saving.value = true;
     try {
       await savePageRule({ ...props.ruleRow, rules: json });
-      message.success('单元格可编辑规则已保存');
+      message.success('可编辑规则已保存');
       emit('save', json);
       emit('update:show', false);
     } catch {
@@ -216,7 +222,7 @@ async function handleSave() {
   <NModal
     :show="show"
     preset="card"
-    :title="`单元格可编辑规则 - ${componentKey}`"
+    :title="`可编辑规则 - ${componentKey}`"
     style="width: 760px; max-height: 85vh"
     :mask-closable="true"
     :segmented="{ content: true, footer: true }"
@@ -240,6 +246,11 @@ async function handleSave() {
         </div>
 
         <!-- 条件组合 -->
+        <div class="section-label">
+          作用范围
+        </div>
+        <NSelect v-model:value="rule.scope" :options="scopeOptions" size="small" style="width: 220px; margin-bottom: 8px" />
+
         <div class="section-label">
           条件组合
           <NSelect
@@ -300,16 +311,18 @@ async function handleSave() {
         </div>
 
         <!-- 可编辑字段 -->
-        <div class="section-label">可编辑字段</div>
-        <NSelect
-          v-model:value="rule.editableFields"
-          :options="availableFields"
-          size="small"
-          filterable
-          multiple
-          placeholder="选择允许编辑的字段"
-          style="width: 100%"
-        />
+        <template v-if="rule.scope === 'cell'">
+          <div class="section-label">可编辑字段</div>
+          <NSelect
+            v-model:value="rule.editableFields"
+            :options="availableFields"
+            size="small"
+            filterable
+            multiple
+            placeholder="选择允许编辑的字段"
+            style="width: 100%"
+          />
+        </template>
       </div>
     </div>
 

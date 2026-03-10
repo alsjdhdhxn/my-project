@@ -3,17 +3,21 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { AgGridVue } from 'ag-grid-vue3';
 import type { ColDef, GridReadyEvent } from 'ag-grid-community';
 import type { RowData, TabConfig } from '@/v3/logic/calc-engine';
+import type { CellEditableRule, RowEditableRule } from '@/v3/composables/meta-v3/types';
 import {
   type ResolvedGridOptions,
   autoSizeColumnsOnReady,
   buildGridRuntimeOptions
 } from '@/v3/composables/meta-v3/grid-options';
 import { isFlagTrue } from '@/v3/composables/meta-v3/cell-style';
+import { buildCellEditableCallback, buildRowEditableCallback } from '@/v3/composables/meta-v3/usePageRules';
 
 const props = defineProps<{
   tab: TabConfig;
   rows: RowData[];
   columns: ColDef[];
+  rowEditableRules?: RowEditableRule[];
+  cellEditableRules?: CellEditableRule[];
   rowClassGetter?: (params: any) => string | undefined;
   gridOptions?: ResolvedGridOptions;
   cellClassRules: ColDef['cellClassRules'];
@@ -33,6 +37,41 @@ const props = defineProps<{
 
 const gridApi = ref<any>(null);
 const calculatedHeight = ref<number>(120);
+const wrappedEditableColumns = new WeakSet<ColDef>();
+
+let cachedCellRules: CellEditableRule[] | null = null;
+let cachedRowRules: RowEditableRule[] | null = null;
+let cachedEditableCallback: ((params: any) => boolean) | undefined;
+
+function getEditableCallback(): ((params: any) => boolean) | undefined {
+  const cellRules = props.cellEditableRules || [];
+  const rowRules = props.rowEditableRules || [];
+  if (cellRules === cachedCellRules && rowRules === cachedRowRules) {
+    return cachedEditableCallback;
+  }
+  cachedCellRules = cellRules;
+  cachedRowRules = rowRules;
+  if (cellRules.length > 0) {
+    cachedEditableCallback = buildCellEditableCallback(cellRules, rowRules);
+  } else if (rowRules.length > 0) {
+    cachedEditableCallback = buildRowEditableCallback(rowRules);
+  } else {
+    cachedEditableCallback = undefined;
+  }
+  return cachedEditableCallback;
+}
+
+function wrapColumnEditable(def: ColDef) {
+  if (!def || wrappedEditableColumns.has(def)) return;
+  const existing = def.editable;
+  def.editable = (params: any) => {
+    const base = typeof existing === 'function' ? existing(params) : existing !== false;
+    const callback = getEditableCallback();
+    if (callback) return base && callback(params);
+    return base;
+  };
+  wrappedEditableColumns.add(def);
+}
 
 // 计算grid高度
 function calcHeight(): number {
@@ -105,7 +144,12 @@ const defaultColDef = computed<ColDef>(() => ({
   sortable: true,
   filter: true,
   resizable: true,
-  editable: (p: any) => !p.node?.rowPinned,
+  editable: (p: any) => {
+    if (p.node?.rowPinned) return false;
+    const callback = getEditableCallback();
+    if (callback) return callback(p);
+    return true;
+  },
   wrapHeaderText: true,
   autoHeaderHeight: true,
   cellClassRules: props.cellClassRules,
@@ -215,11 +259,14 @@ watch(
 watch(
   () => props.columns,
   cols => {
+    if (Array.isArray(cols)) {
+      cols.forEach(def => wrapColumnEditable(def));
+    }
     if (gridApi.value && cols) {
       gridApi.value.setGridOption('columnDefs', cols);
     }
   },
-  { deep: false }
+  { deep: false, immediate: true }
 );
 </script>
 
