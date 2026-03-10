@@ -23,8 +23,6 @@ import java.util.*;
 public class PermissionService {
 
     private final RolePageMapper rolePageMapper;
-    
-    private static final String SUPER_ADMIN_USERNAME = "admin";
 
     /**
      * 组装用户完整权限上下文
@@ -64,14 +62,8 @@ public class PermissionService {
 
     /**
      * 获取指定页面的权限
-     * 用户名为 admin 直接返回全权限
      */
     public PagePermission getPagePermission(Long userId, String pageCode) {
-        // admin 用户直接放行，返回全权限
-        if (isSuperAdmin()) {
-            return new PagePermission(pageCode, Set.of("*"), Collections.emptyMap(), null);
-        }
-        
         List<RolePage> rolePages = rolePageMapper.selectByUserId(userId);
         
         boolean hasPage = false;
@@ -320,11 +312,4 @@ public class PermissionService {
         }
     }
 
-    /**
-     * 判断当前用户是否为超级管理员（用户名为 admin）
-     */
-    private boolean isSuperAdmin() {
-        String username = SecurityUtils.getCurrentUsername();
-        return SUPER_ADMIN_USERNAME.equalsIgnoreCase(username);
-    }
 }

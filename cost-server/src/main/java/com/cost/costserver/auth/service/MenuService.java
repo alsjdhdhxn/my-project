@@ -25,6 +25,7 @@ public class MenuService {
     private final PermissionService permissionService;
     private final RoleMapper roleMapper;
     private static final String SUPER_ADMIN_USERNAME = "admin";
+    private static final Set<String> ADMIN_ONLY_PAGES = Set.of("meta-config");
 
     /**
      * 获取用户菜单（根据权限过滤）
@@ -39,23 +40,17 @@ public class MenuService {
                 .orderByAsc(Resource::getSortOrder)
         );
 
-        // admin 用户直接返回所有菜单
-        String currentUsername = SecurityUtils.getCurrentUsername();
-        if (SUPER_ADMIN_USERNAME.equalsIgnoreCase(currentUsername)) {
-            List<MenuRoute> routes = buildMenuTree(resources);
-            return new UserRoute(routes, "home");
-        }
-
         // 获取用户角色
         List<Role> roles = roleMapper.selectByUserId(userId);
         List<String> roleCodes = roles.stream().map(Role::getRoleCode).toList();
+        String currentUsername = SecurityUtils.getCurrentUsername();
 
         // 获取用户有权限的 pageCode 集合
         UserPermissionContext permContext = permissionService.buildUserPermissionContext(userId, currentUsername, roleCodes);
         Set<String> allowedPageCodes = permContext.pageCodes();
 
         // 过滤菜单：PAGE 类型必须有权限，DIRECTORY 类型保留（后续根据子菜单决定）
-        List<Resource> filteredResources = filterResourcesByPermission(resources, allowedPageCodes);
+        List<Resource> filteredResources = filterResourcesByPermission(resources, allowedPageCodes, currentUsername);
 
         // 构建树形结构
         List<MenuRoute> routes = buildMenuTree(filteredResources);
@@ -68,20 +63,22 @@ public class MenuService {
      * - PAGE 类型：pageCode 必须在允许列表中
      * - DIRECTORY/MENU 类型：保留，后续在构建树时根据是否有子菜单决定
      */
-    private List<Resource> filterResourcesByPermission(List<Resource> resources, Set<String> allowedPageCodes) {
+    private List<Resource> filterResourcesByPermission(
+            List<Resource> resources,
+            Set<String> allowedPageCodes,
+            String currentUsername) {
         if (allowedPageCodes == null || allowedPageCodes.isEmpty()) {
-            return List.of();
+            if (!isAdminUsername(currentUsername)) {
+                return List.of();
+            }
         }
-        
-        // 仅管理员可见的页面（非 admin 用户强制排除）
-        Set<String> adminOnlyPages = Set.of("meta-config");
 
-        
+        boolean allowAdminOnlyPages = isAdminUsername(currentUsername);
+
         // 先收集有权限的 PAGE 资源 ID
         Set<Long> allowedPageIds = resources.stream()
             .filter(r -> "PAGE".equals(r.getResourceType()))
-            .filter(r -> allowedPageCodes.contains(r.getPageCode()))
-            .filter(r -> !adminOnlyPages.contains(r.getPageCode()))
+            .filter(r -> isPageAllowed(r.getPageCode(), allowedPageCodes, allowAdminOnlyPages))
             .map(Resource::getId)
             .collect(Collectors.toSet());
         
@@ -99,6 +96,20 @@ public class MenuService {
                 return false;
             })
             .toList();
+    }
+
+    private boolean isPageAllowed(String pageCode, Set<String> allowedPageCodes, boolean allowAdminOnlyPages) {
+        if (pageCode == null) {
+            return false;
+        }
+        if (ADMIN_ONLY_PAGES.contains(pageCode)) {
+            return allowAdminOnlyPages;
+        }
+        return allowedPageCodes != null && allowedPageCodes.contains(pageCode);
+    }
+
+    private boolean isAdminUsername(String username) {
+        return username != null && SUPER_ADMIN_USERNAME.equalsIgnoreCase(username);
     }
 
     /**

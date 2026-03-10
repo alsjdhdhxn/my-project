@@ -1,7 +1,9 @@
 package com.cost.costserver.metadata.controller;
 
 import com.cost.costserver.auth.entity.Resource;
+import com.cost.costserver.common.BusinessException;
 import com.cost.costserver.common.Result;
+import com.cost.costserver.common.SecurityUtils;
 import com.cost.costserver.config.AppWebSocketHandler;
 import com.cost.costserver.metadata.entity.*;
 import com.cost.costserver.metadata.service.MetaConfigService;
@@ -23,9 +25,19 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class MetaConfigController {
 
+    private static final String SUPER_ADMIN_USERNAME = "admin";
+
     private final MetaConfigService metaConfigService;
     private final MetadataService metadataService;
     private final AppWebSocketHandler webSocketHandler;
+
+    @ModelAttribute
+    public void requireAdminUser() {
+        String username = SecurityUtils.getCurrentUsername();
+        if (username == null || !SUPER_ADMIN_USERNAME.equalsIgnoreCase(username)) {
+            throw new BusinessException(403, "无权限访问");
+        }
+    }
 
     // ==================== 目录管理 ====================
 
