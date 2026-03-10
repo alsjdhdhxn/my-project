@@ -68,7 +68,7 @@ const availableFieldMapById = ref<Map<number, AvailableFieldOption>>(new Map());
 const availableFieldMapByField = ref<Map<string, AvailableFieldOption>>(new Map());
 const lookupOptionsRaw = ref<LookupOption[]>([]);
 const loadingFields = ref(false);
-const addFieldValue = ref<string | null>(null);
+const addFieldValue = ref<string[] | null>(null);
 const lookupFieldOptionsCache = new Map<string, LookupFieldOption[]>();
 
 const cellEditorOptions = [
@@ -481,22 +481,30 @@ async function onLookupCodeChange(item: OverrideItem, value: string) {
 }
 
 function addField() {
-  if (!addFieldValue.value) return;
-  const columnName = addFieldValue.value;
-  const meta = availableFields.value.find(f => f.value === columnName);
-  items.value.push({
-    columnId: meta?.columnId ?? null,
-    columnName,
-    visible: true,
-    editable: undefined,
-    searchable: undefined,
-    required: undefined,
-    width: null,
-    cellEditor: '',
-    aggFunc: undefined,
-    precision: null,
-    roundMode: 'round',
-  });
+  const selectedValues = addFieldValue.value ?? [];
+  if (selectedValues.length === 0) return;
+
+  const selectedFields = selectedValues
+    .map(columnName => availableFields.value.find(f => f.value === columnName))
+    .filter((field): field is AvailableFieldOption => Boolean(field))
+    .filter(field => !configuredFields.value.has(`id:${field.columnId}`));
+
+  for (const field of selectedFields) {
+    items.value.push({
+      columnId: field.columnId,
+      columnName: field.value,
+      visible: true,
+      editable: undefined,
+      searchable: undefined,
+      required: undefined,
+      width: null,
+      cellEditor: '',
+      aggFunc: undefined,
+      precision: null,
+      roundMode: 'round',
+    });
+  }
+
   addFieldValue.value = null;
 }
 
@@ -695,26 +703,40 @@ const saving = ref(false);
 // 跟踪每行的折叠状态（lookup/select 参数区）
 const expandedRows = reactive(new Set<number>());
 
+function resolveSwitchValue(value: boolean | undefined, fallback = false): boolean {
+  return typeof value === 'boolean' ? value : fallback;
+}
+
+function resolveWidthValue(value: string | null | undefined): number | null {
+  if (value === null || value === undefined || value === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 async function handleSave() {
   const result = items.value
     .filter(i => i.columnName)
     .map(i => {
       const matched = findAvailableFieldForItem(i);
       const resolvedColumnName = matched?.value || i.columnName;
-      const obj: any = { columnName: resolvedColumnName };
+      const obj: any = {
+        columnName: resolvedColumnName,
+        visible: resolveSwitchValue(i.visible, true),
+        editable: resolveSwitchValue(i.editable),
+        searchable: resolveSwitchValue(i.searchable),
+        required: resolveSwitchValue(i.required),
+        width: resolveWidthValue(i.width),
+        cellEditor: i.cellEditor || ''
+      };
       if (typeof (matched?.columnId ?? i.columnId) === 'number') {
         obj.columnId = matched?.columnId ?? i.columnId;
       }
-      if (i.visible === false) obj.visible = false;
-      if (i.editable != null) obj.editable = i.editable;
-      if (i.searchable != null) obj.searchable = i.searchable;
-      if (i.required != null) obj.required = i.required;
-      if (i.width != null && i.width !== '') obj.width = Number(i.width);
-      if (i.cellEditor) obj.cellEditor = i.cellEditor;
-      if (i.aggFunc) obj.aggFunc = i.aggFunc;
-      if (i.precision != null) obj.precision = i.precision;
-      if (i.roundMode && i.roundMode !== 'round') obj.roundMode = i.roundMode;
-      if (i.cellEditorParams && Object.keys(i.cellEditorParams).length > 0) {
+      if (numericFields.value.has(resolvedColumnName)) {
+        obj.aggFunc = i.aggFunc ?? null;
+        obj.precision = i.precision ?? null;
+        obj.roundMode = i.precision !== null && i.precision !== undefined ? (i.roundMode || 'round') : null;
+      }
+      if (i.cellEditor && i.cellEditorParams && Object.keys(i.cellEditorParams).length > 0) {
         const params = { ...i.cellEditorParams };
         if (params.lookupCode) {
           params.lookupCode = normalizeLookupCode(params.lookupCode);
@@ -780,8 +802,10 @@ async function handleSave() {
         v-model:value="addFieldValue"
         :options="addableFields"
         :loading="loadingFields"
+        multiple
         filterable
         clearable
+        max-tag-count="responsive"
         placeholder="选择字段添加覆盖..."
         style="flex: 1"
         size="small"
