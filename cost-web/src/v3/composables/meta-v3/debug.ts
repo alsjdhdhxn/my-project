@@ -18,4 +18,3 @@ export function debugLog(...args: any[]) {
   if (!isDebugEnabled()) return;
   // Prefix for filtering in console
 }
-

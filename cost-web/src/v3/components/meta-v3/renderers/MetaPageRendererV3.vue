@@ -1,13 +1,3 @@
-<template>
-  <RendererBoundary
-    v-for="component in components"
-    :key="component.componentKey"
-    :component="component"
-    :runtime="runtime"
-    :renderer="resolveRenderer(component)"
-  />
-</template>
-
 <script setup lang="ts">
 import { defineComponent, h, onErrorCaptured, ref } from 'vue';
 import type { PageComponentWithRules } from '@/v3/composables/meta-v3/types';
@@ -45,7 +35,7 @@ const RendererBoundary = defineComponent({
     const hasError = ref(false);
     const errorMessage = ref('');
 
-    onErrorCaptured((err) => {
+    onErrorCaptured(err => {
       hasError.value = true;
       const message = err instanceof Error ? err.message : String(err);
       errorMessage.value = message || 'Renderer failed';
@@ -87,6 +77,16 @@ function resolveRenderer(component: PageComponentWithRules) {
   return resolveComponentRenderer({ component, runtime: props.runtime }) || MissingRenderer;
 }
 </script>
+
+<template>
+  <RendererBoundary
+    v-for="component in components"
+    :key="component.componentKey"
+    :component="component"
+    :runtime="runtime"
+    :renderer="resolveRenderer(component)"
+  />
+</template>
 
 <style scoped>
 .meta-renderer-error {

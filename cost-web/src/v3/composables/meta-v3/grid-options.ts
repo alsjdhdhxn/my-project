@@ -149,19 +149,13 @@ export function buildGridRuntimeOptions(options?: ResolvedGridOptions | null) {
   return runtimeOptions;
 }
 
-export function autoSizeColumnsOnReady(
-  api: GridApi,
-  columns: ColDef[],
-  options?: ResolvedGridOptions | null
-) {
+export function autoSizeColumnsOnReady(api: GridApi, columns: ColDef[], options?: ResolvedGridOptions | null) {
   if (!options?.autoSizeColumns) return;
   const mode = options.autoSizeMode || 'fitCellContents';
   const hasExplicitWidth = columns.some(col => typeof col.width === 'number' && col.width > 0);
   if (mode === 'fitGridWidth') {
     if (hasExplicitWidth) {
-      const colsToAutoSize = columns
-        .filter(col => !col.width && col.field)
-        .map(col => col.field as string);
+      const colsToAutoSize = columns.filter(col => !col.width && col.field).map(col => col.field as string);
       if (colsToAutoSize.length > 0) {
         api.autoSizeColumns(colsToAutoSize);
       }
@@ -170,9 +164,7 @@ export function autoSizeColumnsOnReady(
     api.sizeColumnsToFit();
     return;
   }
-  const colsToAutoSize = columns
-    .filter(col => !col.width && col.field)
-    .map(col => col.field as string);
+  const colsToAutoSize = columns.filter(col => !col.width && col.field).map(col => col.field as string);
   if (colsToAutoSize.length > 0) {
     api.autoSizeColumns(colsToAutoSize);
   }

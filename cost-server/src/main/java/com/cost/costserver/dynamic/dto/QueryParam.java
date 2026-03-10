@@ -17,6 +17,7 @@ public class QueryParam {
     @lombok.AllArgsConstructor
     @lombok.NoArgsConstructor
     public static class QueryCondition {
+        private String tableKey;
         private String field;
         private String operator;
         private Object value;

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, provide } from 'vue';
-import { NTabs, NTabPane } from 'naive-ui';
+import { provide, ref } from 'vue';
+import { NTabPane, NTabs } from 'naive-ui';
 import DirectoryPanel from './panels/DirectoryPanel.vue';
 import TablePanel from './panels/TablePanel.vue';
 import PagePanel from './panels/PagePanel.vue';

@@ -63,7 +63,7 @@ public class DynamicDataService {
         Map<String, ColumnMetadataDTO> columnMap = buildColumnMap(metadata);
 
         String queryView = metadata.queryView();
-        String whereClause = buildWhereClause(param != null ? param.getConditions() : null, columnMap);
+        String whereClause = buildQueryWhereClause(metadata, columnMap, param);
 
         // 注入数据权限条件（Lookup 查询不注入，从表查询不注入）
         // 从表通过外键关联主表，间接继承主表的数据权限
@@ -81,7 +81,7 @@ public class DynamicDataService {
                 columnMap,
                 metadata.pkColumn());
 
-        String countSql = String.format("SELECT COUNT(*) FROM %s WHERE DELETED = 0 %s", queryView, whereClause);
+        String countSql = String.format("SELECT COUNT(*) FROM %s a WHERE a.DELETED = 0 %s", queryView, whereClause);
         Long total = dynamicMapper.selectCount(countSql);
 
         int page = param != null ? param.getPage() : 1;
@@ -96,7 +96,7 @@ public class DynamicDataService {
         String dataSql;
         if (refJoin.isEmpty()) {
             dataSql = String.format(
-                "SELECT * FROM (SELECT t.*, ROWNUM rn FROM (SELECT * FROM %s WHERE DELETED = 0 %s %s) t WHERE ROWNUM <= %d) WHERE rn > %d",
+                "SELECT * FROM (SELECT t.*, ROWNUM rn FROM (SELECT a.* FROM %s a WHERE a.DELETED = 0 %s %s) t WHERE ROWNUM <= %d) WHERE rn > %d",
                 queryView, whereClause, orderClause, offset + pageSize, offset);
         } else {
             dataSql = String.format(
@@ -136,7 +136,7 @@ public class DynamicDataService {
         TableMetadataDTO metadata = metadataService.getTableMetadata(tableCode);
         Map<String, ColumnMetadataDTO> columnMap = buildColumnMap(metadata);
 
-        String whereClause = buildWhereClause(param != null ? param.getConditions() : null, columnMap);
+        String whereClause = buildQueryWhereClause(metadata, columnMap, param);
 
         // 注入数据权限条件（Lookup 查询不注入，从表查询不注入）
         boolean isDetailTable = StrUtil.isNotBlank(metadata.parentTableCode());
@@ -159,7 +159,7 @@ public class DynamicDataService {
 
         String sql;
         if (refJoin.isEmpty()) {
-            sql = String.format("SELECT * FROM %s WHERE DELETED = 0 %s %s", metadata.queryView(), whereClause, orderClause);
+            sql = String.format("SELECT a.* FROM %s a WHERE a.DELETED = 0 %s %s", metadata.queryView(), whereClause, orderClause);
         } else {
             sql = String.format("SELECT a.*%s FROM %s a%s WHERE a.DELETED = 0 %s %s",
                 refJoin.selectClause(), metadata.queryView(), refJoin.joinClause(), whereClause, orderClause);
@@ -450,8 +450,166 @@ public class DynamicDataService {
                         LinkedHashMap::new));
     }
 
-    private String buildWhereClause(List<QueryParam.QueryCondition> conditions,
-            Map<String, ColumnMetadataDTO> columnMap) {
+    private record PageQueryScope(String componentKey, String componentType, String tableCode) {
+    }
+
+    private record PageQueryScopeIndex(Set<String> masterKeys, Map<String, PageQueryScope> detailScopesByKey) {
+        static final PageQueryScopeIndex EMPTY = new PageQueryScopeIndex(Set.of(), Map.of());
+    }
+
+    private String buildQueryWhereClause(
+            TableMetadataDTO metadata,
+            Map<String, ColumnMetadataDTO> columnMap,
+            QueryParam param) {
+        List<QueryParam.QueryCondition> conditions = param != null ? param.getConditions() : null;
+        if (conditions == null || conditions.isEmpty()) {
+            return "";
+        }
+
+        boolean supportsDetailExists = StrUtil.isBlank(metadata.parentTableCode())
+                && param != null
+                && StrUtil.isNotBlank(param.getPageCode());
+
+        List<QueryParam.QueryCondition> localConditions = new ArrayList<>();
+        Map<String, List<QueryParam.QueryCondition>> detailConditionsByKey = new LinkedHashMap<>();
+        PageQueryScopeIndex scopeIndex = supportsDetailExists
+                ? loadPageQueryScopes(param.getPageCode(), metadata.tableCode())
+                : PageQueryScopeIndex.EMPTY;
+
+        for (QueryParam.QueryCondition cond : conditions) {
+            if (cond == null) {
+                continue;
+            }
+            String tableKey = normalizeRuntimeColumnName(cond.getTableKey());
+            if (tableKey.isEmpty() || scopeIndex.masterKeys().contains(tableKey)) {
+                localConditions.add(cond);
+                continue;
+            }
+
+            PageQueryScope detailScope = scopeIndex.detailScopesByKey().get(tableKey);
+            if (detailScope == null) {
+                localConditions.add(cond);
+                continue;
+            }
+            detailConditionsByKey.computeIfAbsent(tableKey, ignored -> new ArrayList<>()).add(cond);
+        }
+
+        StringBuilder sb = new StringBuilder(buildWhereClause(localConditions, columnMap, "a"));
+        if (detailConditionsByKey.isEmpty()) {
+            return sb.toString();
+        }
+
+        String masterPkQueryColumn = resolveQueryColumnByTarget(metadata, columnMap, metadata.pkColumn());
+        for (Map.Entry<String, List<QueryParam.QueryCondition>> entry : detailConditionsByKey.entrySet()) {
+            PageQueryScope detailScope = scopeIndex.detailScopesByKey().get(entry.getKey());
+            if (detailScope == null || StrUtil.isBlank(detailScope.tableCode())) {
+                continue;
+            }
+
+            TableMetadataDTO detailMeta = metadataService.getTableMetadata(detailScope.tableCode());
+            if (detailMeta == null || StrUtil.isBlank(detailMeta.queryView()) || StrUtil.isBlank(detailMeta.parentFkColumn())) {
+                continue;
+            }
+
+            Map<String, ColumnMetadataDTO> detailColumnMap = buildColumnMap(detailMeta);
+            String detailWhereClause = buildWhereClause(entry.getValue(), detailColumnMap, "d");
+            if (StrUtil.isBlank(detailWhereClause)) {
+                continue;
+            }
+
+            String detailFkQueryColumn = resolveQueryColumnByTarget(detailMeta, detailColumnMap, detailMeta.parentFkColumn());
+            sb.append(" AND EXISTS (SELECT 1 FROM ")
+                    .append(detailMeta.queryView())
+                    .append(" d WHERE d.DELETED = 0 AND ")
+                    .append(qualifyColumn(detailFkQueryColumn, "d"))
+                    .append(" = ")
+                    .append(qualifyColumn(masterPkQueryColumn, "a"))
+                    .append(detailWhereClause)
+                    .append(")");
+        }
+        return sb.toString();
+    }
+
+    private PageQueryScopeIndex loadPageQueryScopes(String pageCode, String currentTableCode) {
+        if (StrUtil.isBlank(pageCode)) {
+            return PageQueryScopeIndex.EMPTY;
+        }
+
+        String escapedPageCode = pageCode.replace("'", "''");
+        List<Map<String, Object>> rows = dynamicMapper.selectList(
+                "SELECT COMPONENT_KEY, COMPONENT_TYPE, REF_TABLE_CODE " +
+                        "FROM T_COST_PAGE_COMPONENT " +
+                        "WHERE PAGE_CODE = '" + escapedPageCode + "' " +
+                        "AND DELETED = 0 " +
+                        "AND COMPONENT_TYPE IN ('GRID', 'DETAIL_GRID') " +
+                        "ORDER BY SORT_ORDER");
+
+        if (rows == null || rows.isEmpty()) {
+            return PageQueryScopeIndex.EMPTY;
+        }
+
+        LinkedHashSet<String> masterKeys = new LinkedHashSet<>();
+        Map<String, PageQueryScope> detailScopesByKey = new LinkedHashMap<>();
+        PageQueryScope fallbackMaster = null;
+
+        for (Map<String, Object> row : rows) {
+            String componentKey = (String) row.get("COMPONENT_KEY");
+            String componentType = (String) row.get("COMPONENT_TYPE");
+            String refTableCode = (String) row.get("REF_TABLE_CODE");
+            if (StrUtil.isBlank(componentKey) || StrUtil.isBlank(componentType)) {
+                continue;
+            }
+
+            PageQueryScope scope = new PageQueryScope(
+                    normalizeRuntimeColumnName(componentKey),
+                    normalizeRuntimeColumnName(componentType),
+                    refTableCode);
+
+            if ("DETAIL_GRID".equals(scope.componentType())) {
+                detailScopesByKey.put(scope.componentKey(), scope);
+                continue;
+            }
+
+            if (fallbackMaster == null) {
+                fallbackMaster = scope;
+            }
+            if (StrUtil.isNotBlank(currentTableCode) && StrUtil.equalsIgnoreCase(refTableCode, currentTableCode)) {
+                masterKeys.add(scope.componentKey());
+            }
+        }
+
+        if (masterKeys.isEmpty() && fallbackMaster != null) {
+            masterKeys.add(fallbackMaster.componentKey());
+        }
+        if (masterKeys.isEmpty()) {
+            masterKeys.add("MASTERGRID");
+        }
+        if (masterKeys.contains("MASTERGRID")) {
+            masterKeys.add("MASTER");
+        }
+        if (masterKeys.contains("MASTER")) {
+            masterKeys.add("MASTERGRID");
+        }
+
+        return new PageQueryScopeIndex(masterKeys, detailScopesByKey);
+    }
+
+    private String resolveQueryColumnByTarget(
+            TableMetadataDTO metadata,
+            Map<String, ColumnMetadataDTO> columnMap,
+            String targetColumnName) {
+        String runtimeColumnName = resolveRuntimeColumnName(metadata, targetColumnName);
+        ColumnMetadataDTO column = columnMap.get(normalizeRuntimeColumnName(runtimeColumnName));
+        if (column != null) {
+            return resolveQueryColumnName(column);
+        }
+        return normalizeRuntimeColumnName(targetColumnName);
+    }
+
+    private String buildWhereClause(
+            List<QueryParam.QueryCondition> conditions,
+            Map<String, ColumnMetadataDTO> columnMap,
+            String tableAlias) {
         if (conditions == null || conditions.isEmpty()) {
             return "";
         }
@@ -465,12 +623,11 @@ public class DynamicDataService {
             String runtimeColumnName = normalizeRuntimeColumnName(cond.getField());
             ColumnMetadataDTO col = columnMap.get(runtimeColumnName);
 
-            // Metadata columns + audit fields
             String columnName;
             if (col != null) {
-                columnName = resolveQueryColumnName(col);
+                columnName = qualifyColumn(resolveQueryColumnName(col), tableAlias);
             } else if (isAuditField(runtimeColumnName)) {
-                columnName = runtimeColumnName;
+                columnName = qualifyColumn(runtimeColumnName, tableAlias);
             } else {
                 log.warn("invalid query field: {}", runtimeColumnName);
                 continue;
@@ -480,13 +637,13 @@ public class DynamicDataService {
             Object value = cond.getValue();
 
             if (value == null && !"eq".equals(op) && !"ne".equals(op)) {
-                continue; // non-eq/ne requires a value
+                continue;
             }
 
             String clause = null;
             switch (op) {
                 case "eq" ->
-                    clause = columnName + (value == null ? " IS NULL" : " = " + formatValue(value, col, runtimeColumnName));
+                        clause = columnName + (value == null ? " IS NULL" : " = " + formatValue(value, col, runtimeColumnName));
                 case "ne" -> clause = columnName
                         + (value == null ? " IS NOT NULL" : " <> " + formatValue(value, col, runtimeColumnName));
                 case "gt" -> clause = columnName + " > " + formatValue(value, col, runtimeColumnName);
@@ -494,6 +651,8 @@ public class DynamicDataService {
                 case "lt" -> clause = columnName + " < " + formatValue(value, col, runtimeColumnName);
                 case "le" -> clause = columnName + " <= " + formatValue(value, col, runtimeColumnName);
                 case "like" -> clause = columnName + " LIKE '%" + escapeSql(value.toString()) + "%'";
+                case "likeLeft" -> clause = columnName + " LIKE '" + escapeSql(value.toString()) + "%'";
+                case "likeRight" -> clause = columnName + " LIKE '%" + escapeSql(value.toString()) + "'";
                 case "between" -> {
                     if (cond.getValue2() != null) {
                         clause = columnName + " BETWEEN " + formatValue(value, col, runtimeColumnName) + " AND "
@@ -514,6 +673,13 @@ public class DynamicDataService {
             }
         }
         return sb.toString();
+    }
+
+    private String qualifyColumn(String columnName, String tableAlias) {
+        if (StrUtil.isBlank(columnName) || StrUtil.isBlank(tableAlias)) {
+            return columnName;
+        }
+        return tableAlias + "." + columnName;
     }
 
     private String buildInClause(Object value, ColumnMetadataDTO col, String runtimeColumnName) {
@@ -901,6 +1067,7 @@ public class DynamicDataService {
                     TableMetadataDTO masterMeta = metadataService.getTableMetadata(masterTableCode);
                     queryParam.setConditions(List.of(
                         new QueryParam.QueryCondition(
+                                null,
                                 resolveRuntimeColumnName(masterMeta, masterMeta.pkColumn()),
                                 "eq",
                                 masterId,

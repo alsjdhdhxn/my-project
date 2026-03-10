@@ -98,9 +98,7 @@ function buildSingleSaveParam(
   const masterItem = buildRecordItem(masterRow, masterTableCode);
 
   const changedDetails = detailRows.filter(isRowChanged);
-  const detailItems = changedDetails.map(row =>
-    buildRecordItem(row, detailTableCode, masterRow.id, parentFkColumn)
-  );
+  const detailItems = changedDetails.map(row => buildRecordItem(row, detailTableCode, masterRow.id, parentFkColumn));
 
   const param: SaveParams = {
     pageCode,
@@ -178,11 +176,7 @@ export function buildRecordItem(
  * 判断行是否有变更
  */
 export function isRowChanged(row: RowData): boolean {
-  return (
-    row._isNew === true ||
-    row._isDeleted === true ||
-    Object.keys(row._changeType || {}).length > 0
-  );
+  return row._isNew === true || row._isDeleted === true || Object.keys(row._changeType || {}).length > 0;
 }
 
 /**
@@ -198,9 +192,10 @@ export function ensureRowKey(row: RowData): string {
     if (row.id != null && row.id > 0) {
       row._rowKey = `db_${row.id}`;
     } else {
-      const uuid = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-        ? crypto.randomUUID()
-        : Math.random().toString(36).slice(2);
+      const uuid =
+        typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+          ? crypto.randomUUID()
+          : Math.random().toString(36).slice(2);
       row._rowKey = `tmp_${uuid}`;
     }
   }

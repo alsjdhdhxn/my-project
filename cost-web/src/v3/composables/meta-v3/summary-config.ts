@@ -1,5 +1,11 @@
 import type { ColDef } from 'ag-grid-community';
-import type { ParsedPageConfig, SummaryAggConfig, SummaryColumnConfig, TabConfig, RowData } from '@/v3/logic/calc-engine';
+import type {
+  ParsedPageConfig,
+  RowData,
+  SummaryAggConfig,
+  SummaryColumnConfig,
+  TabConfig
+} from '@/v3/logic/calc-engine';
 
 export type SummaryConfig = {
   groupLabelField: string;

@@ -1,8 +1,21 @@
 <script setup lang="ts">
-import { ref, computed, watch, nextTick } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import {
-  NModal, NButton, NSpace, NForm, NFormItem, NInput, NSelect, NSwitch,
-  NCard, NIcon, NDivider, NEmpty, NTag, NPopconfirm, useMessage
+  NButton,
+  NCard,
+  NDivider,
+  NEmpty,
+  NForm,
+  NFormItem,
+  NIcon,
+  NInput,
+  NModal,
+  NPopconfirm,
+  NSelect,
+  NSpace,
+  NSwitch,
+  NTag,
+  useMessage
 } from 'naive-ui';
 import { savePageComponent } from '@/service/api/meta-config';
 
@@ -58,9 +71,10 @@ const builtinActions = [
   { label: '删除 (deleteRow)', value: 'deleteRow' },
   { label: '保存 (save)', value: 'save' },
   { label: '保存列配置 (saveGridConfig)', value: 'saveGridConfig' },
+  { label: '高级查询 (advancedSearch)', value: 'advancedSearch' },
   { label: '复制到剪贴板 (clipboard.copy)', value: 'clipboard.copy' },
   { label: '从剪贴板粘贴 (clipboard.paste)', value: 'clipboard.paste' },
-  { label: '批量选择 (batchSelect)', value: 'batchSelect' },
+  { label: '批量选择 (batchSelect)', value: 'batchSelect' }
 ];
 
 const BUILTIN_ACTION_SET = new Set(builtinActions.map(a => a.value));
@@ -68,27 +82,27 @@ const BUILTIN_ACTION_SET = new Set(builtinActions.map(a => a.value));
 const positionOptions = [
   { label: '右键菜单', value: 'context' },
   { label: '工具栏', value: 'toolbar' },
-  { label: '两处都显示', value: 'both' },
+  { label: '两处都显示', value: 'both' }
 ];
 
 const execTypeOptions = [
   { label: '前端内置', value: 'builtin' },
   { label: '存储过程', value: 'procedure' },
   { label: 'SQL', value: 'sql' },
-  { label: 'Java方法', value: 'java' },
+  { label: 'Java方法', value: 'java' }
 ];
 
 const jdbcTypeOptions = [
   { label: 'NUMERIC', value: 'NUMERIC' },
   { label: 'VARCHAR', value: 'VARCHAR' },
   { label: 'DATE', value: 'DATE' },
-  { label: 'TIMESTAMP', value: 'TIMESTAMP' },
+  { label: 'TIMESTAMP', value: 'TIMESTAMP' }
 ];
 
 const paramModeOptions = [
   { label: 'IN', value: 'IN' },
   { label: 'OUT', value: 'OUT' },
-  { label: 'INOUT', value: 'INOUT' },
+  { label: 'INOUT', value: 'INOUT' }
 ];
 
 // ---- 解析 / 序列化 ----
@@ -112,9 +126,13 @@ function parseButtonFromRaw(raw: any): ButtonItem {
     sql: raw.sql || '',
     method: raw.method || '',
     handler: raw.handler || '',
-    params: Array.isArray(raw.params) ? raw.params.map((p: any) => ({
-      source: p.source || '', mode: p.mode || 'IN', jdbcType: p.jdbcType || 'VARCHAR'
-    })) : [],
+    params: Array.isArray(raw.params)
+      ? raw.params.map((p: any) => ({
+          source: p.source || '',
+          mode: p.mode || 'IN',
+          jdbcType: p.jdbcType || 'VARCHAR'
+        }))
+      : []
   };
 }
 
@@ -140,22 +158,29 @@ function serializeButton(btn: ButtonItem): any {
 }
 
 // ---- 初始化 ----
-watch(() => props.show, (val) => {
-  if (!val) return;
-  expandedIndex.value = null;
-  try {
-    const config = props.componentConfig ? JSON.parse(props.componentConfig) : {};
-    buttons.value = (config.buttons || []).map(parseButtonFromRaw);
-  } catch {
-    buttons.value = [];
+watch(
+  () => props.show,
+  val => {
+    if (!val) return;
+    expandedIndex.value = null;
+    try {
+      const config = props.componentConfig ? JSON.parse(props.componentConfig) : {};
+      buttons.value = (config.buttons || []).map(parseButtonFromRaw);
+    } catch {
+      buttons.value = [];
+    }
   }
-});
+);
 
 // ---- 操作 ----
 function addButton() {
   const newBtn: ButtonItem = {
-    action: '', label: '', position: 'context', requiresRow: false,
-    execType: 'builtin', params: [],
+    action: '',
+    label: '',
+    position: 'context',
+    requiresRow: false,
+    execType: 'builtin',
+    params: []
   };
   buttons.value.push(newBtn);
   expandedIndex.value = buttons.value.length - 1;
@@ -203,19 +228,27 @@ function onActionChange(btn: ButtonItem) {
 
 function getExecTag(btn: ButtonItem): string {
   switch (btn.execType) {
-    case 'procedure': return '存储过程';
-    case 'sql': return 'SQL';
-    case 'java': return 'Java';
-    default: return '内置';
+    case 'procedure':
+      return '存储过程';
+    case 'sql':
+      return 'SQL';
+    case 'java':
+      return 'Java';
+    default:
+      return '内置';
   }
 }
 
 function getExecTagType(btn: ButtonItem): 'default' | 'success' | 'warning' | 'info' {
   switch (btn.execType) {
-    case 'procedure': return 'success';
-    case 'sql': return 'warning';
-    case 'java': return 'info';
-    default: return 'default';
+    case 'procedure':
+      return 'success';
+    case 'sql':
+      return 'warning';
+    case 'java':
+      return 'info';
+    default:
+      return 'default';
   }
 }
 
@@ -236,7 +269,7 @@ async function handleSave() {
     emit('save', configJson);
     emit('update:show', false);
   } catch (e) {
-    message.error('保存失败: ' + e);
+    message.error(`保存失败: ${e}`);
   }
 }
 </script>
@@ -244,12 +277,12 @@ async function handleSave() {
 <template>
   <NModal
     :show="show"
-    @update:show="(v) => emit('update:show', v)"
     preset="card"
     :title="`按钮配置 - ${componentKey}`"
     style="width: 720px; max-height: 90vh"
     :mask-closable="true"
     :segmented="{ content: true, footer: true }"
+    @update:show="v => emit('update:show', v)"
   >
     <!-- 按钮列表 -->
     <div class="button-list" style="max-height: 70vh; overflow-y: auto">
@@ -272,7 +305,14 @@ async function handleSave() {
           </div>
           <div class="summary-right">
             <NButton text size="small" :disabled="index === 0" @click.stop="moveButton(index, -1)">↑</NButton>
-            <NButton text size="small" :disabled="index === currentButtons.length - 1" @click.stop="moveButton(index, 1)">↓</NButton>
+            <NButton
+              text
+              size="small"
+              :disabled="index === currentButtons.length - 1"
+              @click.stop="moveButton(index, 1)"
+            >
+              ↓
+            </NButton>
             <NPopconfirm @positive-click="removeButton(index)">
               <template #trigger>
                 <NButton text size="small" type="error" @click.stop>删除</NButton>
@@ -310,7 +350,7 @@ async function handleSave() {
               </NFormItem>
             </div>
 
-            <div class="form-row" v-if="btn.position === 'toolbar' || btn.position === 'both'">
+            <div v-if="btn.position === 'toolbar' || btn.position === 'both'" class="form-row">
               <NFormItem label="工具栏别名" class="form-item-half">
                 <NInput v-model:value="btn.toolbarAlias" placeholder="下拉菜单中显示的名称" />
               </NFormItem>
@@ -335,7 +375,12 @@ async function handleSave() {
                   <div v-for="(param, pi) in btn.params" :key="pi" class="param-row">
                     <NInput v-model:value="param.source" placeholder="来源 (如 data.id)" style="flex: 2" size="small" />
                     <NSelect v-model:value="param.mode" :options="paramModeOptions" style="width: 80px" size="small" />
-                    <NSelect v-model:value="param.jdbcType" :options="jdbcTypeOptions" style="width: 110px" size="small" />
+                    <NSelect
+                      v-model:value="param.jdbcType"
+                      :options="jdbcTypeOptions"
+                      style="width: 110px"
+                      size="small"
+                    />
                     <NButton text size="small" type="error" @click="removeParam(btn, pi)">×</NButton>
                   </div>
                   <NButton size="tiny" dashed @click="addParam(btn)">+ 添加参数</NButton>
@@ -346,7 +391,12 @@ async function handleSave() {
             <!-- SQL -->
             <template v-if="btn.execType === 'sql'">
               <NFormItem label="SQL语句">
-                <NInput v-model:value="btn.sql" type="textarea" :rows="3" placeholder="如 UPDATE T_XX SET STATUS=1 WHERE ID=:id" />
+                <NInput
+                  v-model:value="btn.sql"
+                  type="textarea"
+                  :rows="3"
+                  placeholder="如 UPDATE T_XX SET STATUS=1 WHERE ID=:id"
+                />
               </NFormItem>
             </template>
 

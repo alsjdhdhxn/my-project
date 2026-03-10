@@ -1,78 +1,7 @@
-<template>
-  <div class="detail-panel-inner" :class="{ 'tab-mode': currentViewMode === 'tab' }">
-    <div class="detail-toolbar" v-if="hasTabs && currentViewMode === 'tab'">
-      <div class="detail-tabs">
-        <template v-if="currentViewMode === 'tab'">
-          <button
-            v-for="tab in tabs"
-            :key="tab.key"
-            class="tab-btn"
-            :class="{ active: tab.key === activeTab }"
-            @click="activeTab = tab.key"
-          >
-            {{ tab.title }}
-          </button>
-        </template>
-      </div>
-    </div>
-
-    <div class="detail-body">
-      <div v-if="!activeMasterId" class="detail-empty">请选择主表记录</div>
-      <div v-else-if="!hasTabs" class="detail-empty">暂无明细配置</div>
-      <div v-else class="detail-content">
-        <DetailGridV3
-          v-if="currentViewMode === 'tab' && activeTabConfig"
-          :key="activeTabConfig.key"
-          :tab="activeTabConfig"
-          :rows="resolveRows(activeTabConfig.key)"
-          :columns="detailColumnsByTab[activeTabConfig.key] || []"
-          :rowClassGetter="detailRowClassByTab?.[activeTabConfig.key]"
-          :gridOptions="detailGridOptionsByTab?.[activeTabConfig.key]"
-          :cellClassRules="cellClassRules"
-          :contextMenuItems="getDetailContextMenuItemsFor(activeTabConfig.key)"
-          :registerDetailGridApi="handleRegister"
-          :unregisterDetailGridApi="handleUnregister"
-          :applyGridConfig="applyGridConfig"
-          :onCellValueChanged="(event) => onDetailCellValueChanged(event, activeMasterId!, activeTabConfig.key, activeMasterRowKey || undefined)"
-          :onCellClicked="(event) => onDetailCellClicked(event, activeMasterId!, activeTabConfig.key)"
-          :onCellEditingStarted="onCellEditingStarted"
-          :onCellEditingStopped="onCellEditingStopped"
-          :sumFields="detailSumFieldsByTab?.[activeTabConfig.key]"
-        />
-
-        <div v-else class="detail-stack">
-          <DetailGridV3
-            v-for="tab in tabs"
-            :key="tab.key"
-            :tab="tab"
-            :rows="resolveRows(tab.key)"
-            :columns="detailColumnsByTab[tab.key] || []"
-            :rowClassGetter="detailRowClassByTab?.[tab.key]"
-            :gridOptions="detailGridOptionsByTab?.[tab.key]"
-            :cellClassRules="cellClassRules"
-            :contextMenuItems="getDetailContextMenuItemsFor(tab.key)"
-            :showTitle="true"
-            :tabCount="tabs.length"
-            :refreshDetailRowHeight="refreshDetailRowHeight"
-            :registerDetailGridApi="handleRegister"
-            :unregisterDetailGridApi="handleUnregister"
-            :applyGridConfig="applyGridConfig"
-            :onCellValueChanged="(event) => onDetailCellValueChanged(event, activeMasterId!, tab.key, activeMasterRowKey || undefined)"
-            :onCellClicked="(event) => onDetailCellClicked(event, activeMasterId!, tab.key)"
-            :onCellEditingStarted="onCellEditingStarted"
-            :onCellEditingStopped="onCellEditingStopped"
-            :sumFields="detailSumFieldsByTab?.[tab.key]"
-          />
-        </div>
-      </div>
-    </div>
-  </div>
-</template>
-
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue';
 import type { ColDef } from 'ag-grid-community';
-import type { TabConfig, RowData } from '@/v3/logic/calc-engine';
+import type { RowData, TabConfig } from '@/v3/logic/calc-engine';
 import DetailGridV3 from '@/v3/components/detail/DetailGridV3.vue';
 import type { ResolvedGridOptions } from '@/v3/composables/meta-v3/grid-options';
 
@@ -119,7 +48,7 @@ const activeTabConfig = computed(() => {
 
 watch(
   () => props.tabs,
-  (tabs) => {
+  tabs => {
     if (!tabs || tabs.length === 0) {
       activeTab.value = '';
       return;
@@ -134,7 +63,7 @@ watch(
 
 watch(
   () => props.activeMasterId,
-  async (masterId) => {
+  async masterId => {
     const masterRowKey = props.activeMasterRowKey;
     if (masterId == null || !masterRowKey) return;
     if (!props.detailCache.get(masterRowKey)) {
@@ -204,6 +133,82 @@ function refreshLayout() {
   });
 }
 </script>
+
+<template>
+  <div class="detail-panel-inner" :class="{ 'tab-mode': currentViewMode === 'tab' }">
+    <div v-if="hasTabs && currentViewMode === 'tab'" class="detail-toolbar">
+      <div class="detail-tabs">
+        <template v-if="currentViewMode === 'tab'">
+          <button
+            v-for="tab in tabs"
+            :key="tab.key"
+            class="tab-btn"
+            :class="{ active: tab.key === activeTab }"
+            @click="activeTab = tab.key"
+          >
+            {{ tab.title }}
+          </button>
+        </template>
+      </div>
+    </div>
+
+    <div class="detail-body">
+      <div v-if="!activeMasterId" class="detail-empty">请选择主表记录</div>
+      <div v-else-if="!hasTabs" class="detail-empty">暂无明细配置</div>
+      <div v-else class="detail-content">
+        <DetailGridV3
+          v-if="currentViewMode === 'tab' && activeTabConfig"
+          :key="activeTabConfig.key"
+          :tab="activeTabConfig"
+          :rows="resolveRows(activeTabConfig.key)"
+          :columns="detailColumnsByTab[activeTabConfig.key] || []"
+          :row-class-getter="detailRowClassByTab?.[activeTabConfig.key]"
+          :grid-options="detailGridOptionsByTab?.[activeTabConfig.key]"
+          :cell-class-rules="cellClassRules"
+          :context-menu-items="getDetailContextMenuItemsFor(activeTabConfig.key)"
+          :register-detail-grid-api="handleRegister"
+          :unregister-detail-grid-api="handleUnregister"
+          :apply-grid-config="applyGridConfig"
+          :on-cell-value-changed="
+            event =>
+              onDetailCellValueChanged(event, activeMasterId!, activeTabConfig.key, activeMasterRowKey || undefined)
+          "
+          :on-cell-clicked="event => onDetailCellClicked(event, activeMasterId!, activeTabConfig.key)"
+          :on-cell-editing-started="onCellEditingStarted"
+          :on-cell-editing-stopped="onCellEditingStopped"
+          :sum-fields="detailSumFieldsByTab?.[activeTabConfig.key]"
+        />
+
+        <div v-else class="detail-stack">
+          <DetailGridV3
+            v-for="tab in tabs"
+            :key="tab.key"
+            :tab="tab"
+            :rows="resolveRows(tab.key)"
+            :columns="detailColumnsByTab[tab.key] || []"
+            :row-class-getter="detailRowClassByTab?.[tab.key]"
+            :grid-options="detailGridOptionsByTab?.[tab.key]"
+            :cell-class-rules="cellClassRules"
+            :context-menu-items="getDetailContextMenuItemsFor(tab.key)"
+            :show-title="true"
+            :tab-count="tabs.length"
+            :refresh-detail-row-height="refreshDetailRowHeight"
+            :register-detail-grid-api="handleRegister"
+            :unregister-detail-grid-api="handleUnregister"
+            :apply-grid-config="applyGridConfig"
+            :on-cell-value-changed="
+              event => onDetailCellValueChanged(event, activeMasterId!, tab.key, activeMasterRowKey || undefined)
+            "
+            :on-cell-clicked="event => onDetailCellClicked(event, activeMasterId!, tab.key)"
+            :on-cell-editing-started="onCellEditingStarted"
+            :on-cell-editing-stopped="onCellEditingStopped"
+            :sum-fields="detailSumFieldsByTab?.[tab.key]"
+          />
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
 
 <style scoped>
 .detail-panel-inner {

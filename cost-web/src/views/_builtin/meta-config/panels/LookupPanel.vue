@@ -1,11 +1,28 @@
 <script setup lang="ts">
 import { computed, h, inject, onMounted, ref, watch } from 'vue';
 import type { Ref } from 'vue';
-import { NButton, NCheckbox, NDataTable, NEmpty, NInput, NInputNumber, NModal, NPopconfirm, NSpace, useMessage } from 'naive-ui';
+import {
+  NButton,
+  NCheckbox,
+  NDataTable,
+  NEmpty,
+  NInput,
+  NInputNumber,
+  NModal,
+  NPopconfirm,
+  NSpace,
+  useMessage
+} from 'naive-ui';
 import type { DataTableColumns } from 'naive-ui';
 import { AgGridVue } from 'ag-grid-vue3';
 import type { CellClickedEvent, CellValueChangedEvent, ColDef, GridApi, GridReadyEvent } from 'ag-grid-community';
-import { deleteLookupConfig, fetchAllLookupConfigs, fetchLookupCodesByPageCode, fetchViewColumns, saveLookupConfig } from '@/service/api/meta-config';
+import {
+  deleteLookupConfig,
+  fetchAllLookupConfigs,
+  fetchLookupCodesByPageCode,
+  fetchViewColumns,
+  saveLookupConfig
+} from '@/service/api/meta-config';
 
 type DisplayColumnConfig = {
   field: string;
@@ -38,7 +55,12 @@ function normalizeColumnName(value: unknown): string {
 }
 
 function normalizeAuditFieldKey(value: unknown): string {
-  return typeof value === 'string' ? value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '') : '';
+  return typeof value === 'string'
+    ? value
+        .trim()
+        .toUpperCase()
+        .replace(/[^A-Z0-9]/g, '')
+    : '';
 }
 
 function isAuditField(value: unknown): boolean {
@@ -129,9 +151,7 @@ function buildDisplayColumnDrafts(
   currentColumns: DisplayColumnConfig[],
   fetchedColumns: Array<Record<string, any>>
 ): DisplayColumnDraft[] {
-  const currentMap = new Map(
-    currentColumns.map(item => [normalizeColumnName(item.field), item] as const)
-  );
+  const currentMap = new Map(currentColumns.map(item => [normalizeColumnName(item.field), item] as const));
   const seen = new Set<string>();
 
   const drafts = fetchedColumns
@@ -174,9 +194,7 @@ function getDisplayColumnsSummary(raw: unknown): string {
   return `已选 ${columns.length} 列：${labels.join('、')}`;
 }
 
-const selectedDisplayColumnCount = computed(
-  () => displayColumnDrafts.value.filter(item => item.checked).length
-);
+const selectedDisplayColumnCount = computed(() => displayColumnDrafts.value.filter(item => item.checked).length);
 
 const displayColumnTableData = computed(() => {
   return [...displayColumnDrafts.value].sort((a, b) => {
@@ -189,79 +207,88 @@ const displayColumnTableData = computed(() => {
 const displayColumnTableColumns = computed<DataTableColumns<(typeof displayColumnDrafts.value)[number]>>(() => [
   {
     key: 'checked',
-    title: () => h(NCheckbox, {
-      checked: displayColumnDrafts.value.length > 0 && selectedDisplayColumnCount.value === displayColumnDrafts.value.length,
-      indeterminate: selectedDisplayColumnCount.value > 0 && selectedDisplayColumnCount.value < displayColumnDrafts.value.length,
-      'onUpdate:checked': (checked: boolean) => {
-        if (checked) {
-          handleDisplayColumnSelectAll();
-        } else {
-          handleDisplayColumnClear();
+    title: () =>
+      h(NCheckbox, {
+        checked:
+          displayColumnDrafts.value.length > 0 && selectedDisplayColumnCount.value === displayColumnDrafts.value.length,
+        indeterminate:
+          selectedDisplayColumnCount.value > 0 && selectedDisplayColumnCount.value < displayColumnDrafts.value.length,
+        'onUpdate:checked': (checked: boolean) => {
+          if (checked) {
+            handleDisplayColumnSelectAll();
+          } else {
+            handleDisplayColumnClear();
+          }
         }
-      }
-    }),
+      }),
     width: 54,
     align: 'center',
-    render: row => h(NCheckbox, {
-      checked: row.checked,
-      'onUpdate:checked': (checked: boolean) => {
-        row.checked = checked;
-        if (checked && !row.header.trim()) {
-          row.header = row.field;
+    render: row =>
+      h(NCheckbox, {
+        checked: row.checked,
+        'onUpdate:checked': (checked: boolean) => {
+          row.checked = checked;
+          if (checked && !row.header.trim()) {
+            row.header = row.field;
+          }
         }
-      }
-    })
+      })
   },
   {
     key: 'field',
     title: '字段',
     width: 240,
     ellipsis: true,
-    render: row => h('div', {
-      class: 'display-column-field-cell',
-      style: row.missing
-        ? {
-            color: '#cf1322',
-            fontWeight: 600
-          }
-        : undefined
-    }, [
-      h('span', { class: 'display-column-field' }, row.field)
-    ])
+    render: row =>
+      h(
+        'div',
+        {
+          class: 'display-column-field-cell',
+          style: row.missing
+            ? {
+                color: '#cf1322',
+                fontWeight: 600
+              }
+            : undefined
+        },
+        [h('span', { class: 'display-column-field' }, row.field)]
+      )
   },
   {
     key: 'header',
     title: '显示标题',
     width: 180,
-    render: row => h(NInput, {
-      value: row.header,
-      size: 'small',
-      disabled: !row.checked,
-      status: row.missing ? 'error' : undefined,
-      placeholder: '显示标题',
-      'onUpdate:value': (value: string) => {
-        row.header = value;
-      }
-    })
+    render: row =>
+      h(NInput, {
+        value: row.header,
+        size: 'small',
+        disabled: !row.checked,
+        status: row.missing ? 'error' : undefined,
+        placeholder: '显示标题',
+        'onUpdate:value': (value: string) => {
+          row.header = value;
+        }
+      })
   },
   {
     key: 'width',
     title: '宽度',
     width: 160,
-    render: row => h(NInputNumber, {
-      value: row.width,
-      size: 'small',
-      disabled: !row.checked,
-      status: row.missing ? 'error' : undefined,
-      clearable: true,
-      min: 60,
-      step: 10,
-      placeholder: '宽度',
-      'onUpdate:value': (value: number | null) => {
-        row.width = value;
-      }
-    })
-  },
+    render: row =>
+      h(NInputNumber, {
+        value: row.width,
+        size: 'small',
+        disabled: !row.checked,
+        status: row.missing ? 'error' : undefined,
+        clearable: true,
+        min: 60,
+        step: 10,
+        placeholder: '宽度',
+        'onUpdate:value': (value: number | null) => {
+          row.width = value;
+        }
+      })
+  }
 ]);
 
 const columnDefs: ColDef[] = [
@@ -270,7 +297,10 @@ const columnDefs: ColDef[] = [
   { field: 'lookupName', headerName: '名称', width: 140, editable: true },
   { field: 'dataSource', headerName: '数据源', width: 200, editable: true },
   {
-    field: 'displayColumns', headerName: '显示列', flex: 1, editable: false,
+    field: 'displayColumns',
+    headerName: '显示列',
+    flex: 1,
+    editable: false,
     valueFormatter: params => getDisplayColumnsSummary(params.value),
     tooltipValueGetter: params => getDisplayColumnsSummary(params.value),
     cellStyle: {
@@ -289,10 +319,15 @@ async function loadData() {
     const res = await fetchAllLookupConfigs();
     rowData.value = res || [];
     setTimeout(() => gridApi.value?.autoSizeAllColumns(), 100);
-  } catch { message.error('加载Lookup配置失败'); }
+  } catch {
+    message.error('加载Lookup配置失败');
+  }
 }
 
-function onGridReady(params: GridReadyEvent) { gridApi.value = params.api; params.api.autoSizeAllColumns(); }
+function onGridReady(params: GridReadyEvent) {
+  gridApi.value = params.api;
+  params.api.autoSizeAllColumns();
+}
 
 function onSelectionChanged() {
   const rows = gridApi.value?.getSelectedRows() || [];
@@ -352,11 +387,9 @@ function handleDisplayColumnModalClose() {
 }
 
 async function sanitizeDisplayColumnsBeforeSave(rows: any[]) {
-  const dataSources = [...new Set(
-    rows
-      .map(row => (typeof row.dataSource === 'string' ? row.dataSource.trim() : ''))
-      .filter(Boolean)
-  )];
+  const dataSources = [
+    ...new Set(rows.map(row => (typeof row.dataSource === 'string' ? row.dataSource.trim() : '')).filter(Boolean))
+  ];
   const fetchedEntries = await Promise.all(
     dataSources.map(async dataSource => [dataSource, await fetchViewColumns(dataSource)] as const)
   );
@@ -458,9 +491,14 @@ async function handleDisplayColumnConfirm() {
 
 function handleAdd() {
   const newRow = {
-    _isNew: true, id: null,
-    lookupCode: '', lookupName: '', dataSource: '',
-    displayColumns: '[]', valueField: '', labelField: ''
+    _isNew: true,
+    id: null,
+    lookupCode: '',
+    lookupName: '',
+    dataSource: '',
+    displayColumns: '[]',
+    valueField: '',
+    labelField: ''
   };
   rowData.value = [...rowData.value, newRow];
   setTimeout(() => {
@@ -496,7 +534,9 @@ async function handleDelete() {
     await deleteLookupConfig(selectedRow.value.id);
     message.success('删除成功');
     await loadData();
-  } catch { message.error('删除失败'); }
+  } catch {
+    message.error('删除失败');
+  }
 }
 
 function markDirty(event: CellValueChangedEvent) {
@@ -514,20 +554,26 @@ onMounted(() => {
 });
 
 // 从目录管理跳转过来时，按 lookupCode 过滤
-watch(() => filterState?.value, async (state) => {
-  if (!state || state.tab !== 'lookup') return;
-  const pageCode = state.pageCode;
-  try {
-    const [allData, codes] = await Promise.all([
-      fetchAllLookupConfigs(),
-      fetchLookupCodesByPageCode(pageCode)
-    ]);
-    if (!codes.length) { message.warning(`pageCode="${pageCode}" 未关联任何Lookup`); return; }
-    const codeSet = new Set(codes);
-    rowData.value = (allData || []).filter((r: any) => codeSet.has(r.lookupCode));
-    setTimeout(() => gridApi.value?.autoSizeAllColumns(), 100);
-  } catch { message.error('查询关联Lookup失败'); }
-}, { immediate: true });
+watch(
+  () => filterState?.value,
+  async state => {
+    if (!state || state.tab !== 'lookup') return;
+    const pageCode = state.pageCode;
+    try {
+      const [allData, codes] = await Promise.all([fetchAllLookupConfigs(), fetchLookupCodesByPageCode(pageCode)]);
+      if (!codes.length) {
+        message.warning(`pageCode="${pageCode}" 未关联任何Lookup`);
+        return;
+      }
+      const codeSet = new Set(codes);
+      rowData.value = (allData || []).filter((r: any) => codeSet.has(r.lookupCode));
+      setTimeout(() => gridApi.value?.autoSizeAllColumns(), 100);
+    } catch {
+      message.error('查询关联Lookup失败');
+    }
+  },
+  { immediate: true }
+);
 </script>
 
 <template>
@@ -549,12 +595,12 @@ watch(() => filterState?.value, async (state) => {
       <AgGridVue
         class="ag-theme-quartz"
         style="width: 100%; height: 100%"
-        :rowData="rowData"
-        :columnDefs="columnDefs"
-        :defaultColDef="defaultColDef"
-        :suppressScrollOnNewData="true"
-        :rowSelection="{ mode: 'singleRow', checkboxes: false }"
-        :cellSelection="true"
+        :row-data="rowData"
+        :column-defs="columnDefs"
+        :default-col-def="defaultColDef"
+        :suppress-scroll-on-new-data="true"
+        :row-selection="{ mode: 'singleRow', checkboxes: false }"
+        :cell-selection="true"
         @grid-ready="onGridReady"
         @selection-changed="onSelectionChanged"
         @row-clicked="onRowClicked"
@@ -603,7 +649,9 @@ watch(() => filterState?.value, async (state) => {
       <template #footer>
         <div class="display-columns-footer">
           <NButton size="small" :disabled="savingDisplayColumns" @click="handleDisplayColumnModalClose">取消</NButton>
-          <NButton type="primary" size="small" :loading="savingDisplayColumns" @click="handleDisplayColumnConfirm">确定</NButton>
+          <NButton type="primary" size="small" :loading="savingDisplayColumns" @click="handleDisplayColumnConfirm">
+            确定
+          </NButton>
         </div>
       </template>
     </NModal>

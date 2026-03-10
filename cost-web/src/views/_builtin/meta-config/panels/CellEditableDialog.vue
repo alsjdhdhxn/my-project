@@ -1,8 +1,17 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue';
 import {
-  NModal, NButton, NSpace, NSelect, NInput, NInputNumber,
-  NEmpty, NPopconfirm, NTag, NSwitch, useMessage
+  NButton,
+  NEmpty,
+  NInput,
+  NInputNumber,
+  NModal,
+  NPopconfirm,
+  NSelect,
+  NSpace,
+  NSwitch,
+  NTag,
+  useMessage
 } from 'naive-ui';
 import { fetchColumnsByTableId, fetchTablesByPageCode, savePageRule } from '@/service/api/meta-config';
 
@@ -45,22 +54,25 @@ const operatorOptions = [
   { label: '非空', value: 'notNull' },
   { label: '为空', value: 'isNull' },
   { label: '包含', value: 'in' },
-  { label: '不包含', value: 'notIn' },
+  { label: '不包含', value: 'notIn' }
 ];
 
 const needsValue = (op: string) => !['notNull', 'isNull'].includes(op);
 
-watch(() => props.show, async (val) => {
-  if (!val) return;
-  try {
-    const raw = props.rulesJson ? JSON.parse(props.rulesJson) : [];
-    const arr = Array.isArray(raw) ? raw : [raw];
-    items.value = arr.map(normalizeRule);
-  } catch {
-    items.value = [];
+watch(
+  () => props.show,
+  async val => {
+    if (!val) return;
+    try {
+      const raw = props.rulesJson ? JSON.parse(props.rulesJson) : [];
+      const arr = Array.isArray(raw) ? raw : [raw];
+      items.value = arr.map(normalizeRule);
+    } catch {
+      items.value = [];
+    }
+    await loadAvailableFields();
   }
-  await loadAvailableFields();
-});
+);
 
 /** 兼容旧格式（单条件）和新格式（多条件） */
 function normalizeRule(r: any): EditableRule {
@@ -68,9 +80,11 @@ function normalizeRule(r: any): EditableRule {
   if (r.condition && !r.conditions) {
     return {
       logic: 'AND',
-      conditions: [{ field: r.condition.field || '', operator: r.condition.operator || 'eq', value: r.condition.value }],
+      conditions: [
+        { field: r.condition.field || '', operator: r.condition.operator || 'eq', value: r.condition.value }
+      ],
       sqlCheck: r.sqlCheck || '',
-      enableSql: !!r.sqlCheck,
+      enableSql: Boolean(r.sqlCheck),
       editableFields: r.editableFields || []
     };
   }
@@ -78,10 +92,12 @@ function normalizeRule(r: any): EditableRule {
   return {
     logic: r.logic || 'AND',
     conditions: (r.conditions || []).map((c: any) => ({
-      field: c.field || '', operator: c.operator || 'eq', value: c.value
+      field: c.field || '',
+      operator: c.operator || 'eq',
+      value: c.value
     })),
     sqlCheck: r.sqlCheck || '',
-    enableSql: !!r.sqlCheck,
+    enableSql: Boolean(r.sqlCheck),
     editableFields: r.editableFields || []
   };
 }
@@ -89,7 +105,10 @@ function normalizeRule(r: any): EditableRule {
 async function loadAvailableFields() {
   try {
     const tables = await fetchTablesByPageCode(props.pageCode);
-    if (!tables.length) { availableFields.value = []; return; }
+    if (!tables.length) {
+      availableFields.value = [];
+      return;
+    }
     const { fetchAllPageComponents } = await import('@/service/api/meta-config');
     const allComps = await fetchAllPageComponents();
     const currentComp = allComps?.find(
@@ -98,7 +117,10 @@ async function loadAvailableFields() {
     const targetTable = currentComp?.refTableCode
       ? tables.find((t: any) => t.tableCode === currentComp.refTableCode)
       : tables[0];
-    if (!targetTable?.id) { availableFields.value = []; return; }
+    if (!targetTable?.id) {
+      availableFields.value = [];
+      return;
+    }
     const cols = await fetchColumnsByTableId(targetTable.id);
     availableFields.value = cols
       .filter((col: any) => col.columnName)
@@ -134,33 +156,40 @@ function removeCondition(rule: EditableRule, idx: number) {
 }
 
 function buildJson(): string {
-  return JSON.stringify(items.value.map(rule => {
-    const r: any = {
-      logic: rule.logic,
-      conditions: rule.conditions.map(c => {
-        const cond: any = { field: c.field, operator: c.operator };
-        if (needsValue(c.operator) && c.value !== undefined && c.value !== '') cond.value = c.value;
-        return cond;
-      }),
-      editableFields: rule.editableFields
-    };
-    if (rule.enableSql && rule.sqlCheck?.trim()) {
-      r.sqlCheck = rule.sqlCheck.trim();
-    }
-    return r;
-  }));
+  return JSON.stringify(
+    items.value.map(rule => {
+      const r: any = {
+        logic: rule.logic,
+        conditions: rule.conditions.map(c => {
+          const cond: any = { field: c.field, operator: c.operator };
+          if (needsValue(c.operator) && c.value !== undefined && c.value !== '') cond.value = c.value;
+          return cond;
+        }),
+        editableFields: rule.editableFields
+      };
+      if (rule.enableSql && rule.sqlCheck?.trim()) {
+        r.sqlCheck = rule.sqlCheck.trim();
+      }
+      return r;
+    })
+  );
 }
 
 async function handleSave() {
   for (const rule of items.value) {
     if (rule.conditions.length === 0 && !rule.enableSql) {
-      message.warning('每条规则至少需要一个条件或启用SQL判断'); return;
+      message.warning('每条规则至少需要一个条件或启用SQL判断');
+      return;
     }
     for (const c of rule.conditions) {
-      if (!c.field) { message.warning('请选择条件字段'); return; }
+      if (!c.field) {
+        message.warning('请选择条件字段');
+        return;
+      }
     }
     if (!rule.editableFields.length) {
-      message.warning('请选择可编辑字段'); return;
+      message.warning('请选择可编辑字段');
+      return;
     }
   }
   const json = buildJson();
@@ -186,12 +215,12 @@ async function handleSave() {
 <template>
   <NModal
     :show="show"
-    @update:show="(v: boolean) => emit('update:show', v)"
     preset="card"
     :title="`单元格可编辑规则 - ${componentKey}`"
     style="width: 760px; max-height: 85vh"
     :mask-closable="true"
     :segmented="{ content: true, footer: true }"
+    @update:show="(v: boolean) => emit('update:show', v)"
   >
     <div style="max-height: 65vh; overflow-y: auto">
       <div v-if="items.length === 0" style="padding: 20px 0; text-align: center">
@@ -201,7 +230,7 @@ async function handleSave() {
       <div v-for="(rule, rIdx) in items" :key="rIdx" class="rule-card">
         <div class="rule-header">
           <NTag size="small" type="info">#{{ rIdx + 1 }}</NTag>
-          <span style="flex:1"></span>
+          <span style="flex: 1"></span>
           <NPopconfirm @positive-click="removeRule(rIdx)">
             <template #trigger>
               <NButton size="tiny" quaternary type="error">删除</NButton>
@@ -216,7 +245,10 @@ async function handleSave() {
           <NSelect
             v-model:value="rule.logic"
             size="tiny"
-            :options="[{ label: 'AND (全部满足)', value: 'AND' }, { label: 'OR (任一满足)', value: 'OR' }]"
+            :options="[
+              { label: 'AND (全部满足)', value: 'AND' },
+              { label: 'OR (任一满足)', value: 'OR' }
+            ]"
             style="width: 160px; display: inline-flex; margin-left: 8px"
           />
         </div>
@@ -226,26 +258,30 @@ async function handleSave() {
           <NSelect
             v-model:value="cond.field"
             :options="availableFields"
-            size="small" filterable placeholder="字段"
+            size="small"
+            filterable
+            placeholder="字段"
             style="width: 170px"
           />
-          <NSelect
-            v-model:value="cond.operator"
-            :options="operatorOptions"
-            size="small" style="width: 110px"
-          />
+          <NSelect v-model:value="cond.operator" :options="operatorOptions" size="small" style="width: 110px" />
           <NInput
             v-if="needsValue(cond.operator)"
             v-model:value="cond.value"
-            size="small" placeholder="值"
+            size="small"
+            placeholder="值"
             style="width: 130px"
           />
-          <NButton size="tiny" quaternary type="error" @click="removeCondition(rule, cIdx)"
-            :disabled="rule.conditions.length <= 1 && !rule.enableSql">✕</NButton>
+          <NButton
+            size="tiny"
+            quaternary
+            type="error"
+            :disabled="rule.conditions.length <= 1 && !rule.enableSql"
+            @click="removeCondition(rule, cIdx)"
+          >
+            ✕
+          </NButton>
         </div>
-        <NButton size="tiny" dashed @click="addCondition(rule)" style="margin: 4px 0 8px">
-          + 添加条件
-        </NButton>
+        <NButton size="tiny" dashed style="margin: 4px 0 8px" @click="addCondition(rule)">+ 添加条件</NButton>
 
         <!-- SQL 判断 -->
         <div class="section-label" style="margin-top: 6px">
@@ -268,7 +304,9 @@ async function handleSave() {
         <NSelect
           v-model:value="rule.editableFields"
           :options="availableFields"
-          size="small" filterable multiple
+          size="small"
+          filterable
+          multiple
           placeholder="选择允许编辑的字段"
           style="width: 100%"
         />

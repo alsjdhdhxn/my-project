@@ -55,9 +55,13 @@ export function parseValidationRules(columns: ColumnMetadata[]): ValidationRule[
       const validation = config.validation || config;
 
       // 只有配置了验证规则才添加
-      if (validation.required || validation.notZero ||
-          validation.min !== undefined || validation.max !== undefined ||
-          validation.pattern) {
+      if (
+        validation.required ||
+        validation.notZero ||
+        validation.min !== undefined ||
+        validation.max !== undefined ||
+        validation.pattern
+      ) {
         rules.push({
           field: col.columnName,
           required: validation.required,
@@ -212,7 +216,5 @@ export function formatValidationErrors(errors: ValidationError[]): string {
  * 高亮验证错误的单元格（返回需要高亮的 field 列表）
  */
 export function getErrorFields(errors: ValidationError[], rowId: number | string): string[] {
-  return errors
-    .filter(e => e.rowId === rowId)
-    .map(e => e.field);
+  return errors.filter(e => e.rowId === rowId).map(e => e.field);
 }

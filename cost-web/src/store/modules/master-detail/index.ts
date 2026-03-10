@@ -2,19 +2,19 @@
  * 通用主从表 Store 工厂
  * 元数据驱动，主从嵌套结构，LRU 缓存管理
  */
-import { ref, computed, nextTick, shallowRef } from 'vue';
+import { computed, nextTick, ref, shallowRef } from 'vue';
 import { defineStore } from 'pinia';
 import {
-  type RowData,
   type ParsedPageConfig,
-  compileCalcRules,
-  compileAggRules,
-  calcRowFields,
+  type RowData,
   calcAggregates,
-  getAffectedRules,
+  calcRowFields,
+  clearRowChanges,
+  compileAggRules,
+  compileCalcRules,
   generateTempId,
-  initRowData,
-  clearRowChanges
+  getAffectedRules,
+  initRowData
 } from '@/logic/calc-engine';
 
 // ==================== 常量 ====================
@@ -71,24 +71,16 @@ export function useMasterDetailStore(pageCode: string) {
     // ==================== Getters ====================
 
     /** 当前选中的主表行 */
-    const currentMaster = computed(() =>
-      masterRows.value.find(r => r.id === currentMasterId.value) || null
-    );
+    const currentMaster = computed(() => masterRows.value.find(r => r.id === currentMasterId.value) || null);
 
     /** 可见主表行（排除已删除） */
-    const visibleMasterRows = computed(() =>
-      masterRows.value.filter(r => !r._isDeleted)
-    );
+    const visibleMasterRows = computed(() => masterRows.value.filter(r => !r._isDeleted));
 
     /** 当前从表数据（直接指向主表的 _details.rows） */
-    const detailRows = computed(() =>
-      currentMaster.value?._details?.rows || []
-    );
+    const detailRows = computed(() => currentMaster.value?._details?.rows || []);
 
     /** 可见从表行（排除已删除） */
-    const visibleDetailRows = computed(() =>
-      detailRows.value.filter(r => !r._isDeleted)
-    );
+    const visibleDetailRows = computed(() => detailRows.value.filter(r => !r._isDeleted));
 
     /** 按 Tab 分组的从表数据 */
     const detailRowsByTab = computed(() => {
@@ -100,17 +92,13 @@ export function useMasterDetailStore(pageCode: string) {
         if (tab.mode === 'group') {
           // groupValues 优先（多个分组值合并到一个 Tab）
           if (tab.groupValues && tab.groupValues.length > 0 && groupField) {
-            result[tab.key] = visibleDetailRows.value.filter(
-              r => tab.groupValues!.includes(r[groupField] as string)
-            );
+            result[tab.key] = visibleDetailRows.value.filter(r => tab.groupValues!.includes(r[groupField] as string));
           }
           // groupValue 为 * 或未设置时，显示所有数据（不分组）
           else if (!tab.groupValue || tab.groupValue === '*' || !groupField) {
             result[tab.key] = visibleDetailRows.value;
           } else {
-            result[tab.key] = visibleDetailRows.value.filter(
-              r => r[groupField] === tab.groupValue
-            );
+            result[tab.key] = visibleDetailRows.value.filter(r => r[groupField] === tab.groupValue);
           }
         } else if (tab.mode === 'multi') {
           result[tab.key] = [];
@@ -142,9 +130,7 @@ export function useMasterDetailStore(pageCode: string) {
               aggValues[agg.targetField] = values.reduce((a, b) => a + b, 0);
               break;
             case 'AVG':
-              aggValues[agg.targetField] = values.length > 0
-                ? values.reduce((a, b) => a + b, 0) / values.length
-                : 0;
+              aggValues[agg.targetField] = values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : 0;
               break;
             case 'COUNT':
               aggValues[agg.targetField] = rows.length;
@@ -183,18 +169,12 @@ export function useMasterDetailStore(pageCode: string) {
     });
 
     /** 已加载从表的主表数量 */
-    const loadedDetailCount = computed(() =>
-      masterRows.value.filter(r => r._details?.loaded).length
-    );
+    const loadedDetailCount = computed(() => masterRows.value.filter(r => r._details?.loaded).length);
 
     // ==================== Actions ====================
 
     /** 初始化 Store */
-    function init(
-      pageConfig: ParsedPageConfig,
-      masterCols: any[],
-      detailCols: any[]
-    ) {
+    function init(pageConfig: ParsedPageConfig, masterCols: any[], detailCols: any[]) {
       config.value = pageConfig;
       masterColumns.value = masterCols;
       detailColumns.value = detailCols;
@@ -295,9 +275,7 @@ export function useMasterDetailStore(pageCode: string) {
       changeType: 'user' | 'cascade' = 'user',
       isMaster = false
     ) {
-      const row = isMaster
-        ? masterRows.value.find(r => r.id === rowId)
-        : detailRows.value.find(r => r.id === rowId);
+      const row = isMaster ? masterRows.value.find(r => r.id === rowId) : detailRows.value.find(r => r.id === rowId);
 
       if (!row) return;
 
@@ -321,9 +299,7 @@ export function useMasterDetailStore(pageCode: string) {
 
     /** 静默更新字段值（不触发计算，用于批量更新场景） */
     function updateFieldSilent(rowId: number, field: string, value: any, isMaster = false): boolean {
-      const row = isMaster
-        ? masterRows.value.find(r => r.id === rowId)
-        : detailRows.value.find(r => r.id === rowId);
+      const row = isMaster ? masterRows.value.find(r => r.id === rowId) : detailRows.value.find(r => r.id === rowId);
 
       if (!row) return false;
 
@@ -359,16 +335,15 @@ export function useMasterDetailStore(pageCode: string) {
         if (!master) return;
 
         const broadcastFields = config.value?.broadcast || [];
-        const hasBroadcast = broadcastFields.length > 0
-          && changedFields.some(field => broadcastFields.includes(field));
-        const hasDetailRows = !!master._details?.rows?.length;
+        const hasBroadcast = broadcastFields.length > 0 && changedFields.some(field => broadcastFields.includes(field));
+        const hasDetailRows = Boolean(master._details?.rows?.length);
 
         // 只要有广播字段变化且有从表数据，就对该主表的从表执行计算
         if (hasBroadcast && hasDetailRows) {
           runDetailCalcForMaster(master);
           runAggCalcForMaster(master);
         }
-        
+
         runMasterCalc(master);
       } else {
         if (compiledCalcRules.value.length > 0) {
@@ -461,9 +436,7 @@ export function useMasterDetailStore(pageCode: string) {
 
         // 清除从表标记
         if (master._details?.rows) {
-          master._details.rows = master._details.rows
-            .filter(r => !r._isDeleted)
-            .map(r => clearRowChanges(r));
+          master._details.rows = master._details.rows.filter(r => !r._isDeleted).map(r => clearRowChanges(r));
         }
       }
 
@@ -474,7 +447,7 @@ export function useMasterDetailStore(pageCode: string) {
     /** 应用ID映射（保存后将临时ID替换为真实ID） */
     function applyIdMapping(mapping: Record<number, number>) {
       if (!mapping || Object.keys(mapping).length === 0) return;
-      
+
       for (const master of masterRows.value) {
         // 替换主表ID
         if (master.id != null) {
@@ -483,7 +456,7 @@ export function useMasterDetailStore(pageCode: string) {
             master.id = mappedMasterId;
           }
         }
-        
+
         // 替换从表ID和外键
         if (master._details?.rows) {
           for (const detail of master._details.rows) {
@@ -790,7 +763,12 @@ export function useMasterDetailStore(pageCode: string) {
 
     /** 触发聚合计算 */
     function triggerAggCalc() {
-      console.debug('[Store] triggerAggCalc called, aggRules:', compiledAggRules.value.length, 'masterCalcRules:', compiledMasterCalcRules.value.length);
+      console.debug(
+        '[Store] triggerAggCalc called, aggRules:',
+        compiledAggRules.value.length,
+        'masterCalcRules:',
+        compiledMasterCalcRules.value.length
+      );
       if (aggPending || (compiledAggRules.value.length === 0 && compiledMasterCalcRules.value.length === 0)) return;
 
       aggPending = true;

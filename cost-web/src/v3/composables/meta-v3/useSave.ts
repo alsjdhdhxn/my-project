@@ -1,13 +1,13 @@
-import { ref, type Ref, type ShallowRef } from 'vue';
+import { type Ref, type ShallowRef, ref } from 'vue';
 import type { GridApi } from 'ag-grid-community';
 import { saveDynamicData } from '@/service/api';
 import {
-  ensureRowKey,
-  validateRows,
-  formatValidationErrors,
   type ParsedPageConfig,
+  type RowData,
   type ValidationRule,
-  type RowData
+  ensureRowKey,
+  formatValidationErrors,
+  validateRows
 } from '@/v3/logic/calc-engine';
 
 type NotifyFn = (message: string) => void;
@@ -124,7 +124,7 @@ export function useSave(params: {
 
     const excludeFields = new Set<string>(['masterId', ...extraExcludeFields.filter(Boolean)]);
     const data: Record<string, any> = { _tableCode: tableCode };
-    
+
     if (isNew) {
       // 新增：传所有字段
       for (const [key, value] of Object.entries(row)) {
@@ -203,7 +203,7 @@ export function useSave(params: {
       if (masterToValidate.length > 0) {
         const masterResult = validateRows(masterToValidate, masterValidationRules.value, masterColumnMeta.value);
         if (!masterResult.valid) {
-          notifyError('主表验证失败:\n' + formatValidationErrors(masterResult.errors));
+          notifyError(`主表验证失败:\n${formatValidationErrors(masterResult.errors)}`);
           return;
         }
       }
@@ -216,7 +216,7 @@ export function useSave(params: {
         const result = validateRows(rowsToValidate, rules, meta);
         if (!result.valid) {
           const tabTitle = pageConfig.value?.tabs?.find(t => t.key === tabKey)?.title || tabKey;
-          notifyError(`${tabTitle} 验证失败:\n` + formatValidationErrors(result.errors));
+          notifyError(`${tabTitle} 验证失败:\n${formatValidationErrors(result.errors)}`);
           return;
         }
       }
@@ -267,7 +267,8 @@ export function useSave(params: {
 
         const { error, data } = await saveDynamicData(paramsToSave);
         if (error) {
-          const errorMessage = (error as any)?.response?.data?.msg || (error as any)?.msg || error.message || '保存失败';
+          const errorMessage =
+            (error as any)?.response?.data?.msg || (error as any)?.msg || error.message || '保存失败';
           saveStats.errors.push(`主表 ${masterId}: ${errorMessage}`);
         } else {
           const mapping = normalizeIdMapping((data as any)?.idMapping);
@@ -275,19 +276,26 @@ export function useSave(params: {
             applyIdMapping(mapping);
           }
           const resolvedMasterId = Number((data as any)?.masterId ?? mapping.get(masterId) ?? masterId);
-          
+
           // 用后端返回的最新数据更新本地行
           const returnedMasterRow = (data as any)?.masterRow;
           if (returnedMasterRow && !masterRow._isDeleted) {
             // 保留前端内部字段，合并后端返回的数据
-            const internalFields = ['_rowKey', '_isNew', '_isDeleted', '_dirtyFields', '_changeType', '_originalValues'];
+            const internalFields = [
+              '_rowKey',
+              '_isNew',
+              '_isDeleted',
+              '_dirtyFields',
+              '_changeType',
+              '_originalValues'
+            ];
             for (const [key, value] of Object.entries(returnedMasterRow)) {
               if (!key.startsWith('_')) {
                 masterRow[key] = value;
               }
             }
           }
-          
+
           saveStats.successCount++;
           savedMasterIds.push(resolvedMasterId);
         }
@@ -371,7 +379,9 @@ export function useSave(params: {
       masterGridApi.value?.refreshCells({ force: true });
 
       if (saveStats.errors.length > 0) {
-        notifyError(`成功 ${saveStats.successCount} 条，失败 ${saveStats.errors.length} 条\n${saveStats.errors.join('\n')}`);
+        notifyError(
+          `成功 ${saveStats.successCount} 条，失败 ${saveStats.errors.length} 条\n${saveStats.errors.join('\n')}`
+        );
       } else {
         notifySuccess('保存成功');
       }

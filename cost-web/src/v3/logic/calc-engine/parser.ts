@@ -2,7 +2,7 @@
  * 元数据解析器
  * 从 PAGE_COMPONENT.COMPONENT_CONFIG 解析计算规则、聚合规则、Tab 配置
  */
-import type { CalcRule, AggRule } from './calculator';
+import type { AggRule, CalcRule } from './calculator';
 
 // ==================== 类型定义 ====================
 
@@ -68,38 +68,39 @@ export interface PageComponent {
 
 /** 企业版功能配置 */
 export interface EnterpriseConfig {
-  enableSidebar?: boolean;        // 启用侧边栏
-  enableExcelExport?: boolean;    // 启用 Excel 导出
-  cellSelection?: boolean;        // 启用单元格选择
-  groupBy?: string[];             // 分组字段
-  aggregations?: Array<{          // 聚合配置
+  enableSidebar?: boolean; // 启用侧边栏
+  enableExcelExport?: boolean; // 启用 Excel 导出
+  cellSelection?: boolean; // 启用单元格选择
+  groupBy?: string[]; // 分组字段
+  aggregations?: Array<{
+    // 聚合配置
     field: string;
     aggFunc: 'sum' | 'min' | 'max' | 'avg' | 'count' | 'first' | 'last';
   }>;
-  groupColumnName?: string;       // 分组列名称
+  groupColumnName?: string; // 分组列名称
 }
 
 /** 汇总行聚合配置 */
 export interface SummaryAggConfig {
-  sourceField: string;            // 从表源字段
-  targetField: string;            // 汇总行目标字段
+  sourceField: string; // 从表源字段
+  targetField: string; // 汇总行目标字段
   algorithm: 'SUM' | 'AVG' | 'COUNT' | 'MAX' | 'MIN';
 }
 
 /** 汇总行列配置 */
 export interface SummaryColumnConfig {
-  field: string;                  // 字段名
-  headerName: string;             // 列标题
-  width?: number;                 // 列宽
+  field: string; // 字段名
+  headerName: string; // 列标题
+  width?: number; // 列宽
 }
 
 /** 三层嵌套配置 */
 export interface NestedConfig {
-  enabled?: boolean;              // 是否启用三层嵌套
+  enabled?: boolean; // 是否启用三层嵌套
   summaryColumns?: SummaryColumnConfig[]; // 汇总行显示的列
   summaryAggregates?: SummaryAggConfig[]; // 汇总行聚合规则
-  groupLabelField?: string;       // 分组标签字段名，默认 'groupLabel'
-  groupLabelHeader?: string;      // 分组标签表头，默认 '分类'
+  groupLabelField?: string; // 分组标签字段名，默认 'groupLabel'
+  groupLabelHeader?: string; // 分组标签表头，默认 '分类'
 }
 
 /** 解析结果 */
@@ -257,11 +258,7 @@ export function parseAggRules(config: any): AggRule[] {
 /**
  * 从组件树中查找指定 key 的组件
  */
-function findComponent(
-  components: PageComponent[],
-  key: string,
-  type?: string
-): PageComponent | null {
+function findComponent(components: PageComponent[], key: string, type?: string): PageComponent | null {
   for (const comp of components) {
     if (comp.componentKey === key && (!type || comp.componentType === type)) {
       return comp;

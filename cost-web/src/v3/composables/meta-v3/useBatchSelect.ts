@@ -1,6 +1,6 @@
 import { ref, shallowRef } from 'vue';
 import type { BatchSelectConfig } from '@/v3/components/BatchSelectDialog.vue';
-import { initRowData, generateTempId, ensureRowKey, type RowData } from '@/v3/logic/calc-engine';
+import { type RowData, ensureRowKey, generateTempId, initRowData } from '@/v3/logic/calc-engine';
 
 export type BatchSelectContext = {
   /** 当前主表选中行的 ID */
@@ -25,16 +25,11 @@ export function useBatchSelect(params: {
   /** 新增行后的回调 */
   afterAddDetailRows?: (masterId: number, tabKey: string, rows: RowData[]) => void;
 }) {
-  const {
-    detailCache,
-    detailFkColumnByTab,
-    detailGridApisByTab,
-    afterAddDetailRows
-  } = params;
+  const { detailCache, detailFkColumnByTab, detailGridApisByTab, afterAddDetailRows } = params;
 
   // 弹窗引用
   const batchSelectDialogRef = shallowRef<any>(null);
-  
+
   // 当前批量选择的上下文
   const currentBatchSelectContext = ref<BatchSelectContext | null>(null);
   const currentBatchSelectConfig = ref<BatchSelectConfig | null>(null);
@@ -55,19 +50,15 @@ export function useBatchSelect(params: {
    * @param context 上下文（主表ID、rowKey、目标tabKey）
    * @param filterValue 筛选值（可选）
    */
-  function openBatchSelect(
-    config: BatchSelectConfig,
-    context: BatchSelectContext,
-    filterValue?: any
-  ) {
+  function openBatchSelect(config: BatchSelectConfig, context: BatchSelectContext, filterValue?: any) {
     if (!context.masterId || !context.masterRowKey || !context.tabKey) {
       console.warn('[useBatchSelect] 缺少必要的上下文信息');
       return;
     }
-    
+
     currentBatchSelectConfig.value = config;
     currentBatchSelectContext.value = context;
-    
+
     // 打开弹窗
     batchSelectDialogRef.value?.open(config, filterValue);
   }
@@ -79,19 +70,19 @@ export function useBatchSelect(params: {
   function onBatchSelectConfirm(selectedRows: Record<string, any>[]) {
     const ctx = currentBatchSelectContext.value;
     const config = currentBatchSelectConfig.value;
-    
+
     if (!ctx || !ctx.masterId || !ctx.masterRowKey || !ctx.tabKey) {
       console.warn('[useBatchSelect] 上下文丢失');
       return;
     }
-    
+
     if (!selectedRows || selectedRows.length === 0) {
       return;
     }
-    
+
     const { masterId, masterRowKey, tabKey } = ctx;
     const fkColumn = resolveFkColumn(tabKey);
-    
+
     // 获取或初始化缓存
     let cached = detailCache.get(masterRowKey);
     if (!cached) {
@@ -101,34 +92,37 @@ export function useBatchSelect(params: {
     if (!cached[tabKey]) {
       cached[tabKey] = [];
     }
-    
+
     // 创建新行
     const newRows: RowData[] = selectedRows.map(rowData => {
-      const newRow = initRowData({ 
-        id: generateTempId(), 
-        [fkColumn]: masterId,
-        ...rowData 
-      }, true);
+      const newRow = initRowData(
+        {
+          id: generateTempId(),
+          [fkColumn]: masterId,
+          ...rowData
+        },
+        true
+      );
       ensureRowKey(newRow);
       return newRow;
     });
-    
+
     // 添加到缓存
     cached[tabKey].push(...newRows);
-    
+
     // 刷新 Grid
     const api = resolveDetailGridApi(tabKey);
     if (api) {
       api.setGridOption?.('rowData', cached[tabKey]);
     }
-    
+
     // 回调
     afterAddDetailRows?.(masterId, tabKey, newRows);
-    
+
     // 清理上下文
     currentBatchSelectContext.value = null;
     currentBatchSelectConfig.value = null;
-    
+
     console.log(`[useBatchSelect] 已添加 ${newRows.length} 行到 ${tabKey}`);
   }
 

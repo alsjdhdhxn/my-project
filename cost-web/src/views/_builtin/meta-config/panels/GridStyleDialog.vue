@@ -1,8 +1,17 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import {
-  NModal, NButton, NSpace, NSelect, NInput, NColorPicker,
-  NEmpty, NPopconfirm, NTag, NIcon, useMessage
+  NButton,
+  NColorPicker,
+  NEmpty,
+  NIcon,
+  NInput,
+  NModal,
+  NPopconfirm,
+  NSelect,
+  NSpace,
+  NTag,
+  useMessage
 } from 'naive-ui';
 import { fetchColumnsByTableId, fetchTablesByPageCode, savePageRule } from '@/service/api/meta-config';
 
@@ -45,29 +54,32 @@ const operatorOptions = [
   { label: '不等于', value: 'ne' },
   { label: '不为空', value: 'notNull' },
   { label: '在列表中', value: 'in' },
-  { label: '不在列表中', value: 'notIn' },
+  { label: '不在列表中', value: 'notIn' }
 ];
 
 const scopeOptions = [
   { label: '整行', value: 'row' },
-  { label: '指定单元格', value: 'cell' },
+  { label: '指定单元格', value: 'cell' }
 ];
 
 // 需要输入值的操作符
 const needsValue = (op: string) => op !== 'notNull';
 
-watch(() => props.show, async (val) => {
-  if (!val) return;
-  try {
-    items.value = props.rulesJson ? JSON.parse(props.rulesJson) : [];
-    if (!Array.isArray(items.value)) items.value = [];
-    // 确保每条规则有默认值
-    items.value = items.value.map(normalizeRule);
-  } catch {
-    items.value = [];
+watch(
+  () => props.show,
+  async val => {
+    if (!val) return;
+    try {
+      items.value = props.rulesJson ? JSON.parse(props.rulesJson) : [];
+      if (!Array.isArray(items.value)) items.value = [];
+      // 确保每条规则有默认值
+      items.value = items.value.map(normalizeRule);
+    } catch {
+      items.value = [];
+    }
+    await loadAvailableFields();
   }
-  await loadAvailableFields();
-});
+);
 
 function normalizeRule(r: any): StyleRule {
   return {
@@ -80,7 +92,7 @@ function normalizeRule(r: any): StyleRule {
       backgroundColor: r.style?.backgroundColor || undefined,
       color: r.style?.color || undefined,
       fontWeight: r.style?.fontWeight || undefined,
-      fontStyle: r.style?.fontStyle || undefined,
+      fontStyle: r.style?.fontStyle || undefined
     }
   };
 }
@@ -89,17 +101,21 @@ async function loadAvailableFields() {
   loadingFields.value = true;
   try {
     const tables = await fetchTablesByPageCode(props.pageCode);
-    if (!tables.length) { availableFields.value = []; return; }
+    if (!tables.length) {
+      availableFields.value = [];
+      return;
+    }
     const { fetchAllPageComponents } = await import('@/service/api/meta-config');
     const allComps = await fetchAllPageComponents();
     const currentComp = allComps?.find(
       (c: any) => c.pageCode === props.pageCode && c.componentKey === props.componentKey
     );
     const currentRefTableCode = currentComp?.refTableCode;
-    const targetTable = currentRefTableCode
-      ? tables.find((t: any) => t.tableCode === currentRefTableCode)
-      : tables[0];
-    if (!targetTable?.id) { availableFields.value = []; return; }
+    const targetTable = currentRefTableCode ? tables.find((t: any) => t.tableCode === currentRefTableCode) : tables[0];
+    if (!targetTable?.id) {
+      availableFields.value = [];
+      return;
+    }
     const cols = await fetchColumnsByTableId(targetTable.id);
     availableFields.value = cols
       .filter((col: any) => col.columnName)
@@ -116,8 +132,11 @@ async function loadAvailableFields() {
 
 function addRule() {
   items.value.push({
-    field: '', operator: 'eq', value: undefined,
-    scope: 'row', targetFields: [],
+    field: '',
+    operator: 'eq',
+    value: undefined,
+    scope: 'row',
+    targetFields: [],
     style: {}
   });
 }
@@ -130,7 +149,7 @@ function buildJson(): string {
   const cleaned = items.value.map(item => {
     const r: any = {
       field: item.field,
-      operator: item.operator,
+      operator: item.operator
     };
     if (needsValue(item.operator) && item.value !== undefined && item.value !== '') {
       r.value = item.value;
@@ -154,10 +173,17 @@ function buildJson(): string {
 async function handleSave() {
   // 校验
   for (const item of items.value) {
-    if (!item.field) { message.warning('请选择条件字段'); return; }
-    if (!item.operator) { message.warning('请选择操作符'); return; }
+    if (!item.field) {
+      message.warning('请选择条件字段');
+      return;
+    }
+    if (!item.operator) {
+      message.warning('请选择操作符');
+      return;
+    }
     if (item.scope === 'cell' && (!item.targetFields || item.targetFields.length === 0)) {
-      message.warning('单元格模式需要选择目标字段'); return;
+      message.warning('单元格模式需要选择目标字段');
+      return;
     }
   }
   const json = buildJson();
@@ -183,12 +209,12 @@ async function handleSave() {
 <template>
   <NModal
     :show="show"
-    @update:show="(v: boolean) => emit('update:show', v)"
     preset="card"
     :title="`Grid 样式规则 - ${componentKey}`"
     style="width: 720px; max-height: 80vh"
     :mask-closable="true"
     :segmented="{ content: true, footer: true }"
+    @update:show="(v: boolean) => emit('update:show', v)"
   >
     <div style="max-height: 60vh; overflow-y: auto">
       <div v-if="items.length === 0" style="padding: 20px 0; text-align: center">
@@ -216,25 +242,19 @@ async function handleSave() {
             <NSelect
               v-model:value="item.field"
               :options="availableFields"
-              size="small" filterable placeholder="选择字段"
+              size="small"
+              filterable
+              placeholder="选择字段"
               style="width: 180px"
             />
           </div>
           <div class="rule-field">
             <span class="field-label">操作符</span>
-            <NSelect
-              v-model:value="item.operator"
-              :options="operatorOptions"
-              size="small" style="width: 110px"
-            />
+            <NSelect v-model:value="item.operator" :options="operatorOptions" size="small" style="width: 110px" />
           </div>
           <div v-if="needsValue(item.operator)" class="rule-field">
             <span class="field-label">值</span>
-            <NInput
-              v-model:value="item.value"
-              size="small" placeholder="条件值"
-              style="width: 140px"
-            />
+            <NInput v-model:value="item.value" size="small" placeholder="条件值" style="width: 140px" />
           </div>
         </div>
 
@@ -242,18 +262,17 @@ async function handleSave() {
         <div class="rule-row">
           <div class="rule-field">
             <span class="field-label">作用范围</span>
-            <NSelect
-              v-model:value="item.scope"
-              :options="scopeOptions"
-              size="small" style="width: 130px"
-            />
+            <NSelect v-model:value="item.scope" :options="scopeOptions" size="small" style="width: 130px" />
           </div>
-          <div v-if="item.scope === 'cell'" class="rule-field" style="flex:1">
+          <div v-if="item.scope === 'cell'" class="rule-field" style="flex: 1">
             <span class="field-label">目标字段</span>
             <NSelect
               v-model:value="item.targetFields"
               :options="availableFields"
-              size="small" filterable multiple placeholder="选择目标列"
+              size="small"
+              filterable
+              multiple
+              placeholder="选择目标列"
               style="min-width: 200px"
             />
           </div>
@@ -265,26 +284,35 @@ async function handleSave() {
             <span class="field-label">背景色</span>
             <NColorPicker
               v-model:value="item.style!.backgroundColor"
-              size="small" :show-alpha="false"
-              :swatches="['#e6ffed','#fff2a8','#f8d7da','#ffcccc','#d4edda','#cce5ff','#e2e3e5']"
-              style="width: 120px" :actions="['clear']"
+              size="small"
+              :show-alpha="false"
+              :swatches="['#e6ffed', '#fff2a8', '#f8d7da', '#ffcccc', '#d4edda', '#cce5ff', '#e2e3e5']"
+              style="width: 120px"
+              :actions="['clear']"
             />
           </div>
           <div class="rule-field">
             <span class="field-label">字体颜色</span>
             <NColorPicker
               v-model:value="item.style!.color"
-              size="small" :show-alpha="false"
-              :swatches="['#e53935','#1890ff','#43a047','#ff9800','#333333','#ffffff']"
-              style="width: 120px" :actions="['clear']"
+              size="small"
+              :show-alpha="false"
+              :swatches="['#e53935', '#1890ff', '#43a047', '#ff9800', '#333333', '#ffffff']"
+              style="width: 120px"
+              :actions="['clear']"
             />
           </div>
           <div class="rule-field">
             <span class="field-label">加粗</span>
             <NSelect
               v-model:value="item.style!.fontWeight"
-              size="small" clearable placeholder="默认"
-              :options="[{label:'加粗',value:'bold'},{label:'正常',value:'normal'}]"
+              size="small"
+              clearable
+              placeholder="默认"
+              :options="[
+                { label: '加粗', value: 'bold' },
+                { label: '正常', value: 'normal' }
+              ]"
               style="width: 90px"
             />
           </div>
@@ -292,8 +320,13 @@ async function handleSave() {
             <span class="field-label">斜体</span>
             <NSelect
               v-model:value="item.style!.fontStyle"
-              size="small" clearable placeholder="默认"
-              :options="[{label:'斜体',value:'italic'},{label:'正常',value:'normal'}]"
+              size="small"
+              clearable
+              placeholder="默认"
+              :options="[
+                { label: '斜体', value: 'italic' },
+                { label: '正常', value: 'normal' }
+              ]"
               style="width: 90px"
             />
           </div>

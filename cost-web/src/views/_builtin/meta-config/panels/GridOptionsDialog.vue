@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue';
-import { NModal, NButton, NSpace, NSwitch, NInputNumber, NInput, useMessage } from 'naive-ui';
+import { NButton, NInput, NInputNumber, NModal, NSpace, NSwitch, useMessage } from 'naive-ui';
 import { savePageRule } from '@/service/api/meta-config';
 
 const props = defineProps<{
@@ -31,17 +31,20 @@ const options = ref<GridOptions>({});
 const optionItems = [
   { key: 'cellSelection', label: '单元格范围选择', desc: '像Excel一样框选多个单元格', type: 'switch' },
   { key: 'sideBar', label: '侧边栏', desc: '列筛选面板、列显隐控制', type: 'switch' },
-  { key: 'autoSizeColumns', label: '列宽自适应', desc: '自动调整列宽', type: 'switch' },
+  { key: 'autoSizeColumns', label: '列宽自适应', desc: '自动调整列宽', type: 'switch' }
 ] as const;
 
-watch(() => props.show, (val) => {
-  if (!val) return;
-  try {
-    options.value = props.rulesJson ? JSON.parse(props.rulesJson) : {};
-  } catch {
-    options.value = {};
+watch(
+  () => props.show,
+  val => {
+    if (!val) return;
+    try {
+      options.value = props.rulesJson ? JSON.parse(props.rulesJson) : {};
+    } catch {
+      options.value = {};
+    }
   }
-});
+);
 
 const saving = ref(false);
 
@@ -75,12 +78,12 @@ async function handleSave() {
 <template>
   <NModal
     :show="show"
-    @update:show="(v) => emit('update:show', v)"
     preset="card"
     :title="`表格选项 - ${componentKey}`"
     style="width: 460px"
     :mask-closable="true"
     :segmented="{ content: true, footer: true }"
+    @update:show="v => emit('update:show', v)"
   >
     <div class="options-list">
       <div v-for="item in optionItems" :key="item.key" class="option-row">

@@ -1,14 +1,3 @@
-<template>
-  <div class="meta-button">
-    <div v-if="status === 'error'" class="meta-button-error">
-      {{ errorMessage }}
-    </div>
-    <NButton v-else :type="buttonType" :size="buttonSize" :disabled="isDisabled" @click="handleClick">
-      {{ label }}
-    </NButton>
-  </div>
-</template>
-
 <script setup lang="ts">
 import { computed, unref } from 'vue';
 import { NButton } from 'naive-ui';
@@ -98,7 +87,7 @@ function handleClick() {
     // 默认刷新模式：需要选中行时刷新行，否则刷新全部
     const defaultRefreshMode = requiresRow.value ? 'row' : 'all';
     const refreshMode = config.value.refreshMode ?? defaultRefreshMode;
-    
+
     runtime.executeAction(action, {
       tableCode: config.value.tableCode,
       data: config.value.actionData,
@@ -108,6 +97,17 @@ function handleClick() {
   }
 }
 </script>
+
+<template>
+  <div class="meta-button">
+    <div v-if="status === 'error'" class="meta-button-error">
+      {{ errorMessage }}
+    </div>
+    <NButton v-else :type="buttonType" :size="buttonSize" :disabled="isDisabled" @click="handleClick">
+      {{ label }}
+    </NButton>
+  </div>
+</template>
 
 <style scoped>
 .meta-button {

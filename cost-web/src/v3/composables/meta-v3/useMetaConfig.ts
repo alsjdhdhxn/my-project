@@ -1,42 +1,55 @@
 import { shallowRef } from 'vue';
 import type { ColDef } from 'ag-grid-community';
 import { fetchPageComponents } from '@/service/api';
-import { loadTableMeta, extractLookupRules, filterColumnsByVariant, type LookupRule } from '@/composables/useMetaColumns';
-import type { PageComponentWithRules, RelationRule, PageRule, GridOptionsRule, SplitLayoutConfig, ContextMenuRule, ToolbarRule } from '@/v3/composables/meta-v3/types';
 import {
-  parsePageComponents,
-  compileCalcRules,
-  compileAggRules,
-  parseValidationRules,
-  type ParsedPageConfig,
+  type LookupRule,
+  extractLookupRules,
+  filterColumnsByVariant,
+  loadTableMeta
+} from '@/composables/useMetaColumns';
+import type {
+  ContextMenuRule,
+  GridOptionsRule,
+  PageComponentWithRules,
+  PageRule,
+  RelationRule,
+  SplitLayoutConfig,
+  ToolbarRule
+} from '@/v3/composables/meta-v3/types';
+import {
   type NestedConfig,
-  type ValidationRule
+  type ParsedPageConfig,
+  type ValidationRule,
+  compileAggRules,
+  compileCalcRules,
+  parsePageComponents,
+  parseValidationRules
 } from '@/v3/logic/calc-engine';
 import {
-  collectPageRules,
-  groupRulesByComponent,
-  getComponentRules,
-  parseValidationRuleConfig,
-  parseLookupRuleConfig,
-  parseCalcRuleConfig,
-  parseAggregateRuleConfig,
-  parseSummaryConfigRule,
-  parseRoleBindingRule,
-  parseRelationRule,
-  parseGridOptionsRule,
-  parseContextMenuRule,
-  parseRowEditableRule,
-  parseToolbarRule,
-  parseCellEditableRule,
+  applyCellStyleRules,
   attachGroupCellRenderer,
+  collectPageRules,
+  getComponentRules,
+  groupRulesByComponent,
+  parseAggregateRuleConfig,
+  parseCalcRuleConfig,
+  parseCellEditableRule,
+  parseContextMenuRule,
+  parseGridOptionsRule,
   parseGridStyleRule,
-  applyCellStyleRules
+  parseLookupRuleConfig,
+  parseRelationRule,
+  parseRoleBindingRule,
+  parseRowEditableRule,
+  parseSummaryConfigRule,
+  parseToolbarRule,
+  parseValidationRuleConfig
 } from '@/v3/composables/meta-v3/usePageRules';
 import {
-  normalizeGridOptions,
-  mergeGridOptions,
+  type ResolvedGridOptions,
   applyGroupByColumns,
-  type ResolvedGridOptions
+  mergeGridOptions,
+  normalizeGridOptions
 } from '@/v3/composables/meta-v3/grid-options';
 import { DIRTY_CELL_CLASS_RULES, mergeCellClassRules } from '@/v3/composables/meta-v3/cell-style';
 
@@ -85,14 +98,16 @@ function injectMasterDetailRoot(components: PageComponentWithRules[]): PageCompo
   const hasDetailGrid = hasComponentType(components, 'DETAIL_GRID');
   if (!hasGrid || !hasDetailGrid) return components;
   const pageCode = components[0]?.pageCode || '';
-  return [{
-    id: -1,
-    pageCode,
-    componentKey: '__v3_master_detail__',
-    componentType: 'MASTER_DETAIL',
-    sortOrder: -1,
-    children: components
-  } as PageComponentWithRules];
+  return [
+    {
+      id: -1,
+      pageCode,
+      componentKey: '__v3_master_detail__',
+      componentType: 'MASTER_DETAIL',
+      sortOrder: -1,
+      children: components
+    } as PageComponentWithRules
+  ];
 }
 
 function normalizeRole(role?: string): string | null {
@@ -215,10 +230,7 @@ function uniqueKeys(keys: Array<string | undefined | null>): string[] {
   return result;
 }
 
-function collectRulesByKeys(
-  rulesByComponent: Map<string, PageRule[]>,
-  keys: string[]
-): PageRule[] {
+function collectRulesByKeys(rulesByComponent: Map<string, PageRule[]>, keys: string[]): PageRule[] {
   const result: PageRule[] = [];
   for (const key of keys) {
     const rules = rulesByComponent.get(key);
@@ -262,7 +274,7 @@ function mergeLookupRules(metadataRules: LookupRule[], pageRules: LookupRule[]):
 
 function mergeNestedConfig(base: NestedConfig | undefined, override: NestedConfig): NestedConfig {
   const merged: NestedConfig = { ...(base || {}) };
-  const hasOwn = (key: keyof NestedConfig) => Object.prototype.hasOwnProperty.call(override, key);
+  const hasOwn = (key: keyof NestedConfig) => Object.hasOwn(override, key);
   if (hasOwn('enabled')) merged.enabled = override.enabled;
   if (hasOwn('summaryColumns')) merged.summaryColumns = override.summaryColumns;
   if (hasOwn('summaryAggregates')) merged.summaryAggregates = override.summaryAggregates;
@@ -333,22 +345,45 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
   const masterRowEditableRules = shallowRef<import('@/v3/composables/meta-v3/types').RowEditableRule[]>([]);
   const masterCellEditableRules = shallowRef<import('@/v3/composables/meta-v3/types').CellEditableRule[]>([]);
   const masterRowClassRules = shallowRef<import('@/v3/composables/meta-v3/types').GridStyleRule[]>([]);
-  const detailRowClassRulesByTab = shallowRef<Record<string, import('@/v3/composables/meta-v3/types').GridStyleRule[]>>({});
-  const detailRowEditableRulesByTab = shallowRef<Record<string, import('@/v3/composables/meta-v3/types').RowEditableRule[]>>({});
-  const detailCellEditableRulesByTab = shallowRef<Record<string, import('@/v3/composables/meta-v3/types').CellEditableRule[]>>({});
+  const detailRowClassRulesByTab = shallowRef<Record<string, import('@/v3/composables/meta-v3/types').GridStyleRule[]>>(
+    {}
+  );
+  const detailRowEditableRulesByTab = shallowRef<
+    Record<string, import('@/v3/composables/meta-v3/types').RowEditableRule[]>
+  >({});
+  const detailCellEditableRulesByTab = shallowRef<
+    Record<string, import('@/v3/composables/meta-v3/types').CellEditableRule[]>
+  >({});
   const masterToolbar = shallowRef<ToolbarRule | null>(null);
   const detailToolbarByTab = shallowRef<Record<string, ToolbarRule | null>>({});
   const masterSumFields = shallowRef<string[]>([]);
   const detailSumFieldsByTab = shallowRef<Record<string, string[]>>({});
 
   function resolveRuntimeColumnName(rawColumns: any[], targetColumn?: string | null, fallback = 'ID') {
-    const normalizedTarget = String(targetColumn || '').trim().toUpperCase();
+    const normalizedTarget = String(targetColumn || '')
+      .trim()
+      .toUpperCase();
     if (normalizedTarget) {
-      const byTarget = rawColumns.find(col => String(col?.targetColumn || '').trim().toUpperCase() === normalizedTarget);
+      const byTarget = rawColumns.find(
+        col =>
+          String(col?.targetColumn || '')
+            .trim()
+            .toUpperCase() === normalizedTarget
+      );
       if (byTarget?.columnName) return String(byTarget.columnName);
-      const byColumn = rawColumns.find(col => String(col?.columnName || '').trim().toUpperCase() === normalizedTarget);
+      const byColumn = rawColumns.find(
+        col =>
+          String(col?.columnName || '')
+            .trim()
+            .toUpperCase() === normalizedTarget
+      );
       if (byColumn?.columnName) return String(byColumn.columnName);
-      const byQuery = rawColumns.find(col => String(col?.queryColumn || '').trim().toUpperCase() === normalizedTarget);
+      const byQuery = rawColumns.find(
+        col =>
+          String(col?.queryColumn || '')
+            .trim()
+            .toUpperCase() === normalizedTarget
+      );
       if (byQuery?.columnName) return String(byQuery.columnName);
     }
     return fallback;
@@ -415,7 +450,7 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
     // 从表级别的全局规则仍然支持通过 detailTabs 统一下发
     const detailGridKeys = collectComponentKeysByType(components, 'DETAIL_GRID');
     let detailTabsRules: PageRule[] = [];
-    let detailTabsRuleLabel = resolvedDetailTabsKey || 'detailTabs';
+    const detailTabsRuleLabel = resolvedDetailTabsKey || 'detailTabs';
 
     if (resolvedDetailTabsKey) {
       detailTabsRules = getComponentRules(rulesMap, [resolvedDetailTabsKey]);
@@ -461,7 +496,9 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
       const mergedTabOptions = mergeGridOptions(detailBaseOptions, tabGridRuleOptions);
       // V3 强制明细表使用 Client-Side，不接受元数据中的其他 rowModelType
       if (mergedTabOptions.rowModelType && mergedTabOptions.rowModelType !== 'clientSide') {
-        console.warn(`[V3] 明细表 ${tab.key} rowModelType 配置为 "${mergedTabOptions.rowModelType}"，已强制覆盖为 "clientSide"`);
+        console.warn(
+          `[V3] 明细表 ${tab.key} rowModelType 配置为 "${mergedTabOptions.rowModelType}"，已强制覆盖为 "clientSide"`
+        );
       }
       // 删除 rowModelType，保留 ag-grid 默认的 clientSide 模式
       delete mergedTabOptions.rowModelType;
@@ -476,7 +513,7 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
 
     const config = pageConfig.value;
     const resolvedMasterGridKey = masterGridKey.value ?? undefined;
-    
+
     const masterMeta = await loadTableMeta(config.masterTableCode, pageCode, resolvedMasterGridKey ?? 'masterGrid');
     if (!masterMeta) {
       notifyError('?????????');
@@ -484,12 +521,7 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
     }
 
     const masterColumns = mergeCellClassRules(
-      attachGroupCellRenderer(
-        applyGroupByColumns(
-          masterMeta.columns,
-          masterGridOptions.value?.groupBy
-        )
-      ),
+      attachGroupCellRenderer(applyGroupByColumns(masterMeta.columns, masterGridOptions.value?.groupBy)),
       DIRTY_CELL_CLASS_RULES
     );
     masterColumnDefs.value = masterColumns;
@@ -518,11 +550,7 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
       const tabGridOptions = detailGridOptionsByTab.value[tab.key];
       detailColumnsByTab.value[tab.key] = mergeCellClassRules(
         applyGroupByColumns(
-          filterColumnsByVariant(
-            detailMeta.columns,
-            tab.variantKey,
-            detailMeta.rawColumns || []
-          ),
+          filterColumnsByVariant(detailMeta.columns, tab.variantKey, detailMeta.rawColumns || []),
           tabGridOptions?.groupBy
         ),
         DIRTY_CELL_CLASS_RULES
@@ -532,7 +560,8 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
 
       const fkColumnName = detailMeta.metadata.parentFkColumn;
       detailFkColumnByTab.value[tab.key] = fkColumnName
-        ? (detailMeta.rawColumns.find(col => col.columnName.toUpperCase() === fkColumnName.toUpperCase())?.columnName || fkColumnName)
+        ? detailMeta.rawColumns.find(col => col.columnName.toUpperCase() === fkColumnName.toUpperCase())?.columnName ||
+          fkColumnName
         : 'MASTER_ID';
 
       detailPkColumnByTab.value[tab.key] = resolveRuntimeColumnName(
@@ -558,13 +587,11 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
     const masterRuleLabel = resolvedMasterGridKey || 'master';
 
     const masterValidation = parseValidationRuleConfig(masterRuleLabel, masterRules);
-    masterValidationRules.value = masterValidation.length > 0 ? masterValidation : parseValidationRules(masterColumnMeta.value);
+    masterValidationRules.value =
+      masterValidation.length > 0 ? masterValidation : parseValidationRules(masterColumnMeta.value);
 
     const masterLookup = parseLookupRuleConfig(masterRuleLabel, masterRules);
-    masterLookupRules.value = mergeLookupRules(
-      extractLookupRules(masterColumnMeta.value),
-      masterLookup
-    );
+    masterLookupRules.value = mergeLookupRules(extractLookupRules(masterColumnMeta.value), masterLookup);
 
     // 给有 lookup 的列添加高亮样式
     const lookupFields = new Set(masterLookupRules.value.map(r => r.columnName));
@@ -615,15 +642,11 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
       const tabRules = getComponentRules(rulesMap, [tab.key]);
       const rawColumns = detailColumnMetaByTab.value[tab.key] || [];
       const detailValidation = parseValidationRuleConfig(tab.key, tabRules);
-      detailValidationRulesByTab.value[tab.key] = detailValidation.length > 0
-        ? detailValidation
-        : parseValidationRules(rawColumns);
+      detailValidationRulesByTab.value[tab.key] =
+        detailValidation.length > 0 ? detailValidation : parseValidationRules(rawColumns);
 
       const detailLookup = parseLookupRuleConfig(tab.key, tabRules);
-      detailLookupRulesByTab.value[tab.key] = mergeLookupRules(
-        extractLookupRules(rawColumns),
-        detailLookup
-      );
+      detailLookupRulesByTab.value[tab.key] = mergeLookupRules(extractLookupRules(rawColumns), detailLookup);
 
       // 给有 lookup 的列添加高亮样式
       const detailLookupFields = new Set(detailLookupRulesByTab.value[tab.key].map(r => r.columnName));
@@ -643,11 +666,15 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
         detailCalcRulesByTab.value[tab.key] = [];
       }
       const detailGridConfig = getDetailGridComponentConfig(pageComponents.value || [], tab.key);
-      detailContextMenuByTab.value[tab.key] = parseContextMenuRule(tab.key, tabRules, detailGridConfig) || detailContextMenuDefault.value;
+      detailContextMenuByTab.value[tab.key] =
+        parseContextMenuRule(tab.key, tabRules, detailGridConfig) || detailContextMenuDefault.value;
       detailToolbarByTab.value[tab.key] = parseToolbarRule(tab.key, tabRules, detailGridConfig);
       detailRowClassRulesByTab.value[tab.key] = parseGridStyleRule(tab.key, tabRules);
       if (detailColumnsByTab.value[tab.key]) {
-        detailColumnsByTab.value[tab.key] = applyCellStyleRules(detailColumnsByTab.value[tab.key], detailRowClassRulesByTab.value[tab.key] || []);
+        detailColumnsByTab.value[tab.key] = applyCellStyleRules(
+          detailColumnsByTab.value[tab.key],
+          detailRowClassRulesByTab.value[tab.key] || []
+        );
       }
       detailRowEditableRulesByTab.value[tab.key] = parseRowEditableRule(tab.key, tabRules);
       detailCellEditableRulesByTab.value[tab.key] = parseCellEditableRule(tab.key, tabRules);
@@ -659,7 +686,7 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
     const ok = await loadComponents();
     if (!ok) return false;
     if (!parseConfig()) return false;
-    if (!await loadMeta()) return false;
+    if (!(await loadMeta())) return false;
     return compileRules();
   }
 
@@ -709,7 +736,3 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
     loadMetadata
   };
 }
-
-
-
-

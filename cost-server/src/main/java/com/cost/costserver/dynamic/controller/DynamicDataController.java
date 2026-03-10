@@ -60,7 +60,7 @@ public class DynamicDataController {
                 continue;
             }
             if (entry.getValue() != null && !entry.getValue().isEmpty()) {
-                conditions.add(new QueryParam.QueryCondition(key, "eq", entry.getValue(), null));
+                conditions.add(new QueryParam.QueryCondition(null, key, "eq", entry.getValue(), null));
             }
         }
         param.setConditions(conditions);

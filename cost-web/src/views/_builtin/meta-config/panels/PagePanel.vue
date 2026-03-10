@@ -1,19 +1,30 @@
 <script setup lang="ts">
-import { ref, onMounted, inject, watch } from 'vue';
+import { inject, onMounted, ref, watch } from 'vue';
 import type { Ref } from 'vue';
-import { NButton, NSpace, NPopconfirm, NTabs, NTabPane, useMessage } from 'naive-ui';
+import { NButton, NPopconfirm, NSpace, NTabPane, NTabs, useMessage } from 'naive-ui';
 import { AgGridVue } from 'ag-grid-vue3';
-import type { GridApi, GridReadyEvent, ColDef, CellValueChangedEvent, GetContextMenuItemsParams, ICellRendererParams } from 'ag-grid-community';
+import type {
+  CellValueChangedEvent,
+  ColDef,
+  GetContextMenuItemsParams,
+  GridApi,
+  GridReadyEvent,
+  ICellRendererParams
+} from 'ag-grid-community';
+import {
+  deletePageComponent,
+  deletePageRule,
+  fetchAllPageComponents,
+  fetchRulesByComponent,
+  savePageComponent,
+  savePageRule
+} from '@/service/api/meta-config';
 import ButtonConfigDialog from './ButtonConfigDialog.vue';
 import ColumnOverrideDialog from './ColumnOverrideDialog.vue';
 import GridOptionsDialog from './GridOptionsDialog.vue';
 import GridStyleDialog from './GridStyleDialog.vue';
 import RuleConfigDialog from './RuleConfigDialog.vue';
 import CellEditableDialog from './CellEditableDialog.vue';
-import {
-  fetchAllPageComponents, savePageComponent, deletePageComponent,
-  fetchRulesByComponent, savePageRule, deletePageRule
-} from '@/service/api/meta-config';
 
 const message = useMessage();
 const navigateTo = inject<(tab: string, pageCode: string) => void>('navigateTo')!;
@@ -27,7 +38,10 @@ const selectedComp = ref<any>(null);
 const compColDefs: ColDef[] = [
   { field: 'id', headerName: 'ID', width: 70, editable: false },
   {
-    field: 'pageCode', headerName: '页面编码', width: 160, editable: true,
+    field: 'pageCode',
+    headerName: '页面编码',
+    width: 160,
+    editable: true,
     valueFormatter: (params: any) => {
       const name = params.data?.pageName;
       return name ? `${name} (${params.value})` : params.value || '';
@@ -35,17 +49,29 @@ const compColDefs: ColDef[] = [
   },
   { field: 'componentKey', headerName: '组件标识', width: 130, editable: true },
   {
-    field: 'componentType', headerName: '类型', width: 110, editable: true,
+    field: 'componentType',
+    headerName: '类型',
+    width: 110,
+    editable: true,
     cellEditor: 'agSelectCellEditor',
     cellEditorParams: { values: ['GRID', 'DETAIL_GRID', 'FORM', 'TAB_CONTAINER', 'TOOLBAR'] },
     valueFormatter: (params: any) => {
-      const map: Record<string, string> = { GRID: '主表格', DETAIL_GRID: '从表格', FORM: '表单', TAB_CONTAINER: '标签容器', TOOLBAR: '工具栏' };
+      const map: Record<string, string> = {
+        GRID: '主表格',
+        DETAIL_GRID: '从表格',
+        FORM: '表单',
+        TAB_CONTAINER: '标签容器',
+        TOOLBAR: '工具栏'
+      };
       return map[params.value] || params.value || '';
     }
   },
   { field: 'parentKey', headerName: '父组件', width: 120, editable: true },
   {
-    field: 'refTableCode', headerName: '关联表', width: 180, editable: true,
+    field: 'refTableCode',
+    headerName: '关联表',
+    width: 180,
+    editable: true,
     valueFormatter: (params: any) => {
       const name = params.data?.refTableName;
       return name ? `${name} (${params.value})` : params.value || '';
@@ -55,7 +81,9 @@ const compColDefs: ColDef[] = [
   { field: 'sortOrder', headerName: '排序', width: 70, editable: true, cellDataType: 'number' },
   { field: 'description', headerName: '描述', width: 150, editable: true },
   {
-    field: 'componentConfig', headerName: '按钮配置', width: 200,
+    field: 'componentConfig',
+    headerName: '按钮配置',
+    width: 200,
     editable: false,
     cellRenderer: (params: ICellRendererParams) => {
       const el = document.createElement('span');
@@ -67,7 +95,9 @@ const compColDefs: ColDef[] = [
         } else {
           count = cfg.buttons?.length || 0;
         }
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
       el.textContent = count > 0 ? `⚙ 配置按钮(${count})` : '⚙ 配置按钮';
       el.style.cursor = 'pointer';
       el.style.color = count > 0 ? '#18a058' : '#999';
@@ -88,14 +118,42 @@ const ruleColDefs: ColDef[] = [
   { field: 'pageCode', headerName: '页面编码', width: 120, editable: false },
   { field: 'componentKey', headerName: '组件标识', width: 120, editable: false },
   {
-    field: 'ruleType', headerName: '规则类型', width: 140, editable: true,
+    field: 'ruleType',
+    headerName: '规则类型',
+    width: 140,
+    editable: true,
     cellEditor: 'agSelectCellEditor',
-    cellEditorParams: { values: ['COLUMN_OVERRIDE', 'GRID_STYLE', 'GRID_OPTIONS', 'CALC', 'VALIDATION', 'LOOKUP', 'BUTTON', 'BATCH_SELECT', 'DETAIL_LINK', 'ROW_EDITABLE', 'CELL_EDITABLE', 'SUMMARY_CONFIG'] }
+    cellEditorParams: {
+      values: [
+        'COLUMN_OVERRIDE',
+        'GRID_STYLE',
+        'GRID_OPTIONS',
+        'CALC',
+        'VALIDATION',
+        'LOOKUP',
+        'BUTTON',
+        'BATCH_SELECT',
+        'DETAIL_LINK',
+        'ROW_EDITABLE',
+        'CELL_EDITABLE',
+        'SUMMARY_CONFIG'
+      ]
+    }
   },
   {
-    field: 'rules', headerName: '规则内容(JSON)', flex: 1,
-    editable: (params: any) => params.data?.ruleType !== 'COLUMN_OVERRIDE' && params.data?.ruleType !== 'GRID_OPTIONS' && params.data?.ruleType !== 'GRID_STYLE' && params.data?.ruleType !== 'CALC' && params.data?.ruleType !== 'AGGREGATE' && params.data?.ruleType !== 'VALIDATION' && params.data?.ruleType !== 'CELL_EDITABLE',
-    cellEditor: 'agLargeTextCellEditor', cellEditorPopup: true,
+    field: 'rules',
+    headerName: '规则内容(JSON)',
+    flex: 1,
+    editable: (params: any) =>
+      params.data?.ruleType !== 'COLUMN_OVERRIDE' &&
+      params.data?.ruleType !== 'GRID_OPTIONS' &&
+      params.data?.ruleType !== 'GRID_STYLE' &&
+      params.data?.ruleType !== 'CALC' &&
+      params.data?.ruleType !== 'AGGREGATE' &&
+      params.data?.ruleType !== 'VALIDATION' &&
+      params.data?.ruleType !== 'CELL_EDITABLE',
+    cellEditor: 'agLargeTextCellEditor',
+    cellEditorPopup: true,
     cellRenderer: (params: ICellRendererParams) => {
       if (params.data?.ruleType === 'COLUMN_OVERRIDE') {
         const el = document.createElement('span');
@@ -103,7 +161,9 @@ const ruleColDefs: ColDef[] = [
         try {
           const arr = params.value ? JSON.parse(params.value) : [];
           count = Array.isArray(arr) ? arr.length : 0;
-        } catch { /* ignore */ }
+        } catch {
+          /* ignore */
+        }
         el.textContent = count > 0 ? `⚙ 列覆盖配置(${count})` : '⚙ 列覆盖配置';
         el.style.cursor = 'pointer';
         el.style.color = count > 0 ? '#2080f0' : '#999';
@@ -121,7 +181,9 @@ const ruleColDefs: ColDef[] = [
           if (obj.sideBar) labels.push('侧边栏');
           if (obj.autoSizeColumns) labels.push('列宽自适应');
           summary = labels.length > 0 ? labels.join('、') : '未配置';
-        } catch { summary = '解析错误'; }
+        } catch {
+          summary = '解析错误';
+        }
         el.textContent = `⚙ 表格选项: ${summary}`;
         el.style.cursor = 'pointer';
         el.style.color = summary !== '未配置' ? '#2080f0' : '#999';
@@ -135,7 +197,9 @@ const ruleColDefs: ColDef[] = [
         try {
           const arr = params.value ? JSON.parse(params.value) : [];
           count = Array.isArray(arr) ? arr.length : 0;
-        } catch { /* ignore */ }
+        } catch {
+          /* ignore */
+        }
         el.textContent = count > 0 ? `🎨 样式规则(${count})` : '🎨 样式规则';
         el.style.cursor = 'pointer';
         el.style.color = count > 0 ? '#18a058' : '#999';
@@ -148,11 +212,17 @@ const ruleColDefs: ColDef[] = [
       if (ruleType === 'CALC' || ruleType === 'AGGREGATE' || ruleType === 'VALIDATION') {
         const el = document.createElement('span');
         let count = 0;
-        const labelMap: Record<string, string> = { CALC: '📐 计算规则', AGGREGATE: '📊 聚合规则', VALIDATION: '✅ 校验规则' };
+        const labelMap: Record<string, string> = {
+          CALC: '📐 计算规则',
+          AGGREGATE: '📊 聚合规则',
+          VALIDATION: '✅ 校验规则'
+        };
         try {
           const arr = params.value ? JSON.parse(params.value) : [];
           count = Array.isArray(arr) ? arr.length : 0;
-        } catch { /* ignore */ }
+        } catch {
+          /* ignore */
+        }
         el.textContent = count > 0 ? `${labelMap[ruleType]}(${count})` : labelMap[ruleType];
         el.style.cursor = 'pointer';
         el.style.color = count > 0 ? '#2080f0' : '#999';
@@ -167,7 +237,9 @@ const ruleColDefs: ColDef[] = [
         try {
           const arr = params.value ? JSON.parse(params.value) : [];
           count = Array.isArray(arr) ? arr.length : 0;
-        } catch { /* ignore */ }
+        } catch {
+          /* ignore */
+        }
         el.textContent = count > 0 ? `🔒 可编辑规则(${count})` : '🔒 可编辑规则';
         el.style.cursor = 'pointer';
         el.style.color = count > 0 ? '#f0a020' : '#999';
@@ -334,7 +406,9 @@ async function loadComponents() {
     const res = await fetchAllPageComponents();
     compRows.value = (res || []).filter((r: any) => r.componentType !== 'LAYOUT');
     setTimeout(() => compGridApi.value?.autoSizeAllColumns(), 100);
-  } catch { message.error('加载页面组件失败'); }
+  } catch {
+    message.error('加载页面组件失败');
+  }
 }
 
 // 隐藏的规则类型（系统内部使用，不需要用户看到）
@@ -345,11 +419,19 @@ async function loadRules(pageCode: string, componentKey: string) {
     const res = await fetchRulesByComponent(pageCode, componentKey);
     ruleRows.value = (res || []).filter((r: any) => !hiddenRuleTypes.has(r.ruleType));
     setTimeout(() => ruleGridApi.value?.autoSizeAllColumns(), 100);
-  } catch { message.error('加载规则失败'); }
+  } catch {
+    message.error('加载规则失败');
+  }
 }
 
-function onCompGridReady(params: GridReadyEvent) { compGridApi.value = params.api; params.api.autoSizeAllColumns(); }
-function onRuleGridReady(params: GridReadyEvent) { ruleGridApi.value = params.api; params.api.autoSizeAllColumns(); }
+function onCompGridReady(params: GridReadyEvent) {
+  compGridApi.value = params.api;
+  params.api.autoSizeAllColumns();
+}
+function onRuleGridReady(params: GridReadyEvent) {
+  ruleGridApi.value = params.api;
+  params.api.autoSizeAllColumns();
+}
 
 function onCompSelectionChanged() {
   const rows = compGridApi.value?.getSelectedRows() || [];
@@ -381,9 +463,17 @@ function onRuleRowClicked(event: any) {
 // ---- 组件操作 ----
 function addComponent() {
   const newRow = {
-    _isNew: true, id: null, pageCode: '', componentKey: '',
-    componentType: 'GRID', parentKey: '', refTableCode: '',
-    slotName: '', sortOrder: 0, description: '', componentConfig: ''
+    _isNew: true,
+    id: null,
+    pageCode: '',
+    componentKey: '',
+    componentType: 'GRID',
+    parentKey: '',
+    refTableCode: '',
+    slotName: '',
+    sortOrder: 0,
+    description: '',
+    componentConfig: ''
   };
   compRows.value = [...compRows.value, newRow];
   setTimeout(() => {
@@ -396,15 +486,23 @@ function addComponent() {
 async function saveComp() {
   // 收集所有修改过或新增的行
   const dirtyRows = compRows.value.filter(r => r._dirty || r._isNew);
-  if (dirtyRows.length === 0) { message.info('没有需要保存的修改'); return; }
+  if (dirtyRows.length === 0) {
+    message.info('没有需要保存的修改');
+    return;
+  }
   for (const row of dirtyRows) {
-    if (!row.pageCode || !row.componentKey) { message.warning(`组件 pageCode 和 componentKey 不能为空`); return; }
+    if (!row.pageCode || !row.componentKey) {
+      message.warning(`组件 pageCode 和 componentKey 不能为空`);
+      return;
+    }
   }
   try {
     await Promise.all(dirtyRows.map(r => savePageComponent(r)));
     message.success(`已保存 ${dirtyRows.length} 条组件`);
     await loadComponents();
-  } catch { message.error('保存失败'); }
+  } catch {
+    message.error('保存失败');
+  }
 }
 
 async function removeComp() {
@@ -418,17 +516,26 @@ async function removeComp() {
     message.success('删除成功');
     await loadComponents();
     ruleRows.value = [];
-  } catch { message.error('删除失败'); }
+  } catch {
+    message.error('删除失败');
+  }
 }
 
 // ---- 规则操作 ----
 function addRule() {
-  if (!selectedComp.value?.pageCode) { message.warning('请先选中一个组件'); return; }
+  if (!selectedComp.value?.pageCode) {
+    message.warning('请先选中一个组件');
+    return;
+  }
   const newRow = {
-    _isNew: true, id: null,
+    _isNew: true,
+    id: null,
     pageCode: selectedComp.value.pageCode,
     componentKey: selectedComp.value.componentKey,
-    ruleType: 'COLUMN_OVERRIDE', rules: '[]', sortOrder: 0, description: ''
+    ruleType: 'COLUMN_OVERRIDE',
+    rules: '[]',
+    sortOrder: 0,
+    description: ''
   };
   ruleRows.value = [...ruleRows.value, newRow];
   setTimeout(() => {
@@ -441,9 +548,15 @@ function addRule() {
 async function saveRule() {
   // 收集所有修改过或新增的规则行
   const dirtyRows = ruleRows.value.filter(r => r._dirty || r._isNew);
-  if (dirtyRows.length === 0) { message.info('没有需要保存的修改'); return; }
+  if (dirtyRows.length === 0) {
+    message.info('没有需要保存的修改');
+    return;
+  }
   for (const row of dirtyRows) {
-    if (!row.ruleType) { message.warning('规则类型不能为空'); return; }
+    if (!row.ruleType) {
+      message.warning('规则类型不能为空');
+      return;
+    }
   }
   try {
     await Promise.all(dirtyRows.map(r => savePageRule(r)));
@@ -451,7 +564,9 @@ async function saveRule() {
     if (selectedComp.value?.pageCode && selectedComp.value?.componentKey) {
       await loadRules(selectedComp.value.pageCode, selectedComp.value.componentKey);
     }
-  } catch { message.error('保存失败'); }
+  } catch {
+    message.error('保存失败');
+  }
 }
 
 async function removeRule() {
@@ -466,7 +581,9 @@ async function removeRule() {
     if (selectedComp.value?.pageCode && selectedComp.value?.componentKey) {
       await loadRules(selectedComp.value.pageCode, selectedComp.value.componentKey);
     }
-  } catch { message.error('删除失败'); }
+  } catch {
+    message.error('删除失败');
+  }
 }
 
 function markDirty(event: CellValueChangedEvent) {
@@ -504,9 +621,7 @@ function getContextMenuItems(params: GetContextMenuItemsParams) {
   const row = params.node?.data;
   const pageCode = row?.pageCode;
   if (!pageCode) return [];
-  return [
-    { name: '跳转到 表管理', action: () => navigateTo('table', pageCode) }
-  ];
+  return [{ name: '跳转到 表管理', action: () => navigateTo('table', pageCode) }];
 }
 
 onMounted(() => {
@@ -515,15 +630,21 @@ onMounted(() => {
 });
 
 // 从目录管理跳转过来时，按 pageCode 过滤组件
-watch(() => filterState?.value, async (state) => {
-  if (!state || state.tab !== 'page') return;
-  const pageCode = state.pageCode;
-  try {
-    const res = await fetchAllPageComponents();
-    compRows.value = (res || []).filter((r: any) => r.componentType !== 'LAYOUT' && r.pageCode === pageCode);
-    setTimeout(() => compGridApi.value?.autoSizeAllColumns(), 100);
-  } catch { message.error('加载页面组件失败'); }
-}, { immediate: true });
+watch(
+  () => filterState?.value,
+  async state => {
+    if (!state || state.tab !== 'page') return;
+    const pageCode = state.pageCode;
+    try {
+      const res = await fetchAllPageComponents();
+      compRows.value = (res || []).filter((r: any) => r.componentType !== 'LAYOUT' && r.pageCode === pageCode);
+      setTimeout(() => compGridApi.value?.autoSizeAllColumns(), 100);
+    } catch {
+      message.error('加载页面组件失败');
+    }
+  },
+  { immediate: true }
+);
 </script>
 
 <template>
@@ -547,13 +668,13 @@ watch(() => filterState?.value, async (state) => {
         <AgGridVue
           class="ag-theme-quartz"
           style="width: 100%; height: 100%"
-          :rowData="compRows"
-          :columnDefs="compColDefs"
-          :defaultColDef="defaultColDef"
-          :suppressScrollOnNewData="true"
-          :rowSelection="{ mode: 'singleRow', checkboxes: false }"
-          :cellSelection="true"
-          :getContextMenuItems="getContextMenuItems"
+          :row-data="compRows"
+          :column-defs="compColDefs"
+          :default-col-def="defaultColDef"
+          :suppress-scroll-on-new-data="true"
+          :row-selection="{ mode: 'singleRow', checkboxes: false }"
+          :cell-selection="true"
+          :get-context-menu-items="getContextMenuItems"
           @grid-ready="onCompGridReady"
           @selection-changed="onCompSelectionChanged"
           @row-clicked="onCompRowClicked"
@@ -569,7 +690,9 @@ watch(() => filterState?.value, async (state) => {
     <div class="section" style="flex: 1">
       <div class="section-toolbar">
         <NSpace size="small">
-          <NButton size="small" type="primary" @click="addRule" :disabled="!selectedComp?.id && !selectedComp?._isNew">新增规则</NButton>
+          <NButton size="small" type="primary" :disabled="!selectedComp?.id && !selectedComp?._isNew" @click="addRule">
+            新增规则
+          </NButton>
           <NPopconfirm @positive-click="removeRule">
             <template #trigger>
               <NButton size="small" type="error" :disabled="!selectedRule">删除规则</NButton>
@@ -583,12 +706,12 @@ watch(() => filterState?.value, async (state) => {
         <AgGridVue
           class="ag-theme-quartz"
           style="width: 100%; height: 100%"
-          :rowData="ruleRows"
-          :columnDefs="ruleColDefs"
-          :defaultColDef="defaultColDef"
-          :suppressScrollOnNewData="true"
-          :rowSelection="{ mode: 'singleRow', checkboxes: false }"
-          :cellSelection="true"
+          :row-data="ruleRows"
+          :column-defs="ruleColDefs"
+          :default-col-def="defaultColDef"
+          :suppress-scroll-on-new-data="true"
+          :row-selection="{ mode: 'singleRow', checkboxes: false }"
+          :cell-selection="true"
           @grid-ready="onRuleGridReady"
           @selection-changed="onRuleSelectionChanged"
           @row-clicked="onRuleRowClicked"
@@ -599,54 +722,54 @@ watch(() => filterState?.value, async (state) => {
     <!-- 按钮配置弹窗 -->
     <ButtonConfigDialog
       v-model:show="btnDialogShow"
-      :componentConfig="btnDialogConfig"
-      :componentKey="btnDialogCompKey"
-      :compRow="btnDialogTargetRow"
+      :component-config="btnDialogConfig"
+      :component-key="btnDialogCompKey"
+      :comp-row="btnDialogTargetRow"
       @save="onBtnConfigSave"
     />
     <!-- 列覆盖配置弹窗 -->
     <ColumnOverrideDialog
       v-model:show="colOverrideShow"
-      :rulesJson="colOverrideJson"
-      :pageCode="colOverridePageCode"
-      :componentKey="colOverrideCompKey"
-      :ruleRow="colOverrideTargetRow"
+      :rules-json="colOverrideJson"
+      :page-code="colOverridePageCode"
+      :component-key="colOverrideCompKey"
+      :rule-row="colOverrideTargetRow"
       @save="onColOverrideSave"
     />
     <!-- 表格选项配置弹窗 -->
     <GridOptionsDialog
       v-model:show="gridOptionsShow"
-      :rulesJson="gridOptionsJson"
-      :componentKey="gridOptionsCompKey"
-      :ruleRow="gridOptionsTargetRow"
+      :rules-json="gridOptionsJson"
+      :component-key="gridOptionsCompKey"
+      :rule-row="gridOptionsTargetRow"
       @save="onGridOptionsSave"
     />
     <!-- Grid 样式规则弹窗 -->
     <GridStyleDialog
       v-model:show="gridStyleShow"
-      :rulesJson="gridStyleJson"
-      :pageCode="gridStylePageCode"
-      :componentKey="gridStyleCompKey"
-      :ruleRow="gridStyleTargetRow"
+      :rules-json="gridStyleJson"
+      :page-code="gridStylePageCode"
+      :component-key="gridStyleCompKey"
+      :rule-row="gridStyleTargetRow"
       @save="onGridStyleSave"
     />
     <!-- 规则可视化配置弹窗 (CALC / AGGREGATE / VALIDATION) -->
     <RuleConfigDialog
       v-model:show="ruleConfigShow"
-      :rulesJson="ruleConfigJson"
-      :ruleType="ruleConfigType"
-      :pageCode="ruleConfigPageCode"
-      :componentKey="ruleConfigCompKey"
-      :ruleRow="ruleConfigTargetRow"
+      :rules-json="ruleConfigJson"
+      :rule-type="ruleConfigType"
+      :page-code="ruleConfigPageCode"
+      :component-key="ruleConfigCompKey"
+      :rule-row="ruleConfigTargetRow"
       @save="onRuleConfigSave"
     />
     <!-- 单元格可编辑规则弹窗 -->
     <CellEditableDialog
       v-model:show="cellEditableShow"
-      :rulesJson="cellEditableJson"
-      :pageCode="cellEditablePageCode"
-      :componentKey="cellEditableCompKey"
-      :ruleRow="cellEditableTargetRow"
+      :rules-json="cellEditableJson"
+      :page-code="cellEditablePageCode"
+      :component-key="cellEditableCompKey"
+      :rule-row="cellEditableTargetRow"
       @save="onCellEditableSave"
     />
   </div>

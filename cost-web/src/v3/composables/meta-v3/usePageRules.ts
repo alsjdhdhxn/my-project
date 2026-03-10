@@ -1,23 +1,23 @@
 import type { ColDef } from 'ag-grid-community';
-import type { AggRule, CalcRule, ValidationRule, NestedConfig } from '@/v3/logic/calc-engine';
 import type { LookupRule } from '@/composables/useMetaColumns';
+import type { AggRule, CalcRule, NestedConfig, ValidationRule } from '@/v3/logic/calc-engine';
 import type {
-  PageRule,
-  PageComponentWithRules,
-  ColumnOverrideRule,
-  GridOptionsRule,
-  LookupRuleConfig,
-  RoleBindingRule,
-  RelationRule,
-  ButtonRule,
   ButtonItemRule,
-  ContextMenuRule,
-  RowEditableRule,
-  RowClassRule,
-  GridStyleRule,
-  ToolbarRule,
+  ButtonRule,
+  CellEditableCondition,
   CellEditableRule,
-  CellEditableCondition
+  ColumnOverrideRule,
+  ContextMenuRule,
+  GridOptionsRule,
+  GridStyleRule,
+  LookupRuleConfig,
+  PageComponentWithRules,
+  PageRule,
+  RelationRule,
+  RoleBindingRule,
+  RowClassRule,
+  RowEditableRule,
+  ToolbarRule
 } from '@/v3/composables/meta-v3/types';
 
 export function collectPageRules(components: PageComponentWithRules[]): PageRule[] {
@@ -51,10 +51,7 @@ export function groupRulesByComponent(rules: PageRule[]): Map<string, PageRule[]
   return map;
 }
 
-export function getComponentRules(
-  rulesByComponent: Map<string, PageRule[]>,
-  componentKeys: string[]
-): PageRule[] {
+export function getComponentRules(rulesByComponent: Map<string, PageRule[]>, componentKeys: string[]): PageRule[] {
   for (const key of componentKeys) {
     const rules = rulesByComponent.get(key);
     if (rules && rules.length > 0) return rules;
@@ -119,15 +116,15 @@ export function parseValidationRuleConfig(componentKey: string, rules: PageRule[
 
 /**
  * 解析 Lookup 弹窗规则配置
- * 
+ *
  * 筛选相关字段说明：
  * - filterField: 从"当前行数据"取哪个字段的值作为筛选值
  *   生效场景：filterValueFrom 没写或为 'row'
  *   例：filterField: "id" → 用当前行的 rowData.id 作为筛选值
- * 
+ *
  * - filterColumn: 弹窗数据源里要过滤的列名（SQL 中的列名）
  *   例：filterColumn: "GOODSID" → 最终会拼成 AND GOODSID = <filterValue>
- * 
+ *
  * - filterValueFrom: 筛选值来源
  *   'row': 用 rowData[filterField]
  *   'cell': 用你点击的单元格的值（不需要 filterField）
@@ -197,9 +194,10 @@ export function parseBroadcastRuleConfig(componentKey: string, rules: PageRule[]
     if (directList) return directList;
     if (raw && typeof raw === 'object') {
       const obj = raw as { fields?: unknown; broadcast?: unknown; broadcastFields?: unknown };
-      const list = normalizeStringList(obj.fields)
-        || normalizeStringList(obj.broadcast)
-        || normalizeStringList(obj.broadcastFields);
+      const list =
+        normalizeStringList(obj.fields) ||
+        normalizeStringList(obj.broadcast) ||
+        normalizeStringList(obj.broadcastFields);
       if (list) return list;
     }
     console.warn(`[PageRule] ${componentKey}.BROADCAST is not a string array`);
@@ -264,11 +262,11 @@ function parseComponentConfigButtons(componentConfig?: string): ButtonItemRule[]
 export function parseButtonRule(componentKey: string, rules: PageRule[], componentConfig?: string): ButtonRule | null {
   // 优先从 componentConfig.buttons 读取
   const buttons = parseComponentConfigButtons(componentConfig);
-  
+
   if (buttons && buttons.length > 0) {
     return { items: buttons };
   }
-  
+
   // 从 rules 中读取 BUTTON 类型
   const rule = getRuleByType(rules, 'BUTTON');
   if (!rule?.rules) return null;
@@ -296,7 +294,7 @@ export function parseButtonRule(componentKey: string, rules: PageRule[], compone
  */
 function filterButtonsByPosition(items: ButtonItemRule[], position: 'context' | 'toolbar'): ButtonItemRule[] {
   const result: ButtonItemRule[] = [];
-  
+
   for (const item of items) {
     // separator 只在右键菜单中保留，工具栏不需要
     if (item.type === 'separator') {
@@ -305,11 +303,11 @@ function filterButtonsByPosition(items: ButtonItemRule[], position: 'context' | 
       }
       continue;
     }
-    
+
     // 检查 position
     const pos = item.position || 'context'; // 默认是 context
     if (pos !== position && pos !== 'both') continue;
-    
+
     // 递归处理子菜单
     if (item.items && item.items.length > 0) {
       const subItems = filterButtonsByPosition(item.items, position);
@@ -320,14 +318,18 @@ function filterButtonsByPosition(items: ButtonItemRule[], position: 'context' | 
       result.push(item);
     }
   }
-  
+
   return result;
 }
 
 /**
  * 解析右键菜单规则（从按钮配置中提取 position='context' 的按钮）
  */
-export function parseContextMenuRule(componentKey: string, rules: PageRule[], componentConfig?: string): ContextMenuRule | null {
+export function parseContextMenuRule(
+  componentKey: string,
+  rules: PageRule[],
+  componentConfig?: string
+): ContextMenuRule | null {
   const buttonRule = parseButtonRule(componentKey, rules, componentConfig);
   if (!buttonRule) return null;
   const contextItems = filterButtonsByPosition(buttonRule.items, 'context');
@@ -387,12 +389,14 @@ export function applyColumnOverrides(
         // 纯值模式：values 可能是数组或逗号分隔字符串
         const values = Array.isArray(params.values)
           ? params.values
-          : typeof params.values === 'string' ? params.values.split(',').map((v: string) => v.trim()) : [];
+          : typeof params.values === 'string'
+            ? params.values.split(',').map((v: string) => v.trim())
+            : [];
         updated.cellEditorParams = { values };
       } else if (params.mode === 'ref') {
         // 关联查询模式：后端已通过 LEFT JOIN 返回 xxxLabel 字段
         // valueFormatter 展示 label，实际值还是原字段
-        const labelField = field + 'Label';
+        const labelField = `${field}Label`;
         updated.valueFormatter = (p: any) => {
           if (p.data && p.data[labelField] != null) return p.data[labelField];
           return p.value ?? '';
@@ -417,7 +421,7 @@ export function applyColumnOverrides(
         const num = Number(val);
         if (!Number.isFinite(num)) return String(val);
         let rounded: number;
-        const factor = Math.pow(10, precision);
+        const factor = 10 ** precision;
         switch (roundMode) {
           case 'ceil':
             rounded = Math.ceil(num * factor) / factor;
@@ -480,46 +484,46 @@ function createCompareRenderer(field: string, config: CompareRendererConfig) {
   return (params: any) => {
     const value = params.value;
     const data = params.data;
-    
+
     if (value == null) return '';
-    
+
     // 获取对比值
     const compareValue = data?.[config.compareField];
-    
+
     // 没有对比数据，直接显示当前值
     if (compareValue == null) {
       return String(value);
     }
-    
+
     // 计算差值
     const current = Number(value);
     const compare = Number(compareValue);
     if (isNaN(current) || isNaN(compare)) {
       return String(value);
     }
-    
+
     const diff = current - compare;
     const diffPercent = compare !== 0 ? (diff / compare) * 100 : 0;
-    
+
     // 没有变化
     if (diff === 0) {
       return String(value);
     }
-    
+
     // 构建差值显示
     const isUp = diff > 0;
     const arrow = isUp ? '↑' : '↓';
     const color = isUp ? config.upColor : config.downColor;
-    
+
     let diffText = '';
     if (config.format === 'value' || config.format === 'both') {
       diffText = Math.abs(diff).toFixed(2);
     }
     if ((config.format === 'percent' || config.format === 'both') && diffPercent !== 0) {
-      const percentText = Math.abs(diffPercent).toFixed(1) + '%';
+      const percentText = `${Math.abs(diffPercent).toFixed(1)}%`;
       diffText = config.format === 'both' ? `${diffText} (${percentText})` : percentText;
     }
-    
+
     return `<span>${value}</span><span style="color:${color};font-size:11px;margin-left:4px">${arrow}${diffText}</span>`;
   };
 }
@@ -644,7 +648,7 @@ export function buildCellEditableCallback(
   if ((!cellRules || cellRules.length === 0) && (!rowRules || rowRules.length === 0)) {
     return undefined;
   }
-  
+
   const rowCallback = buildRowEditableCallback(rowRules || []);
 
   // 收集所有被 CELL_EDITABLE 规则管控的字段
@@ -654,16 +658,16 @@ export function buildCellEditableCallback(
       for (const f of rule.editableFields) controlledFields.add(f);
     }
   }
-  
+
   return (params: any) => {
     const data = params.data;
     const field = params.colDef?.field;
-    
+
     if (!data) return true;
-    
+
     // 新增行始终可编辑
     if (data._isNew) return true;
-    
+
     // 检查 CELL_EDITABLE 规则
     if (cellRules && cellRules.length > 0) {
       for (const rule of cellRules) {
@@ -676,12 +680,12 @@ export function buildCellEditableCallback(
         return false;
       }
     }
-    
+
     // 没有匹配的 CELL_EDITABLE 规则，使用 ROW_EDITABLE 规则
     if (rowCallback) {
       return rowCallback(params);
     }
-    
+
     return true;
   };
 }
@@ -711,12 +715,18 @@ export function parseRowClassRule(componentKey: string, rules: PageRule[]): Grid
 function matchCondition(data: any, rule: GridStyleRule): boolean {
   const fieldValue = data[rule.field];
   switch (rule.operator) {
-    case 'notNull': return fieldValue != null;
-    case 'eq': return fieldValue === rule.value;
-    case 'ne': return fieldValue !== rule.value;
-    case 'in': return Array.isArray(rule.value) && rule.value.includes(fieldValue);
-    case 'notIn': return !Array.isArray(rule.value) || !rule.value.includes(fieldValue);
-    default: return false;
+    case 'notNull':
+      return fieldValue != null;
+    case 'eq':
+      return fieldValue === rule.value;
+    case 'ne':
+      return fieldValue !== rule.value;
+    case 'in':
+      return Array.isArray(rule.value) && rule.value.includes(fieldValue);
+    case 'notIn':
+      return !Array.isArray(rule.value) || !rule.value.includes(fieldValue);
+    default:
+      return false;
   }
 }
 
@@ -739,11 +749,13 @@ export function buildRowClassCallback(rules: GridStyleRule[]): ((params: any) =>
 }
 
 /** 根据 GRID_STYLE 规则生成 getRowStyle 回调（scope=row 或无 scope 的规则） */
-export function buildRowStyleCallback(rules: GridStyleRule[]): ((params: any) => Record<string, string> | undefined) | undefined {
+export function buildRowStyleCallback(
+  rules: GridStyleRule[]
+): ((params: any) => Record<string, string> | undefined) | undefined {
   if (!rules || rules.length === 0) return undefined;
   const rowRules = rules.filter(r => r.style && (!r.scope || r.scope === 'row'));
   if (rowRules.length === 0) return undefined;
-  
+
   return (params: any) => {
     const data = params.data;
     if (!data) return undefined;
@@ -762,10 +774,12 @@ export function buildRowStyleCallback(rules: GridStyleRule[]): ((params: any) =>
 }
 
 /** 根据 GRID_STYLE 规则生成单元格级 cellStyle 回调（scope=cell 的规则） */
-export function buildCellStyleRules(rules: GridStyleRule[]): Map<string, (params: any) => Record<string, string> | undefined> {
+export function buildCellStyleRules(
+  rules: GridStyleRule[]
+): Map<string, (params: any) => Record<string, string> | undefined> {
   const result = new Map<string, (params: any) => Record<string, string> | undefined>();
   if (!rules || rules.length === 0) return result;
-  
+
   const cellRules = rules.filter(r => r.style && r.scope === 'cell' && r.targetFields?.length);
   if (cellRules.length === 0) return result;
 
@@ -816,7 +830,11 @@ export function applyCellStyleRules(columns: ColDef[], rules: GridStyleRule[]): 
 /**
  * 解析工具栏规则（从按钮配置中提取 position='toolbar' 的按钮）
  */
-export function parseToolbarRule(componentKey: string, rules: PageRule[], componentConfig?: string): ToolbarRule | null {
+export function parseToolbarRule(
+  componentKey: string,
+  rules: PageRule[],
+  componentConfig?: string
+): ToolbarRule | null {
   const buttonRule = parseButtonRule(componentKey, rules, componentConfig);
   if (!buttonRule) return null;
   const toolbarItems = filterButtonsByPosition(buttonRule.items, 'toolbar');
@@ -826,9 +844,7 @@ export function parseToolbarRule(componentKey: string, rules: PageRule[], compon
 /** 从 COLUMN_OVERRIDE 中提取需要求和的字段列表 */
 export function extractSumFields(overrides: ColumnOverrideRule[]): string[] {
   if (!overrides || overrides.length === 0) return [];
-  return overrides
-    .filter(o => o.aggFunc === 'sum' && o.columnName)
-    .map(o => o.columnName!);
+  return overrides.filter(o => o.aggFunc === 'sum' && o.columnName).map(o => o.columnName!);
 }
 
 /** 根据数据行计算求和汇总行（用于 pinnedBottomRowData） */

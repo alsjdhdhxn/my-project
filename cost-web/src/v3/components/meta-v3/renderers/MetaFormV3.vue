@@ -1,20 +1,3 @@
-<template>
-  <div class="meta-form">
-    <div v-if="status === 'error'" class="meta-form-error">
-      {{ errorMessage }}
-    </div>
-    <component
-      v-else-if="customRenderer"
-      :is="customRenderer"
-      :component="component"
-      :runtime="runtime"
-    />
-    <div v-else class="meta-form-placeholder">
-      {{ placeholder }}
-    </div>
-  </div>
-</template>
-
 <script setup lang="ts">
 import { computed, unref } from 'vue';
 import type { PageComponentWithRules } from '@/v3/composables/meta-v3/types';
@@ -34,10 +17,24 @@ function resolveComponentState(): Record<string, any> {
 
 const state = computed(() => resolveComponentState());
 const customRenderer = computed(() => unref(state.value.renderer));
-const placeholder = computed(() => unref(state.value.placeholder) || `Form \"${props.component.componentKey}\" not configured`);
+const placeholder = computed(
+  () => unref(state.value.placeholder) || `Form \"${props.component.componentKey}\" not configured`
+);
 const status = computed(() => state.value.status || 'ready');
 const errorMessage = computed(() => state.value.error?.message || 'Form render failed');
 </script>
+
+<template>
+  <div class="meta-form">
+    <div v-if="status === 'error'" class="meta-form-error">
+      {{ errorMessage }}
+    </div>
+    <component :is="customRenderer" v-else-if="customRenderer" :component="component" :runtime="runtime" />
+    <div v-else class="meta-form-placeholder">
+      {{ placeholder }}
+    </div>
+  </div>
+</template>
 
 <style scoped>
 .meta-form {

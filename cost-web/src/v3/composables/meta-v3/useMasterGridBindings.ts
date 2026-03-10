@@ -1,15 +1,21 @@
-﻿import { ref, type Ref, watch } from 'vue';
-import type { ColDef, GridReadyEvent, CellValueChangedEvent } from 'ag-grid-community';
+import { type Ref, ref, watch } from 'vue';
+import type { CellValueChangedEvent, ColDef, GridReadyEvent } from 'ag-grid-community';
+import type { CustomExportConfig } from '@/service/api/export-config';
 import { useGridContextMenu } from '@/v3/composables/meta-v3/useGridContextMenu';
-import type { ContextMenuRule, RowEditableRule, RowClassRule, CellEditableRule } from '@/v3/composables/meta-v3/types';
-import { buildRowEditableCallback, buildRowClassCallback, buildRowStyleCallback, buildCellEditableCallback, computeSumRow } from '@/v3/composables/meta-v3/usePageRules';
+import type { CellEditableRule, ContextMenuRule, RowClassRule, RowEditableRule } from '@/v3/composables/meta-v3/types';
 import {
-  buildGridRuntimeOptions,
+  buildCellEditableCallback,
+  buildRowClassCallback,
+  buildRowEditableCallback,
+  buildRowStyleCallback,
+  computeSumRow
+} from '@/v3/composables/meta-v3/usePageRules';
+import {
+  type ResolvedGridOptions,
   autoSizeColumnsOnReady,
-  type ResolvedGridOptions
+  buildGridRuntimeOptions
 } from '@/v3/composables/meta-v3/grid-options';
 import { DIRTY_CELL_CLASS_RULES, isFlagTrue } from '@/v3/composables/meta-v3/cell-style';
-import type { CustomExportConfig } from '@/service/api/export-config';
 import { ensureRowKey } from '@/v3/logic/calc-engine';
 
 // 用于追踪已包装 editable 的列定义
@@ -30,7 +36,10 @@ type RuntimeApi = {
   applyGridConfig?: (gridKey: string, api: any, columnApi: any) => void;
   customExportConfigs?: Ref<CustomExportConfig[]> | CustomExportConfig[];
   executeCustomExport?: (exportCode: string, mode: 'all' | 'current') => void;
-  executeAction?: (actionCode: string, options?: { data?: Record<string, any>; selectedRow?: Record<string, any> | null }) => Promise<void>;
+  executeAction?: (
+    actionCode: string,
+    options?: { data?: Record<string, any>; selectedRow?: Record<string, any> | null }
+  ) => Promise<void>;
   markFieldChange?: (row: any, field: string, oldValue: any, newValue: any, type: 'user' | 'calc') => void;
   runMasterCalc?: (node: any, row: any, valueOverrides?: Record<string, any>) => string[] | void;
   broadcastToDetail?: (masterId: number, row: any, changedFields?: string | string[]) => Promise<void> | void;
@@ -66,10 +75,8 @@ export function useMasterGridBindings(params: {
   let _cachedEditableCallback: ((params: any) => boolean) | undefined;
 
   function getEditableCallback(): ((params: any) => boolean) | undefined {
-    const cellRules = (runtime as any).masterCellEditableRules?.value
-      ?? params.cellEditableRules ?? [];
-    const rowRules = (runtime as any).masterRowEditableRules?.value
-      ?? params.rowEditableRules ?? [];
+    const cellRules = (runtime as any).masterCellEditableRules?.value ?? params.cellEditableRules ?? [];
+    const rowRules = (runtime as any).masterRowEditableRules?.value ?? params.rowEditableRules ?? [];
     // 规则引用没变就复用缓存
     if (cellRules === _cachedCellRules && rowRules === _cachedRowRules) {
       return _cachedEditableCallback;
@@ -110,7 +117,7 @@ export function useMasterGridBindings(params: {
     if (!def || wrappedEditableColumns.has(def)) return;
     const existing = def.editable;
     def.editable = (params: any) => {
-      const base = typeof existing === 'function' ? existing(params) : existing === false ? false : true;
+      const base = typeof existing === 'function' ? existing(params) : existing !== false;
       // 动态获取最新的 editable 回调，确保 WebSocket 推送后规则立即生效
       const cb = getEditableCallback();
       if (cb) return base && cb(params);
@@ -123,7 +130,7 @@ export function useMasterGridBindings(params: {
   if (params.columnDefs) {
     watch(
       params.columnDefs,
-      (defs) => {
+      defs => {
         if (!Array.isArray(defs)) return;
         defs.forEach(def => wrapColumnEditable(def));
       },
@@ -156,8 +163,7 @@ export function useMasterGridBindings(params: {
   let _cachedRowStyleCallback: ((params: any) => Record<string, string> | undefined) | undefined;
 
   function getLatestRowClassCallback() {
-    const rules = (runtime as any).masterRowClassRules?.value
-      ?? params.rowClassRules ?? [];
+    const rules = (runtime as any).masterRowClassRules?.value ?? params.rowClassRules ?? [];
     if (rules === _cachedStyleRules) return _cachedRowClassCallback;
     _cachedStyleRules = rules;
     _cachedRowClassCallback = buildRowClassCallback(rules);
@@ -166,8 +172,7 @@ export function useMasterGridBindings(params: {
   }
 
   function getLatestRowStyleCallback() {
-    const rules = (runtime as any).masterRowClassRules?.value
-      ?? params.rowClassRules ?? [];
+    const rules = (runtime as any).masterRowClassRules?.value ?? params.rowClassRules ?? [];
     if (rules !== _cachedStyleRules) {
       _cachedStyleRules = rules;
       _cachedRowClassCallback = buildRowClassCallback(rules);
@@ -211,18 +216,18 @@ export function useMasterGridBindings(params: {
     return getLatestRowStyleCallback()?.(params);
   }
 
-  const resolveGridKey = (key?: string | null) => key && key.trim().length > 0 ? key : 'masterGrid';
+  const resolveGridKey = (key?: string | null) => (key && key.trim().length > 0 ? key : 'masterGrid');
   const runtimeMasterKey = (runtime as any).masterGridKey?.value ?? (runtime as any).masterGridKey;
   const masterGridKey = resolveGridKey(params.gridKey ?? runtimeMasterKey);
 
   const { getMasterContextMenuItems } = useGridContextMenu({
-    addMasterRow: runtime.addMasterRow || (() => { }),
-    deleteMasterRow: runtime.deleteMasterRow || (() => { }),
-    copyMasterRow: runtime.copyMasterRow || (() => { }),
-    addDetailRow: runtime.addDetailRow || (() => { }),
-    deleteDetailRow: runtime.deleteDetailRow || (() => { }),
-    copyDetailRow: runtime.copyDetailRow || (() => { }),
-    save: runtime.save || (() => { }),
+    addMasterRow: runtime.addMasterRow || (() => {}),
+    deleteMasterRow: runtime.deleteMasterRow || (() => {}),
+    copyMasterRow: runtime.copyMasterRow || (() => {}),
+    addDetailRow: runtime.addDetailRow || (() => {}),
+    deleteDetailRow: runtime.deleteDetailRow || (() => {}),
+    copyDetailRow: runtime.copyDetailRow || (() => {}),
+    save: runtime.save || (() => {}),
     saveGridConfig: (runtime as any).saveGridConfig,
     customExportConfigs: runtime.customExportConfigs,
     executeCustomExport: runtime.executeCustomExport,

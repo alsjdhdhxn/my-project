@@ -1,4 +1,4 @@
-﻿import { fetchUserGridConfig, saveUserGridConfig } from '@/service/api';
+import { fetchUserGridConfig, saveUserGridConfig } from '@/service/api';
 
 type NotifyFn = (message: string) => void;
 
@@ -77,9 +77,7 @@ function buildColumnDefLookup(columnDefs: any[]) {
 function normalizeColumns(source: any[], columnDefs: any[] = []): ColumnPreference[] {
   const result: ColumnPreference[] = [];
   const columnDefByField = new Map(
-    columnDefs
-      .map(def => [getRuntimeColumnName(def), def] as const)
-      .filter(([columnName]) => Boolean(columnName))
+    columnDefs.map(def => [getRuntimeColumnName(def), def] as const).filter(([columnName]) => Boolean(columnName))
   );
   source.forEach((col: any, index: number) => {
     const columnName = getRuntimeColumnName(col);
@@ -125,14 +123,10 @@ function resolveGridKey(key: string | null | undefined) {
   return key && key.trim().length > 0 ? key : 'masterGrid';
 }
 
-export function useUserGridConfig(params: {
-  pageCode: string;
-  notifyError: NotifyFn;
-  notifySuccess: NotifyFn;
-}) {
+export function useUserGridConfig(params: { pageCode: string; notifyError: NotifyFn; notifySuccess: NotifyFn }) {
   const { pageCode, notifyError, notifySuccess } = params;
   const cache = new Map<string, GridConfigPayload | null>();
-  
+
   // 存储所有已注册的 grid API 引用
   const gridApiRefs = new Map<string, GridApiRef>();
 
@@ -196,7 +190,9 @@ export function useUserGridConfig(params: {
     applyFn.call(api?.applyColumnState ? api : colApi, {
       state: payload.columns
         .map((col, index) => {
-          const def = currentDefsByIdentity.get(getPreferenceKey(col) || '') ?? currentDefsByIdentity.get(`column:${col.columnName}`);
+          const def =
+            currentDefsByIdentity.get(getPreferenceKey(col) || '') ??
+            currentDefsByIdentity.get(`column:${col.columnName}`);
           const runtimeField = getRuntimeColumnName(def);
           if (!runtimeField) return null;
           return {
@@ -212,7 +208,7 @@ export function useUserGridConfig(params: {
         .filter((col): col is NonNullable<typeof col> => Boolean(col)),
       applyOrder: true
     });
-    
+
     // 注册 grid API 引用
     const resolvedKey = resolveGridKey(gridKey);
     gridApiRefs.set(resolvedKey, { gridKey: resolvedKey, api, columnApi });
@@ -237,25 +233,25 @@ export function useUserGridConfig(params: {
     }
 
     cache.set(resolvedKey, payload);
-    
+
     // 更新 grid API 引用
     gridApiRefs.set(resolvedKey, { gridKey: resolvedKey, api, columnApi });
-    
+
     // 保存所有已注册的 grid 配置
     await saveAllGridConfigs(resolvedKey);
   }
-  
+
   /** 保存所有已注册的 grid 配置（排除触发源，因为已经保存过了） */
   async function saveAllGridConfigs(excludeKey?: string) {
     const promises: Promise<void>[] = [];
-    
+
     for (const [key, ref] of gridApiRefs.entries()) {
       if (key === excludeKey) continue; // 跳过已保存的
-      
+
       const colApi = ref.columnApi ?? ref.api?.columnApi ?? ref.api?.getColumnApi?.();
       const state = ref.api?.getColumnState?.() ?? colApi?.getColumnState?.();
       if (!state || !Array.isArray(state)) continue;
-      
+
       const currentDefs = (ref.api?.getColumnDefs?.() ?? []) as Array<any>;
       const payload: GridConfigPayload = { columns: normalizeColumns(state, currentDefs) };
       promises.push(
@@ -266,14 +262,14 @@ export function useUserGridConfig(params: {
         })
       );
     }
-    
+
     if (promises.length > 0) {
       await Promise.all(promises);
     }
-    
+
     notifySuccess('列配置已保存');
   }
-  
+
   /** 注册 grid API 引用（用于批量保存） */
   function registerGridApi(gridKey: string | null | undefined, api: any, columnApi?: any) {
     const resolvedKey = resolveGridKey(gridKey);
@@ -286,4 +282,3 @@ export function useUserGridConfig(params: {
     registerGridApi
   };
 }
-

@@ -1,60 +1,8 @@
-<template>
-  <NModal v-model:show="visible" :mask-closable="true" :close-on-esc="true">
-    <div ref="dialogRef" class="batch-select-dialog" :style="dialogStyle">
-      <!-- 标题栏（可拖拽） -->
-      <div class="dialog-header" @mousedown="startDrag">
-        <span class="dialog-title">{{ dialogTitle }}</span>
-        <NButton quaternary circle size="small" @click="handleCancel">
-          <template #icon><SvgIcon icon="mdi:close" /></template>
-        </NButton>
-      </div>
-
-      <!-- 内容区 -->
-      <div class="dialog-body">
-        <div class="dialog-search">
-          <NInput v-model:value="searchText" placeholder="输入关键字搜索" clearable @keyup.enter="handleSearch">
-            <template #prefix><SvgIcon icon="mdi:magnify" class="text-icon" /></template>
-          </NInput>
-        </div>
-        <div class="dialog-grid" :style="{ height: gridHeight + 'px' }">
-          <AgGridVue
-            class="ag-theme-quartz"
-            style="width: 100%; height: 100%"
-            :rowData="rowData"
-            :columnDefs="columnDefs"
-            :defaultColDef="defaultColDef"
-            :rowSelection="rowSelection"
-            :getRowId="getRowId"
-            @grid-ready="onGridReady"
-            @row-double-clicked="onRowDoubleClicked"
-          />
-        </div>
-        <div class="dialog-info">
-          <span>已选择 {{ selectedCount }} 条数据</span>
-        </div>
-      </div>
-
-      <!-- 底部按钮 -->
-      <div class="dialog-footer">
-        <NSpace justify="end">
-          <NButton @click="handleCancel">取消</NButton>
-          <NButton type="primary" :disabled="selectedCount === 0" @click="handleConfirm">
-            确定添加 ({{ selectedCount }})
-          </NButton>
-        </NSpace>
-      </div>
-
-      <!-- 右下角拖拽调整大小手柄 -->
-      <div class="resize-handle" @mousedown.stop="startResize"></div>
-    </div>
-  </NModal>
-</template>
-
 <script setup lang="ts">
-import { ref, computed, watch, onUnmounted } from 'vue';
-import { NModal, NInput, NButton, NSpace } from 'naive-ui';
+import { computed, onUnmounted, ref, watch } from 'vue';
+import { NButton, NInput, NModal, NSpace } from 'naive-ui';
 import { AgGridVue } from 'ag-grid-vue3';
-import type { GridApi, ColDef, GridReadyEvent, RowDoubleClickedEvent } from 'ag-grid-community';
+import type { ColDef, GridApi, GridReadyEvent, RowDoubleClickedEvent } from 'ag-grid-community';
 import { fetchLookupConfig } from '@/service/api';
 import { request } from '@/service/request';
 import SvgIcon from '@/components/custom/svg-icon.vue';
@@ -105,7 +53,9 @@ const startWidth = ref(0);
 const startHeight = ref(0);
 
 function normalizeColumnName(name?: string | null): string {
-  return String(name || '').trim().toUpperCase();
+  return String(name || '')
+    .trim()
+    .toUpperCase();
 }
 
 const dialogTitle = computed(() => currentConfig.value?.title || config.value?.lookupName || '选择数据');
@@ -187,7 +137,10 @@ function startResize(e: MouseEvent) {
 function onResize(e: MouseEvent) {
   if (!isResizing.value) return;
   dialogWidth.value = Math.max(600, Math.min(startWidth.value + e.clientX - dragStartX.value, window.innerWidth - 100));
-  dialogHeight.value = Math.max(400, Math.min(startHeight.value + e.clientY - dragStartY.value, window.innerHeight - 100));
+  dialogHeight.value = Math.max(
+    400,
+    Math.min(startHeight.value + e.clientY - dragStartY.value, window.innerHeight - 100)
+  );
 }
 
 function stopResize() {
@@ -209,25 +162,25 @@ async function open(batchConfig: BatchSelectConfig, filterValue?: any) {
   searchText.value = '';
   dialogX.value = 0;
   dialogY.value = 0;
-  
+
   // 加载 lookup 配置
   const { data } = await fetchLookupConfig(batchConfig.lookupCode);
   if (data) config.value = data;
-  
+
   await loadData(filterValue);
 }
 
 async function loadData(filterValue?: any) {
   if (!config.value?.lookupCode) return;
-  
+
   const params: Record<string, any> = { page: 1, pageSize: 1000 };
-  
+
   const filterColumn = currentConfig.value?.filterColumn;
   if (filterColumn && filterValue != null) {
     params.filterColumn = filterColumn;
     params.filterValue = filterValue;
   }
-  
+
   const { data } = await request<{ list: Record<string, any>[] }>({
     url: `/api/lookup/${config.value.lookupCode}/data`,
     params
@@ -247,9 +200,9 @@ function handleCancel() {
 function handleConfirm() {
   const selectedRows = gridApi?.getSelectedRows() || [];
   if (selectedRows.length === 0) return;
-  
+
   const mapping = currentConfig.value?.mapping;
-  
+
   // 根据 mapping 转换数据，生成新行数据
   const newRows = selectedRows.map(row => {
     const newRow: Record<string, any> = {};
@@ -268,7 +221,7 @@ function handleConfirm() {
     }
     return newRow;
   });
-  
+
   visible.value = false;
   emit('select', newRows);
 }
@@ -278,7 +231,7 @@ function onGridReady(params: GridReadyEvent) {
   setTimeout(() => {
     gridApi?.autoSizeAllColumns();
   }, 100);
-  
+
   // 监听选择变化
   params.api.addEventListener('selectionChanged', () => {
     selectedCount.value = params.api.getSelectedRows().length;
@@ -311,11 +264,66 @@ onUnmounted(() => {
 defineExpose({ open, getConfig });
 </script>
 
+<template>
+  <NModal v-model:show="visible" :mask-closable="true" :close-on-esc="true">
+    <div ref="dialogRef" class="batch-select-dialog" :style="dialogStyle">
+      <!-- 标题栏（可拖拽） -->
+      <div class="dialog-header" @mousedown="startDrag">
+        <span class="dialog-title">{{ dialogTitle }}</span>
+        <NButton quaternary circle size="small" @click="handleCancel">
+          <template #icon><SvgIcon icon="mdi:close" /></template>
+        </NButton>
+      </div>
+
+      <!-- 内容区 -->
+      <div class="dialog-body">
+        <div class="dialog-search">
+          <NInput v-model:value="searchText" placeholder="输入关键字搜索" clearable @keyup.enter="handleSearch">
+            <template #prefix><SvgIcon icon="mdi:magnify" class="text-icon" /></template>
+          </NInput>
+        </div>
+        <div class="dialog-grid" :style="{ height: gridHeight + 'px' }">
+          <AgGridVue
+            class="ag-theme-quartz"
+            style="width: 100%; height: 100%"
+            :row-data="rowData"
+            :column-defs="columnDefs"
+            :default-col-def="defaultColDef"
+            :row-selection="rowSelection"
+            :get-row-id="getRowId"
+            @grid-ready="onGridReady"
+            @row-double-clicked="onRowDoubleClicked"
+          />
+        </div>
+        <div class="dialog-info">
+          <span>已选择 {{ selectedCount }} 条数据</span>
+        </div>
+      </div>
+
+      <!-- 底部按钮 -->
+      <div class="dialog-footer">
+        <NSpace justify="end">
+          <NButton @click="handleCancel">取消</NButton>
+          <NButton type="primary" :disabled="selectedCount === 0" @click="handleConfirm">
+            确定添加 ({{ selectedCount }})
+          </NButton>
+        </NSpace>
+      </div>
+
+      <!-- 右下角拖拽调整大小手柄 -->
+      <div class="resize-handle" @mousedown.stop="startResize"></div>
+    </div>
+  </NModal>
+</template>
+
 <style scoped>
 .batch-select-dialog {
   background: #fff;
   border-radius: 8px;
-  box-shadow: 0 6px 16px 0 rgba(0,0,0,0.08), 0 3px 6px -4px rgba(0,0,0,0.12), 0 9px 28px 8px rgba(0,0,0,0.05);
+  box-shadow:
+    0 6px 16px 0 rgba(0, 0, 0, 0.08),
+    0 3px 6px -4px rgba(0, 0, 0, 0.12),
+    0 9px 28px 8px rgba(0, 0, 0, 0.05);
   display: flex;
   flex-direction: column;
   position: relative;
@@ -377,11 +385,31 @@ defineExpose({ open, getConfig });
   width: 16px;
   height: 16px;
   cursor: se-resize;
-  background: linear-gradient(135deg, transparent 50%, #d9d9d9 50%, #d9d9d9 60%, transparent 60%, transparent 70%, #d9d9d9 70%, #d9d9d9 80%, transparent 80%);
+  background: linear-gradient(
+    135deg,
+    transparent 50%,
+    #d9d9d9 50%,
+    #d9d9d9 60%,
+    transparent 60%,
+    transparent 70%,
+    #d9d9d9 70%,
+    #d9d9d9 80%,
+    transparent 80%
+  );
   border-radius: 0 0 8px 0;
 }
 
 .resize-handle:hover {
-  background: linear-gradient(135deg, transparent 50%, #1890ff 50%, #1890ff 60%, transparent 60%, transparent 70%, #1890ff 70%, #1890ff 80%, transparent 80%);
+  background: linear-gradient(
+    135deg,
+    transparent 50%,
+    #1890ff 50%,
+    #1890ff 60%,
+    transparent 60%,
+    transparent 70%,
+    #1890ff 70%,
+    #1890ff 80%,
+    transparent 80%
+  );
 }
 </style>

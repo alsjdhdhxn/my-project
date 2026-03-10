@@ -1,10 +1,12 @@
 import { ref, shallowRef, watch } from 'vue';
 import type { GridApi } from 'ag-grid-community';
+import { executePageRuleAction } from '@/service/api/dynamic';
 import { useMetaConfig } from '@/v3/composables/meta-v3/useMetaConfig';
 import { useMasterDetailData } from '@/v3/composables/meta-v3/useMasterDetailData';
 import { useCalcBroadcast } from '@/v3/composables/meta-v3/useCalcBroadcast';
 import { useLookupDialog } from '@/v3/composables/meta-v3/useLookupDialog';
 import { useBatchSelect } from '@/v3/composables/meta-v3/useBatchSelect';
+import { useAdvancedSearch } from '@/v3/composables/meta-v3/useAdvancedSearch';
 import { useSave } from '@/v3/composables/meta-v3/useSave';
 import { useUserGridConfig } from '@/v3/composables/meta-v3/useUserGridConfig';
 import { useCustomExport } from '@/v3/composables/meta-v3/useCustomExport';
@@ -12,7 +14,6 @@ import { useMasterGridBindings } from '@/v3/composables/meta-v3/useMasterGridBin
 import { resolveFormRenderer } from '@/v3/composables/meta-v3/form-renderer-registry';
 import { buildCellEditableCallback } from '@/v3/composables/meta-v3/usePageRules';
 import { clearCalcCache } from '@/v3/logic/calc-engine';
-import { executePageRuleAction } from '@/service/api/dynamic';
 import { createRuntimeLogger } from './logger';
 import type { ComponentState, FormState, GridState, MetaError, RuntimeFeatures, RuntimeStage } from './types';
 
@@ -165,7 +166,6 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
   const detailGridApisByTab = ref<Record<string, any>>({});
   const activeMasterRowKey = ref<string | null>(null);
 
-
   const meta = useMetaConfig(pageCode, notifyError);
   const {
     loadComponents: loadComponentsRaw,
@@ -176,15 +176,15 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
   } = meta;
   const gridConfig = useUserGridConfig({ pageCode, notifyError, notifySuccess });
 
-  const recalcAggregatesRef = { current: (_masterId: number) => { } };
+  const recalcAggregatesRef = { current: (_masterId: number) => {} };
   const recalcAggregatesProxy = (masterId: number) => {
     if (!resolvedFeatures.value.aggregates) return;
     recalcAggregatesRef.current(masterId);
   };
 
   const addRowHooks = {
-    onMasterRowAdded: (_row: any) => { },
-    onDetailRowAdded: (_masterId: number, _tabKey: string, _row: any) => { }
+    onMasterRowAdded: (_row: any) => {},
+    onDetailRowAdded: (_masterId: number, _tabKey: string, _row: any) => {}
   };
 
   const data = useMasterDetailData({
@@ -215,7 +215,7 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     detailGridApisByTab
   });
 
-  addRowHooks.onMasterRowAdded = (row) => {
+  addRowHooks.onMasterRowAdded = row => {
     calc.runMasterCalc(null, row);
   };
   addRowHooks.onDetailRowAdded = (masterId, tabKey, row) => {
@@ -248,7 +248,24 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     recalcAggregates: recalcAggregatesProxy,
     broadcastToDetail: calc.broadcastToDetail,
     detailGridApisByTab,
-    isRowEditable,
+    isRowEditable
+  });
+
+  const advancedSearch = useAdvancedSearch({
+    pageCode,
+    pageConfig: meta.pageConfig,
+    masterGridKey: meta.masterGridKey,
+    masterColumnMeta: meta.masterColumnMeta,
+    detailColumnMetaByTab: meta.detailColumnMetaByTab,
+    masterColumnDefs: meta.masterColumnDefs,
+    detailColumnDefsByTab: meta.detailColumnsByTab,
+    masterLookupRules: meta.masterLookupRules,
+    detailLookupRulesByTab: meta.detailLookupRulesByTab,
+    masterGridApi,
+    setAdvancedConditions: data.setAdvancedConditions,
+    clearAdvancedConditions: data.clearAdvancedConditions,
+    clearAllCache: data.clearAllCache,
+    notifyInfo
   });
 
   // Batch select dialog
@@ -306,12 +323,15 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     return actionHandlers.get(actionCode) || null;
   }
 
-  async function executeAction(actionCode: string, options?: { 
-    data?: Record<string, any>;
-    selectedRow?: Record<string, any> | null;
-    refreshMode?: 'all' | 'row' | 'detail' | 'none';
-    componentKey?: string;
-  }) {
+  async function executeAction(
+    actionCode: string,
+    options?: {
+      data?: Record<string, any>;
+      selectedRow?: Record<string, any> | null;
+      refreshMode?: 'all' | 'row' | 'detail' | 'none';
+      componentKey?: string;
+    }
+  ) {
     if (!actionCode) return;
     const handler = resolveActionHandler(actionCode);
     if (handler) {
@@ -333,21 +353,21 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
       notifyError('Action failed');
       return;
     }
-    
+
     notifySuccess('执行成功');
-    
+
     // Refresh by refreshMode
     const refreshMode = options?.refreshMode ?? 'detail';
     console.log('[executeAction] refreshMode:', refreshMode, 'detailCache size:', data.detailCache?.size);
-    
+
     if (refreshMode === 'none') {
       return;
     }
-    
+
     const api = masterGridApi.value as any;
     const rowId = options?.selectedRow?.id;
     const rowKey = options?.selectedRow?._rowKey;
-    
+
     // refreshMode === 'all' 时清空所有缓存，否则只清当前行缓存
     if (refreshMode === 'all') {
       console.log('[executeAction] clearing all cache');
@@ -355,7 +375,7 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     } else if (rowKey && data.detailCache) {
       data.detailCache.delete(rowKey);
     }
-    
+
     if (refreshMode === 'detail') {
       // 只刷新明细，不刷新主表
       if (rowId != null && rowKey) {
@@ -363,7 +383,7 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
       }
       return;
     }
-    
+
     if (refreshMode === 'row') {
       api?.refreshServerSide?.({ purge: false });
       setTimeout(() => {
@@ -375,7 +395,7 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
       }, 100);
       return;
     }
-    
+
     // refreshMode === 'all'
     api?.refreshServerSide?.({ purge: true });
   }
@@ -401,16 +421,7 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
       valueOverrides?: Record<string, any>
     ) => {
       if (!resolvedFeatures.value.detailTabs) return;
-      return calc.runDetailCalc(
-        node,
-        api,
-        row,
-        masterId,
-        tabKey,
-        masterRowKey,
-        changedFields,
-        valueOverrides
-      );
+      return calc.runDetailCalc(node, api, row, masterId, tabKey, masterRowKey, changedFields, valueOverrides);
     },
     recalcAggregates: (masterId: number) => {
       if (!resolvedFeatures.value.aggregates) return;
@@ -441,6 +452,7 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     },
     // Batch select
     ...batchSelect,
+    advancedSearch,
     executeAction,
     registerActionHandler,
     resolveActionHandler,
@@ -449,6 +461,8 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     applyGridConfig: gridConfig.applyGridConfig,
     saveGridConfig: gridConfig.saveGridConfig
   };
+
+  registerActionHandler('advancedSearch', () => advancedSearch.open());
 
   const runtimeStatus = ref<'loading' | 'ready' | 'error'>('loading');
   const runtimeError = ref<MetaError | null>(null);
@@ -483,16 +497,12 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
 
   function deriveFeaturesFromMeta(): Required<RuntimeFeatures> {
     const hasTabs = (meta.pageConfig.value?.tabs?.length ?? 0) > 0;
-    const hasDetailCalc = Object.values(meta.detailCalcRulesByTab.value || {}).some(
-      list => (list?.length ?? 0) > 0
-    );
+    const hasDetailCalc = Object.values(meta.detailCalcRulesByTab.value || {}).some(list => (list?.length ?? 0) > 0);
     const hasBroadcast = hasTabs && hasDetailCalc;
     const hasMasterCalc = (meta.compiledMasterCalcRules.value?.length ?? 0) > 0;
     const hasAgg = (meta.compiledAggRules.value?.length ?? 0) > 0 || hasMasterCalc;
     const masterLookup = (meta.masterLookupRules.value?.length ?? 0) > 0;
-    const detailLookup = Object.values(meta.detailLookupRulesByTab.value || {}).some(
-      list => (list?.length ?? 0) > 0
-    );
+    const detailLookup = Object.values(meta.detailLookupRulesByTab.value || {}).some(list => (list?.length ?? 0) > 0);
     const hasLookup = masterLookup || detailLookup;
     const hasGrid = Boolean(meta.masterGridKey.value || findFirstGridKey(meta.pageComponents.value || []));
 
@@ -597,10 +607,14 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     if (!watchersAttached && masterKey) {
       watchersAttached = true;
       // V3 uses SSRM; no need to watch rowData for grid updates
-      watch(meta.masterColumnDefs, (defs) => {
-        const state = componentStateByKey.value[masterKey] as GridState | undefined;
-        if (state) state.columnDefs = defs || [];
-      }, { deep: false });
+      watch(
+        meta.masterColumnDefs,
+        defs => {
+          const state = componentStateByKey.value[masterKey] as GridState | undefined;
+          if (state) state.columnDefs = defs || [];
+        },
+        { deep: false }
+      );
     }
   }
 
@@ -714,7 +728,7 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
       const row = node?.data;
       if (!row || !isMasterRowDirty(row)) return;
 
-      const masterId = row?.id != null ? Number(row.id) : NaN;
+      const masterId = row?.id != null ? Number(row.id) : Number.NaN;
       if (Number.isNaN(masterId)) return;
 
       const rowKey = row?._rowKey ? String(row._rowKey) : data.resolveMasterRowKey(masterId);
@@ -774,7 +788,10 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     const latestMasterColumnDefs = meta.masterColumnDefs.value || [];
     const latestDetailColumnsByTab = meta.detailColumnsByTab.value || {};
     const masterColumnDefsChanged = !columnDefsEquivalent(previousMasterColumnDefs, latestMasterColumnDefs);
-    const detailColumnDefsChanged = !detailColumnDefsMapEquivalent(previousDetailColumnsByTab, latestDetailColumnsByTab);
+    const detailColumnDefsChanged = !detailColumnDefsMapEquivalent(
+      previousDetailColumnsByTab,
+      latestDetailColumnsByTab
+    );
 
     if (!masterColumnDefsChanged) {
       meta.masterColumnDefs.value = previousMasterColumnDefs;
@@ -789,7 +806,10 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     };
   }
 
-  function applyMasterColumnDefsForHotReload(params: { masterColumnDefsChanged: boolean; latestMasterColumnDefs: any[] }) {
+  function applyMasterColumnDefsForHotReload(params: {
+    masterColumnDefsChanged: boolean;
+    latestMasterColumnDefs: any[];
+  }) {
     const { masterColumnDefsChanged, latestMasterColumnDefs } = params;
     const api = masterGridApi.value as any;
     if (!api) return;

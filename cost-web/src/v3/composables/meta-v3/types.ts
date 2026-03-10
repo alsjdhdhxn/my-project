@@ -45,15 +45,15 @@ export type ColumnOverrideRule = {
 
 /**
  * Lookup 弹窗规则配置
- * 
+ *
  * 筛选相关字段说明：
  * - filterField: 从"当前行数据"取哪个字段的值作为筛选值
  *   生效场景：filterValueFrom 没写或为 'row'
  *   例：filterField: "id" → 用当前行的 rowData.id 作为筛选值
- * 
+ *
  * - filterColumn: 弹窗数据源里要过滤的列名（SQL 中的列名）
  *   例：filterColumn: "GOODSID" → 最终会拼成 AND GOODSID = <filterValue>
- * 
+ *
  * - filterValueFrom: 筛选值来源
  *   'row': 用 rowData[filterField]
  *   'cell': 用你点击的单元格的值（不需要 filterField）

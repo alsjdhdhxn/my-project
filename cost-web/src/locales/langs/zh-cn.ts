@@ -235,7 +235,7 @@ const local: App.I18n.Schema = {
     500: '服务器错误',
     dynamic: '动态',
     'iframe-page': '外链页面',
-    home: '首页',
+    home: '首页'
   },
   page: {
     login: {

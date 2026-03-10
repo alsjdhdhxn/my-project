@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, onMounted, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import { useAuthStore } from '@/store/modules/auth';
 import { useRouterPush } from '@/hooks/common/router';
 import { useFormRules, useNaiveForm } from '@/hooks/common/form';
@@ -47,14 +47,14 @@ const rules = computed<Record<keyof FormModel, App.Global.FormRule[]>>(() => {
 
 async function handleSubmit() {
   await validate();
-  
+
   // 根据记住我选项保存或清除用户名
   if (rememberMe.value) {
     localStorage.setItem(REMEMBER_KEY, model.userName);
   } else {
     localStorage.removeItem(REMEMBER_KEY);
   }
-  
+
   await authStore.login(model.userName, model.password);
 }
 </script>

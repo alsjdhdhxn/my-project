@@ -1,5 +1,13 @@
 import { request } from '../request';
 
+export interface DynamicQueryCondition {
+  tableKey?: string;
+  field: string;
+  operator: string;
+  value: any;
+  value2?: any;
+}
+
 /** 查询动态数据列表 */
 export function fetchDynamicData(tableCode: string, params?: Record<string, any>) {
   return request<Api.Common.PageResult<any>>({
@@ -9,14 +17,17 @@ export function fetchDynamicData(tableCode: string, params?: Record<string, any>
 }
 
 /** 高级查询（支持 pageCode 数据权限） */
-export function searchDynamicData(tableCode: string, params: {
-  page?: number;
-  pageSize?: number;
-  sortField?: string;
-  sortOrder?: string;
-  pageCode?: string;
-  conditions?: Array<{ field: string; operator: string; value: any; value2?: any }>;
-}) {
+export function searchDynamicData(
+  tableCode: string,
+  params: {
+    page?: number;
+    pageSize?: number;
+    sortField?: string;
+    sortOrder?: string;
+    pageCode?: string;
+    conditions?: DynamicQueryCondition[];
+  }
+) {
   return request<Api.Common.PageResult<any>>({
     url: `/api/data/${tableCode}/search`,
     method: 'POST',
@@ -58,10 +69,7 @@ export function deleteDynamicData(tableCode: string, id: number | string) {
 }
 
 /** 通用保存（支持单表/主从表/主从多Tab，含变更追踪和乐观锁） */
-export function saveDynamicData(param: {
-  master: any;
-  details?: Record<string, any[]>;
-}) {
+export function saveDynamicData(param: { master: any; details?: Record<string, any[]> }) {
   return request<{ masterId: number; idMapping?: Record<number, number> }>({
     url: '/api/data/save',
     method: 'POST',
@@ -70,11 +78,14 @@ export function saveDynamicData(param: {
 }
 
 /** 执行页面规则中的 Action（TOOLBAR/CONTEXT_MENU） */
-export function executePageRuleAction(pageCode: string, params: {
-  componentKey?: string;
-  actionCode: string;
-  data?: Record<string, any>;
-}) {
+export function executePageRuleAction(
+  pageCode: string,
+  params: {
+    componentKey?: string;
+    actionCode: string;
+    data?: Record<string, any>;
+  }
+) {
   return request<any>({
     url: `/api/data/page/${pageCode}/execute`,
     method: 'POST',

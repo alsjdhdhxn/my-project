@@ -1,35 +1,13 @@
-<template>
-  <div class="detail-grid-wrap" :style="gridWrapStyle">
-    <div v-if="showTitle" class="detail-watermark">{{ tab.title }}</div>
-    <AgGridVue
-      class="ag-theme-quartz"
-      style="width: 100%; height: 100%"
-      :rowData="rows"
-      :columnDefs="columns"
-      :defaultColDef="defaultColDef"
-      :getRowId="getRowId"
-      :getRowClass="getRowClass"
-      :rowSelection="rowSelection"
-      :getContextMenuItems="contextMenuItems"
-      :rowHeight="28"
-      :headerHeight="28"
-      v-bind="gridRuntimeOptions"
-      @grid-ready="onGridReady"
-      @row-data-updated="updateHeightFromGrid"
-      @cell-value-changed="onCellValueChanged"
-      @cell-clicked="onCellClicked"
-      @cell-editing-started="onCellEditingStarted"
-      @cell-editing-stopped="onCellEditingStopped"
-    />
-  </div>
-</template>
-
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { AgGridVue } from 'ag-grid-vue3';
 import type { ColDef, GridReadyEvent } from 'ag-grid-community';
-import type { TabConfig, RowData } from '@/v3/logic/calc-engine';
-import { autoSizeColumnsOnReady, buildGridRuntimeOptions, type ResolvedGridOptions } from '@/v3/composables/meta-v3/grid-options';
+import type { RowData, TabConfig } from '@/v3/logic/calc-engine';
+import {
+  type ResolvedGridOptions,
+  autoSizeColumnsOnReady,
+  buildGridRuntimeOptions
+} from '@/v3/composables/meta-v3/grid-options';
 import { isFlagTrue } from '@/v3/composables/meta-v3/cell-style';
 
 const props = defineProps<{
@@ -62,25 +40,25 @@ function calcHeight(): number {
   if (!props.tabCount) {
     return 300;
   }
-  
+
   const rowHeight = 28;
   const headerHeight = 28;
   const minRows = 2;
   const tabCount = props.tabCount;
   const gap = 16;
   const padding = 80; // 增加padding余量
-  
+
   // 可用总高度（屏幕高度 - 主表行高 - padding - 子表间隙）
-  const availableHeight = window.innerHeight - 100 - padding - (gap * (tabCount - 1));
+  const availableHeight = window.innerHeight - 100 - padding - gap * (tabCount - 1);
   // 每个子表最大可用高度
   const maxHeight = Math.floor(availableHeight / tabCount);
   // 最小高度 = 表头 + 2行
   const minHeight = headerHeight + rowHeight * minRows;
-  
+
   // 实际内容高度 = 表头 + 数据行 + 少量余量
   const dataRows = props.rows?.length || 0;
   const contentHeight = headerHeight + Math.max(dataRows, minRows) * rowHeight + 20;
-  
+
   // 限制在最小和最大之间
   return Math.max(minHeight, Math.min(contentHeight, maxHeight));
 }
@@ -104,14 +82,14 @@ function updateHeightFromGrid() {
     const tabCount = props.tabCount || 1;
     const gap = 16;
     const padding = 80;
-    
-    const availableHeight = window.innerHeight - 100 - padding - (gap * (tabCount - 1));
+
+    const availableHeight = window.innerHeight - 100 - padding - gap * (tabCount - 1);
     const maxHeight = Math.floor(availableHeight / tabCount);
     const minHeight = headerHeight + rowHeight * minRows;
     const contentHeight = headerHeight + Math.max(rowCount, minRows) * rowHeight + 20;
-    
+
     calculatedHeight.value = Math.max(minHeight, Math.min(contentHeight, maxHeight));
-    
+
     // 通知主表刷新detail行高度
     props.refreshDetailRowHeight?.();
   }
@@ -226,7 +204,7 @@ function onCellEditingStopped() {
 
 watch(
   () => props.rows,
-  (rows) => {
+  rows => {
     if (gridApi.value) {
       gridApi.value.setGridOption('rowData', rows || []);
     }
@@ -236,7 +214,7 @@ watch(
 
 watch(
   () => props.columns,
-  (cols) => {
+  cols => {
     if (gridApi.value && cols) {
       gridApi.value.setGridOption('columnDefs', cols);
     }
@@ -244,6 +222,32 @@ watch(
   { deep: false }
 );
 </script>
+
+<template>
+  <div class="detail-grid-wrap" :style="gridWrapStyle">
+    <div v-if="showTitle" class="detail-watermark">{{ tab.title }}</div>
+    <AgGridVue
+      class="ag-theme-quartz"
+      style="width: 100%; height: 100%"
+      :row-data="rows"
+      :column-defs="columns"
+      :default-col-def="defaultColDef"
+      :get-row-id="getRowId"
+      :get-row-class="getRowClass"
+      :row-selection="rowSelection"
+      :get-context-menu-items="contextMenuItems"
+      :row-height="28"
+      :header-height="28"
+      v-bind="gridRuntimeOptions"
+      @grid-ready="onGridReady"
+      @row-data-updated="updateHeightFromGrid"
+      @cell-value-changed="onCellValueChanged"
+      @cell-clicked="onCellClicked"
+      @cell-editing-started="onCellEditingStarted"
+      @cell-editing-stopped="onCellEditingStopped"
+    />
+  </div>
+</template>
 
 <style scoped>
 .detail-grid-wrap {

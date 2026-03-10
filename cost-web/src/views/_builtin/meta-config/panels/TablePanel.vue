@@ -1,19 +1,19 @@
 <script setup lang="ts">
-import { ref, onMounted, watch, inject } from 'vue';
+import { inject, onMounted, ref, watch } from 'vue';
 import type { Ref } from 'vue';
-import { NButton, NSpace, NPopconfirm, NModal, NDataTable, useMessage } from 'naive-ui';
+import { NButton, NDataTable, NModal, NPopconfirm, NSpace, useMessage } from 'naive-ui';
 import type { DataTableColumns, DataTableRowKey } from 'naive-ui';
 import { AgGridVue } from 'ag-grid-vue3';
-import type { GridApi, GridReadyEvent, ColDef, CellValueChangedEvent } from 'ag-grid-community';
+import type { CellValueChangedEvent, ColDef, GridApi, GridReadyEvent } from 'ag-grid-community';
 import {
-  fetchAllTableMeta,
-  saveTableMeta,
-  deleteTableMeta,
-  fetchColumnsByTableId,
-  saveColumnMeta,
   deleteColumnMeta,
+  deleteTableMeta,
+  fetchAllTableMeta,
+  fetchColumnsByTableId,
+  fetchTablesByPageCode,
   fetchViewColumns,
-  fetchTablesByPageCode
+  saveColumnMeta,
+  saveTableMeta
 } from '@/service/api/meta-config';
 
 const message = useMessage();
@@ -84,9 +84,7 @@ function getColumnNameCellStyle(params: any) {
 function getColumnNameTooltip(params: any): string {
   const state = getColumnNameState(params.data);
   if (state === 'invalid') {
-    return Number(params.data?.isVirtual) === 1
-      ? '物理列不存在，当前仍标记为虚拟列'
-      : '物理列不存在，且未标记为虚拟列';
+    return Number(params.data?.isVirtual) === 1 ? '物理列不存在，当前仍标记为虚拟列' : '物理列不存在，且未标记为虚拟列';
   }
   if (state === 'virtual') {
     return '虚拟列';
@@ -274,9 +272,7 @@ async function fetchQueryViewPhysicalColumns(viewName?: string) {
   }
 
   const res = await fetchViewColumns(viewName);
-  const values = (res || [])
-    .map((row: any) => String(row.COLUMN_NAME || '').trim())
-    .filter(Boolean);
+  const values = (res || []).map((row: any) => String(row.COLUMN_NAME || '').trim()).filter(Boolean);
 
   return {
     options: values.map(value => ({ label: value, value })),
@@ -290,11 +286,7 @@ async function fetchTargetTablePhysicalColumns(tableName?: string) {
   }
 
   const res = await fetchViewColumns(tableName);
-  return new Set(
-    (res || [])
-      .map((row: any) => normalizeDbColumnName(row.COLUMN_NAME))
-      .filter(Boolean)
-  );
+  return new Set((res || []).map((row: any) => normalizeDbColumnName(row.COLUMN_NAME)).filter(Boolean));
 }
 
 async function loadSelectedTableContext(tableRow: any) {
@@ -561,7 +553,11 @@ function markDirty(event: CellValueChangedEvent) {
     });
   }
 
-  if (event.api === tableGridApi.value && (field === 'queryView' || field === 'targetTable') && selectedTable.value === event.data) {
+  if (
+    event.api === tableGridApi.value &&
+    (field === 'queryView' || field === 'targetTable') &&
+    selectedTable.value === event.data
+  ) {
     void refreshPhysicalColumnsForSelectedTable(event.data);
   }
 }
@@ -749,12 +745,12 @@ watch(
         <AgGridVue
           class="ag-theme-quartz"
           style="width: 100%; height: 100%"
-          :rowData="tableRows"
-          :columnDefs="tableColDefs"
-          :defaultColDef="defaultColDef"
-          :suppressScrollOnNewData="true"
-          :rowSelection="{ mode: 'singleRow', checkboxes: false }"
-          :cellSelection="true"
+          :row-data="tableRows"
+          :column-defs="tableColDefs"
+          :default-col-def="defaultColDef"
+          :suppress-scroll-on-new-data="true"
+          :row-selection="{ mode: 'singleRow', checkboxes: false }"
+          :cell-selection="true"
           @grid-ready="onTableGridReady"
           @selection-changed="onTableSelectionChanged"
           @row-clicked="onTableRowClicked"
@@ -792,12 +788,12 @@ watch(
         <AgGridVue
           class="ag-theme-quartz"
           style="width: 100%; height: 100%"
-          :rowData="colRows"
-          :columnDefs="colColDefs"
-          :defaultColDef="defaultColDef"
-          :suppressScrollOnNewData="true"
-          :rowSelection="{ mode: 'singleRow', checkboxes: false }"
-          :cellSelection="true"
+          :row-data="colRows"
+          :column-defs="colColDefs"
+          :default-col-def="defaultColDef"
+          :suppress-scroll-on-new-data="true"
+          :row-selection="{ mode: 'singleRow', checkboxes: false }"
+          :cell-selection="true"
           @grid-ready="onColGridReady"
           @selection-changed="onColSelectionChanged"
           @row-clicked="onColRowClicked"
@@ -826,12 +822,7 @@ watch(
       <template #footer>
         <NSpace justify="end">
           <NButton size="small" @click="showViewColModal = false">取消</NButton>
-          <NButton
-            size="small"
-            type="primary"
-            :disabled="!viewColCheckedKeys.length"
-            @click="confirmAddViewCols"
-          >
+          <NButton size="small" type="primary" :disabled="!viewColCheckedKeys.length" @click="confirmAddViewCols">
             确定添加 ({{ viewColCheckedKeys.length }})
           </NButton>
         </NSpace>

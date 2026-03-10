@@ -1,16 +1,59 @@
 <script setup lang="ts">
-import { ref, computed, watch, h } from 'vue';
-import { NButton, NTabs, NTabPane, NEmpty, NTag, NPopconfirm, NModal, NForm, NFormItem, NInput, NSelect, useMessage, NScrollbar, NCheckbox, NSpace, NPopover, NDataTable, NTree, NRadioGroup, NRadio, NDivider } from 'naive-ui';
-import type { TreeOption, SelectOption } from 'naive-ui';
+import { computed, h, ref, watch } from 'vue';
+import {
+  NButton,
+  NCheckbox,
+  NDataTable,
+  NDivider,
+  NEmpty,
+  NForm,
+  NFormItem,
+  NInput,
+  NModal,
+  NPopconfirm,
+  NPopover,
+  NRadio,
+  NRadioGroup,
+  NScrollbar,
+  NSelect,
+  NSpace,
+  NTabPane,
+  NTabs,
+  NTag,
+  NTree,
+  useMessage
+} from 'naive-ui';
+import type { SelectOption, TreeOption } from 'naive-ui';
 import { Icon } from '@iconify/vue';
 import {
-  fetchRoles, createRole, updateRole, deleteRole,
-  fetchUsersByRole, addUserToRole, removeUserFromRole,
-  addPageToRole, updateRolePage, removePageFromRole,
-  fetchAllUsers, searchRoles, fetchPageButtons, fetchResourcePermissionTree,
-  fetchPageColumns, fetchRowFilterFields
+  addPageToRole,
+  addUserToRole,
+  createRole,
+  deleteRole,
+  fetchAllUsers,
+  fetchPageButtons,
+  fetchPageColumns,
+  fetchResourcePermissionTree,
+  fetchRoles,
+  fetchRowFilterFields,
+  fetchUsersByRole,
+  removePageFromRole,
+  removeUserFromRole,
+  searchRoles,
+  updateRole,
+  updateRolePage
 } from '@/service/api/role-manage';
-import type { RoleVO, UserRoleVO, RolePageVO, UserSimpleVO, PageButtonVO, ResourcePermissionVO, PageTableColumnsVO, PageColumnVO, RowFilterFieldVO } from '@/service/api/role-manage';
+import type {
+  PageButtonVO,
+  PageColumnVO,
+  PageTableColumnsVO,
+  ResourcePermissionVO,
+  RolePageVO,
+  RoleVO,
+  RowFilterFieldVO,
+  UserRoleVO,
+  UserSimpleVO
+} from '@/service/api/role-manage';
 
 const message = useMessage();
 
@@ -41,7 +84,7 @@ const searchConditions = ref<SearchCondition[]>([
   { field: 'roleCode', fieldLabel: '角色编码', operator: 'like', value: '', enabled: false, visible: true },
   { field: 'roleName', fieldLabel: '角色名称', operator: 'like', value: '', enabled: false, visible: true },
   { field: 'username', fieldLabel: '包含用户', operator: 'like', value: '', enabled: false, visible: true },
-  { field: 'pageCode', fieldLabel: '包含页面', operator: 'like', value: '', enabled: false, visible: true },
+  { field: 'pageCode', fieldLabel: '包含页面', operator: 'like', value: '', enabled: false, visible: true }
 ]);
 
 const STORAGE_KEY = 'permission-search-fields';
@@ -54,7 +97,9 @@ function loadFieldSettings() {
         c.visible = visibleFields.includes(c.field);
       });
     }
-  } catch (e) { /* ignore */ }
+  } catch (e) {
+    /* ignore */
+  }
 }
 
 function saveFieldSettings() {
@@ -62,7 +107,11 @@ function saveFieldSettings() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(visibleFields));
 }
 
-watch(() => searchConditions.value.map(c => c.visible), () => saveFieldSettings(), { deep: true });
+watch(
+  () => searchConditions.value.map(c => c.visible),
+  () => saveFieldSettings(),
+  { deep: true }
+);
 loadFieldSettings();
 
 const visibleConditions = computed(() => searchConditions.value.filter(c => c.visible));
@@ -77,7 +126,7 @@ const operatorOptions = [
   { label: '大于等于', value: 'ge' },
   { label: '小于', value: 'lt' },
   { label: '小于等于', value: 'le' },
-  { label: 'IN', value: 'in' },
+  { label: 'IN', value: 'in' }
 ];
 
 const activeFilters = ref<string[]>([]);
@@ -120,7 +169,10 @@ async function executeSearch() {
 }
 
 async function clearSearch() {
-  searchConditions.value.forEach(c => { c.enabled = false; c.value = ''; });
+  searchConditions.value.forEach(c => {
+    c.enabled = false;
+    c.value = '';
+  });
   activeFilters.value = [];
   await loadRoles();
 }
@@ -258,13 +310,17 @@ async function handleRemoveUser(id: number) {
 const userColumns = [
   { title: '姓名', key: 'realName', render: (row: UserRoleVO) => row.realName || row.username },
   { title: '用户名', key: 'username' },
-  { 
-    title: '操作', 
-    key: 'action', 
+  {
+    title: '操作',
+    key: 'action',
     width: 80,
     render: (row: UserRoleVO) => {
       if (!row.id) return null;
-      return h(NButton, { text: true, type: 'error', size: 'small', onClick: () => handleRemoveUser(row.id!) }, { default: () => '解除' });
+      return h(
+        NButton,
+        { text: true, type: 'error', size: 'small', onClick: () => handleRemoveUser(row.id!) },
+        { default: () => '解除' }
+      );
     }
   }
 ];
@@ -354,71 +410,81 @@ function renderTreeLabel({ option }: TreeLabelRenderProps) {
   const raw = opt.raw;
   const isPage = raw?.resourceType === 'PAGE';
   const isAuthorized = raw?.isAuthorized === 1;
-  
+
   // 目录节点：只显示名称
   if (!isPage) {
     return h('span', { class: 'tree-node-label' }, opt.label as string);
   }
-  
+
   // 页面节点：显示名称 + 按钮权限标签 + 配置按钮
-  const children: any[] = [
-    h('span', { class: 'tree-node-label' }, opt.label as string)
-  ];
-  
+  const children: any[] = [h('span', { class: 'tree-node-label' }, opt.label as string)];
+
   // 已授权的页面显示三个配置按钮
   if (isAuthorized && raw) {
     children.push(
-      h(NButton, { 
-        text: true, 
-        size: 'tiny', 
-        type: 'primary',
-        class: 'ml-2 config-btn',
-        onClick: (e: Event) => {
-          e.stopPropagation();
-          openEditButton(raw);
-        }
-      }, { default: () => '配置按钮' })
+      h(
+        NButton,
+        {
+          text: true,
+          size: 'tiny',
+          type: 'primary',
+          class: 'ml-2 config-btn',
+          onClick: (e: Event) => {
+            e.stopPropagation();
+            openEditButton(raw);
+          }
+        },
+        { default: () => '配置按钮' }
+      )
     );
     children.push(
-      h(NButton, { 
-        text: true, 
-        size: 'tiny', 
-        type: 'primary',
-        class: 'ml-1 config-btn',
-        onClick: (e: Event) => {
-          e.stopPropagation();
-          openEditColumn(raw);
-        }
-      }, { default: () => '配置列' })
+      h(
+        NButton,
+        {
+          text: true,
+          size: 'tiny',
+          type: 'primary',
+          class: 'ml-1 config-btn',
+          onClick: (e: Event) => {
+            e.stopPropagation();
+            openEditColumn(raw);
+          }
+        },
+        { default: () => '配置列' }
+      )
     );
     children.push(
-      h(NButton, { 
-        text: true, 
-        size: 'tiny', 
-        type: 'primary',
-        class: 'ml-1 config-btn',
-        onClick: (e: Event) => {
-          e.stopPropagation();
-          openEditRow(raw);
-        }
-      }, { default: () => '配置行' })
+      h(
+        NButton,
+        {
+          text: true,
+          size: 'tiny',
+          type: 'primary',
+          class: 'ml-1 config-btn',
+          onClick: (e: Event) => {
+            e.stopPropagation();
+            openEditRow(raw);
+          }
+        },
+        { default: () => '配置行' }
+      )
     );
   }
-  
+
   return h('span', { class: 'tree-node-content' }, children);
 }
 
 // 处理树节点选中变化
 async function handleCheckedKeysChange(keys: string[]) {
   if (!selectedRoleId.value) return;
-  
+
   const oldKeys = new Set(checkedKeys.value);
   const newKeys = new Set(keys);
-  
+
   // 找出新增的和删除的（排除目录节点）
   const toAdd = keys.filter(k => !oldKeys.has(k) && !k.startsWith('dir-'));
   const toRemove = checkedKeys.value.filter(k => !newKeys.has(k) && !k.startsWith('dir-'));
-  
+
   // 添加新权限
   for (const pageCode of toAdd) {
     try {
@@ -427,7 +493,7 @@ async function handleCheckedKeysChange(keys: string[]) {
       // ignore
     }
   }
-  
+
   // 移除权限
   for (const pageCode of toRemove) {
     const resource = resourceMap.value.get(pageCode);
@@ -439,10 +505,10 @@ async function handleCheckedKeysChange(keys: string[]) {
       }
     }
   }
-  
+
   // 重新加载
   await loadResourcePermissionTree();
-  
+
   if (toAdd.length > 0 || toRemove.length > 0) {
     message.success('权限已更新');
   }
@@ -450,7 +516,9 @@ async function handleCheckedKeysChange(keys: string[]) {
 
 // 编辑按钮权限弹窗
 const showEditButtonModal = ref(false);
-const editButtonForm = ref<{ id?: number; pageCode: string; pageName?: string; buttonPolicy?: string }>({ pageCode: '' });
+const editButtonForm = ref<{ id?: number; pageCode: string; pageName?: string; buttonPolicy?: string }>({
+  pageCode: ''
+});
 const editingButton = ref(false);
 const pageButtons = ref<PageButtonVO[]>([]);
 const selectedButtons = ref<string[]>([]);
@@ -477,7 +545,9 @@ function getButtonUniqueKey(groupName: string, buttonKey: string): string {
 
 // 编辑列权限弹窗
 const showEditColumnModal = ref(false);
-const editColumnForm = ref<{ id?: number; pageCode: string; pageName?: string; columnPolicy?: string }>({ pageCode: '' });
+const editColumnForm = ref<{ id?: number; pageCode: string; pageName?: string; columnPolicy?: string }>({
+  pageCode: ''
+});
 const editingColumn = ref(false);
 const loadingColumns = ref(false);
 const pageTableColumns = ref<PageTableColumnsVO[]>([]);
@@ -494,13 +564,20 @@ function getColumnPermissionState(tableKey: string, column: Pick<PageColumnVO, '
   return columnPermissions.value[tableKey]?.[getColumnPolicyKey(column)];
 }
 
-function getBaseColumnConfig(tableKey: string, column: Pick<PageColumnVO, 'id' | 'columnName'>): { visible: boolean; editable: boolean } {
+function getBaseColumnConfig(
+  tableKey: string,
+  column: Pick<PageColumnVO, 'id' | 'columnName'>
+): { visible: boolean; editable: boolean } {
   const table = pageTableColumns.value.find(t => t.tableKey === tableKey);
   const col = table?.columns.find(c => getColumnPolicyKey(c) === getColumnPolicyKey(column));
   return { visible: col?.visible ?? true, editable: col?.editable ?? true };
 }
 
-function ensureColumnPermissionState(tableKey: string, column: Pick<PageColumnVO, 'id' | 'columnName'>, base?: { visible: boolean; editable: boolean }) {
+function ensureColumnPermissionState(
+  tableKey: string,
+  column: Pick<PageColumnVO, 'id' | 'columnName'>,
+  base?: { visible: boolean; editable: boolean }
+) {
   if (!columnPermissions.value[tableKey]) {
     columnPermissions.value[tableKey] = {};
   }
@@ -565,13 +642,13 @@ const rowOperatorOptions = [
   { label: '包含', value: 'like' },
   { label: '属于', value: 'in' },
   { label: '为空', value: 'isNull' },
-  { label: '不为空', value: 'isNotNull' },
+  { label: '不为空', value: 'isNotNull' }
 ];
 
 // 动态值选项
 const dynamicValueOptions = [
   { label: '当前用户', value: '${username}' },
-  { label: '当前用户ID', value: '${userId}' },
+  { label: '当前用户ID', value: '${userId}' }
 ];
 
 // 字段选项（computed）
@@ -585,38 +662,43 @@ const fieldOptions = computed(() => {
 // 根据条件生成 SQL
 function generateSqlFromConditions(): string {
   if (rowConditions.value.length === 0) return '';
-  
-  const parts = rowConditions.value.map(cond => {
-    const field = cond.field;
-    const value = cond.value;
-    
-    switch (cond.op) {
-      case 'eq':
-        return `${field} = ${formatSqlValue(value, cond.valueType)}`;
-      case 'ne':
-        return `${field} <> ${formatSqlValue(value, cond.valueType)}`;
-      case 'gt':
-        return `${field} > ${formatSqlValue(value, cond.valueType)}`;
-      case 'ge':
-        return `${field} >= ${formatSqlValue(value, cond.valueType)}`;
-      case 'lt':
-        return `${field} < ${formatSqlValue(value, cond.valueType)}`;
-      case 'le':
-        return `${field} <= ${formatSqlValue(value, cond.valueType)}`;
-      case 'like':
-        return `${field} LIKE '%${value.replace(/'/g, "''")}%'`;
-      case 'in':
-        const inValues = value.split(',').map(v => formatSqlValue(v.trim(), cond.valueType)).join(', ');
-        return `${field} IN (${inValues})`;
-      case 'isNull':
-        return `${field} IS NULL`;
-      case 'isNotNull':
-        return `${field} IS NOT NULL`;
-      default:
-        return '';
-    }
-  }).filter(Boolean);
-  
+
+  const parts = rowConditions.value
+    .map(cond => {
+      const field = cond.field;
+      const value = cond.value;
+
+      switch (cond.op) {
+        case 'eq':
+          return `${field} = ${formatSqlValue(value, cond.valueType)}`;
+        case 'ne':
+          return `${field} <> ${formatSqlValue(value, cond.valueType)}`;
+        case 'gt':
+          return `${field} > ${formatSqlValue(value, cond.valueType)}`;
+        case 'ge':
+          return `${field} >= ${formatSqlValue(value, cond.valueType)}`;
+        case 'lt':
+          return `${field} < ${formatSqlValue(value, cond.valueType)}`;
+        case 'le':
+          return `${field} <= ${formatSqlValue(value, cond.valueType)}`;
+        case 'like':
+          return `${field} LIKE '%${value.replace(/'/g, "''")}%'`;
+        case 'in':
+          const inValues = value
+            .split(',')
+            .map(v => formatSqlValue(v.trim(), cond.valueType))
+            .join(', ');
+          return `${field} IN (${inValues})`;
+        case 'isNull':
+          return `${field} IS NULL`;
+        case 'isNotNull':
+          return `${field} IS NOT NULL`;
+        default:
+          return '';
+      }
+    })
+    .filter(Boolean);
+
   return parts.join(` ${rowConditionLogic.value} `);
 }
 
@@ -657,15 +739,19 @@ async function openEditButton(resource: ResourcePermissionVO) {
     pageName: resource.resourceName,
     buttonPolicy: resource.buttonPolicy
   };
-  
+
   if (resource.buttonPolicy === '["*"]' || !resource.buttonPolicy) {
     isAllButtons.value = true;
     selectedButtons.value = [];
   } else {
     isAllButtons.value = false;
-    try { selectedButtons.value = JSON.parse(resource.buttonPolicy); } catch { selectedButtons.value = []; }
+    try {
+      selectedButtons.value = JSON.parse(resource.buttonPolicy);
+    } catch {
+      selectedButtons.value = [];
+    }
   }
-  
+
   loadingButtons.value = true;
   try {
     pageButtons.value = await fetchPageButtons(resource.pageCode || '');
@@ -685,17 +771,17 @@ async function openEditColumn(resource: ResourcePermissionVO) {
     pageName: resource.resourceName,
     columnPolicy: resource.columnPolicy
   };
-  
+
   // 加载页面的表格列信息
   loadingColumns.value = true;
   try {
     pageTableColumns.value = await fetchPageColumns(resource.pageCode || '');
-    
+
     // 设置默认选中的 tab
     if (pageTableColumns.value.length > 0) {
       activeColumnTab.value = pageTableColumns.value[0].tableKey;
     }
-    
+
     // 解析已有的列权限配置，并按当前列 id / columnName 归一
     let rawPolicy: Record<string, any> = {};
     if (resource.columnPolicy) {
@@ -706,18 +792,18 @@ async function openEditColumn(resource: ResourcePermissionVO) {
       }
     }
     columnPermissions.value = {};
-    
+
     // 初始化每个表格的列权限（如果没有配置，则使用 COLUMN_OVERRIDE 的默认值）
     for (const table of pageTableColumns.value) {
       columnPermissions.value[table.tableKey] = {};
-      const scopedPolicy = rawPolicy?.[table.tableKey] && typeof rawPolicy[table.tableKey] === 'object'
-        ? rawPolicy[table.tableKey]
-        : {};
+      const scopedPolicy =
+        rawPolicy?.[table.tableKey] && typeof rawPolicy[table.tableKey] === 'object' ? rawPolicy[table.tableKey] : {};
       for (const col of table.columns) {
-        const rawPerm = scopedPolicy?.[getColumnPolicyKey(col)]
-          ?? scopedPolicy?.[col.columnName]
-          ?? rawPolicy?.[getColumnPolicyKey(col)]
-          ?? rawPolicy?.[col.columnName];
+        const rawPerm =
+          scopedPolicy?.[getColumnPolicyKey(col)] ??
+          scopedPolicy?.[col.columnName] ??
+          rawPolicy?.[getColumnPolicyKey(col)] ??
+          rawPolicy?.[col.columnName];
         columnPermissions.value[table.tableKey][getColumnPolicyKey(col)] = {
           columnName: col.columnName,
           visible: typeof rawPerm?.visible === 'boolean' ? rawPerm.visible : col.visible,
@@ -741,7 +827,7 @@ async function openEditRow(resource: ResourcePermissionVO) {
     pageName: resource.resourceName,
     rowPolicy: resource.rowPolicy
   };
-  
+
   // 加载字段列表
   loadingRowFields.value = true;
   try {
@@ -751,12 +837,12 @@ async function openEditRow(resource: ResourcePermissionVO) {
   } finally {
     loadingRowFields.value = false;
   }
-  
+
   // 解析已有的行权限配置
   rowConditions.value = [];
   rowConditionLogic.value = 'AND';
   rowCustomSql.value = '';
-  
+
   if (resource.rowPolicy) {
     const policy = resource.rowPolicy.trim();
     if (policy.startsWith('{')) {
@@ -791,7 +877,7 @@ async function openEditRow(resource: ResourcePermissionVO) {
     // 空配置，默认可视化模式
     rowConfigMode.value = 'visual';
   }
-  
+
   showEditRowModal.value = true;
 }
 
@@ -876,11 +962,11 @@ function isAllEditableChecked(tableKey: string): boolean {
 function toggleAllVisible(tableKey: string, checked: boolean) {
   const table = pageTableColumns.value.find(t => t.tableKey === tableKey);
   if (!table) return;
-  
+
   if (!columnPermissions.value[tableKey]) {
     columnPermissions.value[tableKey] = {};
   }
-  
+
   for (const col of table.columns) {
     if (!col.visible) continue; // 基础配置不可见的不能操作
     const state = ensureColumnPermissionState(tableKey, col, { visible: col.visible, editable: col.editable });
@@ -897,16 +983,16 @@ function toggleAllVisible(tableKey: string, checked: boolean) {
 function toggleAllEditable(tableKey: string, checked: boolean) {
   const table = pageTableColumns.value.find(t => t.tableKey === tableKey);
   if (!table) return;
-  
+
   if (!columnPermissions.value[tableKey]) {
     columnPermissions.value[tableKey] = {};
   }
-  
+
   for (const col of table.columns) {
     if (!col.editable) continue; // 基础配置不可编辑的不能操作
     const visible = getColumnPermissionState(tableKey, col)?.visible ?? col.visible;
     if (!visible) continue; // 不可见的不能编辑
-    
+
     const state = ensureColumnPermissionState(tableKey, col, { visible: col.visible, editable: col.editable });
     state.columnName = col.columnName;
     state.editable = checked;
@@ -923,11 +1009,11 @@ async function handleUpdateColumn() {
     for (const table of pageTableColumns.value) {
       const tablePerms = columnPermissions.value[table.tableKey];
       if (!tablePerms) continue;
-      
+
       for (const col of table.columns) {
         const perm = tablePerms[getColumnPolicyKey(col)];
         if (!perm) continue;
-        
+
         // 只保存与基础配置不同的值
         const diff: { columnName?: string; columnId?: number; visible?: boolean; editable?: boolean } = {};
         if (perm.visible !== col.visible) {
@@ -936,7 +1022,7 @@ async function handleUpdateColumn() {
         if (perm.editable !== col.editable) {
           diff.editable = perm.editable;
         }
-        
+
         if (Object.keys(diff).length > 0) {
           if (!policyToSave[table.tableKey]) {
             policyToSave[table.tableKey] = {};
@@ -949,7 +1035,7 @@ async function handleUpdateColumn() {
         }
       }
     }
-    
+
     const columnPolicy = Object.keys(policyToSave).length > 0 ? JSON.stringify(policyToSave) : '';
     await updateRolePage(editColumnForm.value.id, { columnPolicy });
     message.success('列权限更新成功');
@@ -966,7 +1052,7 @@ async function handleUpdateRow() {
   editingRow.value = true;
   try {
     let rowPolicy = '';
-    
+
     if (rowConfigMode.value === 'visual') {
       if (rowConditions.value.length > 0) {
         // 可视化模式：保存 JSON + SQL
@@ -988,7 +1074,7 @@ async function handleUpdateRow() {
       // 自定义 SQL 模式：直接保存 SQL
       rowPolicy = rowCustomSql.value.trim();
     }
-    
+
     await updateRolePage(editRowForm.value.id, { rowPolicy });
     message.success('行权限更新成功');
     showEditRowModal.value = false;
@@ -1014,7 +1100,7 @@ loadRoles();
       <div class="panel-header">
         <span class="panel-title">角色管理</span>
       </div>
-      
+
       <div class="panel-toolbar">
         <NButton size="small" @click="openSearchPanel">
           <template #icon><Icon icon="mdi:magnify" /></template>
@@ -1025,7 +1111,7 @@ loadRoles();
           新增
         </NButton>
       </div>
-      
+
       <!-- 筛选条件 -->
       <div v-if="activeFilters.length > 0" class="filter-tags">
         <NTag v-for="(f, i) in activeFilters" :key="i" size="small" closable @close="clearSearch">{{ f }}</NTag>
@@ -1055,12 +1141,14 @@ loadRoles();
             </template>
             <div class="role-menu">
               <div class="role-menu-item" @click="openEditRole(role, $event)">
-                <Icon icon="mdi:pencil-outline" /> 编辑
+                <Icon icon="mdi:pencil-outline" />
+                编辑
               </div>
               <NPopconfirm v-if="role.id" @positive-click="handleDeleteRole(role.id)">
                 <template #trigger>
                   <div class="role-menu-item danger">
-                    <Icon icon="mdi:delete-outline" /> 删除
+                    <Icon icon="mdi:delete-outline" />
+                    删除
                   </div>
                 </template>
                 确定删除「{{ role.roleName }}」？
@@ -1121,7 +1209,7 @@ loadRoles();
                   </div>
                   <div class="section-tip">勾选页面授权，点击「配置」设置按钮权限</div>
                 </div>
-                
+
                 <div class="tree-container">
                   <NTree
                     :data="treeOptions"
@@ -1181,7 +1269,9 @@ loadRoles();
       <template #footer>
         <div class="modal-footer">
           <NButton size="small" @click="showAddUserModal = false">取消</NButton>
-          <NButton type="primary" size="small" :loading="addingUser" :disabled="!selectedUserId" @click="handleAddUser">确定</NButton>
+          <NButton type="primary" size="small" :loading="addingUser" :disabled="!selectedUserId" @click="handleAddUser">
+            确定
+          </NButton>
         </div>
       </template>
     </NModal>
@@ -1210,7 +1300,18 @@ loadRoles();
         <div v-for="cond in visibleConditions" :key="cond.field" class="search-condition-row">
           <NCheckbox v-model:checked="cond.enabled" class="condition-label">{{ cond.fieldLabel }}</NCheckbox>
           <NSelect v-model:value="cond.operator" :options="operatorOptions" size="small" class="condition-operator" />
-          <NInput v-model:value="cond.value" size="small" class="condition-value" :placeholder="cond.operator === 'in' ? '多个值用逗号分隔' : '请输入'" @input="() => { if (cond.value) cond.enabled = true }" @keyup.enter="executeSearch" />
+          <NInput
+            v-model:value="cond.value"
+            size="small"
+            class="condition-value"
+            :placeholder="cond.operator === 'in' ? '多个值用逗号分隔' : '请输入'"
+            @input="
+              () => {
+                if (cond.value) cond.enabled = true;
+              }
+            "
+            @keyup.enter="executeSearch"
+          />
         </div>
         <NEmpty v-if="visibleConditions.length === 0" description="请在设置中选择要显示的字段" size="small" />
       </div>
@@ -1226,7 +1327,7 @@ loadRoles();
     </NModal>
 
     <!-- 编辑按钮权限弹窗 -->
-    <NModal v-model:show="showEditButtonModal" preset="card" title="配置按钮权限" style="width: 1000px;">
+    <NModal v-model:show="showEditButtonModal" preset="card" title="配置按钮权限" style="width: 1000px">
       <NForm label-placement="left" label-width="70" size="small">
         <NFormItem label="页面">
           <NInput :value="editButtonForm.pageName || editButtonForm.pageCode" disabled />
@@ -1236,24 +1337,30 @@ loadRoles();
             <NCheckbox :checked="isAllButtons" @update:checked="toggleAllButtons">全部按钮</NCheckbox>
             <div v-if="!isAllButtons" class="button-select-list">
               <template v-if="loadingButtons"><span class="loading-text">加载中...</span></template>
-              <template v-else-if="pageButtons.length === 0"><span class="empty-text-small">该页面暂无按钮配置</span></template>
+              <template v-else-if="pageButtons.length === 0">
+                <span class="empty-text-small">该页面暂无按钮配置</span>
+              </template>
               <template v-else>
                 <div v-for="group in groupedButtons" :key="group.groupName" class="button-group">
                   <div class="button-group-title">{{ group.groupName || '通用' }}</div>
                   <div class="button-group-items">
-                    <NCheckbox 
-                      v-for="btn in group.buttons" 
-                      :key="getButtonUniqueKey(group.groupName, btn.buttonKey)" 
-                      :checked="selectedButtons.includes(getButtonUniqueKey(group.groupName, btn.buttonKey))" 
-                      @update:checked="(checked: boolean) => { 
-                        const uniqueKey = getButtonUniqueKey(group.groupName, btn.buttonKey);
-                        if (checked) { 
-                          selectedButtons.push(uniqueKey); 
-                        } else { 
-                          selectedButtons = selectedButtons.filter(k => k !== uniqueKey); 
-                        } 
-                      }"
-                    >{{ btn.buttonLabel }}</NCheckbox>
+                    <NCheckbox
+                      v-for="btn in group.buttons"
+                      :key="getButtonUniqueKey(group.groupName, btn.buttonKey)"
+                      :checked="selectedButtons.includes(getButtonUniqueKey(group.groupName, btn.buttonKey))"
+                      @update:checked="
+                        (checked: boolean) => {
+                          const uniqueKey = getButtonUniqueKey(group.groupName, btn.buttonKey);
+                          if (checked) {
+                            selectedButtons.push(uniqueKey);
+                          } else {
+                            selectedButtons = selectedButtons.filter(k => k !== uniqueKey);
+                          }
+                        }
+                      "
+                    >
+                      {{ btn.buttonLabel }}
+                    </NCheckbox>
                   </div>
                 </div>
               </template>
@@ -1270,11 +1377,11 @@ loadRoles();
     </NModal>
 
     <!-- 编辑列权限弹窗 -->
-    <NModal v-model:show="showEditColumnModal" preset="card" title="配置列权限" style="width: 800px;">
+    <NModal v-model:show="showEditColumnModal" preset="card" title="配置列权限" style="width: 800px">
       <div class="column-modal-header">
         <span class="page-label">页面：{{ editColumnForm.pageName || editColumnForm.pageCode }}</span>
       </div>
-      
+
       <template v-if="loadingColumns">
         <div class="loading-container">加载中...</div>
       </template>
@@ -1283,43 +1390,53 @@ loadRoles();
       </template>
       <template v-else>
         <NTabs v-model:value="activeColumnTab" type="line" size="small">
-          <NTabPane v-for="table in pageTableColumns" :key="table.tableKey" :name="table.tableKey" :tab="table.tableName">
+          <NTabPane
+            v-for="table in pageTableColumns"
+            :key="table.tableKey"
+            :name="table.tableKey"
+            :tab="table.tableName"
+          >
             <div class="column-table-container">
               <NDataTable
                 :columns="[
                   { title: '列名', key: 'headerText', width: 150 },
                   { title: '列名', key: 'columnName', width: 150 },
-                  { 
-                    title: () => h('div', { class: 'column-header-with-checkbox' }, [
-                      h(NCheckbox, {
-                        checked: isAllVisibleChecked(table.tableKey),
-                        onUpdateChecked: (checked: boolean) => toggleAllVisible(table.tableKey, checked)
-                      }),
-                      h('span', '可见')
-                    ]),
-                    key: 'visible', 
+                  {
+                    title: () =>
+                      h('div', { class: 'column-header-with-checkbox' }, [
+                        h(NCheckbox, {
+                          checked: isAllVisibleChecked(table.tableKey),
+                          onUpdateChecked: (checked: boolean) => toggleAllVisible(table.tableKey, checked)
+                        }),
+                        h('span', '可见')
+                      ]),
+                    key: 'visible',
                     width: 100,
-                    render: (row: PageColumnVO) => h(NCheckbox, {
-                      checked: getColumnPermissionState(table.tableKey, row)?.visible ?? row.visible,
-                      disabled: !row.visible,
-                      onUpdateChecked: (checked: boolean) => toggleColumnVisible(table.tableKey, row, checked)
-                    })
+                    render: (row: PageColumnVO) =>
+                      h(NCheckbox, {
+                        checked: getColumnPermissionState(table.tableKey, row)?.visible ?? row.visible,
+                        disabled: !row.visible,
+                        onUpdateChecked: (checked: boolean) => toggleColumnVisible(table.tableKey, row, checked)
+                      })
                   },
-                  { 
-                    title: () => h('div', { class: 'column-header-with-checkbox' }, [
-                      h(NCheckbox, {
-                        checked: isAllEditableChecked(table.tableKey),
-                        onUpdateChecked: (checked: boolean) => toggleAllEditable(table.tableKey, checked)
-                      }),
-                      h('span', '可编辑')
-                    ]),
-                    key: 'editable', 
+                  {
+                    title: () =>
+                      h('div', { class: 'column-header-with-checkbox' }, [
+                        h(NCheckbox, {
+                          checked: isAllEditableChecked(table.tableKey),
+                          onUpdateChecked: (checked: boolean) => toggleAllEditable(table.tableKey, checked)
+                        }),
+                        h('span', '可编辑')
+                      ]),
+                    key: 'editable',
                     width: 100,
-                    render: (row: PageColumnVO) => h(NCheckbox, {
-                      checked: getColumnPermissionState(table.tableKey, row)?.editable ?? row.editable,
-                      disabled: !row.editable || !(getColumnPermissionState(table.tableKey, row)?.visible ?? row.visible),
-                      onUpdateChecked: (checked: boolean) => toggleColumnEditable(table.tableKey, row, checked)
-                    })
+                    render: (row: PageColumnVO) =>
+                      h(NCheckbox, {
+                        checked: getColumnPermissionState(table.tableKey, row)?.editable ?? row.editable,
+                        disabled:
+                          !row.editable || !(getColumnPermissionState(table.tableKey, row)?.visible ?? row.visible),
+                        onUpdateChecked: (checked: boolean) => toggleColumnEditable(table.tableKey, row, checked)
+                      })
                   }
                 ]"
                 :data="table.columns"
@@ -1331,7 +1448,7 @@ loadRoles();
           </NTabPane>
         </NTabs>
       </template>
-      
+
       <template #footer>
         <div class="modal-footer">
           <NButton size="small" @click="showEditColumnModal = false">取消</NButton>
@@ -1341,11 +1458,11 @@ loadRoles();
     </NModal>
 
     <!-- 编辑行权限弹窗 -->
-    <NModal v-model:show="showEditRowModal" preset="card" title="配置行权限" style="width: 700px;">
+    <NModal v-model:show="showEditRowModal" preset="card" title="配置行权限" style="width: 700px">
       <div class="row-modal-header">
         <span class="page-label">页面：{{ editRowForm.pageName || editRowForm.pageCode }}</span>
       </div>
-      
+
       <div class="row-config-mode">
         <span class="mode-label">配置方式：</span>
         <NRadioGroup v-model:value="rowConfigMode" size="small">
@@ -1353,57 +1470,63 @@ loadRoles();
           <NRadio value="sql">自定义SQL</NRadio>
         </NRadioGroup>
       </div>
-      
+
       <!-- 可视化配置模式 -->
       <template v-if="rowConfigMode === 'visual'">
         <div class="row-visual-section">
           <div class="condition-header">
             <span>满足</span>
-            <NSelect v-model:value="rowConditionLogic" :options="[{ label: '全部', value: 'AND' }, { label: '任一', value: 'OR' }]" size="small" style="width: 80px;" />
+            <NSelect
+              v-model:value="rowConditionLogic"
+              :options="[
+                { label: '全部', value: 'AND' },
+                { label: '任一', value: 'OR' }
+              ]"
+              size="small"
+              style="width: 80px"
+            />
             <span>条件时可见：</span>
           </div>
-          
+
           <template v-if="loadingRowFields">
             <div class="loading-container">加载中...</div>
           </template>
           <template v-else>
             <div class="condition-list">
               <div v-for="(cond, index) in rowConditions" :key="index" class="condition-row">
-                <NSelect 
-                  v-model:value="cond.field" 
-                  :options="fieldOptions" 
-                  size="small" 
-                  style="width: 140px;" 
+                <NSelect
+                  v-model:value="cond.field"
+                  :options="fieldOptions"
+                  size="small"
+                  style="width: 140px"
                   placeholder="选择字段"
                   filterable
                 />
-                <NSelect 
-                  v-model:value="cond.op" 
-                  :options="rowOperatorOptions" 
-                  size="small" 
-                  style="width: 100px;" 
-                />
+                <NSelect v-model:value="cond.op" :options="rowOperatorOptions" size="small" style="width: 100px" />
                 <template v-if="cond.op !== 'isNull' && cond.op !== 'isNotNull'">
-                  <NSelect 
-                    v-model:value="cond.valueType" 
-                    :options="[{ label: '固定值', value: 'static' }, { label: '动态值', value: 'dynamic' }]" 
-                    size="small" 
-                    style="width: 90px;" 
+                  <NSelect
+                    v-model:value="cond.valueType"
+                    :options="[
+                      { label: '固定值', value: 'static' },
+                      { label: '动态值', value: 'dynamic' }
+                    ]"
+                    size="small"
+                    style="width: 90px"
                   />
                   <template v-if="cond.valueType === 'dynamic'">
-                    <NSelect 
-                      v-model:value="cond.value" 
-                      :options="dynamicValueOptions" 
-                      size="small" 
-                      style="flex: 1;" 
+                    <NSelect
+                      v-model:value="cond.value"
+                      :options="dynamicValueOptions"
+                      size="small"
+                      style="flex: 1"
                       placeholder="选择动态值"
                     />
                   </template>
                   <template v-else>
-                    <NInput 
-                      v-model:value="cond.value" 
-                      size="small" 
-                      style="flex: 1;" 
+                    <NInput
+                      v-model:value="cond.value"
+                      size="small"
+                      style="flex: 1"
                       :placeholder="cond.op === 'in' ? '多个值用逗号分隔' : '输入值'"
                     />
                   </template>
@@ -1412,13 +1535,13 @@ loadRoles();
                   <template #icon><Icon icon="mdi:close" /></template>
                 </NButton>
               </div>
-              
-              <NButton dashed size="small" style="width: 100%;" @click="addRowCondition">
+
+              <NButton dashed size="small" style="width: 100%" @click="addRowCondition">
                 <template #icon><Icon icon="mdi:plus" /></template>
                 添加条件
               </NButton>
             </div>
-            
+
             <div v-if="generatedSql" class="generated-sql">
               <div class="sql-label">生成的SQL（只读）：</div>
               <div class="sql-content">{{ generatedSql }}</div>
@@ -1426,25 +1549,31 @@ loadRoles();
           </template>
         </div>
       </template>
-      
+
       <!-- 自定义SQL模式 -->
       <template v-else>
         <div class="row-sql-section">
-          <NInput 
-            v-model:value="rowCustomSql" 
-            type="textarea" 
-            placeholder="SQL WHERE 条件，如：DEPT_ID = 1 或 CREATE_BY = ${username}" 
-            :rows="5" 
+          <NInput
+            v-model:value="rowCustomSql"
+            type="textarea"
+            placeholder="SQL WHERE 条件，如：DEPT_ID = 1 或 CREATE_BY = ${username}"
+            :rows="5"
           />
           <div class="row-policy-tip">
             <div>支持占位符：</div>
-            <div class="tip-item"><code>${userId}</code> - 当前用户ID</div>
-            <div class="tip-item"><code>${username}</code> - 当前用户名</div>
+            <div class="tip-item">
+              <code>${userId}</code>
+              - 当前用户ID
+            </div>
+            <div class="tip-item">
+              <code>${username}</code>
+              - 当前用户名
+            </div>
             <div class="tip-item warning">⚠️ 请确保SQL语法正确，避免使用 1=2、1=0 等永假条件</div>
           </div>
         </div>
       </template>
-      
+
       <template #footer>
         <div class="modal-footer">
           <NButton size="small" @click="showEditRowModal = false">取消</NButton>

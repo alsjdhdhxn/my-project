@@ -43,7 +43,7 @@ export interface PageSimpleVO {
   id?: number;
   pageCode: string;
   pageName: string;
-  resourceType?: string;  // DIRECTORY, PAGE
+  resourceType?: string; // DIRECTORY, PAGE
   parentId?: number;
   children?: PageSimpleVO[];
 }
@@ -52,17 +52,17 @@ export interface ResourcePermissionVO {
   id?: number;
   pageCode?: string;
   resourceName?: string;
-  resourceType?: string;  // DIRECTORY, PAGE
-  isHardcoded?: number;   // 1=硬编码页面, 0=元数据驱动
+  resourceType?: string; // DIRECTORY, PAGE
+  isHardcoded?: number; // 1=硬编码页面, 0=元数据驱动
   icon?: string;
   route?: string;
   parentId?: number;
   sortOrder?: number;
-  rolePageId?: number;      // 有值表示已授权
+  rolePageId?: number; // 有值表示已授权
   buttonPolicy?: string;
   columnPolicy?: string;
   rowPolicy?: string;
-  isAuthorized?: number;    // 1=已授权, 0=未授权
+  isAuthorized?: number; // 1=已授权, 0=未授权
   children?: ResourcePermissionVO[];
 }
 
@@ -98,7 +98,11 @@ export async function fetchUsersByRole(roleId: number) {
 }
 
 export async function addUserToRole(roleId: number, userRole: Partial<UserRoleVO>) {
-  const { data, error } = await request<UserRoleVO>({ url: `/role-manage/role/${roleId}/user`, method: 'post', data: userRole });
+  const { data, error } = await request<UserRoleVO>({
+    url: `/role-manage/role/${roleId}/user`,
+    method: 'post',
+    data: userRole
+  });
   if (error) throw error;
   return data!;
 }
@@ -116,13 +120,21 @@ export async function fetchPagesByRole(roleId: number) {
 }
 
 export async function addPageToRole(roleId: number, rolePage: Partial<RolePageVO>) {
-  const { data, error } = await request<RolePageVO>({ url: `/role-manage/role/${roleId}/page`, method: 'post', data: rolePage });
+  const { data, error } = await request<RolePageVO>({
+    url: `/role-manage/role/${roleId}/page`,
+    method: 'post',
+    data: rolePage
+  });
   if (error) throw error;
   return data!;
 }
 
 export async function updateRolePage(id: number, rolePage: Partial<RolePageVO>) {
-  const { data, error } = await request<RolePageVO>({ url: `/role-manage/role-page/${id}`, method: 'put', data: rolePage });
+  const { data, error } = await request<RolePageVO>({
+    url: `/role-manage/role-page/${id}`,
+    method: 'put',
+    data: rolePage
+  });
   if (error) throw error;
   return data!;
 }
@@ -203,8 +215,8 @@ export interface SearchCondition {
 }
 
 export async function searchRoles(conditions: SearchCondition[]) {
-  const { data } = await request<RoleVO[]>({ 
-    url: '/role-manage/roles/search', 
+  const { data } = await request<RoleVO[]>({
+    url: '/role-manage/roles/search',
     method: 'post',
     data: conditions
   });

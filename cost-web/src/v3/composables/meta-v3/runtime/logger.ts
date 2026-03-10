@@ -6,13 +6,9 @@ function formatPrefix(pageCode: string, componentKey?: string, stage?: RuntimeSt
   return `[MetaV3][${pageCode}][${key}][${st}]`;
 }
 
-export function createRuntimeLogger(
-  pageCode: string,
-  notifyError?: (message: string) => void
-): RuntimeLogger {
+export function createRuntimeLogger(pageCode: string, notifyError?: (message: string) => void): RuntimeLogger {
   return {
-    log: (stage, message, componentKey) => {
-    },
+    log: (stage, message, componentKey) => {},
     error: (err: MetaError) => {
       const prefix = formatPrefix(err.pageCode, err.componentKey, err.stage);
       console.warn(`${prefix} ${err.code}: ${err.message}`);
@@ -20,4 +16,3 @@ export function createRuntimeLogger(
     }
   };
 }
-

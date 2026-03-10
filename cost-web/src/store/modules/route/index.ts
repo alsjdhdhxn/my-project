@@ -179,7 +179,7 @@ export const useRouteStore = defineStore(SetupStoreId.Route, () => {
     // check if user info is initialized
     if (!authStore.userInfo.userId) {
       const success = await authStore.initUserInfo();
-      
+
       // 如果获取用户信息失败（Token 过期），直接返回，不再初始化路由
       if (!success) {
         return;

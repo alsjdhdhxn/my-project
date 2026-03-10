@@ -1,4 +1,4 @@
-import { computed, watch, type Ref } from 'vue';
+import { type Ref, computed, watch } from 'vue';
 import type { ColDef } from 'ag-grid-community';
 import type { ParsedPageConfig, RowData } from '@/v3/logic/calc-engine';
 import {
@@ -7,7 +7,11 @@ import {
   getSummaryRowId,
   resolveSummaryConfig
 } from '@/v3/composables/meta-v3/summary-config';
-import { buildGridRuntimeOptions, autoSizeColumnsOnReady, type ResolvedGridOptions } from '@/v3/composables/meta-v3/grid-options';
+import {
+  type ResolvedGridOptions,
+  autoSizeColumnsOnReady,
+  buildGridRuntimeOptions
+} from '@/v3/composables/meta-v3/grid-options';
 import { buildRowClassCallback } from '@/v3/composables/meta-v3/usePageRules';
 import type { RowClassRule } from '@/v3/composables/meta-v3/types';
 
@@ -159,10 +163,14 @@ export function useNestedDetailParams(params: {
     };
   }
 
-  watch([detailColumnsByTab, pageConfig], () => {
-    updateSummaryColumnDefs();
-    updateSecondLevelDetailParams();
-  }, { deep: true, immediate: true });
+  watch(
+    [detailColumnsByTab, pageConfig],
+    () => {
+      updateSummaryColumnDefs();
+      updateSecondLevelDetailParams();
+    },
+    { deep: true, immediate: true }
+  );
 
   return {
     summaryDetailParams

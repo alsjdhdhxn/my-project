@@ -56,7 +56,7 @@ function connect() {
     console.log('[WS] 已连接');
   };
 
-  ws.onmessage = (event) => {
+  ws.onmessage = event => {
     const data = event.data;
     if (data === 'pong') return;
     try {

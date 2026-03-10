@@ -1,19 +1,19 @@
-﻿import type { Ref, ShallowRef } from 'vue';
+import type { Ref, ShallowRef } from 'vue';
 import type { GridApi } from 'ag-grid-community';
-import {
-  calcRowFields,
-  calcAggregates,
-  compileCalcRules,
-  compileAggRules,
-  buildCalcRuleDependencies,
-  resolveAffectedRuleFieldsByDependencies,
-  normalizeFieldRef,
-  isValidIdentifier,
-  ensureRowKey,
+import type {
+  type CalcRuleDependency,
+  type CalcRuntimeScope,
   type ParsedPageConfig,
   type RowData,
-  type CalcRuleDependency,
-  type CalcRuntimeScope
+  buildCalcRuleDependencies,
+  calcAggregates,
+  calcRowFields,
+  compileAggRules,
+  compileCalcRules,
+  ensureRowKey,
+  isValidIdentifier,
+  normalizeFieldRef,
+  resolveAffectedRuleFieldsByDependencies
 } from '@/v3/logic/calc-engine';
 import {
   applySummaryRowValues,
@@ -253,7 +253,7 @@ export function useCalcBroadcast(params: {
   function isCalcLogEnabled(): boolean {
     try {
       const g = globalThis as any;
-      if (g && Object.prototype.hasOwnProperty.call(g, CALC_LOG_FLAG)) {
+      if (g && Object.hasOwn(g, CALC_LOG_FLAG)) {
         return Boolean(g[CALC_LOG_FLAG]);
       }
     } catch {
@@ -288,13 +288,15 @@ export function useCalcBroadcast(params: {
         console.info(`  - ${prefix}${formatCalcRule(rule)}`);
       }
       console.info('detail changes:');
-      console.table(group.changes.map(change => ({
-        rowId: change.rowId ?? '-',
-        field: change.field,
-        from: formatValue(change.oldValue),
-        to: formatValue(change.newValue),
-        reason: change.reason ?? ''
-      })));
+      console.table(
+        group.changes.map(change => ({
+          rowId: change.rowId ?? '-',
+          field: change.field,
+          from: formatValue(change.oldValue),
+          to: formatValue(change.newValue),
+          reason: change.reason ?? ''
+        }))
+      );
     }
 
     if (aggregateLog && aggregateLog.changes.length > 0) {
@@ -317,12 +319,14 @@ export function useCalcBroadcast(params: {
       }
 
       console.info('master changes:');
-      console.table(aggregateLog.changes.map(change => ({
-        field: change.field,
-        from: formatValue(change.oldValue),
-        to: formatValue(change.newValue),
-        reason: change.reason ?? ''
-      })));
+      console.table(
+        aggregateLog.changes.map(change => ({
+          field: change.field,
+          from: formatValue(change.oldValue),
+          to: formatValue(change.newValue),
+          reason: change.reason ?? ''
+        }))
+      );
     }
 
     console.groupEnd();

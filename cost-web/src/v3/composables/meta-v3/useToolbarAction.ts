@@ -29,10 +29,7 @@ export type ToolbarActionContext = {
  * 处理工具栏/右键菜单按钮点击
  * 统一处理 refreshMode 逻辑和确认弹窗
  */
-export async function handleToolbarAction(
-  item: ToolbarItem,
-  ctx: ToolbarActionContext
-): Promise<void> {
+export async function handleToolbarAction(item: ToolbarItem, ctx: ToolbarActionContext): Promise<void> {
   if (!item.action) return;
 
   const { getSelectedRow, executeAction, dialog } = ctx;
@@ -69,9 +66,10 @@ export async function handleToolbarAction(
  * 计算按钮的 refreshMode
  * 用于右键菜单等场景
  */
-export function resolveRefreshMode(
-  item: { requiresRow?: boolean; refreshMode?: 'all' | 'row' | 'detail' | 'none' }
-): 'all' | 'row' | 'detail' | 'none' {
+export function resolveRefreshMode(item: {
+  requiresRow?: boolean;
+  refreshMode?: 'all' | 'row' | 'detail' | 'none';
+}): 'all' | 'row' | 'detail' | 'none' {
   const defaultRefreshMode = item.requiresRow ? 'row' : 'all';
   return item.refreshMode ?? defaultRefreshMode;
 }

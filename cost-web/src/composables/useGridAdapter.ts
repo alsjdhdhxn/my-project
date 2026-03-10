@@ -2,8 +2,13 @@
  * AG Grid 适配器
  * 负责 Store ↔ Grid 双向同步
  */
-import { ref, watch, type Ref, type ShallowRef } from 'vue';
-import type { GridApi, CellValueChangedEvent, CellEditingStartedEvent, CellEditingStoppedEvent } from 'ag-grid-community';
+import { type Ref, type ShallowRef, ref, watch } from 'vue';
+import type {
+  CellEditingStartedEvent,
+  CellEditingStoppedEvent,
+  CellValueChangedEvent,
+  GridApi
+} from 'ag-grid-community';
 import type { RowData } from '@/logic/calc-engine';
 
 // ==================== 类型定义 ====================
@@ -146,9 +151,7 @@ export function useGridAdapter(options: GridAdapterOptions) {
     api.forEachNode(node => {
       // 正在编辑的行，只刷新非编辑列
       if (editingCell.value && node.data?.[pkField] === editingCell.value.rowId) {
-        const columns = Object.keys(node.data || {}).filter(
-          c => c !== editingCell.value!.field && !c.startsWith('_')
-        );
+        const columns = Object.keys(node.data || {}).filter(c => c !== editingCell.value!.field && !c.startsWith('_'));
         if (columns.length > 0) {
           api.refreshCells({
             rowNodes: [node],

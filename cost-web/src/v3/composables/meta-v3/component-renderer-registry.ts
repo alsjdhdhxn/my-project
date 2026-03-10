@@ -35,4 +35,3 @@ export function resolveComponentRenderer(context: ComponentRendererContext): Com
   }
   return null;
 }
-

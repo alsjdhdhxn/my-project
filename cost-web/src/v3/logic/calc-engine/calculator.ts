@@ -1,7 +1,7 @@
-﻿/**
+/**
  * Pure formula engine with no Vue/AG Grid dependency.
  */
-import { compile, type EvalFunction } from 'mathjs';
+import { type EvalFunction, compile } from 'mathjs';
 
 export type FormulaMatchType = 'equals' | 'regex' | 'contains' | 'notContains';
 
@@ -58,13 +58,45 @@ const aggRuleCache = new Map<string, CompiledAggRule[]>();
 const IDENTIFIER_REGEX = /\b([A-Za-z_]\w*)\b/g;
 const QUALIFIED_IDENTIFIER_REGEX = /\b([A-Za-z_]\w*)\.([A-Za-z_]\w*)\b/g;
 const BUILTIN_TOKENS = new Set([
-  'abs', 'ceil', 'floor', 'round', 'sqrt', 'pow', 'log', 'exp',
-  'min', 'max', 'sum', 'mean', 'mod', 'sign',
-  'pi', 'e', 'true', 'false', 'null', 'undefined',
-  'if', 'else', 'return', 'NaN', 'Infinity',
-  'SUM_IF', 'AVG_IF', 'COUNT_IF', 'MAX_IF', 'MIN_IF',
-  'sum_if', 'avg_if', 'count_if', 'max_if', 'min_if',
-  'IN', 'in', 'NVL', 'nvl'
+  'abs',
+  'ceil',
+  'floor',
+  'round',
+  'sqrt',
+  'pow',
+  'log',
+  'exp',
+  'min',
+  'max',
+  'sum',
+  'mean',
+  'mod',
+  'sign',
+  'pi',
+  'e',
+  'true',
+  'false',
+  'null',
+  'undefined',
+  'if',
+  'else',
+  'return',
+  'NaN',
+  'Infinity',
+  'SUM_IF',
+  'AVG_IF',
+  'COUNT_IF',
+  'MAX_IF',
+  'MIN_IF',
+  'sum_if',
+  'avg_if',
+  'count_if',
+  'max_if',
+  'min_if',
+  'IN',
+  'in',
+  'NVL',
+  'nvl'
 ]);
 
 export interface CalcRuleDependency {
@@ -143,10 +175,7 @@ export function normalizeFieldRef(fieldRef: string, defaultTableCode?: string): 
   return `${defaultTableCode}.${parsed.field}`;
 }
 
-export function extractFieldRefsFromExpression(
-  expression: string | undefined,
-  defaultTableCode?: string
-): Set<string> {
+export function extractFieldRefsFromExpression(expression: string | undefined, defaultTableCode?: string): Set<string> {
   const deps = new Set<string>();
   if (!expression || typeof expression !== 'string') return deps;
 
@@ -166,8 +195,7 @@ export function extractFieldRefsFromExpression(
     }
   }
 
-  const isInsideQualified = (index: number) =>
-    qualifiedRanges.some(range => index >= range.start && index < range.end);
+  const isInsideQualified = (index: number) => qualifiedRanges.some(range => index >= range.start && index < range.end);
 
   IDENTIFIER_REGEX.lastIndex = 0;
   let bareMatch: RegExpExecArray | null;
@@ -231,14 +259,12 @@ export function extractFieldRefsFromRule(rule: CalcRule, defaultTableCode?: stri
   return deps;
 }
 
-export function buildCalcRuleDependencies(
-  rules: CalcRule[],
-  tableCode: string
-): CalcRuleDependency[] {
+export function buildCalcRuleDependencies(rules: CalcRule[], tableCode: string): CalcRuleDependency[] {
   if (!isValidIdentifier(tableCode)) return [];
   return rules.map(rule => {
-    const readFieldRefs = Array.from(extractFieldRefsFromRule(rule, tableCode))
-      .filter(dep => dep !== `${tableCode}.${rule.field}`);
+    const readFieldRefs = Array.from(extractFieldRefsFromRule(rule, tableCode)).filter(
+      dep => dep !== `${tableCode}.${rule.field}`
+    );
     return {
       targetField: rule.field,
       writeFieldRef: `${tableCode}.${rule.field}`,
@@ -393,11 +419,7 @@ function resolveAggregateSource(args: unknown[]): AggregateSource | null {
       };
     }
 
-    if (
-      isValidIdentifier(firstRaw) &&
-      typeof args[1] === 'string' &&
-      isValidIdentifier(args[1].trim())
-    ) {
+    if (isValidIdentifier(firstRaw) && typeof args[1] === 'string' && isValidIdentifier(args[1].trim())) {
       const filterExpr = typeof args[2] === 'string' ? args[2] : undefined;
       return {
         tableCode: firstRaw,
@@ -419,7 +441,9 @@ function buildFilterMatcher(
   const cached = cache.get(cacheKey);
   if (cached) return cached;
 
-  const evaluator = new Function('scope', `with(scope){ return (${filterExpr}); }`) as (scope: Record<string, any>) => unknown;
+  const evaluator = new Function('scope', `with(scope){ return (${filterExpr}); }`) as (
+    scope: Record<string, any>
+  ) => unknown;
   const matcher = (row: Record<string, any>) => {
     try {
       const scope = { ...row, row, [tableCode]: row };
@@ -618,11 +642,7 @@ export function calcRowFields(
   return results;
 }
 
-export function getAffectedRules(
-  field: string,
-  rules: CompiledCalcRule[],
-  isBroadcast = false
-): CompiledCalcRule[] {
+export function getAffectedRules(field: string, rules: CompiledCalcRule[], isBroadcast = false): CompiledCalcRule[] {
   const affected = new Set<string>();
   const queue = [field];
 
@@ -710,10 +730,13 @@ export function calcAggregates(
   if (postProcess) {
     try {
       const fields = Object.keys(results);
-      const fn = new Function(...fields, `
+      const fn = new Function(
+        ...fields,
+        `
         ${postProcess}
         return { ${fields.join(', ')} };
-      `);
+      `
+      );
       const processed = fn(...Object.values(results));
       for (const field of fields) {
         if (typeof processed[field] === 'number') {
@@ -776,10 +799,7 @@ function applyPrecision(value: number, precision: number | null): number {
   return round(value, precision);
 }
 
-function applyPrecisionMap(
-  results: Record<string, number>,
-  precision: number | null
-): Record<string, number> {
+function applyPrecisionMap(results: Record<string, number>, precision: number | null): Record<string, number> {
   if (precision == null) return results;
   const output: Record<string, number> = {};
   for (const [field, value] of Object.entries(results)) {

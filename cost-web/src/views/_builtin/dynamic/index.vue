@@ -1,10 +1,3 @@
-<template>
-  <MasterDetailPageV3 v-if="pageCode" :pageCode="pageCode" />
-  <div v-else class="flex items-center justify-center h-full">
-    <NEmpty description="Page config not found" />
-  </div>
-</template>
-
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useRoute } from 'vue-router';
@@ -17,3 +10,10 @@ const pageCode = computed(() => {
   return (route.meta?.pageCode as string) || '';
 });
 </script>
+
+<template>
+  <MasterDetailPageV3 v-if="pageCode" :page-code="pageCode" />
+  <div v-else class="h-full flex items-center justify-center">
+    <NEmpty description="Page config not found" />
+  </div>
+</template>

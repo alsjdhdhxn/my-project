@@ -1,92 +1,48 @@
-﻿<template>
-  <NModal v-model:show="visible" :mask-closable="true" :close-on-esc="true">
-    <div ref="dialogRef" class="lookup-dialog" :style="dialogStyle">
-      <!-- 标题栏（可拖拽） -->
-      <div class="lookup-dialog-header" @mousedown="startDrag">
-        <span class="lookup-dialog-title">{{ config?.lookupName || '选择' }}</span>
-        <NButton quaternary circle size="small" @click="handleCancel">
-          <template #icon><SvgIcon icon="mdi:close" /></template>
-        </NButton>
-      </div>
-
-      <!-- 内容区 -->
-      <div class="lookup-dialog-body">
-        <div class="lookup-search">
-          <NInput v-model:value="searchText" placeholder="输入关键字搜索" clearable @keyup.enter="handleSearch">
-            <template #prefix><SvgIcon icon="mdi:magnify" class="text-icon" /></template>
-          </NInput>
-        </div>
-        <div class="lookup-grid" :style="{ height: gridHeight + 'px' }">
-          <AgGridVue
-            class="ag-theme-quartz"
-            style="width: 100%; height: 100%"
-            :rowData="rowData"
-            :columnDefs="columnDefs"
-            :defaultColDef="defaultColDef"
-            :rowSelection="rowSelection"
-            @grid-ready="onGridReady"
-            @row-double-clicked="onRowDoubleClicked"
-            @selection-changed="onSelectionChanged"
-          />
-        </div>
-      </div>
-
-      <!-- 底部按钮 -->
-      <div class="lookup-dialog-footer">
-        <NSpace justify="end">
-          <NButton @click="handleCancel">取消</NButton>
-          <NButton type="primary" :disabled="!selectedRow || !hasMapping" @click="handleConfirm">确定</NButton>
-        </NSpace>
-      </div>
-
-      <!-- 右下角拖拽调整大小手柄 -->
-      <div class="resize-handle" @mousedown.stop="startResize"></div>
-    </div>
-  </NModal>
-</template>
-
 <script setup lang="ts">
-import { ref, computed, watch, onUnmounted } from 'vue';
-import { NModal, NInput, NButton, NSpace } from 'naive-ui';
+import { computed, onUnmounted, ref, watch } from 'vue';
+import { NButton, NInput, NModal, NSpace } from 'naive-ui';
 import { AgGridVue } from 'ag-grid-vue3';
-import type { GridApi, ColDef, GridReadyEvent, RowDoubleClickedEvent, SelectionChangedEvent } from 'ag-grid-community';
+import type { ColDef, GridApi, GridReadyEvent, RowDoubleClickedEvent, SelectionChangedEvent } from 'ag-grid-community';
 import { fetchLookupConfig } from '@/service/api';
 import { request } from '@/service/request';
 import SvgIcon from '@/components/custom/svg-icon.vue';
 
 /**
  * Lookup 弹窗组件 Props
- * 
+ *
  * 筛选相关属性说明：
  * - filterField: 从"当前行数据"取哪个字段的值作为筛选值
  *   生效场景：filterValueFrom 没写或为 'row'
  *   例：filterField: "id" → 用当前行的 rowData.id 作为筛选值
- * 
+ *
  * - filterColumn: 弹窗数据源里要过滤的列名（SQL 中的列名）
  *   例：filterColumn: "GOODSID" → 最终会拼成 AND GOODSID = <filterValue>
- * 
+ *
  * - filterValueFrom: 筛选值来源
  *   'row': 用 rowData[filterField]
  *   'cell': 用你点击的单元格的值（不需要 filterField）
- * 
+ *
  * - filterValue: 直接传入的筛选值（filterValueFrom='cell' 时使用）
  */
-const props = withDefaults(defineProps<{
-  lookupCode: string;
-  mapping?: Record<string, string>;
-  /** 当前行数据，用于 filterValueFrom='row' 时取值 */
-  rowData?: Record<string, any>;
-  /** 从当前行取哪个字段的值作为筛选值 */
-  filterField?: string;
-  /** 弹窗数据源的筛选列名（SQL列名） */
-  filterColumn?: string;
-  /** 筛选值来源：'row' 用行数据字段，'cell' 用点击单元格的值 */
-  filterValueFrom?: 'row' | 'cell';
-  /** 直接传入的筛选值（filterValueFrom='cell' 时使用） */
-  filterValue?: any;
-}>(), {
-  mapping: () => ({})
-});
+const props = withDefaults(
+  defineProps<{
+    lookupCode: string;
+    mapping?: Record<string, string>;
+    /** 当前行数据，用于 filterValueFrom='row' 时取值 */
+    rowData?: Record<string, any>;
+    /** 从当前行取哪个字段的值作为筛选值 */
+    filterField?: string;
+    /** 弹窗数据源的筛选列名（SQL列名） */
+    filterColumn?: string;
+    /** 筛选值来源：'row' 用行数据字段，'cell' 用点击单元格的值 */
+    filterValueFrom?: 'row' | 'cell';
+    /** 直接传入的筛选值（filterValueFrom='cell' 时使用） */
+    filterValue?: any;
+  }>(),
+  {
+    mapping: () => ({})
+  }
+);
 const emit = defineEmits<{ (e: 'select', data: Record<string, any>): void; (e: 'cancel'): void }>();
 
 const visible = ref(false);
@@ -111,7 +67,9 @@ const startWidth = ref(0);
 const startHeight = ref(0);
 
 function normalizeColumnName(name?: string | null): string {
-  return String(name || '').trim().toUpperCase();
+  return String(name || '')
+    .trim()
+    .toUpperCase();
 }
 
 const columnDefs = computed<ColDef[]>(() => {
@@ -173,7 +131,10 @@ function startResize(e: MouseEvent) {
 function onResize(e: MouseEvent) {
   if (!isResizing.value) return;
   dialogWidth.value = Math.max(600, Math.min(startWidth.value + e.clientX - dragStartX.value, window.innerWidth - 100));
-  dialogHeight.value = Math.max(400, Math.min(startHeight.value + e.clientY - dragStartY.value, window.innerHeight - 100));
+  dialogHeight.value = Math.max(
+    400,
+    Math.min(startHeight.value + e.clientY - dragStartY.value, window.innerHeight - 100)
+  );
 }
 
 function stopResize() {
@@ -201,7 +162,7 @@ async function open() {
 
 /**
  * 加载弹窗数据
- * 
+ *
  * 筛选逻辑：
  * 1. filterValueFrom='cell' → 直接用 props.filterValue
  * 2. filterValueFrom='row' 或未配置 → 用 rowData[filterField]
@@ -210,7 +171,7 @@ async function open() {
 async function loadData() {
   if (!config.value?.lookupCode) return;
   const params: Record<string, any> = { page: 1, pageSize: 500 };
-  
+
   // 确定筛选值来源
   let filterValue: any = null;
   if (props.filterValueFrom === 'cell') {
@@ -220,13 +181,13 @@ async function loadData() {
     // 'row' 模式或默认：用 rowData[filterField]
     filterValue = props.rowData[props.filterField];
   }
-  
+
   // 有筛选列名且筛选值不为空时，传给后端
   if (props.filterColumn && filterValue != null) {
     params.filterColumn = props.filterColumn;
     params.filterValue = filterValue;
   }
-  
+
   const { data } = await request<{ list: Record<string, any>[] }>({
     url: `/api/lookup/${props.lookupCode}/data`,
     params
@@ -260,7 +221,9 @@ function onGridReady(params: GridReadyEvent) {
     gridApi?.autoSizeAllColumns();
   }, 100);
 }
-function onRowDoubleClicked() { if (selectedRow.value && hasMapping.value) handleConfirm(); }
+function onRowDoubleClicked() {
+  if (selectedRow.value && hasMapping.value) handleConfirm();
+}
 function onSelectionChanged(event: SelectionChangedEvent) {
   const rows = event.api.getSelectedRows();
   selectedRow.value = rows.length > 0 ? rows[0] : null;
@@ -278,11 +241,61 @@ onUnmounted(() => {
 defineExpose({ open });
 </script>
 
+<template>
+  <NModal v-model:show="visible" :mask-closable="true" :close-on-esc="true">
+    <div ref="dialogRef" class="lookup-dialog" :style="dialogStyle">
+      <!-- 标题栏（可拖拽） -->
+      <div class="lookup-dialog-header" @mousedown="startDrag">
+        <span class="lookup-dialog-title">{{ config?.lookupName || '选择' }}</span>
+        <NButton quaternary circle size="small" @click="handleCancel">
+          <template #icon><SvgIcon icon="mdi:close" /></template>
+        </NButton>
+      </div>
+
+      <!-- 内容区 -->
+      <div class="lookup-dialog-body">
+        <div class="lookup-search">
+          <NInput v-model:value="searchText" placeholder="输入关键字搜索" clearable @keyup.enter="handleSearch">
+            <template #prefix><SvgIcon icon="mdi:magnify" class="text-icon" /></template>
+          </NInput>
+        </div>
+        <div class="lookup-grid" :style="{ height: gridHeight + 'px' }">
+          <AgGridVue
+            class="ag-theme-quartz"
+            style="width: 100%; height: 100%"
+            :row-data="rowData"
+            :column-defs="columnDefs"
+            :default-col-def="defaultColDef"
+            :row-selection="rowSelection"
+            @grid-ready="onGridReady"
+            @row-double-clicked="onRowDoubleClicked"
+            @selection-changed="onSelectionChanged"
+          />
+        </div>
+      </div>
+
+      <!-- 底部按钮 -->
+      <div class="lookup-dialog-footer">
+        <NSpace justify="end">
+          <NButton @click="handleCancel">取消</NButton>
+          <NButton type="primary" :disabled="!selectedRow || !hasMapping" @click="handleConfirm">确定</NButton>
+        </NSpace>
+      </div>
+
+      <!-- 右下角拖拽调整大小手柄 -->
+      <div class="resize-handle" @mousedown.stop="startResize"></div>
+    </div>
+  </NModal>
+</template>
+
 <style scoped>
 .lookup-dialog {
   background: #fff;
   border-radius: 8px;
-  box-shadow: 0 6px 16px 0 rgba(0,0,0,0.08), 0 3px 6px -4px rgba(0,0,0,0.12), 0 9px 28px 8px rgba(0,0,0,0.05);
+  box-shadow:
+    0 6px 16px 0 rgba(0, 0, 0, 0.08),
+    0 3px 6px -4px rgba(0, 0, 0, 0.12),
+    0 9px 28px 8px rgba(0, 0, 0, 0.05);
   display: flex;
   flex-direction: column;
   position: relative;
@@ -298,11 +311,32 @@ defineExpose({ open });
   cursor: move;
   user-select: none;
 }
-.lookup-dialog-title { font-size: 16px; font-weight: 500; color: #333; }
-.lookup-dialog-body { flex: 1; padding: 16px; overflow: hidden; display: flex; flex-direction: column; }
-.lookup-search { margin-bottom: 12px; flex-shrink: 0; }
-.lookup-grid { flex: 1; border: 1px solid #e8e8e8; border-radius: 4px; overflow: hidden; }
-.lookup-dialog-footer { padding: 12px 16px; border-top: 1px solid #f0f0f0; }
+.lookup-dialog-title {
+  font-size: 16px;
+  font-weight: 500;
+  color: #333;
+}
+.lookup-dialog-body {
+  flex: 1;
+  padding: 16px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.lookup-search {
+  margin-bottom: 12px;
+  flex-shrink: 0;
+}
+.lookup-grid {
+  flex: 1;
+  border: 1px solid #e8e8e8;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.lookup-dialog-footer {
+  padding: 12px 16px;
+  border-top: 1px solid #f0f0f0;
+}
 .resize-handle {
   position: absolute;
   right: 0;
@@ -310,10 +344,30 @@ defineExpose({ open });
   width: 16px;
   height: 16px;
   cursor: se-resize;
-  background: linear-gradient(135deg, transparent 50%, #d9d9d9 50%, #d9d9d9 60%, transparent 60%, transparent 70%, #d9d9d9 70%, #d9d9d9 80%, transparent 80%);
+  background: linear-gradient(
+    135deg,
+    transparent 50%,
+    #d9d9d9 50%,
+    #d9d9d9 60%,
+    transparent 60%,
+    transparent 70%,
+    #d9d9d9 70%,
+    #d9d9d9 80%,
+    transparent 80%
+  );
   border-radius: 0 0 8px 0;
 }
 .resize-handle:hover {
-  background: linear-gradient(135deg, transparent 50%, #1890ff 50%, #1890ff 60%, transparent 60%, transparent 70%, #1890ff 70%, #1890ff 80%, transparent 80%);
+  background: linear-gradient(
+    135deg,
+    transparent 50%,
+    #1890ff 50%,
+    #1890ff 60%,
+    transparent 60%,
+    transparent 70%,
+    #1890ff 70%,
+    #1890ff 80%,
+    transparent 80%
+  );
 }
 </style>

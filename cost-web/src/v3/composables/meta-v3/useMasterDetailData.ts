@@ -1,11 +1,12 @@
-﻿import type { Ref, ShallowRef } from 'vue';
+import type { Ref, ShallowRef } from 'vue';
+import { ref } from 'vue';
 import type { GridApi, IServerSideGetRowsParams } from 'ag-grid-community';
-import { searchDynamicData } from '@/service/api';
+import { type DynamicQueryCondition, searchDynamicData } from '@/service/api';
 import { debugLog } from '@/v3/composables/meta-v3/debug';
-import { ensureRowKey, generateTempId, initRowData, type ParsedPageConfig, type RowData } from '@/v3/logic/calc-engine';
+import { type ParsedPageConfig, type RowData, ensureRowKey, generateTempId, initRowData } from '@/v3/logic/calc-engine';
 
 type RecalcAggregates = (masterId: number, masterRowKey?: string) => void;
-type QueryCondition = { field: string; operator: string; value: any; value2?: any };
+type QueryCondition = DynamicQueryCondition;
 
 export function useMasterDetailData(params: {
   pageCode: string;
@@ -35,7 +36,7 @@ export function useMasterDetailData(params: {
   } = params;
 
   const detailCache = new Map<string, Record<string, RowData[]>>();
-
+  const advancedConditions = ref<QueryCondition[]>([]);
 
   function getMasterRowByRowKey(rowKey: string): RowData | null {
     if (!rowKey) return null;
@@ -193,7 +194,9 @@ export function useMasterDetailData(params: {
         grouped[tab.key] = [];
         continue;
       }
-      grouped[tab.key] = (data?.list || []).map((row: any) => initRowData(row, false, detailPkColumnByTab.value[tab.key]));
+      grouped[tab.key] = (data?.list || []).map((row: any) =>
+        initRowData(row, false, detailPkColumnByTab.value[tab.key])
+      );
       debugLog('detail response', { tabKey: tab.key, count: grouped[tab.key].length });
     }
 
@@ -203,16 +206,13 @@ export function useMasterDetailData(params: {
         detailGridApisByTab.value[tabKey]?.setGridOption?.('rowData', rows);
       }
     }
-    debugLog(
-      'detail loaded',
-      {
-        masterId,
-        rowKey: resolvedRowKey,
-        tabs: Object.keys(grouped)
-          .map(k => `${k}: ${grouped[k].length} rows`)
-          .join(', ')
-      }
-    );
+    debugLog('detail loaded', {
+      masterId,
+      rowKey: resolvedRowKey,
+      tabs: Object.keys(grouped)
+        .map(k => `${k}: ${grouped[k].length} rows`)
+        .join(', ')
+    });
   }
 
   function addMasterRow() {
@@ -222,9 +222,8 @@ export function useMasterDetailData(params: {
 
     // 获取当前选中行的索引，用于在其下方插入
     const selectedNodes = api?.getSelectedNodes() || [];
-    const insertIndex = selectedNodes.length > 0 && selectedNodes[0].rowIndex != null
-      ? selectedNodes[0].rowIndex + 1
-      : 0;
+    const insertIndex =
+      selectedNodes.length > 0 && selectedNodes[0].rowIndex != null ? selectedNodes[0].rowIndex + 1 : 0;
 
     // 更新本地缓存（仅客户端模式）
 
@@ -346,9 +345,7 @@ export function useMasterDetailData(params: {
 
     // 获取源行的索引，在其下方插入
     const sourceNode = api?.getRowNode(String(sourceRowKey));
-    const insertIndex = sourceNode?.rowIndex != null
-      ? sourceNode.rowIndex + 1
-      : 0;
+    const insertIndex = sourceNode?.rowIndex != null ? sourceNode.rowIndex + 1 : 0;
 
     // V3 强制使用 SSRM：使用事务 API 插入行到 Grid
     if (api) {
@@ -371,13 +368,15 @@ export function useMasterDetailData(params: {
         const newCached: Record<string, RowData[]> = {};
         for (const [tabKey, rows] of Object.entries(sourceCached)) {
           const fkColumn = detailFkColumnByTab.value[tabKey] || 'masterId';
-          newCached[tabKey] = rows.filter(r => !r._isDeleted).map(r => {
-            const newDetailRow = initRowData({ id: generateTempId(), [fkColumn]: newMasterId }, true);
-            for (const [key, value] of Object.entries(r)) {
-              if (!key.startsWith('_') && key !== 'id' && key !== fkColumn) newDetailRow[key] = value;
-            }
-            return newDetailRow;
-          });
+          newCached[tabKey] = rows
+            .filter(r => !r._isDeleted)
+            .map(r => {
+              const newDetailRow = initRowData({ id: generateTempId(), [fkColumn]: newMasterId }, true);
+              for (const [key, value] of Object.entries(r)) {
+                if (!key.startsWith('_') && key !== 'id' && key !== fkColumn) newDetailRow[key] = value;
+              }
+              return newDetailRow;
+            });
         }
         detailCache.set(newRow._rowKey as string, newCached);
       }
@@ -423,9 +422,22 @@ export function useMasterDetailData(params: {
     detailCache.clear();
   }
 
+  function setAdvancedConditions(conditions: QueryCondition[]) {
+    advancedConditions.value = Array.isArray(conditions)
+      ? conditions.filter(condition => Boolean(condition?.field) && Boolean(condition?.operator))
+      : [];
+  }
+
+  function clearAdvancedConditions() {
+    advancedConditions.value = [];
+  }
+
   return {
     detailCache,
     clearAllCache,
+    advancedConditions,
+    setAdvancedConditions,
+    clearAdvancedConditions,
     getMasterRowByRowKey,
     getMasterRowById,
     resolveMasterRowKey,
@@ -447,7 +459,7 @@ export function useMasterDetailData(params: {
       let lastRequestTime = 0;
       const REQUEST_DEBOUNCE_MS = 50;
       // 缓存总行数，避免每次都传导致 Grid 重置
-      let cachedRowCount: number | undefined = undefined;
+      let cachedRowCount: number | undefined;
       let lastSortFilterKey = '';
 
       return {
@@ -472,17 +484,22 @@ export function useMasterDetailData(params: {
 
           // 过滤
           const filterModel = request.filterModel;
-          const conditions = buildConditionsFromFilterModel(filterModel);
+          const filterConditions = buildConditionsFromFilterModel(filterModel);
+          const conditions = [...filterConditions, ...advancedConditions.value];
 
           // 检查排序/过滤是否变化，如果变化则清除缓存的 rowCount
-          const sortFilterKey = JSON.stringify({ filterModel, sortModel });
+          const sortFilterKey = JSON.stringify({
+            filterModel,
+            sortModel,
+            advancedConditions: advancedConditions.value
+          });
           if (sortFilterKey !== lastSortFilterKey) {
             lastSortFilterKey = sortFilterKey;
             cachedRowCount = undefined; // 排序/过滤变化时重置
           }
 
           // 查询键变化时更新标记
-          const queryKey = JSON.stringify({ filterModel, sortModel });
+          const queryKey = JSON.stringify({ filterModel, sortModel, advancedConditions: advancedConditions.value });
           if (startRow === 0 && queryKey !== lastQueryKey) {
             lastQueryKey = queryKey;
           }
@@ -498,7 +515,9 @@ export function useMasterDetailData(params: {
               sortOrder,
               conditions: conditions.length > 0 ? conditions : undefined
             });
-            pendingRequest = requestPromise.then(() => { pendingRequest = null; });
+            pendingRequest = requestPromise.then(() => {
+              pendingRequest = null;
+            });
 
             const { data, error } = await requestPromise;
 

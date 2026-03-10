@@ -1,150 +1,14 @@
-﻿<template>
-  <div class="master-detail-layout-v3">
-    <!-- 工具栏 -->
-    <div v-if="mergedToolbarItems.length > 0" class="toolbar-container">
-      <NSpace>
-        <template v-for="item in mergedToolbarItems" :key="item.key">
-          <!-- 下拉按钮：多个 tab 同名 action 合并 -->
-          <NDropdown
-            v-if="item.children"
-            trigger="click"
-            :options="item.children"
-            @select="(key: string) => handleDropdownSelect(key, item)"
-          >
-            <NButton :type="item.type || 'default'" :disabled="item.disabled" size="small">
-              {{ item.label }} ▾
-            </NButton>
-          </NDropdown>
-          <!-- 普通按钮 -->
-          <NButton
-            v-else
-            :type="item.type || 'default'"
-            :disabled="item.disabled"
-            size="small"
-            @click="handleToolbarClick(item)"
-          >
-            {{ item.label }}
-          </NButton>
-        </template>
-      </NSpace>
-    </div>
-
-    <NSplit
-      v-if="isSplitMode && hasDetailTabs"
-      direction="vertical"
-      :default-size="splitConfig.defaultSize"
-      :min="splitConfig.min"
-      :max="splitConfig.max"
-      class="split-container"
-    >
-      <template #1>
-        <div class="master-panel">
-          <AgGridVue
-            :key="'split-master-grid'"
-            class="ag-theme-quartz master-grid"
-            :columnDefs="masterColumnDefs"
-            :defaultColDef="defaultColDef"
-            :getRowId="getMasterRowId"
-            :getRowClass="getRowClass"
-            :getRowStyle="getRowStyle"
-            :rowSelection="rowSelection"
-            :autoSizeStrategy="autoSizeStrategy"
-            :getContextMenuItems="getMasterContextMenuItems"
-            :masterDetail="false"
-            :detailRowAutoHeight="false"
-            :getRowHeight="getRowHeight"
-            :keepDetailRows="false"
-            :detailCellRenderer="undefined"
-            :context="gridContext"
-            :rowHeight="rowHeight"
-            :headerHeight="headerHeight"
-            :undoRedoCellEditing="true"
-            :undoRedoCellEditingLimit="20"
-            v-bind="masterGridRuntimeOptions"
-            @grid-ready="handleMasterGridReady"
-            @selection-changed="onSelectionChanged"
-            @row-group-opened="onDetailRowOpened"
-            @cell-editing-started="onCellEditingStarted"
-            @cell-editing-stopped="onCellEditingStopped"
-            @cell-value-changed="onMasterCellValueChanged"
-            @cell-clicked="onMasterCellClicked"
-            @filter-changed="onFilterChanged"
-          />
-        </div>
-      </template>
-      <template #2>
-        <DetailPanelV3
-          :tabs="detailTabs"
-          :activeMasterId="activeMasterId"
-          :activeMasterRowKey="activeMasterRowKey"
-          :detailCache="detailCache"
-          :detailColumnsByTab="detailColumnsByTab"
-          :detailRowClassByTab="mergedDetailRowClassByTab"
-          :detailGridOptionsByTab="detailGridOptionsByTab"
-          :detailSumFieldsByTab="detailSumFieldsByTab"
-          :cellClassRules="cellClassRules"
-          :applyGridConfig="applyGridConfig"
-          :onDetailCellValueChanged="onDetailCellValueChanged"
-          :onDetailCellClicked="onDetailCellClicked"
-          :onCellEditingStarted="onCellEditingStarted"
-          :onCellEditingStopped="onCellEditingStopped"
-          :loadDetailData="loadDetailData"
-          :registerDetailGridApi="registerDetailGridApi"
-          :unregisterDetailGridApi="unregisterDetailGridApi"
-          :getDetailContextMenuItems="getDetailContextMenuItems"
-          :refreshDetailRowHeight="refreshDetailRowHeight"
-          :defaultViewMode="'stack'"
-          :viewMode="detailViewMode"
-          @update:activeTab="(v: string) => activeDetailTab = v"
-        />
-      </template>
-    </NSplit>
-
-    <div v-else class="master-panel">
-      <AgGridVue
-        :key="'master-detail-grid'"
-        class="ag-theme-quartz master-grid"
-        :columnDefs="masterColumnDefs"
-        :defaultColDef="defaultColDef"
-        :getRowId="getMasterRowId"
-        :getRowClass="getRowClass"
-        :getRowStyle="getRowStyle"
-        :rowSelection="rowSelection"
-        :autoSizeStrategy="autoSizeStrategy"
-        :getContextMenuItems="getMasterContextMenuItems"
-        :masterDetail="hasDetailTabs"
-        :detailRowAutoHeight="false"
-        :getRowHeight="getRowHeight"
-        :keepDetailRows="hasDetailTabs"
-        :detailCellRenderer="hasDetailTabs ? DetailRowRendererV3 : undefined"
-        :context="gridContext"
-        :rowHeight="rowHeight"
-        :headerHeight="headerHeight"
-        :undoRedoCellEditing="true"
-        :undoRedoCellEditingLimit="20"
-        v-bind="masterGridRuntimeOptions"
-        @grid-ready="handleMasterGridReady"
-        @row-group-opened="onDetailRowOpened"
-        @cell-editing-started="onCellEditingStarted"
-        @cell-editing-stopped="onCellEditingStopped"
-        @cell-value-changed="onMasterCellValueChanged"
-        @cell-clicked="onMasterCellClicked"
-        @filter-changed="onFilterChanged"
-      />
-    </div>
-  </div>
-</template>
-
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
+import { NButton, NDropdown, NSpace, NSplit, useDialog } from 'naive-ui';
 import { AgGridVue } from 'ag-grid-vue3';
-import { NSplit, NSpace, NButton, NDropdown, useDialog } from 'naive-ui';
+import { useThemeStore } from '@/store/modules/theme';
 import DetailRowRendererV3 from '@/v3/components/detail/DetailRowRendererV3.vue';
 import DetailPanelV3 from '@/v3/components/detail/DetailPanelV3.vue';
+import AdvancedSearchDialog from '@/v3/components/AdvancedSearchDialog.vue';
 import { useMasterGridBindings } from '@/v3/composables/meta-v3/useMasterGridBindings';
 import { useGridContextMenu } from '@/v3/composables/meta-v3/useGridContextMenu';
 import { handleToolbarAction } from '@/v3/composables/meta-v3/useToolbarAction';
-import { useThemeStore } from '@/store/modules/theme';
 import { ensureRowKey } from '@/v3/logic/calc-engine';
 import { buildRowClassCallback, buildRowEditableCallback } from '@/v3/composables/meta-v3/usePageRules';
 
@@ -156,11 +20,15 @@ const themeStore = useThemeStore();
 const runtime = props.runtime;
 
 // 🔍 调试：监控可能导致 Grid 重置的属性变化
-watch(() => runtime.masterColumnDefs?.value, (newVal, oldVal) => {
-  if (newVal !== oldVal) {
-    console.warn('[DEBUG] masterColumnDefs changed!', { newLength: newVal?.length, oldLength: oldVal?.length });
-  }
-}, { deep: false });
+watch(
+  () => runtime.masterColumnDefs?.value,
+  (newVal, oldVal) => {
+    if (newVal !== oldVal) {
+      console.warn('[DEBUG] masterColumnDefs changed!', { newLength: newVal?.length, oldLength: oldVal?.length });
+    }
+  },
+  { deep: false }
+);
 
 const {
   masterColumnDefs,
@@ -244,7 +112,10 @@ const mergedToolbarItems = computed<MergedToolbarItem[]>(() => {
     }
   } else {
     // 堆叠模式：按 action 分组合并为下拉按钮
-    const actionGroup = new Map<string, { label: string; tabKey: string; tabTitle: string; alias?: string; item: any }[]>();
+    const actionGroup = new Map<
+      string,
+      { label: string; tabKey: string; tabTitle: string; alias?: string; item: any }[]
+    >();
 
     for (const tab of tabs) {
       const toolbar = detailToolbars[tab.key];
@@ -350,14 +221,20 @@ async function handleToolbarClick(item: any) {
       return;
     case 'copyRow': {
       const row = getSelectedRow();
-      if (!row) { window.$message?.warning('请先选择一行'); return; }
+      if (!row) {
+        window.$message?.warning('请先选择一行');
+        return;
+      }
       copyMasterRow(row);
       return;
     }
     case 'deleteRow': {
       const api = masterGridApi?.value;
       const selectedRows = api?.getSelectedRows?.() || [];
-      if (selectedRows.length === 0) { window.$message?.warning('请先选择要删除的行'); return; }
+      if (selectedRows.length === 0) {
+        window.$message?.warning('请先选择要删除的行');
+        return;
+      }
       selectedRows.forEach((row: any) => deleteMasterRow(row));
       return;
     }
@@ -408,7 +285,7 @@ const mergedDetailRowClassByTab = computed(() => {
     const metaGetter = detailRowClassGetterByTab?.value?.[tab.key];
     const rules = detailRowClassRulesByTab?.value?.[tab.key] || [];
     const ruleGetter = buildRowClassCallback(rules);
-    
+
     if (!metaGetter && !ruleGetter) {
       result[tab.key] = undefined;
     } else {
@@ -435,7 +312,10 @@ const detailRowEditableByTab = computed(() => {
     const callback = buildRowEditableCallback(rules);
     result[tab.key] = callback ? (row: any) => callback({ data: row }) : undefined;
   }
-  console.log('[DEBUG] detailRowEditableByTab result:', Object.keys(result).map(k => `${k}: ${result[k] ? 'has callback' : 'undefined'}`));
+  console.log(
+    '[DEBUG] detailRowEditableByTab result:',
+    Object.keys(result).map(k => `${k}: ${result[k] ? 'has callback' : 'undefined'}`)
+  );
   return result;
 });
 const activeMasterId = ref<number | null>(null);
@@ -454,7 +334,9 @@ function normalizeMasterId(value: unknown): number | null {
 let cachedDataSource: any = null;
 function getDataSource() {
   if (!cachedDataSource) {
-    cachedDataSource = runtime?.createServerSideDataSource?.({ pageSize: masterGridOptionsValue.value?.cacheBlockSize });
+    cachedDataSource = runtime?.createServerSideDataSource?.({
+      pageSize: masterGridOptionsValue.value?.cacheBlockSize
+    });
   }
   return cachedDataSource;
 }
@@ -488,7 +370,7 @@ const {
   rowEditableRules: masterRowEditableRules?.value,
   rowClassRules: masterRowClassRules?.value,
   dataSource: getDataSource(),
-  onSelectionChanged: async (rows) => {
+  onSelectionChanged: async rows => {
     if (!isSplitMode.value || !hasDetailTabs.value) return;
     const selected = rows?.[0];
     const nextId = normalizeMasterId(selected?.id);
@@ -609,7 +491,7 @@ const gridContext = {
 
 function getRowHeight(params: any): number | undefined {
   if (!params.node?.detail) return undefined;
-  
+
   const masterRowKey = params.node?.data?._rowKey ? String(params.node?.data?._rowKey) : null;
   const tabs = detailTabs.value || [];
   const tabCount = tabs.length || 1;
@@ -619,7 +501,7 @@ function getRowHeight(params: any): number | undefined {
   const padding = 80;
   const minRows = 2;
   const isTabMode = detailViewMode.value === 'tab';
-  
+
   const cached = masterRowKey ? detailCache.get(masterRowKey) : undefined;
 
   if (isTabMode) {
@@ -638,10 +520,10 @@ function getRowHeight(params: any): number | undefined {
   }
 
   // 堆叠模式：所有子表累加
-  const availableHeight = window.innerHeight - 100 - padding - (gap * (tabCount - 1));
+  const availableHeight = window.innerHeight - 100 - padding - gap * (tabCount - 1);
   const maxGridHeight = Math.floor(availableHeight / tabCount);
   const minGridHeight = headerHeight + rowHeight * minRows;
-  
+
   let totalHeight = padding;
   for (let i = 0; i < tabs.length; i++) {
     const tabKey = tabs[i].key;
@@ -651,7 +533,7 @@ function getRowHeight(params: any): number | undefined {
     totalHeight += gridHeight;
     if (i < tabs.length - 1) totalHeight += gap;
   }
-  
+
   const maxContainerHeight = window.innerHeight - 100;
   return Math.min(totalHeight, maxContainerHeight);
 }
@@ -663,7 +545,7 @@ function hasUnsavedChanges(masterId: number): boolean {
   if (masterRow && (masterRow._isNew || masterRow._isDeleted || masterRow._dirtyFields)) {
     return true;
   }
-  
+
   // 检查子表
   const masterRowKey = masterRow ? ensureRowKey(masterRow) : null;
   const cached = masterRowKey ? detailCache.get(masterRowKey) : undefined;
@@ -676,7 +558,7 @@ function hasUnsavedChanges(masterId: number): boolean {
       }
     }
   }
-  
+
   return false;
 }
 
@@ -694,14 +576,14 @@ function getExpandedMasterId(api: any): number | null {
 function onDetailRowOpened(event: any) {
   if (isSplitMode.value) return;
   if (!event?.node?.master) return;
-  
+
   const masterId = normalizeMasterId(event.node?.data?.id);
   const api = event.api;
   const currentNode = event.node;
-  
+
   // 如果是收起操作，不做处理
   if (!currentNode.expanded) return;
-  
+
   // 检查是否有其他展开的行
   let expandedNode: any = null;
   api?.forEachNode?.((node: any) => {
@@ -709,13 +591,13 @@ function onDetailRowOpened(event: any) {
       expandedNode = node;
     }
   });
-  
+
   if (expandedNode) {
     const expandedMasterId = expandedNode.data?.id;
-    
+
     // 先收起当前行（阻止本次展开）
     currentNode.setExpanded(false);
-    
+
     // 检查原展开行是否有未保存的修改
     if (hasUnsavedChanges(expandedMasterId)) {
       dialog.warning({
@@ -741,7 +623,7 @@ function onDetailRowOpened(event: any) {
       });
       return;
     }
-    
+
     // 没有修改，直接收起旧行，展开新行
     expandedNode.setExpanded(false);
     setTimeout(() => {
@@ -749,13 +631,13 @@ function onDetailRowOpened(event: any) {
     }, 50);
     return;
   }
-  
+
   // 将当前行滚动到顶部
   const rowIndex = currentNode.rowIndex;
   if (rowIndex != null) {
     api?.ensureIndexVisible(rowIndex, 'top');
   }
-  
+
   // 加载数据，完成后刷新行高
   const masterRowKey = currentNode?.data ? String(ensureRowKey(currentNode.data)) : null;
   if (masterId != null && masterRowKey && !detailCache.get(masterRowKey)) {
@@ -781,6 +663,143 @@ onUnmounted(() => {
   document.removeEventListener('keydown', onKeyDown);
 });
 </script>
+
+<template>
+  <div class="master-detail-layout-v3">
+    <!-- 工具栏 -->
+    <div v-if="mergedToolbarItems.length > 0" class="toolbar-container">
+      <NSpace>
+        <template v-for="item in mergedToolbarItems" :key="item.key">
+          <!-- 下拉按钮：多个 tab 同名 action 合并 -->
+          <NDropdown
+            v-if="item.children"
+            trigger="click"
+            :options="item.children"
+            @select="(key: string) => handleDropdownSelect(key, item)"
+          >
+            <NButton :type="item.type || 'default'" :disabled="item.disabled" size="small">{{ item.label }} ▾</NButton>
+          </NDropdown>
+          <!-- 普通按钮 -->
+          <NButton
+            v-else
+            :type="item.type || 'default'"
+            :disabled="item.disabled"
+            size="small"
+            @click="handleToolbarClick(item)"
+          >
+            {{ item.label }}
+          </NButton>
+        </template>
+      </NSpace>
+    </div>
+
+    <NSplit
+      v-if="isSplitMode && hasDetailTabs"
+      direction="vertical"
+      :default-size="splitConfig.defaultSize"
+      :min="splitConfig.min"
+      :max="splitConfig.max"
+      class="split-container"
+    >
+      <template #1>
+        <div class="master-panel">
+          <AgGridVue
+            key="split-master-grid"
+            class="ag-theme-quartz master-grid"
+            :column-defs="masterColumnDefs"
+            :default-col-def="defaultColDef"
+            :get-row-id="getMasterRowId"
+            :get-row-class="getRowClass"
+            :get-row-style="getRowStyle"
+            :row-selection="rowSelection"
+            :auto-size-strategy="autoSizeStrategy"
+            :get-context-menu-items="getMasterContextMenuItems"
+            :master-detail="false"
+            :detail-row-auto-height="false"
+            :get-row-height="getRowHeight"
+            :keep-detail-rows="false"
+            :detail-cell-renderer="undefined"
+            :context="gridContext"
+            :row-height="rowHeight"
+            :header-height="headerHeight"
+            :undo-redo-cell-editing="true"
+            :undo-redo-cell-editing-limit="20"
+            v-bind="masterGridRuntimeOptions"
+            @grid-ready="handleMasterGridReady"
+            @selection-changed="onSelectionChanged"
+            @row-group-opened="onDetailRowOpened"
+            @cell-editing-started="onCellEditingStarted"
+            @cell-editing-stopped="onCellEditingStopped"
+            @cell-value-changed="onMasterCellValueChanged"
+            @cell-clicked="onMasterCellClicked"
+            @filter-changed="onFilterChanged"
+          />
+        </div>
+      </template>
+      <template #2>
+        <DetailPanelV3
+          :tabs="detailTabs"
+          :active-master-id="activeMasterId"
+          :active-master-row-key="activeMasterRowKey"
+          :detail-cache="detailCache"
+          :detail-columns-by-tab="detailColumnsByTab"
+          :detail-row-class-by-tab="mergedDetailRowClassByTab"
+          :detail-grid-options-by-tab="detailGridOptionsByTab"
+          :detail-sum-fields-by-tab="detailSumFieldsByTab"
+          :cell-class-rules="cellClassRules"
+          :apply-grid-config="applyGridConfig"
+          :on-detail-cell-value-changed="onDetailCellValueChanged"
+          :on-detail-cell-clicked="onDetailCellClicked"
+          :on-cell-editing-started="onCellEditingStarted"
+          :on-cell-editing-stopped="onCellEditingStopped"
+          :load-detail-data="loadDetailData"
+          :register-detail-grid-api="registerDetailGridApi"
+          :unregister-detail-grid-api="unregisterDetailGridApi"
+          :get-detail-context-menu-items="getDetailContextMenuItems"
+          :refresh-detail-row-height="refreshDetailRowHeight"
+          default-view-mode="stack"
+          :view-mode="detailViewMode"
+          @update:active-tab="(v: string) => (activeDetailTab = v)"
+        />
+      </template>
+    </NSplit>
+
+    <div v-else class="master-panel">
+      <AgGridVue
+        key="master-detail-grid"
+        class="ag-theme-quartz master-grid"
+        :column-defs="masterColumnDefs"
+        :default-col-def="defaultColDef"
+        :get-row-id="getMasterRowId"
+        :get-row-class="getRowClass"
+        :get-row-style="getRowStyle"
+        :row-selection="rowSelection"
+        :auto-size-strategy="autoSizeStrategy"
+        :get-context-menu-items="getMasterContextMenuItems"
+        :master-detail="hasDetailTabs"
+        :detail-row-auto-height="false"
+        :get-row-height="getRowHeight"
+        :keep-detail-rows="hasDetailTabs"
+        :detail-cell-renderer="hasDetailTabs ? DetailRowRendererV3 : undefined"
+        :context="gridContext"
+        :row-height="rowHeight"
+        :header-height="headerHeight"
+        :undo-redo-cell-editing="true"
+        :undo-redo-cell-editing-limit="20"
+        v-bind="masterGridRuntimeOptions"
+        @grid-ready="handleMasterGridReady"
+        @row-group-opened="onDetailRowOpened"
+        @cell-editing-started="onCellEditingStarted"
+        @cell-editing-stopped="onCellEditingStopped"
+        @cell-value-changed="onMasterCellValueChanged"
+        @cell-clicked="onMasterCellClicked"
+        @filter-changed="onFilterChanged"
+      />
+    </div>
+
+    <AdvancedSearchDialog :runtime="runtime" />
+  </div>
+</template>
 
 <style scoped>
 .master-detail-layout-v3 {

@@ -36,4 +36,3 @@ export function mergeCellClassRules(
     return { ...col, cellClassRules: merged };
   });
 }
-

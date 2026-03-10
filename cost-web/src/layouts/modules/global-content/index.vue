@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, h, markRaw, shallowRef, watch, type Component } from 'vue';
+import { type Component, computed, defineAsyncComponent, h, markRaw, shallowRef, watch } from 'vue';
 import { useRoute } from 'vue-router';
+import { router } from '@/router';
 import { useAppStore } from '@/store/modules/app';
 import { useTabStore } from '@/store/modules/tab';
-import { router } from '@/router';
 
 defineOptions({
   name: 'GlobalContent'
@@ -38,9 +38,7 @@ function resolveTabComponent(tab: App.Global.Tab): Component | null {
   // 动态页面（有 pageCode）：包装组件，固定传入 pageCode prop
   if (tab.pageCode) {
     const pageCode = tab.pageCode;
-    const asyncComp = typeof comp === 'function'
-      ? defineAsyncComponent(comp as () => Promise<any>)
-      : comp;
+    const asyncComp = typeof comp === 'function' ? defineAsyncComponent(comp as () => Promise<any>) : comp;
     return markRaw({
       name: `tab-${tab.id}`,
       setup() {
@@ -89,7 +87,7 @@ function cleanClosedTabs(currentTabIds: Set<string>) {
 // 监听 tabs 变化，挂载新 tab、清理已关闭 tab
 watch(
   () => tabStore.tabs,
-  (tabs) => {
+  tabs => {
     const tabIds = new Set(tabs.map(t => t.id));
     const activeTab = tabs.find(t => t.id === tabStore.activeTabId);
     if (activeTab) {
@@ -132,16 +130,16 @@ const renderedTabs = computed(() => {
 });
 
 /** 是否处于 tab 模式（有活跃 tab 且 tab 已初始化） */
-const useTabMode = computed(() => !!tabStore.activeTabId);
+const useTabMode = computed(() => Boolean(tabStore.activeTabId));
 </script>
 
 <template>
   <!-- 有活跃 tab 时：v-show 多实例模式 -->
-  <div v-if="useTabMode" class="flex-grow relative bg-layout">
+  <div v-if="useTabMode" class="relative flex-grow bg-layout">
     <div
       v-for="item in renderedTabs"
-      :key="item.id"
       v-show="item.id === tabStore.activeTabId && appStore.reloadFlag"
+      :key="item.id"
       :class="{ 'p-16px': tabNeedsPadding(item.tab) }"
       class="absolute inset-0 overflow-auto"
     >

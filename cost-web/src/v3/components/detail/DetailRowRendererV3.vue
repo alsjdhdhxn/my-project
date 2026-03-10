@@ -1,31 +1,3 @@
-﻿<template>
-  <div class="detail-row-renderer" @mouseenter="onMouseEnter" @mouseleave="onMouseLeave">
-    <DetailPanelV3
-      :tabs="tabs"
-      :activeMasterId="masterId"
-      :activeMasterRowKey="masterRowKey"
-      :detailCache="detailCache"
-      :detailColumnsByTab="detailColumnsByTab"
-      :detailRowClassByTab="detailRowClassByTab"
-      :detailGridOptionsByTab="detailGridOptionsByTab"
-      :detailSumFieldsByTab="detailSumFieldsByTab"
-      :cellClassRules="cellClassRules"
-      :applyGridConfig="applyGridConfig"
-      :onDetailCellValueChanged="onDetailCellValueChanged"
-      :onDetailCellClicked="onDetailCellClicked"
-      :onCellEditingStarted="onCellEditingStarted"
-      :onCellEditingStopped="onCellEditingStopped"
-      :loadDetailData="loadDetailData"
-      :registerDetailGridApi="registerDetailGridApi"
-      :unregisterDetailGridApi="unregisterDetailGridApi"
-      :getDetailContextMenuItems="getDetailContextMenuItems"
-      :refreshDetailRowHeight="refreshDetailRowHeight"
-      :defaultViewMode="defaultViewMode"
-      :viewMode="detailViewMode"
-    />
-  </div>
-</template>
-
 <script setup lang="ts">
 import { computed, unref } from 'vue';
 import DetailPanelV3 from '@/v3/components/detail/DetailPanelV3.vue';
@@ -91,6 +63,34 @@ function onMouseLeave() {
   }
 }
 </script>
+
+<template>
+  <div class="detail-row-renderer" @mouseenter="onMouseEnter" @mouseleave="onMouseLeave">
+    <DetailPanelV3
+      :tabs="tabs"
+      :active-master-id="masterId"
+      :active-master-row-key="masterRowKey"
+      :detail-cache="detailCache"
+      :detail-columns-by-tab="detailColumnsByTab"
+      :detail-row-class-by-tab="detailRowClassByTab"
+      :detail-grid-options-by-tab="detailGridOptionsByTab"
+      :detail-sum-fields-by-tab="detailSumFieldsByTab"
+      :cell-class-rules="cellClassRules"
+      :apply-grid-config="applyGridConfig"
+      :on-detail-cell-value-changed="onDetailCellValueChanged"
+      :on-detail-cell-clicked="onDetailCellClicked"
+      :on-cell-editing-started="onCellEditingStarted"
+      :on-cell-editing-stopped="onCellEditingStopped"
+      :load-detail-data="loadDetailData"
+      :register-detail-grid-api="registerDetailGridApi"
+      :unregister-detail-grid-api="unregisterDetailGridApi"
+      :get-detail-context-menu-items="getDetailContextMenuItems"
+      :refresh-detail-row-height="refreshDetailRowHeight"
+      :default-view-mode="defaultViewMode"
+      :view-mode="detailViewMode"
+    />
+  </div>
+</template>
 
 <style scoped>
 .detail-row-renderer {

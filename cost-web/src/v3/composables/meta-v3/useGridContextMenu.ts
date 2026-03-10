@@ -1,5 +1,5 @@
-import type { ContextMenuItemRule, ContextMenuRule } from '@/v3/composables/meta-v3/types';
 import type { CustomExportConfig } from '@/service/api/export-config';
+import type { ContextMenuItemRule, ContextMenuRule } from '@/v3/composables/meta-v3/types';
 import type { BatchSelectConfig } from '@/v3/components/BatchSelectDialog.vue';
 import { resolveRefreshMode } from '@/v3/composables/meta-v3/useToolbarAction';
 
@@ -38,15 +38,24 @@ export function useGridContextMenu(params: {
   /** 执行自定义导出的回调 */
   executeCustomExport?: (exportCode: string, mode: 'all' | 'current') => void;
   /** 执行后端 action */
-  executeAction?: (actionCode: string, options?: { data?: Record<string, any>; selectedRow?: Record<string, any> | null }) => Promise<void>;
+  executeAction?: (
+    actionCode: string,
+    options?: { data?: Record<string, any>; selectedRow?: Record<string, any> | null }
+  ) => Promise<void>;
   /** 打开批量选择弹窗 */
-  openBatchSelect?: (config: BatchSelectConfig, context: { masterId: number | null; masterRowKey: string | null; tabKey: string }, filterValue?: any) => void;
+  openBatchSelect?: (
+    config: BatchSelectConfig,
+    context: { masterId: number | null; masterRowKey: string | null; tabKey: string },
+    filterValue?: any
+  ) => void;
   /** 获取当前主表选中行 */
   getActiveMaster?: () => { id: number | null; rowKey: string | null };
   /** 主表行是否可编辑的回调（用于控制删除权限） */
   isRowEditable?: (row: any) => boolean;
   /** 从表行是否可编辑的回调（按tabKey） */
-  isDetailRowEditableByTab?: Record<string, ((row: any) => boolean) | undefined> | { value?: Record<string, ((row: any) => boolean) | undefined> };
+  isDetailRowEditableByTab?:
+    | Record<string, ((row: any) => boolean) | undefined>
+    | { value?: Record<string, ((row: any) => boolean) | undefined> };
   /** 提示消息 */
   notifyError?: (message: string) => void;
 }) {
@@ -134,7 +143,10 @@ export function useGridContextMenu(params: {
     }
   }
 
-  function resolveAction(action: string, ctx: MenuScope): {
+  function resolveAction(
+    action: string,
+    ctx: MenuScope
+  ): {
     label?: string;
     handler?: () => void;
     builtIn?: 'copy' | 'paste';
@@ -157,7 +169,7 @@ export function useGridContextMenu(params: {
           handler: () => {
             const api = ctx.params?.api;
             const selectedRows = api?.getSelectedRows?.() || [];
-            
+
             if (selectedRows.length > 1) {
               if (ctx.type === 'master') {
                 selectedRows.forEach((row: any) => copyMasterRow(row));
@@ -168,7 +180,8 @@ export function useGridContextMenu(params: {
               const row = resolveRow(ctx.params);
               if (!row) return;
               if (ctx.type === 'master') copyMasterRow(row);
-              else if (ctx.masterId != null && ctx.tabKey) copyDetailRow(ctx.masterId, ctx.tabKey, row, ctx.masterRowKey);
+              else if (ctx.masterId != null && ctx.tabKey)
+                copyDetailRow(ctx.masterId, ctx.tabKey, row, ctx.masterRowKey);
             }
           }
         };
@@ -179,19 +192,25 @@ export function useGridContextMenu(params: {
           handler: () => {
             const api = ctx.params?.api;
             const selectedRows = api?.getSelectedRows?.() || [];
-            
+
             // 解析响应式的 isDetailRowEditableByTab（支持 ref、computed 或普通对象）
-            let resolvedDetailEditable: Record<string, ((row: any) => boolean) | undefined> | undefined = undefined;
+            let resolvedDetailEditable: Record<string, ((row: any) => boolean) | undefined> | undefined;
             if (isDetailRowEditableByTab) {
               if (typeof isDetailRowEditableByTab === 'object' && 'value' in isDetailRowEditableByTab) {
                 resolvedDetailEditable = (isDetailRowEditableByTab as any).value;
               } else {
-                resolvedDetailEditable = isDetailRowEditableByTab as Record<string, ((row: any) => boolean) | undefined>;
+                resolvedDetailEditable = isDetailRowEditableByTab as Record<
+                  string,
+                  ((row: any) => boolean) | undefined
+                >;
               }
             }
             console.log('[DEBUG] deleteRow - ctx.type:', ctx.type, 'ctx.tabKey:', ctx.tabKey);
-            console.log('[DEBUG] deleteRow - resolvedDetailEditable keys:', resolvedDetailEditable ? Object.keys(resolvedDetailEditable) : 'undefined');
-            
+            console.log(
+              '[DEBUG] deleteRow - resolvedDetailEditable keys:',
+              resolvedDetailEditable ? Object.keys(resolvedDetailEditable) : 'undefined'
+            );
+
             // 检查行是否可编辑（不可编辑的行不允许删除）
             const checkEditable = (row: any, tabKey?: string): boolean => {
               if (!row) return false;
@@ -206,7 +225,12 @@ export function useGridContextMenu(params: {
               } else {
                 // 从表检查
                 const detailChecker = tabKey ? resolvedDetailEditable?.[tabKey] : undefined;
-                console.log('[DEBUG] checkEditable - tabKey:', tabKey, 'detailChecker:', detailChecker ? 'exists' : 'undefined');
+                console.log(
+                  '[DEBUG] checkEditable - tabKey:',
+                  tabKey,
+                  'detailChecker:',
+                  detailChecker ? 'exists' : 'undefined'
+                );
                 if (detailChecker) {
                   const isEditable = detailChecker(row);
                   console.log('[DEBUG] checkEditable - row:', row, 'isEditable:', isEditable);
@@ -218,7 +242,7 @@ export function useGridContextMenu(params: {
               }
               return true;
             };
-            
+
             if (selectedRows.length > 1) {
               if (ctx.type === 'master') {
                 const editableRows = selectedRows.filter((row: any) => checkEditable(row));
@@ -244,7 +268,7 @@ export function useGridContextMenu(params: {
         return save ? { label: LABEL_SAVE, handler: () => save() } : null;
       case 'saveGridConfig': {
         if (!saveGridConfig) return null;
-        const key = ctx.type === 'master' ? (masterGridKey || 'masterGrid') : (ctx.tabKey || '');
+        const key = ctx.type === 'master' ? masterGridKey || 'masterGrid' : ctx.tabKey || '';
         if (!key) return null;
         return {
           label: LABEL_SAVE_GRID,
@@ -264,18 +288,21 @@ export function useGridContextMenu(params: {
    * 解析 batchSelect action 配置
    * 配置格式：action: "batchSelect", batchSelectConfig: { lookupCode, mapping, filterColumn, filterField, title }
    */
-  function resolveBatchSelectAction(item: ContextMenuItemRule, ctx: MenuScope): {
+  function resolveBatchSelectAction(
+    item: ContextMenuItemRule,
+    ctx: MenuScope
+  ): {
     label: string;
     handler: () => void;
   } | null {
     if (!openBatchSelect) return null;
-    
+
     const batchConfig = (item as any).batchSelectConfig as BatchSelectConfig | undefined;
     if (!batchConfig?.lookupCode) {
       console.warn('[useGridContextMenu] batchSelect action 缺少 batchSelectConfig.lookupCode');
       return null;
     }
-    
+
     return {
       label: item.label || batchConfig.title || LABEL_BATCH_SELECT,
       handler: () => {
@@ -283,19 +310,19 @@ export function useGridContextMenu(params: {
         // 主表右键菜单时，需要从 getActiveMaster 获取
         let masterId: number | null = ctx.masterId ?? null;
         let masterRowKey: string | null = ctx.masterRowKey ?? null;
-        
+
         // 如果 ctx 中没有（主表场景），则从 getActiveMaster 获取
         if (masterId == null || !masterRowKey) {
           const master = getActiveMaster?.();
           masterId = master?.id ?? null;
           masterRowKey = master?.rowKey ?? null;
         }
-        
+
         if (masterId == null || !masterRowKey) {
           notifyError?.('请先选择主表记录');
           return;
         }
-        
+
         // 获取筛选值
         let filterValue: any = null;
         if (batchConfig.filterField) {
@@ -305,7 +332,7 @@ export function useGridContextMenu(params: {
             filterValue = masterRow[batchConfig.filterField];
           }
         }
-        
+
         // 打开批量选择弹窗
         openBatchSelect(
           { ...batchConfig, targetTab: ctx.tabKey },
@@ -330,8 +357,14 @@ export function useGridContextMenu(params: {
 
   // 内置前端 action 列表
   const BUILTIN_ACTIONS = [
-    'addRow', 'copyRow', 'deleteRow', 'save', 'saveGridConfig',
-    'clipboardCopy', 'clipboardPaste', 'batchSelect'
+    'addRow',
+    'copyRow',
+    'deleteRow',
+    'save',
+    'saveGridConfig',
+    'clipboardCopy',
+    'clipboardPaste',
+    'batchSelect'
   ];
 
   function buildMenuItems(items: ContextMenuItemRule[], ctx: MenuScope): any[] {
@@ -355,7 +388,7 @@ export function useGridContextMenu(params: {
 
       const actionKey = normalizeAction(item.action);
       if (!actionKey || actionKey === 'separator') continue;
-      
+
       // 特殊处理 batchSelect action
       if (actionKey === 'batchSelect') {
         const batchAction = resolveBatchSelectAction(item, ctx);
@@ -368,7 +401,7 @@ export function useGridContextMenu(params: {
         }
         continue;
       }
-      
+
       const resolved = resolveAction(actionKey, ctx);
       if (resolved) {
         // 内置 action

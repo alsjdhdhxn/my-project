@@ -1,9 +1,3 @@
-<template>
-  <div class="meta-layout" :class="layoutClass" :style="layoutStyle">
-    <MetaPageRendererV3 :components="component.children || []" :runtime="runtime" />
-  </div>
-</template>
-
 <script setup lang="ts">
 import { computed } from 'vue';
 import type { CSSProperties } from 'vue';
@@ -64,6 +58,12 @@ const layoutStyle = computed<CSSProperties>(() => {
   } as CSSProperties;
 });
 </script>
+
+<template>
+  <div class="meta-layout" :class="layoutClass" :style="layoutStyle">
+    <MetaPageRendererV3 :components="component.children || []" :runtime="runtime" />
+  </div>
+</template>
 
 <style scoped>
 .meta-layout {

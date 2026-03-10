@@ -1,11 +1,29 @@
 <script setup lang="ts">
-import { ref, computed, watch, reactive } from 'vue';
+import { computed, reactive, ref, watch } from 'vue';
 import {
-  NModal, NButton, NSpace, NSwitch, NInputNumber, NInput, NSelect,
-  NEmpty, NPopconfirm, NTag, NIcon, NCollapse, NCollapseItem, NAutoComplete, useMessage
+  NAutoComplete,
+  NButton,
+  NCollapse,
+  NCollapseItem,
+  NEmpty,
+  NIcon,
+  NInput,
+  NInputNumber,
+  NModal,
+  NPopconfirm,
+  NSelect,
+  NSpace,
+  NSwitch,
+  NTag,
+  useMessage
 } from 'naive-ui';
 import { fetchLookupConfig } from '@/service/api';
-import { fetchColumnsByTableId, fetchTablesByPageCode, savePageRule, fetchAllLookupConfigs } from '@/service/api/meta-config';
+import {
+  fetchAllLookupConfigs,
+  fetchColumnsByTableId,
+  fetchTablesByPageCode,
+  savePageRule
+} from '@/service/api/meta-config';
 
 const props = defineProps<{
   show: boolean;
@@ -79,17 +97,20 @@ const cellEditorOptions = [
   { label: '日期', value: 'agDateCellEditor' },
   { label: '下拉', value: 'agSelectCellEditor' },
   { label: '富文本下拉', value: 'agRichSelectCellEditor' },
-  { label: '弹窗选择', value: 'lookup' },
+  { label: '弹窗选择', value: 'lookup' }
 ];
 
 // 已配置的字段集合
-const configuredFields = computed(() => new Set(
-  items.value.map(i => {
-    const matched = findAvailableFieldForItem(i);
-    if (matched) return `id:${matched.columnId}`;
-    return typeof i.columnId === 'number' ? `id:${i.columnId}` : `column:${i.columnName}`;
-  })
-));
+const configuredFields = computed(
+  () =>
+    new Set(
+      items.value.map(i => {
+        const matched = findAvailableFieldForItem(i);
+        if (matched) return `id:${matched.columnId}`;
+        return typeof i.columnId === 'number' ? `id:${i.columnId}` : `column:${i.columnName}`;
+      })
+    )
+);
 
 // 可添加的字段（排除已配置的）
 const addableFields = computed(() =>
@@ -97,40 +118,43 @@ const addableFields = computed(() =>
 );
 
 // 初始化
-watch(() => props.show, async (val) => {
-  if (!val) return;
-  // 解析已有规则
-  try {
-    const arr = props.rulesJson ? JSON.parse(props.rulesJson) : [];
-    items.value = (Array.isArray(arr) ? arr : []).map((r: any) => {
-      const cellEditorParams = normalizeCellEditorParams(r.cellEditorParams);
-      return {
-        columnId: parseColumnId(r.columnId),
-        columnName: r.columnName || '',
-        visible: r.visible ?? true,
-        editable: r.editable ?? undefined,
-        searchable: r.searchable ?? undefined,
-        required: r.required ?? undefined,
-        width: r.width != null ? String(r.width) : null,
-        cellEditor: r.cellEditor || '',
-        cellEditorParams,
-        aggFunc: r.aggFunc || undefined,
-        precision: r.precision ?? null,
-        roundMode: r.roundMode || 'round',
-        lookupMappingPairs: toLookupMappingPairs(cellEditorParams?.mapping)
-      };
-    });
-  } catch {
-    items.value = [];
+watch(
+  () => props.show,
+  async val => {
+    if (!val) return;
+    // 解析已有规则
+    try {
+      const arr = props.rulesJson ? JSON.parse(props.rulesJson) : [];
+      items.value = (Array.isArray(arr) ? arr : []).map((r: any) => {
+        const cellEditorParams = normalizeCellEditorParams(r.cellEditorParams);
+        return {
+          columnId: parseColumnId(r.columnId),
+          columnName: r.columnName || '',
+          visible: r.visible ?? true,
+          editable: r.editable ?? undefined,
+          searchable: r.searchable ?? undefined,
+          required: r.required ?? undefined,
+          width: r.width != null ? String(r.width) : null,
+          cellEditor: resolveCellEditor(r.cellEditor, cellEditorParams),
+          cellEditorParams,
+          aggFunc: r.aggFunc || undefined,
+          precision: r.precision ?? null,
+          roundMode: r.roundMode || 'round',
+          lookupMappingPairs: toLookupMappingPairs(cellEditorParams?.mapping)
+        };
+      });
+    } catch {
+      items.value = [];
+    }
+    addFieldValue.value = null;
+    // 默认全部折叠
+    expandedRows.clear();
+    // 加载关联表的列和 lookup 配置
+    await Promise.all([loadAvailableFields(), loadLookupOptions()]);
+    normalizeLookupCodesInItems();
+    await preloadLookupFieldOptions();
   }
-  addFieldValue.value = null;
-  // 默认全部折叠
-  expandedRows.clear();
-  // 加载关联表的列和 lookup 配置
-  await Promise.all([loadAvailableFields(), loadLookupOptions()]);
-  normalizeLookupCodesInItems();
-  await preloadLookupFieldOptions();
-});
+);
 
 function parseColumnId(value: unknown): number | null {
   const parsed = typeof value === 'number' ? value : Number(value);
@@ -185,9 +209,7 @@ async function loadAvailableFields() {
     const currentRefTableCode = currentComp?.refTableCode;
 
     // 只加载当前组件关联表的列
-    const targetTable = currentRefTableCode
-      ? tables.find((t: any) => t.tableCode === currentRefTableCode)
-      : tables[0];
+    const targetTable = currentRefTableCode ? tables.find((t: any) => t.tableCode === currentRefTableCode) : tables[0];
 
     if (!targetTable?.id) {
       availableFields.value = [];
@@ -205,24 +227,19 @@ async function loadAvailableFields() {
         columnId: Number(col.id)
       }));
     availableFieldMapById.value = new Map(
-      availableFields.value
-        .filter(field => Number.isFinite(field.columnId))
-        .map(field => [field.columnId, field])
+      availableFields.value.filter(field => Number.isFinite(field.columnId)).map(field => [field.columnId, field])
     );
-    availableFieldMapByField.value = new Map(
-      availableFields.value.map(field => [field.value, field])
-    );
+    availableFieldMapByField.value = new Map(availableFields.value.map(field => [field.value, field]));
     // 建立 columnName → 中文名 映射
     fieldLabelMap.value = new Map(
-      cols
-        .filter((col: any) => col.columnName)
-        .map((col: any) => [col.columnName, col.headerText || col.columnName])
+      cols.filter((col: any) => col.columnName).map((col: any) => [col.columnName, col.headerText || col.columnName])
     );
     syncItemsWithAvailableFields();
     // 记录数字类型字段（兼容大小写和多种类型名）
     const numericTypes = new Set(['number', 'integer', 'decimal', 'float', 'double', 'numeric', 'int', 'bigint']);
     numericFields.value = new Set(
-      cols.filter((col: any) => col.columnName && col.dataType && numericTypes.has(col.dataType.toLowerCase()))
+      cols
+        .filter((col: any) => col.columnName && col.dataType && numericTypes.has(col.dataType.toLowerCase()))
         .map((col: any) => col.columnName)
     );
     // 已配置 aggFunc 的字段也标记为数字（兼容元数据缺失 dataType 的情况）
@@ -252,12 +269,14 @@ async function loadLookupOptions() {
 }
 
 async function preloadLookupFieldOptions() {
-  const lookupCodes = Array.from(new Set(
-    items.value
-      .filter(item => isLookupEditor(item.cellEditor))
-      .map(item => normalizeLookupCode(item.cellEditorParams?.lookupCode))
-      .filter((lookupCode): lookupCode is string => Boolean(lookupCode))
-  ));
+  const lookupCodes = Array.from(
+    new Set(
+      items.value
+        .filter(item => isLookupEditor(item.cellEditor))
+        .map(item => normalizeLookupCode(item.cellEditorParams?.lookupCode))
+        .filter((lookupCode): lookupCode is string => Boolean(lookupCode))
+    )
+  );
   await Promise.all(lookupCodes.map(lookupCode => ensureLookupFieldOptions(lookupCode)));
 }
 
@@ -404,9 +423,7 @@ async function ensureLookupFieldOptions(lookupCode: string): Promise<LookupField
 function buildAutoLookupMappingPairs(item: OverrideItem, lookupFields: LookupFieldOption[]): LookupMappingPair[] {
   if (lookupFields.length === 0) return [];
 
-  const remoteFieldMap = new Map(
-    lookupFields.map(option => [option.value.toLowerCase(), option.value])
-  );
+  const remoteFieldMap = new Map(lookupFields.map(option => [option.value.toLowerCase(), option.value]));
   const pairs: LookupMappingPair[] = [];
   const seenLocals = new Set<string>();
 
@@ -426,7 +443,10 @@ function buildAutoLookupMappingPairs(item: OverrideItem, lookupFields: LookupFie
   return pairs;
 }
 
-function mergeLookupMappingPairs(autoPairs: LookupMappingPair[], existingPairs: LookupMappingPair[]): LookupMappingPair[] {
+function mergeLookupMappingPairs(
+  autoPairs: LookupMappingPair[],
+  existingPairs: LookupMappingPair[]
+): LookupMappingPair[] {
   if (existingPairs.length === 0) return autoPairs.map(pair => ({ ...pair }));
 
   const result = autoPairs.map(pair => ({ ...pair }));
@@ -501,7 +521,7 @@ function addField() {
       cellEditor: '',
       aggFunc: undefined,
       precision: null,
-      roundMode: 'round',
+      roundMode: 'round'
     });
   }
 
@@ -518,7 +538,7 @@ function addCustomField() {
     cellEditor: '',
     aggFunc: undefined,
     precision: null,
-    roundMode: 'round',
+    roundMode: 'round'
   });
 }
 
@@ -578,6 +598,31 @@ function normalizeCellEditorParams(params: any): Record<string, any> | undefined
   return result;
 }
 
+function inferCellEditorFromParams(params?: Record<string, any>): string {
+  if (!params || typeof params !== 'object') return '';
+  if (params.lookupCode || params.mapping) {
+    return 'lookup';
+  }
+  if (
+    params.mode ||
+    params.values ||
+    params.localField ||
+    params.refTable ||
+    params.refField ||
+    params.labelField ||
+    params.valueField ||
+    params.filter
+  ) {
+    return 'agSelectCellEditor';
+  }
+  return '';
+}
+
+function resolveCellEditor(editor?: string, params?: Record<string, any>): string {
+  if (editor) return editor;
+  return inferCellEditorFromParams(params);
+}
+
 function isSelectEditor(editor?: string) {
   return editor === 'agSelectCellEditor' || editor === 'agRichSelectCellEditor';
 }
@@ -587,6 +632,7 @@ function isLookupEditor(editor?: string) {
 }
 
 function onEditorChange(item: OverrideItem, value: string, index?: number) {
+  item.cellEditor = value || '';
   if (isSelectEditor(value) && !item.cellEditorParams) {
     item.cellEditorParams = { mode: 'static', values: '' };
   }
@@ -600,6 +646,10 @@ function onEditorChange(item: OverrideItem, value: string, index?: number) {
   // 选择无参数编辑器时折叠
   if (!isSelectEditor(value) && !isLookupEditor(value) && index != null) {
     expandedRows.delete(index);
+  }
+  if (!isSelectEditor(value) && !isLookupEditor(value)) {
+    item.cellEditorParams = undefined;
+    item.lookupMappingPairs = undefined;
   }
 }
 
@@ -719,6 +769,7 @@ async function handleSave() {
     .map(i => {
       const matched = findAvailableFieldForItem(i);
       const resolvedColumnName = matched?.value || i.columnName;
+      const resolvedCellEditor = resolveCellEditor(i.cellEditor, i.cellEditorParams);
       const obj: any = {
         columnName: resolvedColumnName,
         visible: resolveSwitchValue(i.visible, true),
@@ -726,7 +777,7 @@ async function handleSave() {
         searchable: resolveSwitchValue(i.searchable),
         required: resolveSwitchValue(i.required),
         width: resolveWidthValue(i.width),
-        cellEditor: i.cellEditor || ''
+        cellEditor: resolvedCellEditor
       };
       if (typeof (matched?.columnId ?? i.columnId) === 'number') {
         obj.columnId = matched?.columnId ?? i.columnId;
@@ -734,9 +785,9 @@ async function handleSave() {
       if (numericFields.value.has(resolvedColumnName)) {
         obj.aggFunc = i.aggFunc ?? null;
         obj.precision = i.precision ?? null;
-        obj.roundMode = i.precision !== null && i.precision !== undefined ? (i.roundMode || 'round') : null;
+        obj.roundMode = i.precision !== null && i.precision !== undefined ? i.roundMode || 'round' : null;
       }
-      if (i.cellEditor && i.cellEditorParams && Object.keys(i.cellEditorParams).length > 0) {
+      if (resolvedCellEditor && i.cellEditorParams && Object.keys(i.cellEditorParams).length > 0) {
         const params = { ...i.cellEditorParams };
         if (params.lookupCode) {
           params.lookupCode = normalizeLookupCode(params.lookupCode);
@@ -789,12 +840,12 @@ async function handleSave() {
 <template>
   <NModal
     :show="show"
-    @update:show="(v) => emit('update:show', v)"
     preset="card"
     :title="`列覆盖配置 - ${componentKey}`"
     style="width: 1100px; max-height: 90vh"
     :mask-closable="true"
     :segmented="{ content: true, footer: true }"
+    @update:show="v => emit('update:show', v)"
   >
     <!-- 添加字段 -->
     <div class="add-bar">
@@ -847,81 +898,97 @@ async function handleSave() {
         @dragend="onDragEnd"
       >
         <div class="override-row">
-        <div class="col-seq">
-          <span class="drag-handle" title="拖拽排序">☰</span>
-          <span class="seq-num">{{ index + 1 }}</span>
-        </div>
-        <div class="col-field">
-          <NInput v-if="!isBoundToAvailableField(item)" v-model:value="item.columnName" size="small" placeholder="columnName" />
-          <NTag v-else size="small" :bordered="false">{{ getFieldDisplayText(item) }}</NTag>
-        </div>
-        <div class="col-check">
-          <NSwitch v-model:value="item.visible" size="small" />
-        </div>
-        <div class="col-check">
-          <NSwitch v-model:value="item.editable" size="small" />
-        </div>
-        <div class="col-check">
-          <NSwitch v-model:value="item.searchable" size="small" />
-        </div>
-        <div class="col-check">
-          <NSwitch v-model:value="item.required" size="small" />
-        </div>
-        <div class="col-check">
-          <NSwitch
-            v-if="numericFields.has(item.columnName)"
-            :value="item.aggFunc === 'sum'"
-            @update:value="(v: boolean) => item.aggFunc = v ? 'sum' : undefined"
-            size="small"
-          />
-          <span v-else style="color:#ccc;font-size:11px">—</span>
-        </div>
-        <div class="col-precision">
-          <NInputNumber
-            v-if="numericFields.has(item.columnName)"
-            v-model:value="item.precision"
-            size="small"
-            :min="0"
-            :max="10"
-            :show-button="false"
-            placeholder="—"
-            clearable
-            style="width: 50px"
-          />
-          <span v-else style="color:#ccc;font-size:11px">—</span>
-        </div>
-        <div class="col-roundmode">
-          <NSelect
-            v-if="numericFields.has(item.columnName) && item.precision != null"
-            v-model:value="item.roundMode"
-            :options="[
-              { label: '四舍五入', value: 'round' },
-              { label: '向上', value: 'ceil' },
-              { label: '向下', value: 'floor' },
-            ]"
-            size="small"
-            style="width: 80px"
-          />
-          <span v-else style="color:#ccc;font-size:11px">—</span>
-        </div>
-        <div class="col-width">
-          <NInput v-model:value="item.width" size="small" placeholder="auto" clearable style="width: 60px" />
-        </div>
-        <div class="col-editor">
-          <NSelect v-model:value="item.cellEditor" :options="cellEditorOptions" size="small" clearable
-            @update:value="onEditorChange(item, $event, index)" />
-        </div>
-        <div class="col-ops">
-          <NButton v-if="hasParams(item)" text size="small" @click="toggleExpand(index)" :style="{ color: expandedRows.has(index) ? '#18a058' : '#999' }">
-            {{ expandedRows.has(index) ? '▾' : '▸' }}
-          </NButton>
-          <NPopconfirm @positive-click="removeItem(index)">
-            <template #trigger>
-              <NButton text size="small" type="error">删</NButton>
-            </template>
-            确定移除？
-          </NPopconfirm>
-        </div>
+          <div class="col-seq">
+            <span class="drag-handle" title="拖拽排序">☰</span>
+            <span class="seq-num">{{ index + 1 }}</span>
+          </div>
+          <div class="col-field">
+            <NInput
+              v-if="!isBoundToAvailableField(item)"
+              v-model:value="item.columnName"
+              size="small"
+              placeholder="columnName"
+            />
+            <NTag v-else size="small" :bordered="false">{{ getFieldDisplayText(item) }}</NTag>
+          </div>
+          <div class="col-check">
+            <NSwitch v-model:value="item.visible" size="small" />
+          </div>
+          <div class="col-check">
+            <NSwitch v-model:value="item.editable" size="small" />
+          </div>
+          <div class="col-check">
+            <NSwitch v-model:value="item.searchable" size="small" />
+          </div>
+          <div class="col-check">
+            <NSwitch v-model:value="item.required" size="small" />
+          </div>
+          <div class="col-check">
+            <NSwitch
+              v-if="numericFields.has(item.columnName)"
+              :value="item.aggFunc === 'sum'"
+              size="small"
+              @update:value="(v: boolean) => (item.aggFunc = v ? 'sum' : undefined)"
+            />
+            <span v-else style="color: #ccc; font-size: 11px">—</span>
+          </div>
+          <div class="col-precision">
+            <NInputNumber
+              v-if="numericFields.has(item.columnName)"
+              v-model:value="item.precision"
+              size="small"
+              :min="0"
+              :max="10"
+              :show-button="false"
+              placeholder="—"
+              clearable
+              style="width: 50px"
+            />
+            <span v-else style="color: #ccc; font-size: 11px">—</span>
+          </div>
+          <div class="col-roundmode">
+            <NSelect
+              v-if="numericFields.has(item.columnName) && item.precision != null"
+              v-model:value="item.roundMode"
+              :options="[
+                { label: '四舍五入', value: 'round' },
+                { label: '向上', value: 'ceil' },
+                { label: '向下', value: 'floor' }
+              ]"
+              size="small"
+              style="width: 80px"
+            />
+            <span v-else style="color: #ccc; font-size: 11px">—</span>
+          </div>
+          <div class="col-width">
+            <NInput v-model:value="item.width" size="small" placeholder="auto" clearable style="width: 60px" />
+          </div>
+          <div class="col-editor">
+            <NSelect
+              v-model:value="item.cellEditor"
+              :options="cellEditorOptions"
+              size="small"
+              clearable
+              @update:value="onEditorChange(item, $event, index)"
+            />
+          </div>
+          <div class="col-ops">
+            <NButton
+              v-if="hasParams(item)"
+              text
+              size="small"
+              :style="{ color: expandedRows.has(index) ? '#18a058' : '#999' }"
+              @click="toggleExpand(index)"
+            >
+              {{ expandedRows.has(index) ? '▾' : '▸' }}
+            </NButton>
+            <NPopconfirm @positive-click="removeItem(index)">
+              <template #trigger>
+                <NButton text size="small" type="error">删</NButton>
+              </template>
+              确定移除？
+            </NPopconfirm>
+          </div>
         </div>
         <!-- 下拉参数配置区（可折叠） -->
         <div v-if="isSelectEditor(item.cellEditor) && expandedRows.has(index)" class="editor-params">
@@ -929,60 +996,80 @@ async function handleSave() {
             <span class="params-label">模式</span>
             <NSelect
               :value="item.cellEditorParams?.mode || 'static'"
+              :options="[
+                { label: '纯值', value: 'static' },
+                { label: '关联查询', value: 'ref' }
+              ]"
+              size="small"
+              style="width: 120px"
               @update:value="setParamMode(item, $event)"
-              :options="[{ label: '纯值', value: 'static' }, { label: '关联查询', value: 'ref' }]"
-              size="small" style="width: 120px"
             />
             <template v-if="(item.cellEditorParams?.mode || 'static') === 'static'">
               <span class="params-label">值(逗号分隔)</span>
               <NInput
                 :value="getStaticValuesStr(item)"
+                size="small"
+                placeholder="值1,值2,值3"
+                style="flex: 1"
                 @update:value="setStaticValuesStr(item, $event)"
-                size="small" placeholder="值1,值2,值3" style="flex: 1"
               />
             </template>
             <template v-else>
               <span class="params-label">当前关联字段</span>
               <NSelect
                 :value="item.cellEditorParams?.localField || null"
-                @update:value="setParam(item, 'localField', $event)"
                 :options="availableFields"
-                size="small" filterable clearable placeholder="选择字段" style="width: 140px"
+                size="small"
+                filterable
+                clearable
+                placeholder="选择字段"
+                style="width: 140px"
+                @update:value="setParam(item, 'localField', $event)"
               />
               <span class="params-label">关联表</span>
               <NInput
                 :value="item.cellEditorParams?.refTable || ''"
+                size="small"
+                placeholder="T_COST_USER"
+                style="width: 150px"
                 @update:value="setParam(item, 'refTable', $event)"
-                size="small" placeholder="T_COST_USER" style="width: 150px"
               />
               <span class="params-label">关联字段(唯一)</span>
               <NInput
                 :value="item.cellEditorParams?.refField || ''"
+                size="small"
+                placeholder="ID"
+                style="width: 100px"
                 @update:value="setParam(item, 'refField', $event)"
-                size="small" placeholder="ID" style="width: 100px"
               />
             </template>
           </div>
-          <div v-if="(item.cellEditorParams?.mode) === 'ref'" class="params-row">
+          <div v-if="item.cellEditorParams?.mode === 'ref'" class="params-row">
             <span class="params-label">显示字段</span>
             <NInput
               :value="item.cellEditorParams?.labelField || ''"
+              size="small"
+              placeholder="USER_NAME"
+              style="width: 140px"
               @update:value="setParam(item, 'labelField', $event)"
-              size="small" placeholder="USER_NAME" style="width: 140px"
             />
             <span class="params-label">回填字段</span>
             <NInput
               :value="item.cellEditorParams?.valueField || ''"
+              size="small"
+              placeholder="ID (写入当前字段的值)"
+              style="width: 160px"
               @update:value="setParam(item, 'valueField', $event)"
-              size="small" placeholder="ID (写入当前字段的值)" style="width: 160px"
             />
           </div>
-          <div v-if="(item.cellEditorParams?.mode) === 'ref'" class="params-row">
+          <div v-if="item.cellEditorParams?.mode === 'ref'" class="params-row">
             <span class="params-label">过滤条件</span>
             <NInput
               :value="item.cellEditorParams?.filter || ''"
+              size="small"
+              placeholder="DELETED = 0 (可选)"
+              style="flex: 1"
               @update:value="setParam(item, 'filter', $event)"
-              size="small" placeholder="DELETED = 0 (可选)" style="flex: 1"
             />
           </div>
         </div>
@@ -992,10 +1079,14 @@ async function handleSave() {
             <span class="params-label">弹窗</span>
             <NSelect
               :value="item.cellEditorParams?.lookupCode || null"
-              @update:value="onLookupCodeChange(item, $event || '')"
               :options="lookupOptionsRaw"
               :filter="filterLookupOption"
-              size="small" filterable clearable placeholder="选择弹窗" style="width: 200px"
+              size="small"
+              filterable
+              clearable
+              placeholder="选择弹窗"
+              style="width: 200px"
+              @update:value="onLookupCodeChange(item, $event || '')"
             />
             <input
               v-if="getLookupDataSource(item)"
@@ -1008,52 +1099,74 @@ async function handleSave() {
             <span class="params-label">禁止回填</span>
             <NSwitch
               :value="!!item.cellEditorParams?.noFillback"
-              @update:value="setParam(item, 'noFillback', $event)"
               size="small"
+              @update:value="setParam(item, 'noFillback', $event)"
             />
           </div>
           <div class="params-row">
             <span class="params-label">筛选字段(行)</span>
             <NAutoComplete
               :value="item.cellEditorParams?.filterField || ''"
-              @update:value="setParam(item, 'filterField', $event || '')"
               :options="getAvailableFieldAutoOptions(item.cellEditorParams?.filterField || '')"
-              size="small" clearable placeholder="可选" style="width: 140px"
+              size="small"
+              clearable
+              placeholder="可选"
+              style="width: 140px"
+              @update:value="setParam(item, 'filterField', $event || '')"
             />
             <span class="params-label">筛选列(SQL)</span>
             <NInput
               :value="item.cellEditorParams?.filterColumn || ''"
+              size="small"
+              placeholder="如 GOODSID"
+              style="width: 130px"
               @update:value="setParam(item, 'filterColumn', $event)"
-              size="small" placeholder="如 GOODSID" style="width: 130px"
             />
             <span class="params-label">值来源</span>
             <NSelect
               :value="item.cellEditorParams?.filterValueFrom || null"
+              :options="[
+                { label: '行数据', value: 'row' },
+                { label: '单元格', value: 'cell' }
+              ]"
+              size="small"
+              clearable
+              style="width: 100px"
               @update:value="setParam(item, 'filterValueFrom', $event || '')"
-              :options="[{ label: '行数据', value: 'row' }, { label: '单元格', value: 'cell' }]"
-              size="small" clearable style="width: 100px"
             />
           </div>
           <div class="params-row" style="align-items: flex-start">
             <span class="params-label" style="margin-top: 4px">字段映射</span>
             <div style="flex: 1; display: flex; flex-direction: column; gap: 4px">
-              <div v-for="(pair, pi) in getLookupMapping(item)" :key="pi" style="display: flex; gap: 4px; align-items: center">
+              <div
+                v-for="(pair, pi) in getLookupMapping(item)"
+                :key="pi"
+                style="display: flex; gap: 4px; align-items: center"
+              >
                 <NAutoComplete
                   :value="pair.local"
-                  @update:value="updateLookupMappingPair(item, pi, 'local', $event || '')"
                   :options="getAvailableFieldAutoOptions(pair.local || '')"
-                  size="small" clearable placeholder="本表字段" style="width: 150px"
+                  size="small"
+                  clearable
+                  placeholder="本表字段"
+                  style="width: 150px"
+                  @update:value="updateLookupMappingPair(item, pi, 'local', $event || '')"
                 />
                 <span style="color: #999">→</span>
                 <NAutoComplete
                   :value="pair.remote"
-                  @update:value="updateLookupMappingPair(item, pi, 'remote', $event)"
                   :options="getLookupFieldAutoOptions(item, pair.remote || '')"
-                  size="small" clearable placeholder="弹窗字段" style="width: 150px"
+                  size="small"
+                  clearable
+                  placeholder="弹窗字段"
+                  style="width: 150px"
+                  @update:value="updateLookupMappingPair(item, pi, 'remote', $event)"
                 />
                 <NButton text size="small" type="error" @click="removeLookupMappingPair(item, pi)">删</NButton>
               </div>
-              <NButton size="tiny" dashed @click="addLookupMappingPair(item)" style="width: fit-content">+ 添加映射</NButton>
+              <NButton size="tiny" dashed style="width: fit-content" @click="addLookupMappingPair(item)">
+                + 添加映射
+              </NButton>
             </div>
           </div>
         </div>

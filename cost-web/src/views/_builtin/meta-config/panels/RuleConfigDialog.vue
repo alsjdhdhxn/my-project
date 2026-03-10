@@ -39,12 +39,22 @@ const message = useMessage();
 type FormulaMatchType = 'equals' | 'regex' | 'contains' | 'notContains';
 type FormulaItem = { key: string; expression: string; matchType: FormulaMatchType };
 type CalcItem = {
-  field: string; expression: string; condition?: string; order?: number;
-  isMultiFormula: boolean; formulaField?: string; formulas: FormulaItem[];
+  field: string;
+  expression: string;
+  condition?: string;
+  order?: number;
+  isMultiFormula: boolean;
+  formulaField?: string;
+  formulas: FormulaItem[];
 };
 type AggItem = {
-  sourceField?: string; targetField: string; algorithm?: string;
-  filter?: string; expression?: string; sourceTab?: string; isExpression: boolean;
+  sourceField?: string;
+  targetField: string;
+  algorithm?: string;
+  filter?: string;
+  expression?: string;
+  sourceTab?: string;
+  isExpression: boolean;
 };
 type ValidationItem = { field: string; rule: string; message: string; value?: any };
 type FieldInfo = { columnName: string; headerText: string };
@@ -104,11 +114,7 @@ type TrackFocusOptions = {
   formatField?: (choice: FieldChoice) => string;
 };
 
-function trackFocus(
-  getValue: () => string,
-  setValue: (v: string) => void,
-  options: TrackFocusOptions
-) {
+function trackFocus(getValue: () => string, setValue: (v: string) => void, options: TrackFocusOptions) {
   activeInput.value = {
     getValue,
     setValue,
@@ -122,7 +128,10 @@ const expressionAutosize = { minRows: 1, maxRows: 3 };
 
 function insertField(choice: FieldChoice) {
   const ai = activeInput.value;
-  if (!ai) { message.info('请先点击一个输入框'); return; }
+  if (!ai) {
+    message.info('请先点击一个输入框');
+    return;
+  }
   const el = ai.el;
   const current = ai.getValue();
   const fieldRef = ai.formatField ? ai.formatField(choice) : choice.displayRef;
@@ -133,7 +142,10 @@ function insertField(choice: FieldChoice) {
     const newVal = current.slice(0, start) + fieldRef + current.slice(end);
     ai.setValue(newVal);
     // 恢复焦点和光标位置
-    nextTick(() => { el.focus(); el.setSelectionRange(start + fieldRef.length, start + fieldRef.length); });
+    nextTick(() => {
+      el.focus();
+      el.setSelectionRange(start + fieldRef.length, start + fieldRef.length);
+    });
   } else {
     ai.setValue(current + fieldRef);
   }
@@ -158,10 +170,12 @@ type FieldRefPair = { raw: string; display: string };
 
 const qualifiedDisplayPairs = computed<FieldRefPair[]>(() =>
   fieldGroups.value
-    .flatMap(group => group.fields.map(field => ({
-      raw: formatFieldRef(group.tableCode, field.columnName),
-      display: formatDisplayFieldRef(group.tableCode, field),
-    })))
+    .flatMap(group =>
+      group.fields.map(field => ({
+        raw: formatFieldRef(group.tableCode, field.columnName),
+        display: formatDisplayFieldRef(group.tableCode, field)
+      }))
+    )
     .sort((a, b) => b.raw.length - a.raw.length)
 );
 
@@ -171,7 +185,7 @@ const currentBareDisplayPairs = computed<FieldRefPair[]>(() => {
   return currentGroup.fields
     .map(field => ({
       raw: field.columnName,
-      display: `【${field.headerText || field.columnName}】`,
+      display: `【${field.headerText || field.columnName}】`
     }))
     .sort((a, b) => b.raw.length - a.raw.length);
 });
@@ -239,13 +253,13 @@ function buildExpressionPreviewTokens(text?: string): ExpressionPreviewToken[] {
       tokens.push({
         type: 'field',
         text: match[2],
-        tableLabel: tableLabelMap.value[match[1]] || match[1],
+        tableLabel: tableLabelMap.value[match[1]] || match[1]
       });
     } else if (match[3]) {
       tokens.push({
         type: 'field',
         text: match[3],
-        tableLabel: getCurrentTableLabel(),
+        tableLabel: getCurrentTableLabel()
       });
     }
     lastIndex = pattern.lastIndex;
@@ -510,9 +524,11 @@ function toStoredExpression(text?: string): string {
 const titleMap: Record<string, string> = { CALC: '行级计算规则', AGGREGATE: '聚合规则', VALIDATION: '校验规则' };
 const dialogTitle = computed(() => `${titleMap[props.ruleType]} - ${props.componentKey}`);
 const algorithmOptions = [
-  { label: 'SUM (求和)', value: 'SUM' }, { label: 'AVG (平均)', value: 'AVG' },
-  { label: 'COUNT (计数)', value: 'COUNT' }, { label: 'MAX (最大)', value: 'MAX' },
-  { label: 'MIN (最小)', value: 'MIN' },
+  { label: 'SUM (求和)', value: 'SUM' },
+  { label: 'AVG (平均)', value: 'AVG' },
+  { label: 'COUNT (计数)', value: 'COUNT' },
+  { label: 'MAX (最大)', value: 'MAX' },
+  { label: 'MIN (最小)', value: 'MIN' }
 ];
 const formulaMatchTypeOptions = [
   { label: '等值', value: 'equals' },
@@ -542,14 +558,14 @@ function createFieldList(columns: any[]): FieldInfo[] {
     .filter((column: any) => column.columnName)
     .map((column: any) => ({
       columnName: column.columnName,
-      headerText: column.headerText || '',
+      headerText: column.headerText || ''
     }));
 }
 
 function buildFieldOptions(fields: FieldInfo[]) {
   return fields.map(field => ({
     label: field.headerText || field.columnName,
-    value: field.columnName,
+    value: field.columnName
   }));
 }
 
@@ -564,7 +580,7 @@ async function loadFieldGroup(
     label: table.tableName || options.fallbackLabel,
     isMaster: options.isMaster,
     isCurrent: options.isCurrent,
-    fields: createFieldList(columns),
+    fields: createFieldList(columns)
   };
 }
 
@@ -578,16 +594,21 @@ function shouldLoadSiblingDetailGroups(currentRef?: string, masterRef?: string) 
 }
 
 function getSiblingDetailComponents(allComps: any[], currentRef?: string, masterRef?: string) {
-  return allComps.filter((component: any) =>
-    component.pageCode === props.pageCode
-    && component.componentType === 'DETAIL_GRID'
-    && component.refTableCode
-    && component.refTableCode !== currentRef
-    && component.refTableCode !== masterRef
+  return allComps.filter(
+    (component: any) =>
+      component.pageCode === props.pageCode &&
+      component.componentType === 'DETAIL_GRID' &&
+      component.refTableCode &&
+      component.refTableCode !== currentRef &&
+      component.refTableCode !== masterRef
   );
 }
 
-function mergeFieldGroups(currentGroup: TableFieldGroup | null, masterGroup: TableFieldGroup | null, detailGroups: TableFieldGroup[]) {
+function mergeFieldGroups(
+  currentGroup: TableFieldGroup | null,
+  masterGroup: TableFieldGroup | null,
+  detailGroups: TableFieldGroup[]
+) {
   const groups: TableFieldGroup[] = [];
   if (masterGroup) groups.push(masterGroup);
   if (currentGroup) groups.push(currentGroup);
@@ -595,10 +616,13 @@ function mergeFieldGroups(currentGroup: TableFieldGroup | null, masterGroup: Tab
   return groups;
 }
 const validationRuleOptions = [
-  { label: '必填', value: 'required' }, { label: '最小值', value: 'min' },
-  { label: '最大值', value: 'max' }, { label: '最小长度', value: 'minLength' },
-  { label: '最大长度', value: 'maxLength' }, { label: '正则匹配', value: 'pattern' },
-  { label: '自定义', value: 'custom' },
+  { label: '必填', value: 'required' },
+  { label: '最小值', value: 'min' },
+  { label: '最大值', value: 'max' },
+  { label: '最小长度', value: 'minLength' },
+  { label: '最大长度', value: 'maxLength' },
+  { label: '正则匹配', value: 'pattern' },
+  { label: '自定义', value: 'custom' }
 ];
 
 function normalizeFormulaMatchType(value: unknown): FormulaMatchType {
@@ -622,24 +646,27 @@ const visibleFieldGroups = computed(() => {
   const groups: TableFieldGroup[] = fieldGroups.value;
   const kw = sidebarFilter.value.trim().toLowerCase();
   if (!kw) return groups;
-  return groups.map(g => ({
-    ...g,
-    fields: g.fields.filter(f =>
-      f.columnName.toLowerCase().includes(kw) || f.headerText.toLowerCase().includes(kw)
-    ),
-  })).filter(g => g.fields.length > 0);
+  return groups
+    .map(g => ({
+      ...g,
+      fields: g.fields.filter(f => f.columnName.toLowerCase().includes(kw) || f.headerText.toLowerCase().includes(kw))
+    }))
+    .filter(g => g.fields.length > 0);
 });
 
-watch(() => props.show, async (val) => {
-  if (!val) {
+watch(
+  () => props.show,
+  async val => {
+    if (!val) {
+      resetDialogState({ clearRules: true });
+      return;
+    }
     resetDialogState({ clearRules: true });
-    return;
+    await loadAvailableFields();
+    parseRulesJson();
+    dialogReady.value = true;
   }
-  resetDialogState({ clearRules: true });
-  await loadAvailableFields();
-  parseRulesJson();
-  dialogReady.value = true;
-});
+);
 
 // ==================== 解析 ====================
 function parseRulesJson() {
@@ -659,35 +686,50 @@ function parseRulesJson() {
             });
           }
         }
-        return { field: r.field || '', expression: isMulti ? '' : toDisplayExpression(r.expression || ''),
-          condition: toDisplayExpression(r.condition || ''), order: r.order,
-          isMultiFormula: isMulti, formulaField: r.formulaField || '', formulas };
+        return {
+          field: r.field || '',
+          expression: isMulti ? '' : toDisplayExpression(r.expression || ''),
+          condition: toDisplayExpression(r.condition || ''),
+          order: r.order,
+          isMultiFormula: isMulti,
+          formulaField: r.formulaField || '',
+          formulas
+        };
       });
     } else if (props.ruleType === 'AGGREGATE') {
       aggItems.value = list.map((r: any) => ({
-        sourceField: r.sourceField || '', targetField: r.targetField || '',
-        algorithm: r.algorithm || 'SUM', filter: toDisplayExpression(r.filter || ''),
-        expression: toDisplayExpression(r.expression || ''), sourceTab: r.sourceTab || '',
-        isExpression: Boolean(r.expression && !r.algorithm),
+        sourceField: r.sourceField || '',
+        targetField: r.targetField || '',
+        algorithm: r.algorithm || 'SUM',
+        filter: toDisplayExpression(r.filter || ''),
+        expression: toDisplayExpression(r.expression || ''),
+        sourceTab: r.sourceTab || '',
+        isExpression: Boolean(r.expression && !r.algorithm)
       }));
     } else {
       validationItems.value = list.map((r: any) => ({
-        field: r.field || '', rule: r.rule || 'required', message: r.message || '', value: r.value,
+        field: r.field || '',
+        rule: r.rule || 'required',
+        message: r.message || '',
+        value: r.value
       }));
     }
-  } catch { calcItems.value = []; aggItems.value = []; validationItems.value = []; }
+  } catch {
+    calcItems.value = [];
+    aggItems.value = [];
+    validationItems.value = [];
+  }
 }
 
 // ==================== 字段加载（多表） ====================
 async function loadAvailableFields() {
   resetDialogState();
   try {
-    const [tables, allComps] = await Promise.all([
-      fetchTablesByPageCode(props.pageCode),
-      fetchAllPageComponents(),
-    ]);
+    const [tables, allComps] = await Promise.all([fetchTablesByPageCode(props.pageCode), fetchAllPageComponents()]);
     if (!tables.length) return;
-    const currentComp = allComps?.find((c: any) => c.pageCode === props.pageCode && c.componentKey === props.componentKey);
+    const currentComp = allComps?.find(
+      (c: any) => c.pageCode === props.pageCode && c.componentKey === props.componentKey
+    );
     const masterComp = allComps?.find((c: any) => c.pageCode === props.pageCode && c.componentType === 'GRID');
     const currentRef = currentComp?.refTableCode;
     const masterRef = masterComp?.refTableCode;
@@ -699,7 +741,7 @@ async function loadAvailableFields() {
       tableCode: currentRef || '',
       isMaster,
       isCurrent: true,
-      fallbackLabel: isMaster ? '主表' : '当前表',
+      fallbackLabel: isMaster ? '主表' : '当前表'
     });
 
     if (currentGroup) {
@@ -713,83 +755,116 @@ async function loadAvailableFields() {
         tableCode: masterRef,
         isMaster: true,
         isCurrent: false,
-        fallbackLabel: '主表',
+        fallbackLabel: '主表'
       });
     }
 
     let detailGroups: TableFieldGroup[] = [];
     if (shouldLoadSiblingDetailGroups(currentRef, masterRef)) {
       const siblingComponents = getSiblingDetailComponents(allComps || [], currentRef, masterRef);
-      const loadedGroups = await Promise.all(siblingComponents.map(async (component: any) => {
-        const table = findTableByCode(tables, component.refTableCode);
-        return loadFieldGroup(table, {
-          tableCode: component.refTableCode,
-          isMaster: false,
-          isCurrent: false,
-          fallbackLabel: '关联表',
-        });
-      }));
+      const loadedGroups = await Promise.all(
+        siblingComponents.map(async (component: any) => {
+          const table = findTableByCode(tables, component.refTableCode);
+          return loadFieldGroup(table, {
+            tableCode: component.refTableCode,
+            isMaster: false,
+            isCurrent: false,
+            fallbackLabel: '关联表'
+          });
+        })
+      );
       detailGroups = loadedGroups.filter((group): group is TableFieldGroup => Boolean(group));
     }
     fieldGroups.value = mergeFieldGroups(currentGroup, masterGroup, detailGroups);
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 }
 
 // ==================== 操作 ====================
 function addItem() {
   if (props.ruleType === 'CALC') {
-    calcItems.value.push({ field: '', expression: '', condition: '', order: calcItems.value.length, isMultiFormula: false, formulaField: '', formulas: [] });
+    calcItems.value.push({
+      field: '',
+      expression: '',
+      condition: '',
+      order: calcItems.value.length,
+      isMultiFormula: false,
+      formulaField: '',
+      formulas: []
+    });
   } else if (props.ruleType === 'AGGREGATE') {
-    aggItems.value.push({ sourceField: '', targetField: '', algorithm: 'SUM', filter: '', expression: '', sourceTab: '', isExpression: false });
+    aggItems.value.push({
+      sourceField: '',
+      targetField: '',
+      algorithm: 'SUM',
+      filter: '',
+      expression: '',
+      sourceTab: '',
+      isExpression: false
+    });
   } else {
     validationItems.value.push({ field: '', rule: 'required', message: '', value: undefined });
   }
 }
 
 function extractIdentifiers(expression: string): string[] {
-  return Array.from(extractFieldRefsFromExpression(toStoredExpression(expression), currentTableCode.value || undefined));
+  return Array.from(
+    extractFieldRefsFromExpression(toStoredExpression(expression), currentTableCode.value || undefined)
+  );
 }
 
 function buildJson(): string {
   if (props.ruleType === 'CALC') {
-    return JSON.stringify(calcItems.value.map(item => {
-      if (item.isMultiFormula) {
-        const formulas: Record<string, any> = {};
-        for (const [branchIndex, f] of item.formulas.entries()) {
-          if (f.key) {
-            formulas[`__branch_${branchIndex}`] = {
-              key: f.key,
-              expression: toStoredExpression(f.expression),
-              triggerFields: extractIdentifiers(f.expression),
-              matchType: normalizeFormulaMatchType(f.matchType)
-            };
+    return JSON.stringify(
+      calcItems.value.map(item => {
+        if (item.isMultiFormula) {
+          const formulas: Record<string, any> = {};
+          for (const [branchIndex, f] of item.formulas.entries()) {
+            if (f.key) {
+              formulas[`__branch_${branchIndex}`] = {
+                key: f.key,
+                expression: toStoredExpression(f.expression),
+                triggerFields: extractIdentifiers(f.expression),
+                matchType: normalizeFormulaMatchType(f.matchType)
+              };
+            }
           }
+          const r: any = { field: item.field, formulaField: item.formulaField, formulas };
+          if (item.condition) r.condition = toStoredExpression(item.condition);
+          if (item.order !== null && item.order !== undefined) r.order = item.order;
+          return r;
         }
-        const r: any = { field: item.field, formulaField: item.formulaField, formulas };
+        const r: any = {
+          field: item.field,
+          expression: toStoredExpression(item.expression),
+          triggerFields: extractIdentifiers(item.expression)
+        };
         if (item.condition) r.condition = toStoredExpression(item.condition);
         if (item.order !== null && item.order !== undefined) r.order = item.order;
         return r;
-      }
-      const r: any = { field: item.field, expression: toStoredExpression(item.expression), triggerFields: extractIdentifiers(item.expression) };
-      if (item.condition) r.condition = toStoredExpression(item.condition);
-      if (item.order !== null && item.order !== undefined) r.order = item.order;
-      return r;
-    }));
+      })
+    );
   }
   if (props.ruleType === 'AGGREGATE') {
-    return JSON.stringify(aggItems.value.map(item => {
-      if (item.isExpression) return { targetField: item.targetField, expression: toStoredExpression(item.expression) };
-      const r: any = { sourceField: item.sourceField, targetField: item.targetField, algorithm: item.algorithm };
-      if (item.filter) r.filter = toStoredExpression(item.filter);
-      if (item.sourceTab) r.sourceTab = item.sourceTab;
-      return r;
-    }));
+    return JSON.stringify(
+      aggItems.value.map(item => {
+        if (item.isExpression)
+          return { targetField: item.targetField, expression: toStoredExpression(item.expression) };
+        const r: any = { sourceField: item.sourceField, targetField: item.targetField, algorithm: item.algorithm };
+        if (item.filter) r.filter = toStoredExpression(item.filter);
+        if (item.sourceTab) r.sourceTab = item.sourceTab;
+        return r;
+      })
+    );
   }
-  return JSON.stringify(validationItems.value.map(item => {
-    const r: any = { field: item.field, rule: item.rule, message: item.message };
-    if (item.value !== undefined && item.value !== '') r.value = item.value;
-    return r;
-  }));
+  return JSON.stringify(
+    validationItems.value.map(item => {
+      const r: any = { field: item.field, rule: item.rule, message: item.message };
+      if (item.value !== undefined && item.value !== '') r.value = item.value;
+      return r;
+    })
+  );
 }
 
 function hasUnresolvedExpressionAmbiguity() {
@@ -891,42 +966,87 @@ async function handleSave() {
     try {
       await savePageRule({ ...props.ruleRow, rules: json });
       message.success('规则已保存');
-      emit('save', json); emit('update:show', false);
-    } catch { message.error('保存失败'); }
-    finally { saving.value = false; }
-  } else { emit('save', json); emit('update:show', false); }
+      emit('save', json);
+      emit('update:show', false);
+    } catch {
+      message.error('保存失败');
+    } finally {
+      saving.value = false;
+    }
+  } else {
+    emit('save', json);
+    emit('update:show', false);
+  }
 }
 </script>
 
 <template>
   <NModal
     :show="show"
-    @update:show="(v: boolean) => emit('update:show', v)"
     preset="card"
     :title="dialogTitle"
     style="width: 1060px; max-height: 85vh"
     :mask-closable="true"
     :segmented="{ content: true, footer: true }"
+    @update:show="(v: boolean) => emit('update:show', v)"
   >
     <div v-if="dialogReady" class="dialog-body">
       <!-- 左侧：规则编辑区 -->
       <div class="rules-area">
-
         <!-- CALC -->
         <template v-if="ruleType === 'CALC'">
           <NEmpty v-if="calcItems.length === 0" description="暂无计算规则" />
           <div v-for="(item, idx) in calcItems" :key="idx" class="rule-card">
             <div class="rule-header">
-              <NTag size="small" :type="item.isMultiFormula ? 'warning' : 'info'">{{ item.isMultiFormula ? '多公式' : '单公式' }}</NTag>
+              <NTag size="small" :type="item.isMultiFormula ? 'warning' : 'info'">
+                {{ item.isMultiFormula ? '多公式' : '单公式' }}
+              </NTag>
               <span class="rule-index">#{{ idx + 1 }}</span>
               <div class="spacer" />
-              <NSwitch v-model:value="item.isMultiFormula" size="small"><template #checked>多公式</template><template #unchecked>单公式</template></NSwitch>
-              <NPopconfirm @positive-click="calcItems.splice(idx, 1)"><template #trigger><NButton size="tiny" quaternary type="error">删除</NButton></template>确定删除？</NPopconfirm>
+              <NSwitch v-model:value="item.isMultiFormula" size="small">
+                <template #checked>多公式</template>
+                <template #unchecked>单公式</template>
+              </NSwitch>
+              <NPopconfirm @positive-click="calcItems.splice(idx, 1)">
+                <template #trigger><NButton size="tiny" quaternary type="error">删除</NButton></template>
+                确定删除？
+              </NPopconfirm>
             </div>
             <div class="rule-row">
-              <div class="rule-field"><span class="field-label">目标字段</span><NSelect v-model:value="item.field" :options="availableFields" size="small" filterable tag placeholder="输入或选择" class="w-200" /></div>
-              <div class="rule-field"><span class="field-label">排序</span><NInputNumber v-model:value="item.order" size="small" class="w-80" /></div>
-              <div class="rule-field field-grow"><span class="field-label">条件 (可选)</span><NInput v-model:value="item.condition" type="textarea" :autosize="singleLineAutosize" size="small" placeholder="如: 【生产属性】 !== '包材'" @focus="(e: FocusEvent) => trackFocus(() => item.condition || '', (v) => item.condition = v, { event: e })" /></div>
+              <div class="rule-field">
+                <span class="field-label">目标字段</span>
+                <NSelect
+                  v-model:value="item.field"
+                  :options="availableFields"
+                  size="small"
+                  filterable
+                  tag
+                  placeholder="输入或选择"
+                  class="w-200"
+                />
+              </div>
+              <div class="rule-field">
+                <span class="field-label">排序</span>
+                <NInputNumber v-model:value="item.order" size="small" class="w-80" />
+              </div>
+              <div class="rule-field field-grow">
+                <span class="field-label">条件 (可选)</span>
+                <NInput
+                  v-model:value="item.condition"
+                  type="textarea"
+                  :autosize="singleLineAutosize"
+                  size="small"
+                  placeholder="如: 【生产属性】 !== '包材'"
+                  @focus="
+                    (e: FocusEvent) =>
+                      trackFocus(
+                        () => item.condition || '',
+                        v => (item.condition = v),
+                        { event: e }
+                      )
+                  "
+                />
+              </div>
             </div>
             <template v-if="!item.isMultiFormula">
               <div class="rule-row">
@@ -941,23 +1061,38 @@ async function handleSave() {
                       class="expression-input"
                       size="small"
                       placeholder="如: 每批数量*单价"
-                      @update:value="(v) => updateExpressionEditorState(`calc-expression-${idx}`, v, (next) => item.expression = next)"
-                      @focus="(e: FocusEvent) => trackFocus(() => getExpressionEditorState(`calc-expression-${idx}`, item.expression).text, (v) => updateExpressionEditorState(`calc-expression-${idx}`, v, (next) => item.expression = next), { event: e, formatField: (choice) => choice.displayName })"
-                      @blur="endExpressionEdit(`calc-expression-${idx}`, (v) => item.expression = v)"
+                      @update:value="
+                        v => updateExpressionEditorState(`calc-expression-${idx}`, v, next => (item.expression = next))
+                      "
+                      @focus="
+                        (e: FocusEvent) =>
+                          trackFocus(
+                            () => getExpressionEditorState(`calc-expression-${idx}`, item.expression).text,
+                            v =>
+                              updateExpressionEditorState(
+                                `calc-expression-${idx}`,
+                                v,
+                                next => (item.expression = next)
+                              ),
+                            { event: e, formatField: choice => choice.displayName }
+                          )
+                      "
+                      @blur="endExpressionEdit(`calc-expression-${idx}`, v => (item.expression = v))"
                     />
                   </template>
                   <template v-else>
                     <div
                       class="expression-preview-block"
-                      @click="beginExpressionEdit(`calc-expression-${idx}`, item.expression, (v) => item.expression = v)"
+                      @click="
+                        beginExpressionEdit(`calc-expression-${idx}`, item.expression, v => (item.expression = v))
+                      "
                     >
                       <template v-if="item.expression">
-                        <template v-for="(token, tokenIdx) in buildExpressionPreviewTokens(item.expression)" :key="tokenIdx">
-                          <span
-                            v-if="token.type === 'field'"
-                            class="expression-token"
-                            :title="token.tableLabel"
-                          >
+                        <template
+                          v-for="(token, tokenIdx) in buildExpressionPreviewTokens(item.expression)"
+                          :key="tokenIdx"
+                        >
+                          <span v-if="token.type === 'field'" class="expression-token" :title="token.tableLabel">
                             {{ token.text }}
                           </span>
                           <span v-else>{{ token.text }}</span>
@@ -979,9 +1114,21 @@ async function handleSave() {
                       <NSelect
                         size="small"
                         class="w-220"
-                        :value="getExpressionEditorState(`calc-expression-${idx}`, item.expression).selections[amb.matchKey] || null"
+                        :value="
+                          getExpressionEditorState(`calc-expression-${idx}`, item.expression).selections[
+                            amb.matchKey
+                          ] || null
+                        "
                         :options="amb.options.map(option => ({ label: option.tableLabel, value: option.rawRef }))"
-                        @update:value="(v) => resolveExpressionAmbiguity({ key: `calc-expression-${idx}`, matchKey: amb.matchKey, rawRef: String(v), applyValue: (next) => item.expression = next })"
+                        @update:value="
+                          v =>
+                            resolveExpressionAmbiguity({
+                              key: `calc-expression-${idx}`,
+                              matchKey: amb.matchKey,
+                              rawRef: String(v),
+                              applyValue: next => (item.expression = next)
+                            })
+                        "
                       />
                     </div>
                   </div>
@@ -989,12 +1136,30 @@ async function handleSave() {
               </div>
             </template>
             <template v-else>
-              <div class="rule-row"><div class="rule-field"><span class="field-label">分支字段</span><NSelect v-model:value="item.formulaField" :options="availableFields" size="small" filterable tag placeholder="选择分支依据" class="w-220" /></div></div>
+              <div class="rule-row">
+                <div class="rule-field">
+                  <span class="field-label">分支字段</span>
+                  <NSelect
+                    v-model:value="item.formulaField"
+                    :options="availableFields"
+                    size="small"
+                    filterable
+                    tag
+                    placeholder="选择分支依据"
+                    class="w-220"
+                  />
+                </div>
+              </div>
               <div v-for="(f, fi) in item.formulas" :key="fi" class="formula-card">
                 <div class="rule-row">
                   <div class="rule-field">
                     <span class="field-label">匹配方式</span>
-                    <NSelect v-model:value="f.matchType" :options="formulaMatchTypeOptions" size="small" class="w-100" />
+                    <NSelect
+                      v-model:value="f.matchType"
+                      :options="formulaMatchTypeOptions"
+                      size="small"
+                      class="w-100"
+                    />
                   </div>
                   <div class="rule-field">
                     <span class="field-label">{{ getFormulaKeyLabel(f.matchType) }}</span>
@@ -1005,7 +1170,12 @@ async function handleSave() {
                       class="w-180"
                     />
                   </div>
-                  <NPopconfirm @positive-click="item.formulas.splice(fi, 1)"><template #trigger><NButton size="tiny" quaternary type="error" class="align-self-end">删除</NButton></template>删除此分支？</NPopconfirm>
+                  <NPopconfirm @positive-click="item.formulas.splice(fi, 1)">
+                    <template #trigger>
+                      <NButton size="tiny" quaternary type="error" class="align-self-end">删除</NButton>
+                    </template>
+                    删除此分支？
+                  </NPopconfirm>
                 </div>
                 <div class="rule-row">
                   <div class="rule-field field-grow">
@@ -1019,23 +1189,36 @@ async function handleSave() {
                         class="expression-input"
                         size="small"
                         placeholder="如: 批量/每盒片数"
-                        @update:value="(v) => updateExpressionEditorState(`calc-branch-${idx}-${fi}`, v, (next) => f.expression = next)"
-                        @focus="(e: FocusEvent) => trackFocus(() => getExpressionEditorState(`calc-branch-${idx}-${fi}`, f.expression).text, (v) => updateExpressionEditorState(`calc-branch-${idx}-${fi}`, v, (next) => f.expression = next), { event: e, formatField: (choice) => choice.displayName })"
-                        @blur="endExpressionEdit(`calc-branch-${idx}-${fi}`, (v) => f.expression = v)"
+                        @update:value="
+                          v => updateExpressionEditorState(`calc-branch-${idx}-${fi}`, v, next => (f.expression = next))
+                        "
+                        @focus="
+                          (e: FocusEvent) =>
+                            trackFocus(
+                              () => getExpressionEditorState(`calc-branch-${idx}-${fi}`, f.expression).text,
+                              v =>
+                                updateExpressionEditorState(
+                                  `calc-branch-${idx}-${fi}`,
+                                  v,
+                                  next => (f.expression = next)
+                                ),
+                              { event: e, formatField: choice => choice.displayName }
+                            )
+                        "
+                        @blur="endExpressionEdit(`calc-branch-${idx}-${fi}`, v => (f.expression = v))"
                       />
                     </template>
                     <template v-else>
                       <div
                         class="expression-preview-block"
-                        @click="beginExpressionEdit(`calc-branch-${idx}-${fi}`, f.expression, (v) => f.expression = v)"
+                        @click="beginExpressionEdit(`calc-branch-${idx}-${fi}`, f.expression, v => (f.expression = v))"
                       >
                         <template v-if="f.expression">
-                          <template v-for="(token, tokenIdx) in buildExpressionPreviewTokens(f.expression)" :key="tokenIdx">
-                            <span
-                              v-if="token.type === 'field'"
-                              class="expression-token"
-                              :title="token.tableLabel"
-                            >
+                          <template
+                            v-for="(token, tokenIdx) in buildExpressionPreviewTokens(f.expression)"
+                            :key="tokenIdx"
+                          >
+                            <span v-if="token.type === 'field'" class="expression-token" :title="token.tableLabel">
                               {{ token.text }}
                             </span>
                             <span v-else>{{ token.text }}</span>
@@ -1057,16 +1240,35 @@ async function handleSave() {
                         <NSelect
                           size="small"
                           class="w-220"
-                          :value="getExpressionEditorState(`calc-branch-${idx}-${fi}`, f.expression).selections[amb.matchKey] || null"
+                          :value="
+                            getExpressionEditorState(`calc-branch-${idx}-${fi}`, f.expression).selections[
+                              amb.matchKey
+                            ] || null
+                          "
                           :options="amb.options.map(option => ({ label: option.tableLabel, value: option.rawRef }))"
-                          @update:value="(v) => resolveExpressionAmbiguity({ key: `calc-branch-${idx}-${fi}`, matchKey: amb.matchKey, rawRef: String(v), applyValue: (next) => f.expression = next })"
+                          @update:value="
+                            v =>
+                              resolveExpressionAmbiguity({
+                                key: `calc-branch-${idx}-${fi}`,
+                                matchKey: amb.matchKey,
+                                rawRef: String(v),
+                                applyValue: next => (f.expression = next)
+                              })
+                          "
                         />
                       </div>
                     </div>
                   </div>
                 </div>
               </div>
-              <NButton size="tiny" dashed @click="item.formulas.push({ key: '', expression: '', matchType: 'equals' })" class="mt-4">+ 添加分支</NButton>
+              <NButton
+                size="tiny"
+                dashed
+                class="mt-4"
+                @click="item.formulas.push({ key: '', expression: '', matchType: 'equals' })"
+              >
+                + 添加分支
+              </NButton>
             </template>
           </div>
         </template>
@@ -1076,21 +1278,76 @@ async function handleSave() {
           <NEmpty v-if="aggItems.length === 0" description="暂无聚合规则" />
           <div v-for="(item, idx) in aggItems" :key="idx" class="rule-card">
             <div class="rule-header">
-              <NTag size="small" :type="item.isExpression ? 'warning' : 'success'">{{ item.isExpression ? '表达式' : '聚合函数' }}</NTag>
+              <NTag size="small" :type="item.isExpression ? 'warning' : 'success'">
+                {{ item.isExpression ? '表达式' : '聚合函数' }}
+              </NTag>
               <span class="rule-index">#{{ idx + 1 }}</span>
               <div class="spacer" />
-              <NSwitch v-model:value="item.isExpression" size="small"><template #checked>表达式</template><template #unchecked>聚合函数</template></NSwitch>
-              <NPopconfirm @positive-click="aggItems.splice(idx, 1)"><template #trigger><NButton size="tiny" quaternary type="error">删除</NButton></template>确定删除？</NPopconfirm>
+              <NSwitch v-model:value="item.isExpression" size="small">
+                <template #checked>表达式</template>
+                <template #unchecked>聚合函数</template>
+              </NSwitch>
+              <NPopconfirm @positive-click="aggItems.splice(idx, 1)">
+                <template #trigger><NButton size="tiny" quaternary type="error">删除</NButton></template>
+                确定删除？
+              </NPopconfirm>
             </div>
-            <div class="rule-row"><div class="rule-field"><span class="field-label">目标字段 (主表)</span><NSelect v-model:value="item.targetField" :options="availableFields" size="small" filterable tag placeholder="输入或选择" class="w-200" /></div></div>
+            <div class="rule-row">
+              <div class="rule-field">
+                <span class="field-label">目标字段 (主表)</span>
+                <NSelect
+                  v-model:value="item.targetField"
+                  :options="availableFields"
+                  size="small"
+                  filterable
+                  tag
+                  placeholder="输入或选择"
+                  class="w-200"
+                />
+              </div>
+            </div>
             <template v-if="!item.isExpression">
               <div class="rule-row">
-                <div class="rule-field"><span class="field-label">聚合函数</span><NSelect v-model:value="item.algorithm" :options="algorithmOptions" size="small" class="w-160" /></div>
-                <div class="rule-field"><span class="field-label">源字段 (从表)</span><NSelect v-model:value="item.sourceField" :options="availableFields" size="small" filterable tag placeholder="输入或选择" class="w-200" /></div>
+                <div class="rule-field">
+                  <span class="field-label">聚合函数</span>
+                  <NSelect v-model:value="item.algorithm" :options="algorithmOptions" size="small" class="w-160" />
+                </div>
+                <div class="rule-field">
+                  <span class="field-label">源字段 (从表)</span>
+                  <NSelect
+                    v-model:value="item.sourceField"
+                    :options="availableFields"
+                    size="small"
+                    filterable
+                    tag
+                    placeholder="输入或选择"
+                    class="w-200"
+                  />
+                </div>
               </div>
               <div class="rule-row">
-                <div class="rule-field"><span class="field-label">来源Tab (可选)</span><NInput v-model:value="item.sourceTab" size="small" placeholder="如: CostMaterial" class="w-180" /></div>
-                <div class="rule-field field-grow"><span class="field-label">过滤条件 (可选)</span><NInput v-model:value="item.filter" type="textarea" :autosize="singleLineAutosize" size="small" placeholder="如: 【用途】 === '原料'" @focus="(e: FocusEvent) => trackFocus(() => item.filter || '', (v) => item.filter = v, { event: e })" /></div>
+                <div class="rule-field">
+                  <span class="field-label">来源Tab (可选)</span>
+                  <NInput v-model:value="item.sourceTab" size="small" placeholder="如: CostMaterial" class="w-180" />
+                </div>
+                <div class="rule-field field-grow">
+                  <span class="field-label">过滤条件 (可选)</span>
+                  <NInput
+                    v-model:value="item.filter"
+                    type="textarea"
+                    :autosize="singleLineAutosize"
+                    size="small"
+                    placeholder="如: 【用途】 === '原料'"
+                    @focus="
+                      (e: FocusEvent) =>
+                        trackFocus(
+                          () => item.filter || '',
+                          v => (item.filter = v),
+                          { event: e }
+                        )
+                    "
+                  />
+                </div>
               </div>
             </template>
             <template v-else>
@@ -1106,23 +1363,32 @@ async function handleSave() {
                       class="expression-input"
                       size="small"
                       placeholder="如: 原辅料成本+包材成本"
-                      @update:value="(v) => updateExpressionEditorState(`agg-expression-${idx}`, v, (next) => item.expression = next)"
-                      @focus="(e: FocusEvent) => trackFocus(() => getExpressionEditorState(`agg-expression-${idx}`, item.expression).text, (v) => updateExpressionEditorState(`agg-expression-${idx}`, v, (next) => item.expression = next), { event: e, formatField: (choice) => choice.displayName })"
-                      @blur="endExpressionEdit(`agg-expression-${idx}`, (v) => item.expression = v)"
+                      @update:value="
+                        v => updateExpressionEditorState(`agg-expression-${idx}`, v, next => (item.expression = next))
+                      "
+                      @focus="
+                        (e: FocusEvent) =>
+                          trackFocus(
+                            () => getExpressionEditorState(`agg-expression-${idx}`, item.expression).text,
+                            v =>
+                              updateExpressionEditorState(`agg-expression-${idx}`, v, next => (item.expression = next)),
+                            { event: e, formatField: choice => choice.displayName }
+                          )
+                      "
+                      @blur="endExpressionEdit(`agg-expression-${idx}`, v => (item.expression = v))"
                     />
                   </template>
                   <template v-else>
                     <div
                       class="expression-preview-block"
-                      @click="beginExpressionEdit(`agg-expression-${idx}`, item.expression, (v) => item.expression = v)"
+                      @click="beginExpressionEdit(`agg-expression-${idx}`, item.expression, v => (item.expression = v))"
                     >
                       <template v-if="item.expression">
-                        <template v-for="(token, tokenIdx) in buildExpressionPreviewTokens(item.expression)" :key="tokenIdx">
-                          <span
-                            v-if="token.type === 'field'"
-                            class="expression-token"
-                            :title="token.tableLabel"
-                          >
+                        <template
+                          v-for="(token, tokenIdx) in buildExpressionPreviewTokens(item.expression)"
+                          :key="tokenIdx"
+                        >
+                          <span v-if="token.type === 'field'" class="expression-token" :title="token.tableLabel">
                             {{ token.text }}
                           </span>
                           <span v-else>{{ token.text }}</span>
@@ -1144,9 +1410,20 @@ async function handleSave() {
                       <NSelect
                         size="small"
                         class="w-220"
-                        :value="getExpressionEditorState(`agg-expression-${idx}`, item.expression).selections[amb.matchKey] || null"
+                        :value="
+                          getExpressionEditorState(`agg-expression-${idx}`, item.expression).selections[amb.matchKey] ||
+                          null
+                        "
                         :options="amb.options.map(option => ({ label: option.tableLabel, value: option.rawRef }))"
-                        @update:value="(v) => resolveExpressionAmbiguity({ key: `agg-expression-${idx}`, matchKey: amb.matchKey, rawRef: String(v), applyValue: (next) => item.expression = next })"
+                        @update:value="
+                          v =>
+                            resolveExpressionAmbiguity({
+                              key: `agg-expression-${idx}`,
+                              matchKey: amb.matchKey,
+                              rawRef: String(v),
+                              applyValue: next => (item.expression = next)
+                            })
+                        "
                       />
                     </div>
                   </div>
@@ -1164,14 +1441,39 @@ async function handleSave() {
               <NTag size="small" type="info">校验</NTag>
               <span class="rule-index">#{{ idx + 1 }}</span>
               <div class="spacer" />
-              <NPopconfirm @positive-click="validationItems.splice(idx, 1)"><template #trigger><NButton size="tiny" quaternary type="error">删除</NButton></template>确定删除？</NPopconfirm>
+              <NPopconfirm @positive-click="validationItems.splice(idx, 1)">
+                <template #trigger><NButton size="tiny" quaternary type="error">删除</NButton></template>
+                确定删除？
+              </NPopconfirm>
             </div>
             <div class="rule-row">
-              <div class="rule-field"><span class="field-label">字段</span><NSelect v-model:value="item.field" :options="availableFields" size="small" filterable tag placeholder="输入或选择" class="w-200" /></div>
-              <div class="rule-field"><span class="field-label">规则</span><NSelect v-model:value="item.rule" :options="validationRuleOptions" size="small" class="w-140" /></div>
-              <div v-if="item.rule !== 'required'" class="rule-field"><span class="field-label">值</span><NInput v-model:value="item.value" size="small" placeholder="规则值" class="w-140" /></div>
+              <div class="rule-field">
+                <span class="field-label">字段</span>
+                <NSelect
+                  v-model:value="item.field"
+                  :options="availableFields"
+                  size="small"
+                  filterable
+                  tag
+                  placeholder="输入或选择"
+                  class="w-200"
+                />
+              </div>
+              <div class="rule-field">
+                <span class="field-label">规则</span>
+                <NSelect v-model:value="item.rule" :options="validationRuleOptions" size="small" class="w-140" />
+              </div>
+              <div v-if="item.rule !== 'required'" class="rule-field">
+                <span class="field-label">值</span>
+                <NInput v-model:value="item.value" size="small" placeholder="规则值" class="w-140" />
+              </div>
             </div>
-            <div class="rule-row"><div class="rule-field field-grow"><span class="field-label">错误提示</span><NInput v-model:value="item.message" size="small" placeholder="校验失败时的提示信息" /></div></div>
+            <div class="rule-row">
+              <div class="rule-field field-grow">
+                <span class="field-label">错误提示</span>
+                <NInput v-model:value="item.message" size="small" placeholder="校验失败时的提示信息" />
+              </div>
+            </div>
           </div>
         </template>
       </div>
@@ -1378,7 +1680,9 @@ async function handleSave() {
   border-radius: 3px;
   color: #2080f0;
   background: rgba(32, 128, 240, 0.08);
-  transition: background-color 0.15s ease, color 0.15s ease;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
 }
 .expression-token:hover {
   color: #fff;

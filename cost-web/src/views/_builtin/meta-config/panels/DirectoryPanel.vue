@@ -1,9 +1,16 @@
 <script setup lang="ts">
-import { ref, onMounted, computed, inject } from 'vue';
-import { NButton, NSpace, NPopconfirm, useMessage } from 'naive-ui';
+import { computed, inject, onMounted, ref } from 'vue';
+import { NButton, NPopconfirm, NSpace, useMessage } from 'naive-ui';
 import { AgGridVue } from 'ag-grid-vue3';
-import type { GridApi, GridReadyEvent, ColDef, CellValueChangedEvent, GetDataPath, GetContextMenuItemsParams } from 'ag-grid-community';
-import { fetchAllResources, saveResource, deleteResource } from '@/service/api/meta-config';
+import type {
+  CellValueChangedEvent,
+  ColDef,
+  GetContextMenuItemsParams,
+  GetDataPath,
+  GridApi,
+  GridReadyEvent
+} from 'ag-grid-community';
+import { deleteResource, fetchAllResources, saveResource } from '@/service/api/meta-config';
 
 const message = useMessage();
 const navigateTo = inject<(tab: string, pageCode: string) => void>('navigateTo')!;
@@ -47,16 +54,22 @@ const autoGroupColumnDef: ColDef = {
 const columnDefs: ColDef[] = [
   { field: 'id', headerName: 'ID', width: 70, editable: false },
   {
-    field: 'resourceType', headerName: '类型', width: 110, editable: true,
+    field: 'resourceType',
+    headerName: '类型',
+    width: 110,
+    editable: true,
     cellEditor: 'agSelectCellEditor',
     cellEditorParams: { values: ['DIRECTORY', 'PAGE'] }
   },
   { field: 'pageCode', headerName: 'pageCode', width: 140, editable: true },
   {
-    field: 'isHardcoded', headerName: '硬编码', width: 80, editable: true,
+    field: 'isHardcoded',
+    headerName: '硬编码',
+    width: 80,
+    editable: true,
     cellEditor: 'agSelectCellEditor',
     cellEditorParams: { values: [0, 1] },
-    valueFormatter: (p: any) => p.value === 1 ? '是' : '否'
+    valueFormatter: (p: any) => (p.value === 1 ? '是' : '否')
   },
   { field: 'icon', headerName: '图标', width: 140, editable: true },
   { field: 'route', headerName: '路由', width: 160, editable: true },
@@ -101,28 +114,38 @@ function onRowClicked(event: any) {
 }
 
 function handleAddDirectory() {
-  const parentId = selectedRow.value?.resourceType === 'DIRECTORY'
-    ? selectedRow.value.id
-    : selectedRow.value?.parentId || null;
+  const parentId =
+    selectedRow.value?.resourceType === 'DIRECTORY' ? selectedRow.value.id : selectedRow.value?.parentId || null;
   const newRow = {
-    _isNew: true, id: Date.now(),
-    resourceName: '新目录', resourceType: 'DIRECTORY',
-    pageCode: '', isHardcoded: 0, icon: 'mdi:folder',
-    route: '', parentId, sortOrder: 0
+    _isNew: true,
+    id: Date.now(),
+    resourceName: '新目录',
+    resourceType: 'DIRECTORY',
+    pageCode: '',
+    isHardcoded: 0,
+    icon: 'mdi:folder',
+    route: '',
+    parentId,
+    sortOrder: 0
   };
   rawData.value = [...rawData.value, newRow];
   expandAndShow(newRow.id);
 }
 
 function handleAddPage() {
-  const parentId = selectedRow.value?.resourceType === 'DIRECTORY'
-    ? selectedRow.value.id
-    : selectedRow.value?.parentId || null;
+  const parentId =
+    selectedRow.value?.resourceType === 'DIRECTORY' ? selectedRow.value.id : selectedRow.value?.parentId || null;
   const newRow = {
-    _isNew: true, id: Date.now(),
-    resourceName: '新页面', resourceType: 'PAGE',
-    pageCode: '', isHardcoded: 0, icon: 'mdi:file-document',
-    route: '', parentId, sortOrder: 0
+    _isNew: true,
+    id: Date.now(),
+    resourceName: '新页面',
+    resourceType: 'PAGE',
+    pageCode: '',
+    isHardcoded: 0,
+    icon: 'mdi:file-document',
+    route: '',
+    parentId,
+    sortOrder: 0
   };
   rawData.value = [...rawData.value, newRow];
   expandAndShow(newRow.id);
@@ -141,18 +164,32 @@ function expandAndShow(id: number) {
 
 async function handleSave() {
   const dirtyRows: any[] = [];
-  gridApi.value?.forEachNode(node => { if (node.data?._dirty || node.data?._isNew) dirtyRows.push(node.data); });
-  if (dirtyRows.length === 0) { message.info('没有需要保存的修改'); return; }
+  gridApi.value?.forEachNode(node => {
+    if (node.data?._dirty || node.data?._isNew) dirtyRows.push(node.data);
+  });
+  if (dirtyRows.length === 0) {
+    message.info('没有需要保存的修改');
+    return;
+  }
   for (const row of dirtyRows) {
-    if (!row.resourceName) { message.warning('名称不能为空'); return; }
+    if (!row.resourceName) {
+      message.warning('名称不能为空');
+      return;
+    }
   }
   try {
-    await Promise.all(dirtyRows.map(r => {
-      const toSave = { ...r };
-      delete toSave._treePath;
-      if (toSave._isNew) { delete toSave.id; delete toSave._isNew; delete toSave._dirty; }
-      return saveResource(toSave);
-    }));
+    await Promise.all(
+      dirtyRows.map(r => {
+        const toSave = { ...r };
+        delete toSave._treePath;
+        if (toSave._isNew) {
+          delete toSave.id;
+          delete toSave._isNew;
+          delete toSave._dirty;
+        }
+        return saveResource(toSave);
+      })
+    );
     message.success(`已保存 ${dirtyRows.length} 条记录`);
     await loadData();
   } catch (e) {
@@ -213,18 +250,18 @@ onMounted(loadData);
       <AgGridVue
         class="ag-theme-quartz"
         style="width: 100%; height: 100%"
-        :rowData="rowData"
-        :columnDefs="columnDefs"
-        :defaultColDef="defaultColDef"
-        :suppressScrollOnNewData="true"
-        :treeData="true"
-        :getDataPath="getDataPath"
-        :autoGroupColumnDef="autoGroupColumnDef"
-        :groupDefaultExpanded="0"
-        :rowSelection="{ mode: 'singleRow', checkboxes: false }"
-        :getRowId="(params: any) => String(params.data.id)"
-        :cellSelection="true"
-        :getContextMenuItems="getContextMenuItems"
+        :row-data="rowData"
+        :column-defs="columnDefs"
+        :default-col-def="defaultColDef"
+        :suppress-scroll-on-new-data="true"
+        :tree-data="true"
+        :get-data-path="getDataPath"
+        :auto-group-column-def="autoGroupColumnDef"
+        :group-default-expanded="0"
+        :row-selection="{ mode: 'singleRow', checkboxes: false }"
+        :get-row-id="(params: any) => String(params.data.id)"
+        :cell-selection="true"
+        :get-context-menu-items="getContextMenuItems"
         @grid-ready="onGridReady"
         @selection-changed="onSelectionChanged"
         @row-clicked="onRowClicked"
