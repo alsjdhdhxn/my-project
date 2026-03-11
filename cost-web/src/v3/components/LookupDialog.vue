@@ -84,6 +84,26 @@ function normalizeColumnName(name?: string | null): string {
     .toUpperCase();
 }
 
+function normalizeFieldToken(name?: string | null): string {
+  return String(name || '')
+    .trim()
+    .replace(/[^a-zA-Z0-9]/g, '')
+    .toLowerCase();
+}
+
+function resolveRowFieldValue(row: Record<string, any> | null | undefined, field?: string | null) {
+  if (!row || !field) return undefined;
+  const rawField = String(field).trim();
+  if (!rawField) return undefined;
+  if (rawField in row) return row[rawField];
+  const upperField = normalizeColumnName(rawField);
+  if (upperField in row) return row[upperField];
+  const token = normalizeFieldToken(rawField);
+  if (!token) return undefined;
+  const matchedKey = Object.keys(row).find(key => normalizeFieldToken(key) === token);
+  return matchedKey ? row[matchedKey] : undefined;
+}
+
 const columnDefs = computed<ColDef[]>(() => {
   if (!config.value?.displayColumns) return [];
   return config.value.displayColumns.map(col => ({
@@ -200,7 +220,7 @@ async function loadData() {
     filterValue = props.filterValue;
   } else if (props.filterField && props.rowData) {
     // 'row' 模式或默认：用 rowData[filterField]
-    filterValue = props.rowData[props.filterField];
+    filterValue = resolveRowFieldValue(props.rowData, props.filterField);
   }
 
   // 有筛选列名且筛选值不为空时，传给后端
@@ -229,7 +249,7 @@ function handleConfirm() {
   const buildFillData = (row: Record<string, any>) => {
     const fillData: Record<string, any> = {};
     for (const [targetField, sourceField] of Object.entries(props.mapping)) {
-      fillData[targetField] = row[normalizeColumnName(sourceField)];
+      fillData[targetField] = resolveRowFieldValue(row, sourceField);
     }
     return fillData;
   };

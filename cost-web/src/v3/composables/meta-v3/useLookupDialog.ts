@@ -65,6 +65,58 @@ export function useLookupDialog(params: {
   const currentLookupIsMaster = ref<boolean>(true);
   const currentLookupTabKey = ref<string>('');
 
+  function normalizeFieldToken(field?: string | null): string {
+    return String(field || '')
+      .trim()
+      .replace(/[^a-zA-Z0-9]/g, '')
+      .toLowerCase();
+  }
+
+  function resolveTargetField(row: RowData, field?: string | null): string {
+    const rawField = String(field || '').trim();
+    if (!rawField) return rawField;
+
+    const originalValues = Reflect.get(row, '_originalValues') as Record<string, any> | undefined;
+    const originalKeys = Object.keys(originalValues || {}).filter(key => !key.startsWith('_'));
+    const rowKeys = Object.keys(row).filter(key => !key.startsWith('_'));
+    const candidateKeys = originalKeys.length > 0 ? originalKeys : rowKeys;
+
+    if (candidateKeys.includes(rawField)) return rawField;
+
+    const upperField = rawField.toUpperCase();
+    if (candidateKeys.includes(upperField)) return upperField;
+
+    const token = normalizeFieldToken(rawField);
+    if (!token) return rawField;
+
+    const matchedKey = candidateKeys.find(key => normalizeFieldToken(key) === token);
+    return matchedKey || rawField;
+  }
+
+  function resetLookupState() {
+    currentLookupRule.value = null;
+    currentLookupRowId.value = null;
+    currentLookupRowData.value = null;
+    currentLookupCellValue.value = null;
+  }
+
+  function applyLookupFillData(row: RowData, fillData: Record<string, any>): string[] {
+    const changedFields: string[] = [];
+
+    Object.entries(fillData).forEach(([field, value]) => {
+      const targetField = resolveTargetField(row, field);
+      if (!targetField) return;
+      if (row[targetField] === value) return;
+
+      const oldValue = row[targetField];
+      row[targetField] = value;
+      markFieldChange(row, targetField, oldValue, value, 'user');
+      changedFields.push(targetField);
+    });
+
+    return changedFields;
+  }
+
   async function onMasterCellClicked(event: any) {
     if (event.node?.rowPinned) return;
     const field = event.colDef?.field;
@@ -109,10 +161,7 @@ export function useLookupDialog(params: {
 
   function onLookupSelect(fillData: Record<string, any>) {
     if (currentLookupRule.value?.noFillback) {
-      currentLookupRule.value = null;
-      currentLookupRowId.value = null;
-      currentLookupRowData.value = null;
-      currentLookupCellValue.value = null;
+      resetLookupState();
       return;
     }
 
@@ -124,23 +173,17 @@ export function useLookupDialog(params: {
       if (row) {
         const rowKey = ensureRowKey(row);
         const node = masterGridApi.value?.getRowNode(String(rowKey));
-        const changedFields: string[] = [];
-        for (const [field, value] of Object.entries(fillData)) {
-          if (row[field] !== value) {
-            const oldValue = row[field];
-            row[field] = value;
-            markFieldChange(row, field, oldValue, value, 'user');
-            changedFields.push(field);
-          }
-        }
-        if (node) {
-          masterGridApi.value?.refreshCells({ rowNodes: [node], force: true });
-          if (changedFields.length > 0) {
+        const changedFields = applyLookupFillData(row, fillData);
+        if (changedFields.length > 0) {
+          if (node) {
+            masterGridApi.value?.refreshCells({ rowNodes: [node], force: true });
             const calcChanged = runMasterCalc(node, row) || [];
             if (broadcastToDetail && row.id != null) {
               const triggerFields = [...changedFields, ...calcChanged].filter(Boolean);
               broadcastToDetail(row.id, row, triggerFields);
             }
+          } else {
+            masterGridApi.value?.refreshCells({ force: true });
           }
         }
       }
@@ -154,15 +197,7 @@ export function useLookupDialog(params: {
           const masterRow = getMasterRowByRowKey(masterRowKey);
           const masterId = masterRow?.id;
           if (masterId == null) break;
-          const changedFields: string[] = [];
-          for (const [field, value] of Object.entries(fillData)) {
-            if (row[field] !== value) {
-              const oldValue = row[field];
-              row[field] = value;
-              markFieldChange(row, field, oldValue, value, 'user');
-              changedFields.push(field);
-            }
-          }
+          const changedFields = applyLookupFillData(row, fillData);
 
           const splitDetailApi = detailGridApisByTab?.value?.[tabKey];
           if (splitDetailApi) {
@@ -194,17 +229,11 @@ export function useLookupDialog(params: {
       }
     }
 
-    currentLookupRule.value = null;
-    currentLookupRowId.value = null;
-    currentLookupRowData.value = null;
-    currentLookupCellValue.value = null;
+    resetLookupState();
   }
 
   function onLookupCancel() {
-    currentLookupRule.value = null;
-    currentLookupRowId.value = null;
-    currentLookupRowData.value = null;
-    currentLookupCellValue.value = null;
+    resetLookupState();
   }
 
   return {
