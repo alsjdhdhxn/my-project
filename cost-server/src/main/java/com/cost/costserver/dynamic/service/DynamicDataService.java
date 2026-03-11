@@ -274,7 +274,8 @@ public class DynamicDataService {
         StringBuilder values = new StringBuilder();
 
         for (Map.Entry<String, Object> entry : data.entrySet()) {
-            ColumnMetadataDTO col = columnMap.get(entry.getKey());
+            String runtimeColumnName = normalizeRuntimeColumnName(entry.getKey());
+            ColumnMetadataDTO col = columnMap.get(runtimeColumnName);
 
             // 跳过虚拟列
             if (col != null && Boolean.TRUE.equals(col.isVirtual())) {
@@ -282,9 +283,9 @@ public class DynamicDataService {
             }
 
             // 优先用 targetColumn，其次 columnName，最后转换
-            String columnName = getTargetColumnName(col, entry.getKey());
+            String columnName = getTargetColumnName(col, runtimeColumnName);
 
-            if (col == null && !isAuditField(entry.getKey())) {
+            if (col == null && !isAuditField(runtimeColumnName)) {
                 continue;
             }
 
@@ -293,7 +294,7 @@ public class DynamicDataService {
                 values.append(", ");
             }
             columns.append(columnName);
-            values.append(formatValue(entry.getValue(), col, entry.getKey()));
+            values.append(formatValue(entry.getValue(), col, runtimeColumnName));
         }
 
         String sql = String.format("INSERT INTO %s (%s) VALUES (%s)",
@@ -374,23 +375,24 @@ public class DynamicDataService {
 
         StringBuilder setClause = new StringBuilder();
         for (Map.Entry<String, Object> entry : data.entrySet()) {
-            ColumnMetadataDTO col = columnMap.get(entry.getKey());
+            String runtimeColumnName = normalizeRuntimeColumnName(entry.getKey());
+            ColumnMetadataDTO col = columnMap.get(runtimeColumnName);
 
             // 跳过虚拟列
             if (col != null && Boolean.TRUE.equals(col.isVirtual())) {
                 continue;
             }
 
-            String columnName = getTargetColumnName(col, entry.getKey());
+            String columnName = getTargetColumnName(col, runtimeColumnName);
 
-            if (col == null && !isAuditField(entry.getKey())) {
+            if (col == null && !isAuditField(runtimeColumnName)) {
                 continue;
             }
 
             if (setClause.length() > 0) {
                 setClause.append(", ");
             }
-            setClause.append(columnName).append(" = ").append(formatValue(entry.getValue(), col, entry.getKey()));
+            setClause.append(columnName).append(" = ").append(formatValue(entry.getValue(), col, runtimeColumnName));
         }
 
         if (setClause.isEmpty()) {
@@ -906,6 +908,13 @@ public class DynamicDataService {
         return normalizedTarget;
     }
 
+    private Long resolveTempRecordId(Long recordId, Map<String, Object> data) {
+        if (recordId != null) {
+            return recordId;
+        }
+        return extractTempId(data);
+    }
+
     private Long extractTempId(Map<String, Object> data) {
         if (data == null)
             return null;
@@ -965,7 +974,7 @@ public class DynamicDataService {
             ValidationReport masterValidationReport = null;
             if (!"deleted".equals(master.getStatus())) {
                 Map<String, Object> validateData = new HashMap<>(master.getData());
-                if (master.getId() != null) {
+                if (!"added".equals(master.getStatus()) && master.getId() != null) {
                     TableMetadataDTO masterMeta = metadataService.getTableMetadata(masterTableCode);
                     validateData.put(resolveRuntimeColumnName(masterMeta, masterMeta.pkColumn()), master.getId());
                 }
@@ -977,7 +986,7 @@ public class DynamicDataService {
 
             switch (master.getStatus()) {
                 case "added" -> {
-                    Long tempId = extractTempId(master.getData());
+                    Long tempId = resolveTempRecordId(master.getId(), master.getData());
                     masterId = insert(masterTableCode, master.getData());
                     if (tempId != null && !tempId.equals(masterId)) {
                         idMapping.put(tempId, masterId);
@@ -1031,7 +1040,7 @@ public class DynamicDataService {
                         ValidationReport detailValidationReport = null;
                         if (!"deleted".equals(item.getStatus())) {
                             Map<String, Object> validateData = new HashMap<>(item.getData());
-                            if (item.getId() != null) {
+                            if (!"added".equals(item.getStatus()) && item.getId() != null) {
                                 validateData.put(resolveRuntimeColumnName(detailMeta, detailMeta.pkColumn()), item.getId());
                             }
                             detailValidationReport = validationService.validate(detailTableCode, "save", validateData);
@@ -1042,7 +1051,7 @@ public class DynamicDataService {
 
                         switch (item.getStatus()) {
                             case "added" -> {
-                                Long tempId = extractTempId(item.getData());
+                                Long tempId = resolveTempRecordId(item.getId(), item.getData());
                                 if (fkFieldName != null && masterId != null) {
                                     item.getData().put(fkFieldName, masterId);
                                 }
