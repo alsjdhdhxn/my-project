@@ -1,5 +1,6 @@
 import { type Ref, computed, watch } from 'vue';
 import type { ColDef } from 'ag-grid-community';
+import { ensureRowKey } from '@/v3/logic/calc-engine';
 import type { ParsedPageConfig, RowData } from '@/v3/logic/calc-engine';
 import {
   buildSummaryColumnDefs,
@@ -144,7 +145,11 @@ export function useNestedDetailParams(params: {
             suppressHeaderMenuButton: true
           },
           rowHeight: 28,
-          getRowId: (rowParams: any) => String(rowParams.data?.id),
+          getRowId: (rowParams: any) => {
+            const row = rowParams.data as RowData | undefined;
+            if (!row) return '';
+            return ensureRowKey(row);
+          },
           getRowClass: mergedRowClass,
           getContextMenuItems: getDetailContextMenuItems(masterId, masterRowKey, tabKey),
           onCellEditingStarted,

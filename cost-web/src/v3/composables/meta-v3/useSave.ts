@@ -29,7 +29,10 @@ export function useSave(params: {
   detailValidationRulesByTab: Ref<DetailValidationRules>;
   masterColumnMeta: Ref<any[]>;
   detailColumnMetaByTab: Ref<ColumnMetaByTab>;
+  masterPkColumn: Ref<string>;
+  detailPkColumnByTab: Ref<Record<string, string>>;
   detailFkColumnByTab: Ref<Record<string, string>>;
+  loadDetailData?: (masterId: number, masterRowKey?: string) => Promise<void>;
   masterGridApi: ShallowRef<GridApi | null>;
   detailGridApisByTab?: Ref<Record<string, any>>;
   activeMasterRowKey?: Ref<string | null>;
@@ -48,7 +51,10 @@ export function useSave(params: {
     detailValidationRulesByTab,
     masterColumnMeta,
     detailColumnMetaByTab,
+    masterPkColumn,
+    detailPkColumnByTab,
     detailFkColumnByTab,
+    loadDetailData,
     masterGridApi,
     detailGridApisByTab,
     activeMasterRowKey,
@@ -80,13 +86,19 @@ export function useSave(params: {
   function applyIdMapping(idMapping: Map<number, number>) {
     if (idMapping.size === 0) return;
     const api = masterGridApi.value as any;
+    const masterPkField = masterPkColumn.value;
 
     // 更新主表行 ID（SSRM: Grid 内部行）
     api?.forEachNode?.((node: any) => {
       const row = node?.data;
       if (!row) return;
       const mapped = idMapping.get(Number(row.id));
-      if (mapped) row.id = mapped;
+      if (mapped) {
+        row.id = mapped;
+        if (masterPkField) {
+          row[masterPkField] = mapped;
+        }
+      }
     });
 
     if (detailCache.size === 0) return;
@@ -95,9 +107,15 @@ export function useSave(params: {
     for (const [, tabData] of detailCache.entries()) {
       for (const [tabKey, rows] of Object.entries(tabData)) {
         const fkColumn = detailFkColumnByTab.value[tabKey] || 'masterId';
+        const detailPkField = detailPkColumnByTab.value[tabKey];
         for (const row of rows) {
           const mappedRowId = idMapping.get(Number(row.id));
-          if (mappedRowId) row.id = mappedRowId;
+          if (mappedRowId) {
+            row.id = mappedRowId;
+            if (detailPkField) {
+              row[detailPkField] = mappedRowId;
+            }
+          }
           const mappedFk = idMapping.get(Number(row[fkColumn]));
           if (mappedFk) row[fkColumn] = mappedFk;
         }
@@ -122,7 +140,7 @@ export function useSave(params: {
     else if (Object.keys(dirtyFields).length > 0) status = 'modified';
     else status = 'unchanged';
 
-    const excludeFields = new Set<string>(['masterId', ...extraExcludeFields.filter(Boolean)]);
+    const excludeFields = new Set<string>(['masterId', 'id', ...extraExcludeFields.filter(Boolean)]);
     const data: Record<string, any> = { _tableCode: tableCode };
 
     if (isNew) {
@@ -131,16 +149,14 @@ export function useSave(params: {
         if (!key.startsWith('_') && !excludeFields.has(key)) data[key] = value;
       }
     } else if (status === 'modified') {
-      // 修改：只传脏字段 + id
-      data.id = row.id;
+      // 修改：只传脏字段
       for (const field of Object.keys(dirtyFields)) {
         if (!excludeFields.has(field)) {
           data[field] = row[field];
         }
       }
     } else {
-      // 删除或未变更：只传 id
-      data.id = row.id;
+      // 删除或未变更：data 保持为空
     }
 
     const changes = Object.entries(dirtyFields)
@@ -153,7 +169,7 @@ export function useSave(params: {
       }));
 
     return {
-      id: isNew ? null : row.id,
+      id: row.id,
       status,
       data,
       changes: changes.length > 0 ? changes : undefined
@@ -239,6 +255,7 @@ export function useSave(params: {
       }
 
       const savedMasterIds: number[] = [];
+      const detailReloadTargets = new Map<number, string>();
       for (const masterId of masterIdsToSave) {
         const masterRow = getMasterRowById(masterId);
         if (!masterRow) continue;
@@ -246,6 +263,7 @@ export function useSave(params: {
         const detailsMap: Record<string, any[]> = {};
         const masterRowKey = resolveMasterRowKey(masterId);
         const cached = masterRowKey ? detailCache.get(masterRowKey) : undefined;
+        let hasDirtyDetails = false;
         if (cached) {
           for (const tab of pageConfig.value?.tabs || []) {
             const tableCode = tab.tableCode || pageConfig.value?.detailTableCode;
@@ -253,6 +271,7 @@ export function useSave(params: {
             const rows = cached[tab.key] || [];
             const dirtyRows = rows.filter(r => r._isNew || r._isDeleted || r._dirtyFields);
             if (dirtyRows.length > 0) {
+              hasDirtyDetails = true;
               const fkField = detailFkColumnByTab.value[tab.key] || 'masterId';
               detailsMap[tableCode] = dirtyRows.map(r => buildRecordItem(r, tableCode, [fkField]));
             }
@@ -272,23 +291,22 @@ export function useSave(params: {
           saveStats.errors.push(`主表 ${masterId}: ${errorMessage}`);
         } else {
           const mapping = normalizeIdMapping((data as any)?.idMapping);
+          const backendMasterId = Number((data as any)?.masterId);
+          const resolvedMasterId =
+            !Number.isNaN(backendMasterId) && backendMasterId > 0
+              ? backendMasterId
+              : Number(mapping.get(masterId) ?? masterId);
+
+          if (!mapping.has(masterId) && resolvedMasterId > 0 && resolvedMasterId !== masterId) {
+            mapping.set(masterId, resolvedMasterId);
+          }
           if (mapping.size > 0) {
             applyIdMapping(mapping);
           }
-          const resolvedMasterId = Number((data as any)?.masterId ?? mapping.get(masterId) ?? masterId);
 
           // 用后端返回的最新数据更新本地行
           const returnedMasterRow = (data as any)?.masterRow;
           if (returnedMasterRow && !masterRow._isDeleted) {
-            // 保留前端内部字段，合并后端返回的数据
-            const internalFields = [
-              '_rowKey',
-              '_isNew',
-              '_isDeleted',
-              '_dirtyFields',
-              '_changeType',
-              '_originalValues'
-            ];
             for (const [key, value] of Object.entries(returnedMasterRow)) {
               if (!key.startsWith('_')) {
                 masterRow[key] = value;
@@ -296,8 +314,19 @@ export function useSave(params: {
             }
           }
 
+          if (!masterRow._isDeleted && resolvedMasterId > 0) {
+            masterRow.id = resolvedMasterId;
+            const masterPkField = masterPkColumn.value;
+            if (masterPkField && masterRow[masterPkField] == null) {
+              masterRow[masterPkField] = resolvedMasterId;
+            }
+          }
+
           saveStats.successCount++;
           savedMasterIds.push(resolvedMasterId);
+          if (hasDirtyDetails && !masterRow._isDeleted) {
+            detailReloadTargets.set(resolvedMasterId, ensureRowKey(masterRow));
+          }
         }
       }
 
@@ -343,6 +372,11 @@ export function useSave(params: {
       }
       if (rowsToRemove.length > 0) {
         gridApi?.applyServerSideTransaction?.({ route: [], remove: rowsToRemove });
+      }
+
+      for (const [masterId, masterRowKey] of detailReloadTargets.entries()) {
+        await loadDetailData?.(masterId, masterRowKey);
+        touchedDetailKeys.add(masterRowKey);
       }
 
       // 更新明细 Grid（分割/嵌套视图）

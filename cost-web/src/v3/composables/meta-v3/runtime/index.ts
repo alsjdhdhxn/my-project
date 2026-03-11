@@ -278,7 +278,10 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     detailValidationRulesByTab: meta.detailValidationRulesByTab,
     masterColumnMeta: meta.masterColumnMeta,
     detailColumnMetaByTab: meta.detailColumnMetaByTab,
+    masterPkColumn: meta.masterPkColumn,
+    detailPkColumnByTab: meta.detailPkColumnByTab,
     detailFkColumnByTab: meta.detailFkColumnByTab,
+    loadDetailData: data.loadDetailData,
     masterGridApi,
     detailGridApisByTab,
     activeMasterRowKey,
@@ -348,8 +351,28 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     }
 
     const api = masterGridApi.value as any;
-    const rowId = options?.selectedRow?.id;
-    const rowKey = options?.selectedRow?._rowKey;
+    const currentRow =
+      options?.selectedRow ??
+      (activeMasterRowKey.value ? data.getMasterRowByRowKey(activeMasterRowKey.value) : null);
+    const rowId = currentRow?.id;
+    const rowKey = currentRow?._rowKey ?? activeMasterRowKey.value;
+    const hasDetailTabs = (meta.pageConfig.value?.tabs?.length || 0) > 0;
+    const syncCurrentContext = async () => {
+      if (rowId === null || rowId === undefined || !rowKey) return;
+      await data.reloadMasterRow(rowId, rowKey);
+      if (hasDetailTabs) {
+        await data.loadDetailData(rowId, rowKey);
+      }
+    };
+    const restoreSelection = () => {
+      setTimeout(() => {
+        api?.forEachNode?.((node: any) => {
+          if (node.data?.id === rowId) {
+            node.setSelected(true);
+          }
+        });
+      }, 100);
+    };
 
     // refreshMode === 'all' 时清空所有缓存，否则只清当前行缓存
     if (refreshMode === 'all') {
@@ -360,27 +383,20 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     }
 
     if (refreshMode === 'detail') {
-      // 只刷新明细，不刷新主表
-      if (rowId != null && rowKey) {
-        await data.loadDetailData(rowId, rowKey);
-      }
+      await syncCurrentContext();
       return;
     }
 
     if (refreshMode === 'row') {
-      api?.refreshServerSide?.({ purge: false });
-      setTimeout(() => {
-        api?.forEachNode?.((node: any) => {
-          if (node.data?.id === rowId) {
-            node.setSelected(true);
-          }
-        });
-      }, 100);
+      await syncCurrentContext();
+      restoreSelection();
       return;
     }
 
     // refreshMode === 'all'
-    api?.refreshServerSide?.({ purge: true });
+    api?.refreshServerSide?.({ purge: false });
+    await syncCurrentContext();
+    restoreSelection();
   }
 
   const runtimeApi = {

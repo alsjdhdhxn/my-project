@@ -1,7 +1,7 @@
 import type { Ref, ShallowRef } from 'vue';
 import { ref } from 'vue';
 import type { GridApi, IServerSideGetRowsParams } from 'ag-grid-community';
-import { type DynamicQueryCondition, searchDynamicData } from '@/service/api';
+import { type DynamicQueryCondition, fetchDynamicDataById, searchDynamicData } from '@/service/api';
 import { debugLog } from '@/v3/composables/meta-v3/debug';
 import { type ParsedPageConfig, type RowData, ensureRowKey, generateTempId, initRowData } from '@/v3/logic/calc-engine';
 
@@ -57,6 +57,37 @@ export function useMasterDetailData(params: {
     });
     if (found) return found;
     return null;
+  }
+
+  function isPersistedRow(row: RowData | null | undefined) {
+    const numericId = typeof row?.id === 'number' ? row.id : Number(row?.id);
+    return Number.isFinite(numericId) && numericId > 0;
+  }
+
+  function resolveCurrentMasterRow(row: RowData) {
+    const rowKey = row?._rowKey ? String(row._rowKey) : null;
+    if (rowKey) {
+      const currentRow = getMasterRowByRowKey(rowKey);
+      if (currentRow) return currentRow;
+    }
+    if (isPersistedRow(row)) {
+      const currentRow = getMasterRowById(Number(row.id));
+      if (currentRow) return currentRow;
+    }
+    return row;
+  }
+
+  function resolveCurrentDetailRow(rows: RowData[], row: RowData) {
+    const rowKey = row?._rowKey ? String(row._rowKey) : null;
+    if (rowKey) {
+      const currentRow = rows.find(r => r._rowKey === rowKey);
+      if (currentRow) return currentRow;
+    }
+    if (row.id != null) {
+      const currentRow = rows.find(r => r.id === row.id);
+      if (currentRow) return currentRow;
+    }
+    return row;
   }
 
   function resolveMasterRowKey(masterId: number): string | null {
@@ -215,6 +246,41 @@ export function useMasterDetailData(params: {
     });
   }
 
+  async function reloadMasterRow(masterId: number, masterRowKey?: string) {
+    const tableCode = pageConfig.value?.masterTableCode;
+    const resolvedRowKey = masterRowKey ?? resolveMasterRowKey(masterId);
+    if (!tableCode || !resolvedRowKey) return null;
+
+    const api = masterGridApi.value as any;
+    const currentNode = api?.getRowNode?.(String(resolvedRowKey));
+    const currentRow = currentNode?.data as RowData | undefined;
+    const hasLocalChanges = Boolean(currentRow?._isNew || currentRow?._isDeleted || currentRow?._dirtyFields);
+
+    if (hasLocalChanges) {
+      return currentRow ?? null;
+    }
+
+    const { data, error } = await fetchDynamicDataById(tableCode, masterId);
+    if (error || !data) {
+      notifyError('加载主表数据失败');
+      return currentRow ?? null;
+    }
+
+    const refreshedRow = initRowData(data, false, masterPkColumn.value);
+    refreshedRow._rowKey = resolvedRowKey;
+
+    if (currentNode?.setData) {
+      currentNode.setData(refreshedRow);
+    } else {
+      api?.applyServerSideTransaction?.({
+        route: [],
+        update: [refreshedRow]
+      });
+    }
+
+    return refreshedRow;
+  }
+
   function addMasterRow() {
     const api = masterGridApi.value;
     const newRow = initRowData({ id: generateTempId() }, true);
@@ -252,21 +318,22 @@ export function useMasterDetailData(params: {
   function deleteMasterRow(row: RowData) {
     if (!row) return;
     const api = masterGridApi.value;
+    const currentRow = resolveCurrentMasterRow(row);
 
-    if (row._isNew) {
+    if (!isPersistedRow(currentRow)) {
       // 新增行直接删除
 
       // V3 强制使用 SSRM：使用事务 API 删除行
       if (api) {
         api.applyServerSideTransaction({
           route: [],
-          remove: [row]
+          remove: [currentRow]
         });
       }
     } else {
       // 已有行标记删除
-      row._isDeleted = true;
-      const node = api?.getRowNode(String(row._rowKey));
+      currentRow._isDeleted = true;
+      const node = api?.getRowNode(String(ensureRowKey(currentRow)));
       if (node) api?.refreshCells({ rowNodes: [node] });
     }
   }
@@ -298,10 +365,11 @@ export function useMasterDetailData(params: {
     if (!resolvedRowKey) return;
     const cached = detailCache.get(resolvedRowKey);
     if (!cached || !cached[tabKey]) return;
+    const currentRow = resolveCurrentDetailRow(cached[tabKey], row);
 
-    if (row._isNew) {
+    if (!isPersistedRow(currentRow)) {
       // 新增行直接从数组中移除
-      const idx = cached[tabKey].findIndex(r => r.id === row.id);
+      const idx = cached[tabKey].findIndex(r => r === currentRow || r._rowKey === currentRow._rowKey || r.id === currentRow.id);
       if (idx >= 0) cached[tabKey].splice(idx, 1);
 
       // 刷新 Grid 的 rowData，让行从视觉上消失
@@ -316,7 +384,7 @@ export function useMasterDetailData(params: {
       detailGridApisByTab?.value?.[tabKey]?.setGridOption?.('rowData', cached[tabKey]);
     } else {
       // 已有行标记删除，刷新样式
-      row._isDeleted = true;
+      currentRow._isDeleted = true;
       const secondLevelInfo = masterGridApi.value?.getDetailGridInfo(`detail_${resolvedRowKey}`);
       if (secondLevelInfo?.api) {
         secondLevelInfo.api.forEachDetailGridInfo((detailInfo: any) => {
@@ -329,6 +397,25 @@ export function useMasterDetailData(params: {
     recalcAggregates(masterId, resolvedRowKey);
   }
 
+  function buildCopyExcludedFields(...fields: Array<string | null | undefined>) {
+    const excluded = new Set<string>(['id', 'ID']);
+    for (const field of fields) {
+      if (!field) continue;
+      excluded.add(field);
+      excluded.add(field.toUpperCase());
+      excluded.add(field.toLowerCase());
+    }
+    return excluded;
+  }
+
+  function clearCopiedIdentityFields(row: RowData, ...fields: Array<string | null | undefined>) {
+    const excluded = buildCopyExcludedFields(...fields);
+    excluded.delete('id');
+    for (const field of excluded) {
+      delete row[field];
+    }
+  }
+
   async function copyMasterRow(sourceRow: RowData) {
     if (!sourceRow) return;
     const api = masterGridApi.value;
@@ -337,11 +424,13 @@ export function useMasterDetailData(params: {
     const sourceRowKey = sourceRow._rowKey as string;
     const newMasterId = generateTempId();
     const newRow = initRowData({ id: newMasterId }, true);
+    const masterCopyExcludedFields = buildCopyExcludedFields(masterPkColumn.value);
     ensureRowKey(newRow);
 
     for (const [key, value] of Object.entries(sourceRow)) {
-      if (!key.startsWith('_') && key !== 'id') newRow[key] = value;
+      if (!key.startsWith('_') && !masterCopyExcludedFields.has(key)) newRow[key] = value;
     }
+    clearCopiedIdentityFields(newRow, masterPkColumn.value);
 
     // 获取源行的索引，在其下方插入
     const sourceNode = api?.getRowNode(String(sourceRowKey));
@@ -368,13 +457,16 @@ export function useMasterDetailData(params: {
         const newCached: Record<string, RowData[]> = {};
         for (const [tabKey, rows] of Object.entries(sourceCached)) {
           const fkColumn = detailFkColumnByTab.value[tabKey] || 'masterId';
+          const detailPkColumn = detailPkColumnByTab.value[tabKey];
+          const detailCopyExcludedFields = buildCopyExcludedFields(detailPkColumn, fkColumn);
           newCached[tabKey] = rows
             .filter(r => !r._isDeleted)
             .map(r => {
               const newDetailRow = initRowData({ id: generateTempId(), [fkColumn]: newMasterId }, true);
               for (const [key, value] of Object.entries(r)) {
-                if (!key.startsWith('_') && key !== 'id' && key !== fkColumn) newDetailRow[key] = value;
+                if (!key.startsWith('_') && !detailCopyExcludedFields.has(key)) newDetailRow[key] = value;
               }
+              clearCopiedIdentityFields(newDetailRow, detailPkColumn);
               return newDetailRow;
             });
         }
@@ -399,11 +491,14 @@ export function useMasterDetailData(params: {
     const cached = detailCache.get(resolvedRowKey);
     if (!cached || !cached[tabKey]) return;
     const fkColumn = detailFkColumnByTab.value[tabKey] || 'masterId';
+    const detailPkColumn = detailPkColumnByTab.value[tabKey];
+    const detailCopyExcludedFields = buildCopyExcludedFields(detailPkColumn, fkColumn);
     const newRow = initRowData({ id: generateTempId(), [fkColumn]: masterId }, true);
 
     for (const [key, value] of Object.entries(sourceRow)) {
-      if (!key.startsWith('_') && key !== 'id' && key !== fkColumn) newRow[key] = value;
+      if (!key.startsWith('_') && !detailCopyExcludedFields.has(key)) newRow[key] = value;
     }
+    clearCopiedIdentityFields(newRow, detailPkColumn);
 
     cached[tabKey].push(newRow);
     const secondLevelInfo = masterGridApi.value?.getDetailGridInfo(`detail_${resolvedRowKey}`);
@@ -442,6 +537,7 @@ export function useMasterDetailData(params: {
     getMasterRowById,
     resolveMasterRowKey,
     loadDetailData,
+    reloadMasterRow,
     addMasterRow,
     deleteMasterRow,
     addDetailRow,

@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { AgGridVue } from 'ag-grid-vue3';
 import type { ColDef, GridReadyEvent } from 'ag-grid-community';
+import { ensureRowKey } from '@/v3/logic/calc-engine';
 import type { RowData, TabConfig } from '@/v3/logic/calc-engine';
 import type { CellEditableRule, RowEditableRule } from '@/v3/composables/meta-v3/types';
 import {
@@ -169,7 +170,9 @@ const gridRuntimeOptions = computed(() => {
 // grandTotalRow 通过 gridRuntimeOptions 注入
 
 function getRowId(params: any) {
-  return String(params.data?.id ?? '');
+  const row = params.data as RowData | undefined;
+  if (!row) return '';
+  return ensureRowKey(row);
 }
 
 function getRowClass(params: any): string | undefined {
