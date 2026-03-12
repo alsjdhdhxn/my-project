@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import { NButton, NDropdown, NSpace, NSplit, useDialog } from 'naive-ui';
 import { AgGridVue } from 'ag-grid-vue3';
 import { useThemeStore } from '@/store/modules/theme';
@@ -651,20 +651,6 @@ function onDetailRowOpened(event: any) {
   }
 }
 
-function onKeyDown(event: KeyboardEvent) {
-  if (event.ctrlKey && event.key === 's') {
-    event.preventDefault();
-    save();
-  }
-}
-
-onMounted(() => {
-  document.addEventListener('keydown', onKeyDown);
-});
-
-onUnmounted(() => {
-  document.removeEventListener('keydown', onKeyDown);
-});
 </script>
 
 <template>

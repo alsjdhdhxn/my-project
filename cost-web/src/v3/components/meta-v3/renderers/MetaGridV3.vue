@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, unref } from 'vue';
+import { computed, unref } from 'vue';
 import { NButton, NSpace, useDialog } from 'naive-ui';
 import { AgGridVue } from 'ag-grid-vue3';
 import type { ColDef, GridReadyEvent } from 'ag-grid-community';
@@ -136,24 +136,6 @@ function handleFilterChanged() {
   state.value.onFilterChanged?.();
 }
 
-// Ctrl+S 保存
-function onKeyDown(event: KeyboardEvent) {
-  if (event.ctrlKey && event.key === 's') {
-    event.preventDefault();
-    const save = (props.runtime as any)?.save;
-    if (save) {
-      save();
-    }
-  }
-}
-
-onMounted(() => {
-  document.addEventListener('keydown', onKeyDown);
-});
-
-onUnmounted(() => {
-  document.removeEventListener('keydown', onKeyDown);
-});
 </script>
 
 <template>
