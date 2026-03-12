@@ -21,6 +21,7 @@ const RECONNECT_DELAY = 3_000;
 function getWsUrl() {
   const token = getToken();
   if (!token) return null;
+
   const base = import.meta.env.VITE_SERVICE_BASE_URL || `${window.location.protocol}//${window.location.host}`;
   const wsBase = base.replace(/^http/, 'ws');
   return `${wsBase}/ws?token=${token}`;
@@ -36,10 +37,10 @@ function startHeartbeat() {
 }
 
 function stopHeartbeat() {
-  if (heartbeatTimer) {
-    clearInterval(heartbeatTimer);
-    heartbeatTimer = null;
-  }
+  if (!heartbeatTimer) return;
+
+  clearInterval(heartbeatTimer);
+  heartbeatTimer = null;
 }
 
 function connect() {
@@ -53,26 +54,26 @@ function connect() {
   ws.onopen = () => {
     connected.value = true;
     startHeartbeat();
-    console.log('[WS] 已连接');
+    console.log('[WS] connected');
   };
 
   ws.onmessage = event => {
     const data = event.data;
     if (data === 'pong') return;
+
     try {
       const msg: WsMessage = JSON.parse(data);
       const typeListeners = listeners.get(msg.type);
-      if (typeListeners) {
-        typeListeners.forEach(fn => fn(msg.payload));
-      }
+      typeListeners?.forEach(listener => listener(msg.payload));
     } catch {
-      // ignore non-JSON messages
+      // Ignore non-JSON messages.
     }
   };
 
   ws.onclose = () => {
     connected.value = false;
     stopHeartbeat();
+
     if (refCount > 0) {
       reconnectTimer = setTimeout(connect, RECONNECT_DELAY);
     }
@@ -88,41 +89,42 @@ function disconnect() {
     clearTimeout(reconnectTimer);
     reconnectTimer = null;
   }
+
   stopHeartbeat();
   ws?.close();
   ws = null;
   connected.value = false;
 }
 
-/**
- * 订阅 WebSocket 消息。组件 unmount 时自动取消订阅。
- * 首次调用时自动建立连接，最后一个订阅者取消时自动断开。
- */
 export function useWebSocket() {
-  refCount++;
+  refCount += 1;
   if (refCount === 1) connect();
 
-  // 记录当前组件注册的所有 listener，unmount 时统一清理
-  const localSubs: Array<() => void> = [];
+  const localSubscriptions: Array<() => void> = [];
 
   function subscribe(type: string, callback: Listener) {
-    if (!listeners.has(type)) listeners.set(type, new Set());
+    if (!listeners.has(type)) {
+      listeners.set(type, new Set());
+    }
+
     listeners.get(type)!.add(callback);
 
-    const unsub = () => {
+    const unsubscribe = () => {
       listeners.get(type)?.delete(callback);
-      if (listeners.get(type)?.size === 0) listeners.delete(type);
+      if (listeners.get(type)?.size === 0) {
+        listeners.delete(type);
+      }
     };
-    localSubs.push(unsub);
-    return unsub;
+
+    localSubscriptions.push(unsubscribe);
+    return unsubscribe;
   }
 
   onUnmounted(() => {
-    // 清理当前组件的所有订阅
-    localSubs.forEach(unsub => unsub());
-    localSubs.length = 0;
+    localSubscriptions.forEach(unsubscribe => unsubscribe());
+    localSubscriptions.length = 0;
 
-    refCount--;
+    refCount -= 1;
     if (refCount <= 0) {
       refCount = 0;
       disconnect();
@@ -132,7 +134,6 @@ export function useWebSocket() {
   return { connected, subscribe };
 }
 
-/** 手动重连（如登录后调用） */
 export function reconnectWebSocket() {
   disconnect();
   if (refCount > 0) connect();

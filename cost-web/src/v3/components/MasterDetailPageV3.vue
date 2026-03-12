@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted } from 'vue';
 import { NEmpty, NSpin, useMessage } from 'naive-ui';
-import { useWebSocket } from '@/composables/useWebSocket';
+import { useWebSocket } from '@/v3/composables/meta-v3/useWebSocket';
 import MetaPageRendererV3 from '@/v3/components/meta-v3/renderers/MetaPageRendererV3.vue';
 import LookupDialog from '@/v3/components/LookupDialog.vue';
 import { useMetaRuntime } from '@/v3/composables/meta-v3/useMetaRuntime';
