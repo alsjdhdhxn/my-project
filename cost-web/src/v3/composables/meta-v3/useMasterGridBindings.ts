@@ -25,13 +25,13 @@ type RuntimeApi = {
   masterGridApi?: Ref<any>;
   masterGridKey?: Ref<string | null> | string | null;
   broadcastFields?: Ref<string[]>;
-  addMasterRow?: () => void;
-  deleteMasterRow?: (row: any) => void;
-  copyMasterRow?: (row: any) => void;
-  addDetailRow?: (masterId: number, tabKey: string, masterRowKey?: string) => void;
-  deleteDetailRow?: (masterId: number, tabKey: string, row: any, masterRowKey?: string) => void;
-  copyDetailRow?: (masterId: number, tabKey: string, row: any, masterRowKey?: string) => void;
-  save?: () => void;
+  addMasterRow: () => void;
+  deleteMasterRow: (row: any) => void;
+  copyMasterRow: (row: any) => void;
+  addDetailRow: (masterId: number, tabKey: string, masterRowKey?: string) => void;
+  deleteDetailRow: (masterId: number, tabKey: string, row: any, masterRowKey?: string) => void;
+  copyDetailRow: (masterId: number, tabKey: string, row: any, masterRowKey?: string) => void;
+  save: () => void;
   saveGridConfig?: (gridKey: string, api: any, columnApi: any) => void;
   applyGridConfig?: (gridKey: string, api: any, columnApi: any, sourceColumnDefs?: ColDef[]) => void;
   customExportConfigs?: Ref<CustomExportConfig[]> | CustomExportConfig[];
@@ -221,13 +221,13 @@ export function useMasterGridBindings(params: {
   const masterGridKey = resolveGridKey(params.gridKey ?? runtimeMasterKey);
 
   const { getMasterContextMenuItems } = useGridContextMenu({
-    addMasterRow: runtime.addMasterRow || (() => {}),
-    deleteMasterRow: runtime.deleteMasterRow || (() => {}),
-    copyMasterRow: runtime.copyMasterRow || (() => {}),
-    addDetailRow: runtime.addDetailRow || (() => {}),
-    deleteDetailRow: runtime.deleteDetailRow || (() => {}),
-    copyDetailRow: runtime.copyDetailRow || (() => {}),
-    save: runtime.save || (() => {}),
+    addMasterRow: runtime.addMasterRow,
+    deleteMasterRow: runtime.deleteMasterRow,
+    copyMasterRow: runtime.copyMasterRow,
+    addDetailRow: runtime.addDetailRow,
+    deleteDetailRow: runtime.deleteDetailRow,
+    copyDetailRow: runtime.copyDetailRow,
+    save: runtime.save,
     saveGridConfig: (runtime as any).saveGridConfig,
     customExportConfigs: runtime.customExportConfigs,
     executeCustomExport: runtime.executeCustomExport,

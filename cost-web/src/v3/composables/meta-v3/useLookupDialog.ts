@@ -60,7 +60,9 @@ export function useLookupDialog(params: {
   const lookupDialogRef = ref<LookupDialogExpose | null>(null);
   const currentLookupRule = ref<LookupRule | null>(null);
   const currentLookupRowId = ref<number | null>(null);
+  const currentLookupRowKey = ref<string | null>(null);
   const currentLookupRowData = ref<RowData | null>(null);
+  const currentLookupFieldKeys = ref<string[]>([]);
   const currentLookupCellValue = ref<any>(null);
   const currentLookupIsMaster = ref<boolean>(true);
   const currentLookupTabKey = ref<string>('');
@@ -72,6 +74,13 @@ export function useLookupDialog(params: {
       .toLowerCase();
   }
 
+  function getFieldKeysFromColumnDefs(columnDefs: any[] | undefined | null): string[] {
+    if (!Array.isArray(columnDefs)) return [];
+    return columnDefs
+      .map(def => String(def?.field || '').trim())
+      .filter(Boolean);
+  }
+
   function resolveTargetField(row: RowData, field?: string | null): string {
     const rawField = String(field || '').trim();
     if (!rawField) return rawField;
@@ -79,7 +88,8 @@ export function useLookupDialog(params: {
     const originalValues = Reflect.get(row, '_originalValues') as Record<string, any> | undefined;
     const originalKeys = Object.keys(originalValues || {}).filter(key => !key.startsWith('_'));
     const rowKeys = Object.keys(row).filter(key => !key.startsWith('_'));
-    const candidateKeys = originalKeys.length > 0 ? originalKeys : rowKeys;
+    const knownKeys = currentLookupFieldKeys.value;
+    const candidateKeys = Array.from(new Set([...knownKeys, ...originalKeys, ...rowKeys]));
 
     if (candidateKeys.includes(rawField)) return rawField;
 
@@ -96,7 +106,9 @@ export function useLookupDialog(params: {
   function resetLookupState() {
     currentLookupRule.value = null;
     currentLookupRowId.value = null;
+    currentLookupRowKey.value = null;
     currentLookupRowData.value = null;
+    currentLookupFieldKeys.value = [];
     currentLookupCellValue.value = null;
   }
 
@@ -131,7 +143,9 @@ export function useLookupDialog(params: {
 
     currentLookupRule.value = rule;
     currentLookupRowId.value = rowData.id;
+    currentLookupRowKey.value = ensureRowKey(rowData);
     currentLookupRowData.value = rowData;
+    currentLookupFieldKeys.value = getFieldKeysFromColumnDefs(event.api?.getColumnDefs?.() ?? masterGridApi.value?.getColumnDefs?.());
     currentLookupCellValue.value = rowData[field];
     currentLookupIsMaster.value = true;
     currentLookupTabKey.value = '';
@@ -152,7 +166,9 @@ export function useLookupDialog(params: {
 
     currentLookupRule.value = rule;
     currentLookupRowId.value = rowData.id;
+    currentLookupRowKey.value = ensureRowKey(rowData);
     currentLookupRowData.value = rowData;
+    currentLookupFieldKeys.value = getFieldKeysFromColumnDefs(event.api?.getColumnDefs?.());
     currentLookupCellValue.value = rowData[field];
     currentLookupIsMaster.value = false;
     currentLookupTabKey.value = tabKey;
@@ -166,14 +182,15 @@ export function useLookupDialog(params: {
       return;
     }
 
-    if (!currentLookupRowId.value) return;
     const rowId = currentLookupRowId.value;
+    const rowKey = currentLookupRowKey.value;
+    if (rowId == null && !rowKey) return;
 
     if (currentLookupIsMaster.value) {
-      const row = getMasterRowById(rowId);
+      const row = (rowKey ? getMasterRowByRowKey(rowKey) : null) ?? (rowId != null ? getMasterRowById(rowId) : null);
       if (row) {
-        const rowKey = ensureRowKey(row);
-        const node = masterGridApi.value?.getRowNode(String(rowKey));
+        const targetRowKey = ensureRowKey(row);
+        const node = masterGridApi.value?.getRowNode(String(targetRowKey));
         const changedFields = applyLookupFillData(row, fillData);
         if (changedFields.length > 0) {
           if (node) {
@@ -193,9 +210,9 @@ export function useLookupDialog(params: {
       for (const [masterRowKey, tabData] of detailCache.entries()) {
         const rows = tabData[tabKey];
         if (!rows) continue;
-        const row = rows.find(r => r.id === rowId);
+        const row = rows.find(r => (rowKey ? ensureRowKey(r) === rowKey : r.id === rowId));
         if (row) {
-          const rowKey = ensureRowKey(row);
+          const detailRowKey = ensureRowKey(row);
           const masterRow = getMasterRowByRowKey(masterRowKey);
           const masterId = masterRow?.id;
           if (masterId == null) break;
@@ -203,7 +220,7 @@ export function useLookupDialog(params: {
 
           const splitDetailApi = detailGridApisByTab?.value?.[tabKey];
           if (splitDetailApi) {
-            const node = splitDetailApi.getRowNode?.(String(rowKey));
+            const node = splitDetailApi.getRowNode?.(String(detailRowKey));
             if (node && changedFields.length > 0) {
               runDetailCalc(node, splitDetailApi, row, masterId, tabKey, masterRowKey, changedFields);
             }
@@ -214,7 +231,7 @@ export function useLookupDialog(params: {
               secondLevelInfo.api.forEachDetailGridInfo((detailInfo: any) => {
                 if (detailInfo.id?.includes(tabKey)) {
                   detailInfo.api.forEachNode((node: any) => {
-                    if (node.data?._rowKey === rowKey && changedFields.length > 0) {
+                    if (node.data?._rowKey === detailRowKey && changedFields.length > 0) {
                       runDetailCalc(node, detailInfo.api, row, masterId, tabKey, masterRowKey, changedFields);
                     }
                   });
@@ -242,6 +259,7 @@ export function useLookupDialog(params: {
     lookupDialogRef,
     currentLookupRule,
     currentLookupRowId,
+    currentLookupRowKey,
     currentLookupRowData,
     currentLookupCellValue,
     currentLookupIsMaster,
