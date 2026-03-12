@@ -1,3 +1,4 @@
+import { fetchPageComponents } from '@/service/api';
 import type {
   PageComponentWithRules,
   PageRule,
@@ -5,9 +6,20 @@ import type {
   SplitLayoutConfig
 } from '@/v3/composables/meta-v3/types';
 import {
+  collectPageRules,
+  groupRulesByComponent,
   parseRelationRule,
   parseRoleBindingRule
 } from '@/v3/composables/meta-v3/usePageRules';
+
+type LoadedPageComponents = {
+  components: PageComponentWithRules[];
+  rulesByComponent: Map<string, PageRule[]>;
+  masterGridKey?: string;
+  detailTabsKey?: string;
+  detailType?: string;
+  splitConfig?: SplitLayoutConfig;
+};
 
 function hasComponentType(components: PageComponentWithRules[], type: string): boolean {
   const visit = (items: PageComponentWithRules[]): boolean => {
@@ -111,6 +123,27 @@ export function getDetailGridComponentConfig(
   key: string
 ): string | undefined {
   return getComponentConfig(components, key);
+}
+
+export async function loadPageComponents(pageCode: string): Promise<LoadedPageComponents | null> {
+  const pageRes = await fetchPageComponents(pageCode);
+  if (pageRes.error || !pageRes.data) {
+    return null;
+  }
+
+  const pageComponentsData = pageRes.data as PageComponentWithRules[];
+  const pageComponentTree = injectMasterDetailRoot(buildComponentTree(pageComponentsData));
+  const rulesByComponent = groupRulesByComponent(collectPageRules(pageComponentTree));
+  const layoutKeys = resolveLayoutKeys(pageComponentTree, rulesByComponent);
+
+  return {
+    components: pageComponentTree,
+    rulesByComponent,
+    masterGridKey: layoutKeys.masterGridKey,
+    detailTabsKey: layoutKeys.detailTabsKey,
+    detailType: layoutKeys.detailType,
+    splitConfig: layoutKeys.splitConfig
+  };
 }
 
 export function resolveLayoutKeys(

@@ -1,6 +1,5 @@
 import { shallowRef } from 'vue';
 import type { ColDef } from 'ag-grid-community';
-import { fetchPageComponents } from '@/service/api';
 import { type LookupRule } from '@/v3/composables/meta-v3/useMetaColumns';
 import { parseMetaConfig } from '@/v3/composables/meta-v3/useConfigParser';
 import { loadPageMeta } from '@/v3/composables/meta-v3/useMetaLoader';
@@ -12,12 +11,7 @@ import type {
   ToolbarRule
 } from '@/v3/composables/meta-v3/types';
 import { type ParsedPageConfig, type ValidationRule, compileAggRules, compileCalcRules } from '@/v3/logic/calc-engine';
-import {
-  buildComponentTree,
-  injectMasterDetailRoot,
-  resolveLayoutKeys
-} from '@/v3/composables/meta-v3/useComponentLoader';
-import { collectPageRules, groupRulesByComponent } from '@/v3/composables/meta-v3/usePageRules';
+import { loadPageComponents } from '@/v3/composables/meta-v3/useComponentLoader';
 import type { ResolvedGridOptions } from '@/v3/composables/meta-v3/grid-options';
 import { compileMetaRules } from '@/v3/composables/meta-v3/useRuleCompiler';
 
@@ -71,30 +65,18 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
   const detailSumFieldsByTab = shallowRef<Record<string, string[]>>({});
 
   async function loadComponents() {
-    const pageRes = await fetchPageComponents(pageCode);
-    if (pageRes.error || !pageRes.data) {
+    const componentBundle = await loadPageComponents(pageCode);
+    if (!componentBundle) {
       notifyError('加载页面组件失败');
       return false;
     }
 
-    const pageComponentsData = pageRes.data as PageComponentWithRules[];
-    const pageComponentTree = buildComponentTree(pageComponentsData);
-    pageComponents.value = injectMasterDetailRoot(pageComponentTree);
-
-    const rulesMap = groupRulesByComponent(collectPageRules(pageComponentTree));
-    rulesByComponent.value = rulesMap;
-
-    const {
-      masterGridKey: resolvedMasterGridKey,
-      detailTabsKey: resolvedDetailTabsKey,
-      detailType,
-      splitConfig
-    } = resolveLayoutKeys(pageComponentTree, rulesMap);
-
-    masterGridKey.value = resolvedMasterGridKey ?? null;
-    detailTabsKey.value = resolvedDetailTabsKey ?? null;
-    layoutDetailTypeRef.value = detailType ?? null;
-    layoutSplitConfigRef.value = splitConfig || null;
+    pageComponents.value = componentBundle.components;
+    rulesByComponent.value = componentBundle.rulesByComponent;
+    masterGridKey.value = componentBundle.masterGridKey ?? null;
+    detailTabsKey.value = componentBundle.detailTabsKey ?? null;
+    layoutDetailTypeRef.value = componentBundle.detailType ?? null;
+    layoutSplitConfigRef.value = componentBundle.splitConfig || null;
     return true;
   }
 
