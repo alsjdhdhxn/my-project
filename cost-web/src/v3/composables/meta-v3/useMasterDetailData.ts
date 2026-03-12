@@ -18,8 +18,6 @@ export function useMasterDetailData(params: {
   detailGridApisByTab?: Ref<Record<string, any>>;
   notifyError: (message: string) => void;
   recalcAggregates: RecalcAggregates;
-  afterAddMasterRow?: (row: RowData) => void;
-  afterAddDetailRow?: (masterId: number, tabKey: string, row: RowData) => void;
 }) {
   const {
     pageCode,
@@ -30,9 +28,7 @@ export function useMasterDetailData(params: {
     masterGridApi,
     detailGridApisByTab,
     notifyError,
-    recalcAggregates,
-    afterAddMasterRow,
-    afterAddDetailRow
+    recalcAggregates
   } = params;
 
   const detailCache = new Map<string, Record<string, RowData[]>>();
@@ -302,8 +298,6 @@ export function useMasterDetailData(params: {
       });
     }
 
-    afterAddMasterRow?.(newRow);
-
     // 滚动到新行位置
     setTimeout(() => {
       api?.ensureIndexVisible(insertIndex, 'middle');
@@ -313,6 +307,8 @@ export function useMasterDetailData(params: {
         newNode.setSelected(true, true);
       }
     }, 100);
+
+    return newRow;
   }
 
   function deleteMasterRow(row: RowData) {
@@ -340,13 +336,12 @@ export function useMasterDetailData(params: {
 
   function addDetailRow(masterId: number, tabKey: string, masterRowKey?: string) {
     const resolvedRowKey = masterRowKey ?? resolveMasterRowKey(masterId);
-    if (!resolvedRowKey) return;
+    if (!resolvedRowKey) return null;
     const cached = detailCache.get(resolvedRowKey);
-    if (!cached || !cached[tabKey]) return;
+    if (!cached || !cached[tabKey]) return null;
     const fkColumn = detailFkColumnByTab.value[tabKey] || 'masterId';
     const newRow = initRowData({ id: generateTempId(), [fkColumn]: masterId }, true);
     cached[tabKey].push(newRow);
-    afterAddDetailRow?.(masterId, tabKey, newRow);
 
     const secondLevelInfo = masterGridApi.value?.getDetailGridInfo(`detail_${resolvedRowKey}`);
     if (secondLevelInfo?.api) {
@@ -357,6 +352,7 @@ export function useMasterDetailData(params: {
     detailGridApisByTab?.value?.[tabKey]?.setGridOption?.('rowData', cached[tabKey]);
 
     recalcAggregates(masterId, resolvedRowKey);
+    return newRow;
   }
 
   function deleteDetailRow(masterId: number, tabKey: string, row: RowData, masterRowKey?: string) {

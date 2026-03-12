@@ -155,6 +155,18 @@ function readScopeField(scope: Record<string, any>, fieldRef: string | undefined
   return tableScope[parsed.field];
 }
 
+function normalizeScopeValue(value: unknown) {
+  return value ?? 0;
+}
+
+function cloneScopeRecord(record: Record<string, any>) {
+  const cloned: Record<string, any> = {};
+  for (const [key, value] of Object.entries(record)) {
+    cloned[key] = normalizeScopeValue(value);
+  }
+  return cloned;
+}
+
 function withDefaultTable(dep: string, defaultTableCode: string): string {
   const parsed = parseFieldRef(dep);
   if (!parsed) return dep;
@@ -534,15 +546,15 @@ export function calcRowFields(
 
   for (const [key, value] of Object.entries(context || {})) {
     if (value && typeof value === 'object' && !Array.isArray(value)) {
-      // Use a shallow clone to avoid mutating original rows during evaluation.
-      scope[key] = { ...value };
+      // Keep qualified refs and bare refs on the same null-handling semantics.
+      scope[key] = cloneScopeRecord(value as Record<string, any>);
     } else {
-      scope[key] = value ?? 0;
+      scope[key] = normalizeScopeValue(value);
     }
   }
 
   for (const [key, value] of Object.entries(row || {})) {
-    scope[key] = value ?? 0;
+    scope[key] = normalizeScopeValue(value);
   }
 
   const functionScope = createCalcFunctionScope(runtime);

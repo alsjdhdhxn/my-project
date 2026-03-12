@@ -13,7 +13,7 @@ import { useRuntimeComponentState } from './useRuntimeComponentState';
 import { useRuntimeExtensions } from './useRuntimeExtensions';
 import { useRuntimeLookup } from './useRuntimeLookup';
 import { useRuntimeMetadataReload } from './useRuntimeMetadataReload';
-import { useRuntimeActions, type RuntimeActionHandler } from './useRuntimeActions';
+import { useRuntimeActions } from './useRuntimeActions';
 import { useRuntimeState } from './useRuntimeState';
 import type { MetaError, RuntimeFeatures, RuntimeStage } from './types';
 
@@ -102,15 +102,10 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     makeError
   });
 
-  const recalcAggregatesRef = { current: (_masterId: number) => {} };
-  const recalcAggregatesProxy = (masterId: number) => {
+  const recalcAggregatesRef = { current: (_masterId: number, _masterRowKey?: string) => {} };
+  const recalcAggregatesProxy = (masterId: number, masterRowKey?: string) => {
     if (!resolvedFeatures.value.aggregates) return;
-    recalcAggregatesRef.current(masterId);
-  };
-
-  const addRowHooks = {
-    onMasterRowAdded: (_row: any) => {},
-    onDetailRowAdded: (_masterId: number, _tabKey: string, _row: any) => {}
+    recalcAggregatesRef.current(masterId, masterRowKey);
   };
 
   const data = useMasterDetailData({
@@ -122,9 +117,7 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     masterGridApi,
     detailGridApisByTab,
     notifyError,
-    recalcAggregates: recalcAggregatesProxy,
-    afterAddMasterRow: row => addRowHooks.onMasterRowAdded(row),
-    afterAddDetailRow: (masterId, tabKey, row) => addRowHooks.onDetailRowAdded(masterId, tabKey, row)
+    recalcAggregates: recalcAggregatesProxy
   });
 
   const calc = useCalcBroadcast({
@@ -141,16 +134,23 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     detailGridApisByTab
   });
 
-  addRowHooks.onMasterRowAdded = row => {
-    calc.runMasterCalc(null, row);
-  };
-  addRowHooks.onDetailRowAdded = (masterId, tabKey, row) => {
-    if (!resolvedFeatures.value.detailTabs) return;
-    const api = detailGridApisByTab.value?.[tabKey];
-    calc.runDetailCalc(null, api, row, masterId, tabKey);
-  };
-
   recalcAggregatesRef.current = calc.recalcAggregates;
+
+  function addMasterRow() {
+    const newRow = data.addMasterRow();
+    if (newRow) {
+      calc.runMasterCalc(null, newRow);
+    }
+    return newRow;
+  }
+
+  function addDetailRow(masterId: number, tabKey: string, masterRowKey?: string) {
+    const newRow = data.addDetailRow(masterId, tabKey, masterRowKey);
+    if (!newRow || !resolvedFeatures.value.detailTabs) return newRow;
+    const api = detailGridApisByTab.value?.[tabKey];
+    calc.runDetailCalc(null, api, newRow, masterId, tabKey, masterRowKey);
+    return newRow;
+  }
 
   const runtimeLookup = useRuntimeLookup({
     resolvedFeatures,
@@ -221,7 +221,7 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
   });
 
   let runtimeApi: any;
-  const runtimeActions = useRuntimeActions({
+  const { executeAction, registerActionHandler, resolveActionHandler } = useRuntimeActions({
     pageCode,
     notifyError,
     notifySuccess,
@@ -232,26 +232,6 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     data
   });
 
-  function registerActionHandler(actionCode: string, handler: RuntimeActionHandler) {
-    runtimeActions.registerActionHandler(actionCode, handler);
-  }
-
-  function resolveActionHandler(actionCode: string): RuntimeActionHandler | null {
-    return runtimeActions.resolveActionHandler(actionCode);
-  }
-
-  async function executeAction(
-    actionCode: string,
-    options?: {
-      data?: Record<string, any>;
-      selectedRow?: Record<string, any> | null;
-      refreshMode?: 'all' | 'row' | 'detail' | 'none';
-      componentKey?: string;
-    }
-  ) {
-    await runtimeActions.executeAction(actionCode, options);
-  }
-
   runtimeApi = {
     pageCode,
     masterGridApi,
@@ -260,6 +240,8 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     ...metaApi,
     componentStateByKey,
     ...data,
+    addMasterRow,
+    addDetailRow,
     markFieldChange: calc.markFieldChange,
     runMasterCalc: calc.runMasterCalc,
     runDetailCalc: (
@@ -296,9 +278,9 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     saveGridConfig: gridConfig.saveGridConfig
   };
 
-  runtimeActions.registerActionHandler('advancedSearch', () => advancedSearch.open());
+  registerActionHandler('advancedSearch', () => advancedSearch.open());
 
-  const runtimeComponentState = useRuntimeComponentState({
+  const { buildStates } = useRuntimeComponentState({
     logger,
     meta: {
       pageComponents: meta.pageComponents,
@@ -308,7 +290,7 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     componentStateByKey,
     componentErrors
   });
-  const runtimeExtensions = useRuntimeExtensions({
+  const { applyExtensions } = useRuntimeExtensions({
     logger,
     meta: {
       pageComponents: meta.pageComponents,
@@ -325,7 +307,7 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     notifyError,
     getRuntime: () => runtimeApi
   });
-  const runtimeBootstrap = useRuntimeBootstrap({
+  const { init, loadComponents, parseConfig, loadMeta, compileRules } = useRuntimeBootstrap({
     pageCode,
     logger,
     meta: {
@@ -342,19 +324,9 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     parseConfigRaw,
     loadMetaRaw,
     compileRulesRaw,
-    buildStates: () => runtimeComponentState.buildStates(),
-    applyExtensions: () => runtimeExtensions.applyExtensions()
+    buildStates,
+    applyExtensions
   });
-
-  function buildStates() {
-    return runtimeComponentState.buildStates();
-  }
-
-  function applyExtensions() {
-    return runtimeExtensions.applyExtensions();
-  }
-
-  const { init, loadComponents, parseConfig, loadMeta, compileRules } = runtimeBootstrap;
 
   const { reloadMetadata } = useRuntimeMetadataReload({
     pageCode,
