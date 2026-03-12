@@ -41,23 +41,7 @@ const RendererBoundary = defineComponent({
       errorMessage.value = message || 'Renderer failed';
 
       const runtime = boundaryProps.runtime as MetaRuntime;
-      if (runtime?.reportComponentError) {
-        runtime.reportComponentError(boundaryProps.component.componentKey, 'render', message, err);
-      } else {
-        const source = (runtime as any)?.componentStateByKey;
-        const stateByKey = source?.value ?? source;
-        if (stateByKey?.[boundaryProps.component.componentKey]) {
-          stateByKey[boundaryProps.component.componentKey].status = 'error';
-          stateByKey[boundaryProps.component.componentKey].error = {
-            code: 'RENDER_ERROR',
-            message,
-            stage: 'render',
-            pageCode: runtime?.pageCode || 'unknown',
-            componentKey: boundaryProps.component.componentKey,
-            raw: err
-          };
-        }
-      }
+      runtime.reportComponentError(boundaryProps.component.componentKey, 'render', message, err);
       return false;
     });
 

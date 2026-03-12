@@ -76,11 +76,9 @@ export type ComponentState = ComponentStateBase | GridState | FormState | Button
 export type ComponentStateByKey = Record<string, ComponentState>;
 
 export type MetaRuntime = {
-  pageCode: string;
   componentStateByKey: Ref<ComponentStateByKey> | ComponentStateByKey;
-  status?: Ref<'loading' | 'ready' | 'error'> | 'loading' | 'ready' | 'error';
   pageError?: Ref<MetaError | null> | MetaError | null;
-  reportComponentError?: (componentKey: string, stage: RuntimeStage, message: string, raw?: unknown) => void;
+  reportComponentError: (componentKey: string, stage: RuntimeStage, message: string, raw?: unknown) => void;
 };
 
 export type RuntimeLogger = {
