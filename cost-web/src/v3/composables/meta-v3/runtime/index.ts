@@ -10,7 +10,7 @@ import { useUserGridConfig } from '@/v3/composables/meta-v3/useUserGridConfig';
 import { useCustomExport } from '@/v3/composables/meta-v3/useCustomExport';
 import { buildCellEditableCallback } from '@/v3/composables/meta-v3/usePageRules';
 import { createRuntimeLogger } from './logger';
-import { findFirstGridKey } from './helpers';
+import { useRuntimeBootstrap } from './useRuntimeBootstrap';
 import { useRuntimeComponentState } from './useRuntimeComponentState';
 import { useRuntimeExtensions } from './useRuntimeExtensions';
 import { useRuntimeMetadataReload } from './useRuntimeMetadataReload';
@@ -320,53 +320,6 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
 
   runtimeActions.registerActionHandler('advancedSearch', () => advancedSearch.open());
 
-  async function loadComponents() {
-    logger.log('loadComponents', 'start');
-    const ok = await loadComponentsRaw();
-    if (!ok) {
-      const error = makeError({ pageCode, stage: 'loadComponents', message: 'Failed to load components' });
-      runtimeError.value = error;
-      runtimeStatus.value = 'error';
-      logger.error(error);
-      return false;
-    }
-    return true;
-  }
-
-  function parseConfig() {
-    logger.log('parseConfig', 'start');
-    const ok = parseConfigRaw();
-    if (!ok) {
-      const error = makeError({ pageCode, stage: 'parseConfig', message: 'Failed to parse page config' });
-      runtimeError.value = error;
-      runtimeStatus.value = 'error';
-      logger.error(error);
-      return false;
-    }
-    return true;
-  }
-
-  async function loadMeta() {
-    logger.log('loadMeta', 'start');
-    const ok = await loadMetaRaw();
-    if (!ok) {
-      const key = meta.masterGridKey.value || findFirstGridKey(meta.pageComponents.value) || 'masterGrid';
-      reportComponentError(key, 'loadMeta', 'Failed to load table metadata');
-    }
-    return ok;
-  }
-
-  function compileRules() {
-    logger.log('compileRules', 'start');
-    const ok = compileRulesRaw();
-    refreshAutoFeatures();
-    if (!ok) {
-      const key = meta.masterGridKey.value || findFirstGridKey(meta.pageComponents.value) || 'masterGrid';
-      reportComponentError(key, 'compileRules', 'Failed to compile rules');
-    }
-    return ok;
-  }
-
   const runtimeComponentState = useRuntimeComponentState({
     logger,
     meta: {
@@ -394,6 +347,26 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     notifyError,
     getRuntime: () => runtimeApi
   });
+  const runtimeBootstrap = useRuntimeBootstrap({
+    pageCode,
+    logger,
+    meta: {
+      pageComponents: meta.pageComponents,
+      masterGridKey: meta.masterGridKey
+    },
+    runtimeStatus,
+    runtimeError,
+    isReady,
+    reportComponentError,
+    refreshAutoFeatures,
+    makeError,
+    loadComponentsRaw,
+    parseConfigRaw,
+    loadMetaRaw,
+    compileRulesRaw,
+    buildStates: () => runtimeComponentState.buildStates(),
+    applyExtensions: () => runtimeExtensions.applyExtensions()
+  });
 
   function buildStates() {
     return runtimeComponentState.buildStates();
@@ -402,6 +375,8 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
   function applyExtensions() {
     return runtimeExtensions.applyExtensions();
   }
+
+  const { init, loadComponents, parseConfig, loadMeta, compileRules } = runtimeBootstrap;
 
   const { reloadMetadata } = useRuntimeMetadataReload({
     pageCode,
@@ -427,27 +402,6 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     broadcastToDetail: calc.broadcastToDetail
   });
 
-  async function init() {
-    const componentsOk = await loadComponents();
-    if (!componentsOk) {
-      isReady.value = true;
-      return;
-    }
-
-    const configOk = parseConfig();
-    if (!configOk) {
-      isReady.value = true;
-      return;
-    }
-
-    await loadMeta();
-    compileRules();
-    buildStates();
-    applyExtensions();
-    runtimeStatus.value = runtimeError.value ? 'error' : 'ready';
-    isReady.value = true;
-    // V3 uses SSRM; data loading is triggered by grid datasource
-  }
   return {
     isReady,
     status: runtimeStatus,
