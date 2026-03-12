@@ -248,7 +248,7 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
   });
 
   let runtimeApi: any;
-  const { executeAction, registerActionHandler, resolveActionHandler } = useRuntimeActions({
+  const { executeAction, registerActionHandler } = useRuntimeActions({
     pageCode,
     notifyError,
     notifySuccess,
@@ -304,8 +304,6 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     executeCustomExport: customExport.executeCustomExport,
     advancedSearch,
     executeAction,
-    registerActionHandler,
-    resolveActionHandler,
     save,
     isSaving,
     applyGridConfig: gridConfig.applyGridConfig,
@@ -394,12 +392,6 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     reportComponentError,
     init,
     reloadMetadata,
-    loadComponents,
-    parseConfig,
-    loadMeta,
-    compileRules,
-    buildStates,
-    applyExtensions,
     ...runtimeApi
   };
 }
