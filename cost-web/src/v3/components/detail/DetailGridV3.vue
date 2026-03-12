@@ -28,7 +28,7 @@ const props = defineProps<{
   refreshDetailRowHeight?: () => void;
   registerDetailGridApi: (tabKey: string, api: any) => void;
   unregisterDetailGridApi?: (tabKey: string, api: any) => void;
-  applyGridConfig?: (gridKey: string, api: any, columnApi: any) => void;
+  applyGridConfig?: (gridKey: string, api: any, columnApi: any, sourceColumnDefs?: ColDef[]) => void;
   onCellValueChanged: (event: any) => void;
   onCellClicked: (event: any) => void;
   onCellEditingStarted: () => void;
@@ -207,7 +207,7 @@ function onGridReady(event: GridReadyEvent) {
       applyOrder: false
     });
   });
-  props.applyGridConfig?.(props.tab.key, event.api, event.columnApi);
+  props.applyGridConfig?.(props.tab.key, event.api, event.columnApi, props.columns);
 
   if (props.tab.initialSort && props.tab.initialSort.length > 0) {
     event.api.applyColumnState({

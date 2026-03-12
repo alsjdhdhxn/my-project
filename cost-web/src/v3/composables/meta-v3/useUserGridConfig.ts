@@ -74,6 +74,10 @@ function buildColumnDefLookup(columnDefs: any[]) {
   return result;
 }
 
+function isBackendHidden(def: any) {
+  return def?.hide === true || def?.lockVisible === true || def?.suppressColumnsToolPanel === true;
+}
+
 function normalizeColumns(source: any[], columnDefs: any[] = []): ColumnPreference[] {
   const result: ColumnPreference[] = [];
   const columnDefByField = new Map(
@@ -146,20 +150,24 @@ export function useUserGridConfig(params: { pageCode: string; notifyError: Notif
     return payload;
   }
 
-  async function applyGridConfig(gridKey: string | null | undefined, api: any, columnApi?: any) {
+  async function applyGridConfig(
+    gridKey: string | null | undefined,
+    api: any,
+    columnApi?: any,
+    sourceColumnDefs?: any[]
+  ) {
     const payload = await loadGridConfig(gridKey);
-    if (!payload?.columns || payload.columns.length === 0) return;
-
     const colApi = columnApi ?? api?.columnApi ?? api?.getColumnApi?.();
     const applyFn = api?.applyColumnState ?? colApi?.applyColumnState;
     if (!applyFn) return;
 
     const currentDefs = (api?.getColumnDefs?.() ?? []) as Array<any>;
-    const prefMap = buildPreferenceLookup(payload.columns);
-    const currentDefsByIdentity = buildColumnDefLookup(currentDefs);
+    const baseDefs =
+      Array.isArray(sourceColumnDefs) && sourceColumnDefs.length > 0 ? sourceColumnDefs : currentDefs;
+    const preferenceColumns = payload?.columns ?? [];
+    const prefMap = buildPreferenceLookup(preferenceColumns);
     const lockedHiddenColumns = new Set<string>();
-    let needPatchDefs = false;
-    const patchedDefs = currentDefs.map(def => {
+    const normalizedDefs = baseDefs.map(def => {
       const field = getRuntimeColumnName(def);
       if (!field) return def;
       const pref = prefMap.get(getColumnDefIdentity(def) || '') ?? prefMap.get(`column:${field}`);
@@ -167,40 +175,64 @@ export function useUserGridConfig(params: { pageCode: string; notifyError: Notif
       const hiddenByBase = def?.hide === true;
       const backendLocked = def?.lockVisible === true || def?.suppressColumnsToolPanel === true;
       const shouldLock = backendLocked || (hiddenByBase && !hiddenByUser);
-      if (!shouldLock) return def;
-      lockedHiddenColumns.add(field);
-      if (def?.lockVisible === true && def?.suppressColumnsToolPanel === true) {
-        return def;
+      if (shouldLock) {
+        lockedHiddenColumns.add(field);
+        return {
+          ...def,
+          lockVisible: true,
+          suppressColumnsToolPanel: true
+        };
       }
-      needPatchDefs = true;
+
       return {
         ...def,
-        lockVisible: true,
-        suppressColumnsToolPanel: true
+        lockVisible: undefined,
+        suppressColumnsToolPanel: undefined
       };
     });
 
-    if (lockedHiddenColumns.size > 0) {
-      (api as any).__lockedHiddenColumns = Array.from(lockedHiddenColumns);
+    (api as any).__lockedHiddenColumns = Array.from(lockedHiddenColumns);
+    if (sourceColumnDefs || normalizedDefs !== currentDefs) {
+      api?.setGridOption?.('columnDefs', normalizedDefs);
     }
-    if (needPatchDefs) {
-      api?.setGridOption?.('columnDefs', patchedDefs);
+
+    const activeDefs = normalizedDefs;
+    const currentDefsByIdentity = buildColumnDefLookup(activeDefs);
+
+    applyFn.call(api?.applyColumnState ? api : colApi, {
+      state: activeDefs
+        .map(def => {
+          const runtimeField = getRuntimeColumnName(def);
+          if (!runtimeField) return null;
+          return {
+            colId: runtimeField,
+            hide: isBackendHidden(def)
+          };
+        })
+        .filter((col): col is NonNullable<typeof col> => Boolean(col)),
+      applyOrder: false
+    });
+
+    if (preferenceColumns.length === 0) {
+      const resolvedKey = resolveGridKey(gridKey);
+      gridApiRefs.set(resolvedKey, { gridKey: resolvedKey, api, columnApi });
+      return;
     }
 
     applyFn.call(api?.applyColumnState ? api : colApi, {
-      state: payload.columns
+      state: preferenceColumns
         .map((col, index) => {
           const def =
             currentDefsByIdentity.get(getPreferenceKey(col) || '') ??
             currentDefsByIdentity.get(`column:${col.columnName}`);
           const runtimeField = getRuntimeColumnName(def);
           if (!runtimeField) return null;
+          const hiddenByUser = col.hidden === true;
+          const hiddenByBase = isBackendHidden(def);
           return {
             colId: runtimeField,
             width: col.width,
-            // 用户个性化只允许收紧：
-            // hidden=true 时隐藏；hidden=false/undefined 不允许反向放开后端权限结果。
-            hide: col.hidden === true ? true : undefined,
+            hide: hiddenByUser || hiddenByBase ? true : false,
             pinned: col.pinned ?? null,
             order: col.order ?? index
           };

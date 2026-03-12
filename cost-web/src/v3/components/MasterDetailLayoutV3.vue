@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue';
+import { computed, nextTick, ref, unref, watch } from 'vue';
 import { NButton, NDropdown, NSpace, NSplit, useDialog } from 'naive-ui';
 import { AgGridVue } from 'ag-grid-vue3';
 import { useThemeStore } from '@/store/modules/theme';
@@ -415,7 +415,7 @@ function handleMasterGridReady(event: any) {
   console.log('[DEBUG] handleMasterGridReady called, isSplitMode:', isSplitMode.value);
   masterGridApi.value = event.api;
   onMasterGridReady(event);
-  applyGridConfig?.(masterGridKey.value, event.api, event.columnApi);
+  applyGridConfig?.(masterGridKey.value, event.api, event.columnApi, unref(masterColumnDefs) || []);
 }
 
 // 刷新detail行高度

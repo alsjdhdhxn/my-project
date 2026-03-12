@@ -1,4 +1,4 @@
-import { ref, shallowRef, watch } from 'vue';
+import { nextTick, ref, shallowRef, watch } from 'vue';
 import type { GridApi } from 'ag-grid-community';
 import { executePageRuleAction } from '@/service/api/dynamic';
 import { useMetaConfig } from '@/v3/composables/meta-v3/useMetaConfig';
@@ -819,6 +819,32 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     updateMasterGridStateColumnDefs(latestMasterColumnDefs);
   }
 
+  async function reapplyGridConfigsForHotReload() {
+    await nextTick();
+
+    const masterApi = masterGridApi.value as any;
+    const masterKey = meta.masterGridKey.value || findFirstGridKey(meta.pageComponents.value || []);
+    if (masterApi && masterKey) {
+      await gridConfig.applyGridConfig(
+        masterKey,
+        masterApi,
+        masterApi.columnApi ?? masterApi.getColumnApi?.(),
+        meta.masterColumnDefs.value || []
+      );
+    }
+
+    const detailApis = detailGridApisByTab.value || {};
+    for (const [tabKey, api] of Object.entries(detailApis)) {
+      if (!api) continue;
+      await gridConfig.applyGridConfig(
+        tabKey,
+        api,
+        (api as any).columnApi ?? api.getColumnApi?.(),
+        meta.detailColumnsByTab.value?.[tabKey] || []
+      );
+    }
+  }
+
   async function reloadCalcRulesOnly() {
     clearCalcCache();
     const componentsOk = await loadComponentsRaw();
@@ -855,6 +881,7 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
       previousDetailColumnsByTab
     });
     applyMasterColumnDefsForHotReload({ masterColumnDefsChanged, latestMasterColumnDefs });
+    await reapplyGridConfigsForHotReload();
 
     const dirtyTargets = recalcDirtyMasterRowsForHotReload();
     await cascadeDirtyMasterRowsForHotReload(dirtyTargets);
