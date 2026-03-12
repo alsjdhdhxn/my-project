@@ -108,7 +108,13 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     recalcAggregatesRef.current(masterId, masterRowKey);
   };
 
-  const data = useMasterDetailData({
+  const {
+    addMasterRow: addMasterRowRaw,
+    addDetailRow: addDetailRowRaw,
+    deleteDetailRow: deleteDetailRowRaw,
+    copyDetailRow: copyDetailRowRaw,
+    ...dataApi
+  } = useMasterDetailData({
     pageCode,
     pageConfig: meta.pageConfig,
     detailFkColumnByTab: meta.detailFkColumnByTab,
@@ -121,22 +127,22 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
 
   const calc = useCalcBroadcast({
     masterGridApi,
-    getMasterRowById: data.getMasterRowById,
-    getMasterRowByRowKey: data.getMasterRowByRowKey,
-    resolveMasterRowKey: data.resolveMasterRowKey,
-    detailCache: data.detailCache,
+    getMasterRowById: dataApi.getMasterRowById,
+    getMasterRowByRowKey: dataApi.getMasterRowByRowKey,
+    resolveMasterRowKey: dataApi.resolveMasterRowKey,
+    detailCache: dataApi.detailCache,
     detailCalcRulesByTab: meta.detailCalcRulesByTab,
     compiledAggRules: meta.compiledAggRules,
     compiledMasterCalcRules: meta.compiledMasterCalcRules,
     pageConfig: meta.pageConfig,
-    loadDetailData: data.loadDetailData,
+    loadDetailData: dataApi.loadDetailData,
     detailGridApisByTab
   });
 
   recalcAggregatesRef.current = calc.recalcAggregates;
 
   function addMasterRow() {
-    const newRow = data.addMasterRow();
+    const newRow = addMasterRowRaw();
     if (newRow) {
       calc.runMasterCalc(null, newRow);
     }
@@ -154,12 +160,12 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
   }
 
   function addDetailRow(masterId: number, tabKey: string, masterRowKey?: string) {
-    const newRow = data.addDetailRow(masterId, tabKey, masterRowKey);
+    const newRow = addDetailRowRaw(masterId, tabKey, masterRowKey);
     return finalizeDetailMutation(masterId, tabKey, newRow, masterRowKey);
   }
 
   function deleteDetailRow(masterId: number, tabKey: string, row: any, masterRowKey?: string) {
-    const deleted = data.deleteDetailRow(masterId, tabKey, row, masterRowKey);
+    const deleted = deleteDetailRowRaw(masterId, tabKey, row, masterRowKey);
     if (deleted) {
       recalcAggregatesProxy(masterId, masterRowKey);
     }
@@ -167,7 +173,7 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
   }
 
   function copyDetailRow(masterId: number, tabKey: string, sourceRow: any, masterRowKey?: string) {
-    const newRow = data.copyDetailRow(masterId, tabKey, sourceRow, masterRowKey);
+    const newRow = copyDetailRowRaw(masterId, tabKey, sourceRow, masterRowKey);
     return finalizeDetailMutation(masterId, tabKey, newRow, masterRowKey);
   }
 
@@ -179,9 +185,9 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
       masterLookupRules: meta.masterLookupRules,
       detailLookupRulesByTab: meta.detailLookupRulesByTab
     },
-    getMasterRowById: data.getMasterRowById,
-    getMasterRowByRowKey: data.getMasterRowByRowKey,
-    detailCache: data.detailCache,
+    getMasterRowById: dataApi.getMasterRowById,
+    getMasterRowByRowKey: dataApi.getMasterRowByRowKey,
+    detailCache: dataApi.detailCache,
     masterGridApi,
     markFieldChange: calc.markFieldChange,
     runMasterCalc: calc.runMasterCalc,
@@ -202,19 +208,19 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     masterLookupRules: meta.masterLookupRules,
     detailLookupRulesByTab: meta.detailLookupRulesByTab,
     masterGridApi,
-    setAdvancedConditions: data.setAdvancedConditions,
-    clearAdvancedConditions: data.clearAdvancedConditions,
-    clearAllCache: data.clearAllCache,
+    setAdvancedConditions: dataApi.setAdvancedConditions,
+    clearAdvancedConditions: dataApi.clearAdvancedConditions,
+    clearAllCache: dataApi.clearAllCache,
     notifyInfo
   });
 
   const { save, isSaving } = useSave({
     pageCode,
     pageConfig: meta.pageConfig,
-    detailCache: data.detailCache,
-    getMasterRowById: data.getMasterRowById,
-    getMasterRowByRowKey: data.getMasterRowByRowKey,
-    resolveMasterRowKey: data.resolveMasterRowKey,
+    detailCache: dataApi.detailCache,
+    getMasterRowById: dataApi.getMasterRowById,
+    getMasterRowByRowKey: dataApi.getMasterRowByRowKey,
+    resolveMasterRowKey: dataApi.resolveMasterRowKey,
     masterValidationRules: meta.masterValidationRules,
     detailValidationRulesByTab: meta.detailValidationRulesByTab,
     masterColumnMeta: meta.masterColumnMeta,
@@ -222,7 +228,7 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     masterPkColumn: meta.masterPkColumn,
     detailPkColumnByTab: meta.detailPkColumnByTab,
     detailFkColumnByTab: meta.detailFkColumnByTab,
-    loadDetailData: data.loadDetailData,
+    loadDetailData: dataApi.loadDetailData,
     masterGridApi,
     detailGridApisByTab,
     activeMasterRowKey,
@@ -248,7 +254,7 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     masterGridApi,
     activeMasterRowKey,
     pageConfig: meta.pageConfig,
-    data
+    data: dataApi
   });
 
   runtimeApi = {
@@ -258,7 +264,7 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     activeMasterRowKey,
     ...metaApi,
     componentStateByKey,
-    ...data,
+    ...dataApi,
     addMasterRow,
     addDetailRow,
     deleteDetailRow,
@@ -361,8 +367,8 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     componentStateByKey,
     masterGridApi,
     detailGridApisByTab,
-    detailCache: data.detailCache,
-    resolveMasterRowKey: data.resolveMasterRowKey,
+    detailCache: dataApi.detailCache,
+    resolveMasterRowKey: dataApi.resolveMasterRowKey,
     applyGridConfig: gridConfig.applyGridConfig,
     loadComponents: loadComponentsRaw,
     parseConfig: parseConfigRaw,
