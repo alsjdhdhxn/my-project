@@ -116,8 +116,7 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     detailPkColumnByTab: meta.detailPkColumnByTab,
     masterGridApi,
     detailGridApisByTab,
-    notifyError,
-    recalcAggregates: recalcAggregatesProxy
+    notifyError
   });
 
   const calc = useCalcBroadcast({
@@ -144,12 +143,32 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     return newRow;
   }
 
+  function finalizeDetailMutation(masterId: number, tabKey: string, row: any, masterRowKey?: string) {
+    if (!row) return row;
+    if (resolvedFeatures.value.detailTabs) {
+      const api = detailGridApisByTab.value?.[tabKey];
+      calc.runDetailCalc(null, api, row, masterId, tabKey, masterRowKey);
+    }
+    recalcAggregatesProxy(masterId, masterRowKey);
+    return row;
+  }
+
   function addDetailRow(masterId: number, tabKey: string, masterRowKey?: string) {
     const newRow = data.addDetailRow(masterId, tabKey, masterRowKey);
-    if (!newRow || !resolvedFeatures.value.detailTabs) return newRow;
-    const api = detailGridApisByTab.value?.[tabKey];
-    calc.runDetailCalc(null, api, newRow, masterId, tabKey, masterRowKey);
-    return newRow;
+    return finalizeDetailMutation(masterId, tabKey, newRow, masterRowKey);
+  }
+
+  function deleteDetailRow(masterId: number, tabKey: string, row: any, masterRowKey?: string) {
+    const deleted = data.deleteDetailRow(masterId, tabKey, row, masterRowKey);
+    if (deleted) {
+      recalcAggregatesProxy(masterId, masterRowKey);
+    }
+    return deleted;
+  }
+
+  function copyDetailRow(masterId: number, tabKey: string, sourceRow: any, masterRowKey?: string) {
+    const newRow = data.copyDetailRow(masterId, tabKey, sourceRow, masterRowKey);
+    return finalizeDetailMutation(masterId, tabKey, newRow, masterRowKey);
   }
 
   const runtimeLookup = useRuntimeLookup({
@@ -242,6 +261,8 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     ...data,
     addMasterRow,
     addDetailRow,
+    deleteDetailRow,
+    copyDetailRow,
     markFieldChange: calc.markFieldChange,
     runMasterCalc: calc.runMasterCalc,
     runDetailCalc: (

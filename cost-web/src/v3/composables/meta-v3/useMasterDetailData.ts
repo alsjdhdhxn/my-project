@@ -4,8 +4,6 @@ import type { GridApi, IServerSideGetRowsParams } from 'ag-grid-community';
 import { type DynamicQueryCondition, fetchDynamicDataById, searchDynamicData } from '@/service/api';
 import { debugLog } from '@/v3/composables/meta-v3/debug';
 import { type ParsedPageConfig, type RowData, ensureRowKey, generateTempId, initRowData } from '@/v3/logic/calc-engine';
-
-type RecalcAggregates = (masterId: number, masterRowKey?: string) => void;
 type QueryCondition = DynamicQueryCondition;
 
 export function useMasterDetailData(params: {
@@ -17,7 +15,6 @@ export function useMasterDetailData(params: {
   masterGridApi: ShallowRef<GridApi | null>;
   detailGridApisByTab?: Ref<Record<string, any>>;
   notifyError: (message: string) => void;
-  recalcAggregates: RecalcAggregates;
 }) {
   const {
     pageCode,
@@ -27,8 +24,7 @@ export function useMasterDetailData(params: {
     detailPkColumnByTab,
     masterGridApi,
     detailGridApisByTab,
-    notifyError,
-    recalcAggregates
+    notifyError
   } = params;
 
   const detailCache = new Map<string, Record<string, RowData[]>>();
@@ -350,17 +346,15 @@ export function useMasterDetailData(params: {
       });
     }
     detailGridApisByTab?.value?.[tabKey]?.setGridOption?.('rowData', cached[tabKey]);
-
-    recalcAggregates(masterId, resolvedRowKey);
     return newRow;
   }
 
   function deleteDetailRow(masterId: number, tabKey: string, row: RowData, masterRowKey?: string) {
-    if (!row) return;
+    if (!row) return false;
     const resolvedRowKey = masterRowKey ?? resolveMasterRowKey(masterId);
-    if (!resolvedRowKey) return;
+    if (!resolvedRowKey) return false;
     const cached = detailCache.get(resolvedRowKey);
-    if (!cached || !cached[tabKey]) return;
+    if (!cached || !cached[tabKey]) return false;
     const currentRow = resolveCurrentDetailRow(cached[tabKey], row);
 
     if (!isPersistedRow(currentRow)) {
@@ -390,7 +384,7 @@ export function useMasterDetailData(params: {
       detailGridApisByTab?.value?.[tabKey]?.refreshCells?.({ force: true });
     }
 
-    recalcAggregates(masterId, resolvedRowKey);
+    return true;
   }
 
   function buildCopyExcludedFields(...fields: Array<string | null | undefined>) {
@@ -478,14 +472,16 @@ export function useMasterDetailData(params: {
         newNode.setSelected(true, true);
       }
     }, 100);
+
+    return newRow;
   }
 
   function copyDetailRow(masterId: number, tabKey: string, sourceRow: RowData, masterRowKey?: string) {
     if (!sourceRow) return;
     const resolvedRowKey = masterRowKey ?? resolveMasterRowKey(masterId);
-    if (!resolvedRowKey) return;
+    if (!resolvedRowKey) return null;
     const cached = detailCache.get(resolvedRowKey);
-    if (!cached || !cached[tabKey]) return;
+    if (!cached || !cached[tabKey]) return null;
     const fkColumn = detailFkColumnByTab.value[tabKey] || 'masterId';
     const detailPkColumn = detailPkColumnByTab.value[tabKey];
     const detailCopyExcludedFields = buildCopyExcludedFields(detailPkColumn, fkColumn);
@@ -504,8 +500,7 @@ export function useMasterDetailData(params: {
       });
     }
     detailGridApisByTab?.value?.[tabKey]?.setGridOption?.('rowData', cached[tabKey]);
-
-    recalcAggregates(masterId, resolvedRowKey);
+    return newRow;
   }
 
   /** 清空所有业务数据缓存 */
