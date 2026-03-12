@@ -1,5 +1,5 @@
 import type { ColDef } from 'ag-grid-community';
-import type { LookupRule } from '@/composables/useMetaColumns';
+import type { LookupRule } from '@/v3/composables/meta-v3/useMetaColumns';
 import type { AggRule, CalcRule, NestedConfig, ValidationRule } from '@/v3/logic/calc-engine';
 import type {
   ButtonItemRule,

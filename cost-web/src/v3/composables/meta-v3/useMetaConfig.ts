@@ -4,9 +4,8 @@ import { fetchPageComponents } from '@/service/api';
 import {
   type LookupRule,
   extractLookupRules,
-  filterColumnsByVariant,
   loadTableMeta
-} from '@/composables/useMetaColumns';
+} from '@/v3/composables/meta-v3/useMetaColumns';
 import type {
   ContextMenuRule,
   GridOptionsRule,
@@ -550,7 +549,7 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
       const tabGridOptions = detailGridOptionsByTab.value[tab.key];
       detailColumnsByTab.value[tab.key] = mergeCellClassRules(
         applyGroupByColumns(
-          filterColumnsByVariant(detailMeta.columns, tab.variantKey, detailMeta.rawColumns || []),
+          detailMeta.columns,
           tabGridOptions?.groupBy
         ),
         DIRTY_CELL_CLASS_RULES

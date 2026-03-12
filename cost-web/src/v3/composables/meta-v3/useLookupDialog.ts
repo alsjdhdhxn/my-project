@@ -1,6 +1,6 @@
 import { type Ref, type ShallowRef, nextTick, ref } from 'vue';
 import type { GridApi } from 'ag-grid-community';
-import type { LookupRule } from '@/composables/useMetaColumns';
+import type { LookupRule } from '@/v3/composables/meta-v3/useMetaColumns';
 import { type RowData, ensureRowKey } from '@/v3/logic/calc-engine';
 
 type MarkFieldChange = (row: RowData, field: string, oldValue: any, newValue: any, type: 'user' | 'calc') => void;
