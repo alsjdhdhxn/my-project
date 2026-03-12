@@ -39,64 +39,14 @@ import {
   normalizeGridOptions
 } from '@/v3/composables/meta-v3/grid-options';
 import { DIRTY_CELL_CLASS_RULES, mergeCellClassRules } from '@/v3/composables/meta-v3/cell-style';
+import {
+  buildComponentTree,
+  collectComponentKeysByType,
+  getComponentConfig,
+  getDetailGridComponentConfig,
+  injectMasterDetailRoot,
+} from '@/v3/composables/meta-v3/useComponentLoader';
 import { compileMetaRules } from '@/v3/composables/meta-v3/useRuleCompiler';
-
-function buildComponentTree(components: PageComponentWithRules[]): PageComponentWithRules[] {
-  const hasChildren = components.some(component => Array.isArray(component.children) && component.children.length > 0);
-  if (hasChildren) return components;
-
-  const map = new Map<string, PageComponentWithRules>();
-  for (const component of components) {
-    map.set(component.componentKey, { ...component, children: [] });
-  }
-
-  const roots: PageComponentWithRules[] = [];
-  for (const component of map.values()) {
-    if (component.parentKey && map.has(component.parentKey)) {
-      map.get(component.parentKey)!.children!.push(component);
-    } else {
-      roots.push(component);
-    }
-  }
-
-  for (const component of map.values()) {
-    if (component.children) {
-      component.children.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
-    }
-  }
-  roots.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
-
-  return roots;
-}
-
-function hasComponentType(components: PageComponentWithRules[], type: string): boolean {
-  const visit = (items: PageComponentWithRules[]): boolean => {
-    for (const item of items) {
-      if (item.componentType === type) return true;
-      if (Array.isArray(item.children) && visit(item.children)) return true;
-    }
-    return false;
-  };
-  return visit(components || []);
-}
-
-function injectMasterDetailRoot(components: PageComponentWithRules[]): PageComponentWithRules[] {
-  if (hasComponentType(components, 'MASTER_DETAIL')) return components;
-  const hasGrid = hasComponentType(components, 'GRID');
-  const hasDetailGrid = hasComponentType(components, 'DETAIL_GRID');
-  if (!hasGrid || !hasDetailGrid) return components;
-  const pageCode = components[0]?.pageCode || '';
-  return [
-    {
-      id: -1,
-      pageCode,
-      componentKey: '__v3_master_detail__',
-      componentType: 'MASTER_DETAIL',
-      sortOrder: -1,
-      children: components
-    } as PageComponentWithRules
-  ];
-}
 
 function normalizeRole(role?: string): string | null {
   if (!role) return null;
@@ -104,46 +54,14 @@ function normalizeRole(role?: string): string | null {
   return normalized.length > 0 ? normalized : null;
 }
 
-function collectComponentKeysByType(components: PageComponentWithRules[], type: string): string[] {
-  const keys: string[] = [];
-  const visit = (component: PageComponentWithRules) => {
-    if (component.componentType === type) keys.push(component.componentKey);
-    if (Array.isArray(component.children)) {
-      component.children.forEach(visit);
-    }
-  };
-  components.forEach(visit);
-  return keys;
-}
-
 /**
  * 根据 componentKey 查找组件
  */
-function findComponentByKey(components: PageComponentWithRules[], key: string): PageComponentWithRules | null {
-  for (const component of components) {
-    if (component.componentKey === key) return component;
-    if (Array.isArray(component.children)) {
-      const found = findComponentByKey(component.children, key);
-      if (found) return found;
-    }
-  }
-  return null;
-}
-
 /**
  * 获取组件的 componentConfig
  */
-function getComponentConfig(components: PageComponentWithRules[], key: string): string | undefined {
-  const component = findComponentByKey(components, key);
-  return component?.componentConfig;
-}
-
 /**
  * 获取 DETAIL_GRID 组件的 componentConfig（按 componentKey 查找） */
-function getDetailGridComponentConfig(components: PageComponentWithRules[], key: string): string | undefined {
-  return getComponentConfig(components, key);
-}
-
 function resolveLayoutKeys(
   components: PageComponentWithRules[],
   rulesByComponent: Map<string, PageRule[]>
