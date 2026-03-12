@@ -3,16 +3,15 @@ import type { GridApi } from 'ag-grid-community';
 import { useMetaConfig } from '@/v3/composables/meta-v3/useMetaConfig';
 import { useMasterDetailData } from '@/v3/composables/meta-v3/useMasterDetailData';
 import { useCalcBroadcast } from '@/v3/composables/meta-v3/useCalcBroadcast';
-import { useLookupDialog } from '@/v3/composables/meta-v3/useLookupDialog';
 import { useAdvancedSearch } from '@/v3/composables/meta-v3/useAdvancedSearch';
 import { useSave } from '@/v3/composables/meta-v3/useSave';
 import { useUserGridConfig } from '@/v3/composables/meta-v3/useUserGridConfig';
 import { useCustomExport } from '@/v3/composables/meta-v3/useCustomExport';
-import { buildCellEditableCallback } from '@/v3/composables/meta-v3/usePageRules';
 import { createRuntimeLogger } from './logger';
 import { useRuntimeBootstrap } from './useRuntimeBootstrap';
 import { useRuntimeComponentState } from './useRuntimeComponentState';
 import { useRuntimeExtensions } from './useRuntimeExtensions';
+import { useRuntimeLookup } from './useRuntimeLookup';
 import { useRuntimeMetadataReload } from './useRuntimeMetadataReload';
 import { useRuntimeActions, type RuntimeActionHandler } from './useRuntimeActions';
 import { useRuntimeState } from './useRuntimeState';
@@ -153,29 +152,24 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
 
   recalcAggregatesRef.current = calc.recalcAggregates;
 
-  // Build row-editable checker using latest meta rules
-  const isRowEditable = (row: any) => {
-    const cellRules = meta.masterCellEditableRules?.value || [];
-    const rowRules = meta.masterRowEditableRules?.value || [];
-    if (cellRules.length === 0 && rowRules.length === 0) return true;
-    const callback = buildCellEditableCallback(cellRules, rowRules);
-    return callback ? callback({ data: row, colDef: {} }) : true;
-  };
-
-  const lookup = useLookupDialog({
+  const runtimeLookup = useRuntimeLookup({
+    resolvedFeatures,
+    meta: {
+      masterCellEditableRules: meta.masterCellEditableRules,
+      masterRowEditableRules: meta.masterRowEditableRules,
+      masterLookupRules: meta.masterLookupRules,
+      detailLookupRulesByTab: meta.detailLookupRulesByTab
+    },
     getMasterRowById: data.getMasterRowById,
     getMasterRowByRowKey: data.getMasterRowByRowKey,
     detailCache: data.detailCache,
     masterGridApi,
-    masterLookupRules: meta.masterLookupRules,
-    detailLookupRulesByTab: meta.detailLookupRulesByTab,
     markFieldChange: calc.markFieldChange,
     runMasterCalc: calc.runMasterCalc,
     runDetailCalc: calc.runDetailCalc,
     recalcAggregates: recalcAggregatesProxy,
     broadcastToDetail: calc.broadcastToDetail,
-    detailGridApisByTab,
-    isRowEditable
+    detailGridApisByTab
   });
 
   const advancedSearch = useAdvancedSearch({
@@ -289,25 +283,9 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
       if (!resolvedFeatures.value.broadcast) return;
       return calc.broadcastToDetail(masterId, row, changedFields);
     },
-    ...lookup,
+    ...runtimeLookup,
     customExportConfigs: customExport.customExportConfigs,
     executeCustomExport: customExport.executeCustomExport,
-    onMasterCellClicked: (event: any) => {
-      if (!resolvedFeatures.value.lookup) return;
-      lookup.onMasterCellClicked(event);
-    },
-    onDetailCellClicked: (event: any, masterId: number, tabKey: string) => {
-      if (!resolvedFeatures.value.lookup) return;
-      lookup.onDetailCellClicked(event, masterId, tabKey);
-    },
-    onLookupSelect: (fillData: Record<string, any>) => {
-      if (!resolvedFeatures.value.lookup) return;
-      lookup.onLookupSelect(fillData);
-    },
-    onLookupCancel: () => {
-      if (!resolvedFeatures.value.lookup) return;
-      lookup.onLookupCancel();
-    },
     advancedSearch,
     executeAction,
     registerActionHandler,

@@ -106,11 +106,12 @@ export function useLookupDialog(params: {
     Object.entries(fillData).forEach(([field, value]) => {
       const targetField = resolveTargetField(row, field);
       if (!targetField) return;
-      if (row[targetField] === value) return;
+      const nextValue = value === undefined ? null : value;
+      if (row[targetField] === nextValue) return;
 
       const oldValue = row[targetField];
-      row[targetField] = value;
-      markFieldChange(row, targetField, oldValue, value, 'user');
+      row[targetField] = nextValue;
+      markFieldChange(row, targetField, oldValue, nextValue, 'user');
       changedFields.push(targetField);
     });
 
@@ -194,6 +195,7 @@ export function useLookupDialog(params: {
         if (!rows) continue;
         const row = rows.find(r => r.id === rowId);
         if (row) {
+          const rowKey = ensureRowKey(row);
           const masterRow = getMasterRowByRowKey(masterRowKey);
           const masterId = masterRow?.id;
           if (masterId == null) break;
@@ -201,7 +203,7 @@ export function useLookupDialog(params: {
 
           const splitDetailApi = detailGridApisByTab?.value?.[tabKey];
           if (splitDetailApi) {
-            const node = splitDetailApi.getRowNode?.(String(rowId));
+            const node = splitDetailApi.getRowNode?.(String(rowKey));
             if (node && changedFields.length > 0) {
               runDetailCalc(node, splitDetailApi, row, masterId, tabKey, masterRowKey, changedFields);
             }
@@ -212,7 +214,7 @@ export function useLookupDialog(params: {
               secondLevelInfo.api.forEachDetailGridInfo((detailInfo: any) => {
                 if (detailInfo.id?.includes(tabKey)) {
                   detailInfo.api.forEachNode((node: any) => {
-                    if (node.data?.id === rowId && changedFields.length > 0) {
+                    if (node.data?._rowKey === rowKey && changedFields.length > 0) {
                       runDetailCalc(node, detailInfo.api, row, masterId, tabKey, masterRowKey, changedFields);
                     }
                   });
