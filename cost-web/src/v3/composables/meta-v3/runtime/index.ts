@@ -110,8 +110,10 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
 
   const {
     addMasterRow: addMasterRowRaw,
+    deleteMasterRow: deleteMasterRowRaw,
     addDetailRow: addDetailRowRaw,
     deleteDetailRow: deleteDetailRowRaw,
+    copyMasterRow: copyMasterRowRaw,
     copyDetailRow: copyDetailRowRaw,
     ...dataApi
   } = useMasterDetailData({
@@ -266,8 +268,10 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     componentStateByKey,
     ...dataApi,
     addMasterRow,
+    deleteMasterRow: deleteMasterRowRaw,
     addDetailRow,
     deleteDetailRow,
+    copyMasterRow: copyMasterRowRaw,
     copyDetailRow,
     markFieldChange: calc.markFieldChange,
     runMasterCalc: calc.runMasterCalc,
