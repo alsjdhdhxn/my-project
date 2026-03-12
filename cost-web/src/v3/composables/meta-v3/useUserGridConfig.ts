@@ -15,7 +15,6 @@ type GridConfigPayload = {
   columns?: ColumnPreference[];
 };
 
-/** Grid API 引用，用于批量保存 */
 type GridApiRef = {
   gridKey: string;
   api: any;
@@ -39,6 +38,7 @@ function getPreferenceKey(source: { columnId?: number; columnName?: string }): s
   if (typeof source.columnId === 'number') {
     return `id:${source.columnId}`;
   }
+
   const columnName = String(source.columnName ?? '').trim();
   return columnName ? `column:${columnName}` : null;
 }
@@ -59,23 +59,68 @@ function getColumnDefIdentity(def: any): string | null {
   if (typeof columnId === 'number') {
     return `id:${columnId}`;
   }
+
   const columnName = getRuntimeColumnName(def);
   return columnName ? `column:${columnName}` : null;
 }
 
-function buildColumnDefLookup(columnDefs: any[]) {
-  const result = new Map<string, any>();
-  columnDefs.forEach(def => {
-    const identityKey = getColumnDefIdentity(def);
-    if (identityKey) {
-      result.set(identityKey, def);
-    }
-  });
-  return result;
+function isSourceHidden(def: any) {
+  return def?.hide === true;
 }
 
-function isBackendHidden(def: any) {
-  return def?.hide === true || def?.lockVisible === true || def?.suppressColumnsToolPanel === true;
+function isSourceVisibilityLocked(def: any) {
+  return def?.lockVisible === true || def?.suppressColumnsToolPanel === true;
+}
+
+function resolveColumnPreference(def: any, prefMap: Map<string, ColumnPreference>) {
+  const field = getRuntimeColumnName(def);
+  if (!field) return null;
+  return prefMap.get(getColumnDefIdentity(def) || '') ?? prefMap.get(`column:${field}`) ?? null;
+}
+
+function buildEffectiveColumnDefs(sourceDefs: any[]) {
+  const lockedHiddenColumns: string[] = [];
+  const columnDefs = sourceDefs.map(def => {
+    const field = getRuntimeColumnName(def);
+    if (!field) return def;
+
+    const lockedBySource = isSourceHidden(def) || isSourceVisibilityLocked(def);
+    if (lockedBySource) {
+      lockedHiddenColumns.push(field);
+      return {
+        ...def,
+        lockVisible: true,
+        suppressColumnsToolPanel: true
+      };
+    }
+
+    return {
+      ...def,
+      lockVisible: undefined,
+      suppressColumnsToolPanel: undefined
+    };
+  });
+
+  return { columnDefs, lockedHiddenColumns };
+}
+
+function buildEffectiveColumnState(columnDefs: any[], preferenceColumns: ColumnPreference[]) {
+  const prefMap = buildPreferenceLookup(preferenceColumns);
+  return columnDefs
+    .map((def, index) => {
+      const runtimeField = getRuntimeColumnName(def);
+      if (!runtimeField) return null;
+
+      const pref = resolveColumnPreference(def, prefMap);
+      return {
+        colId: runtimeField,
+        width: pref?.width,
+        hide: isSourceHidden(def) || pref?.hidden === true ? true : false,
+        pinned: pref ? pref.pinned ?? null : undefined,
+        order: typeof pref?.order === 'number' ? pref.order : index
+      };
+    })
+    .filter((col): col is NonNullable<typeof col> => Boolean(col));
 }
 
 function normalizeColumns(source: any[], columnDefs: any[] = []): ColumnPreference[] {
@@ -83,9 +128,11 @@ function normalizeColumns(source: any[], columnDefs: any[] = []): ColumnPreferen
   const columnDefByField = new Map(
     columnDefs.map(def => [getRuntimeColumnName(def), def] as const).filter(([columnName]) => Boolean(columnName))
   );
+
   source.forEach((col: any, index: number) => {
     const columnName = getRuntimeColumnName(col);
     if (!columnName) return;
+
     const matchedDef = columnDefByField.get(columnName);
     result.push({
       columnId: getMetaColumnId(col) ?? getMetaColumnId(matchedDef),
@@ -96,11 +143,13 @@ function normalizeColumns(source: any[], columnDefs: any[] = []): ColumnPreferen
       pinned: col.pinned === 'left' || col.pinned === 'right' ? col.pinned : null
     });
   });
+
   return result;
 }
 
 function parseConfigPayload(data: any): GridConfigPayload | null {
   if (!data) return null;
+
   if (typeof data === 'string') {
     try {
       return parseConfigPayload(JSON.parse(data));
@@ -108,9 +157,11 @@ function parseConfigPayload(data: any): GridConfigPayload | null {
       return null;
     }
   }
+
   if (Array.isArray(data)) {
     return { columns: normalizeColumns(data) };
   }
+
   if (typeof data === 'object') {
     if (Array.isArray((data as any).columnState)) {
       return { columns: normalizeColumns((data as any).columnState) };
@@ -120,6 +171,7 @@ function parseConfigPayload(data: any): GridConfigPayload | null {
     }
     return data as GridConfigPayload;
   }
+
   return null;
 }
 
@@ -130,8 +182,6 @@ function resolveGridKey(key: string | null | undefined) {
 export function useUserGridConfig(params: { pageCode: string; notifyError: NotifyFn; notifySuccess: NotifyFn }) {
   const { pageCode, notifyError, notifySuccess } = params;
   const cache = new Map<string, GridConfigPayload | null>();
-
-  // 存储所有已注册的 grid API 引用
   const gridApiRefs = new Map<string, GridApiRef>();
 
   async function loadGridConfig(gridKey?: string | null) {
@@ -165,88 +215,23 @@ export function useUserGridConfig(params: { pageCode: string; notifyError: Notif
     const baseDefs =
       Array.isArray(sourceColumnDefs) && sourceColumnDefs.length > 0 ? sourceColumnDefs : currentDefs;
     const preferenceColumns = payload?.columns ?? [];
-    const prefMap = buildPreferenceLookup(preferenceColumns);
-    const lockedHiddenColumns = new Set<string>();
-    const normalizedDefs = baseDefs.map(def => {
-      const field = getRuntimeColumnName(def);
-      if (!field) return def;
-      const pref = prefMap.get(getColumnDefIdentity(def) || '') ?? prefMap.get(`column:${field}`);
-      const hiddenByUser = pref?.hidden === true;
-      const hiddenByBase = def?.hide === true;
-      const backendLocked = def?.lockVisible === true || def?.suppressColumnsToolPanel === true;
-      const shouldLock = backendLocked || (hiddenByBase && !hiddenByUser);
-      if (shouldLock) {
-        lockedHiddenColumns.add(field);
-        return {
-          ...def,
-          lockVisible: true,
-          suppressColumnsToolPanel: true
-        };
-      }
+    const { columnDefs, lockedHiddenColumns } = buildEffectiveColumnDefs(baseDefs);
+    const columnState = buildEffectiveColumnState(columnDefs, preferenceColumns);
 
-      return {
-        ...def,
-        lockVisible: undefined,
-        suppressColumnsToolPanel: undefined
-      };
-    });
+    (api as any).__lockedHiddenColumns = lockedHiddenColumns;
+    api?.setGridOption?.('columnDefs', columnDefs);
 
-    (api as any).__lockedHiddenColumns = Array.from(lockedHiddenColumns);
-    if (sourceColumnDefs || normalizedDefs !== currentDefs) {
-      api?.setGridOption?.('columnDefs', normalizedDefs);
+    if (columnState.length > 0) {
+      applyFn.call(api?.applyColumnState ? api : colApi, {
+        state: columnState,
+        applyOrder: true
+      });
     }
 
-    const activeDefs = normalizedDefs;
-    const currentDefsByIdentity = buildColumnDefLookup(activeDefs);
-
-    applyFn.call(api?.applyColumnState ? api : colApi, {
-      state: activeDefs
-        .map(def => {
-          const runtimeField = getRuntimeColumnName(def);
-          if (!runtimeField) return null;
-          return {
-            colId: runtimeField,
-            hide: isBackendHidden(def)
-          };
-        })
-        .filter((col): col is NonNullable<typeof col> => Boolean(col)),
-      applyOrder: false
-    });
-
-    if (preferenceColumns.length === 0) {
-      const resolvedKey = resolveGridKey(gridKey);
-      gridApiRefs.set(resolvedKey, { gridKey: resolvedKey, api, columnApi });
-      return;
-    }
-
-    applyFn.call(api?.applyColumnState ? api : colApi, {
-      state: preferenceColumns
-        .map((col, index) => {
-          const def =
-            currentDefsByIdentity.get(getPreferenceKey(col) || '') ??
-            currentDefsByIdentity.get(`column:${col.columnName}`);
-          const runtimeField = getRuntimeColumnName(def);
-          if (!runtimeField) return null;
-          const hiddenByUser = col.hidden === true;
-          const hiddenByBase = isBackendHidden(def);
-          return {
-            colId: runtimeField,
-            width: col.width,
-            hide: hiddenByUser || hiddenByBase ? true : false,
-            pinned: col.pinned ?? null,
-            order: col.order ?? index
-          };
-        })
-        .filter((col): col is NonNullable<typeof col> => Boolean(col)),
-      applyOrder: true
-    });
-
-    // 注册 grid API 引用
     const resolvedKey = resolveGridKey(gridKey);
     gridApiRefs.set(resolvedKey, { gridKey: resolvedKey, api, columnApi });
   }
 
-  /** 保存单个 grid 的列配置 */
   async function saveGridConfig(gridKey: string | null | undefined, api: any, columnApi?: any) {
     const resolvedKey = resolveGridKey(gridKey);
     const colApi = columnApi ?? api?.columnApi ?? api?.getColumnApi?.();
@@ -265,20 +250,15 @@ export function useUserGridConfig(params: { pageCode: string; notifyError: Notif
     }
 
     cache.set(resolvedKey, payload);
-
-    // 更新 grid API 引用
     gridApiRefs.set(resolvedKey, { gridKey: resolvedKey, api, columnApi });
-
-    // 保存所有已注册的 grid 配置
     await saveAllGridConfigs(resolvedKey);
   }
 
-  /** 保存所有已注册的 grid 配置（排除触发源，因为已经保存过了） */
   async function saveAllGridConfigs(excludeKey?: string) {
     const promises: Promise<void>[] = [];
 
     for (const [key, ref] of gridApiRefs.entries()) {
-      if (key === excludeKey) continue; // 跳过已保存的
+      if (key === excludeKey) continue;
 
       const colApi = ref.columnApi ?? ref.api?.columnApi ?? ref.api?.getColumnApi?.();
       const state = ref.api?.getColumnState?.() ?? colApi?.getColumnState?.();
@@ -302,7 +282,6 @@ export function useUserGridConfig(params: { pageCode: string; notifyError: Notif
     notifySuccess('列配置已保存');
   }
 
-  /** 注册 grid API 引用（用于批量保存） */
   function registerGridApi(gridKey: string | null | undefined, api: any, columnApi?: any) {
     const resolvedKey = resolveGridKey(gridKey);
     gridApiRefs.set(resolvedKey, { gridKey: resolvedKey, api, columnApi });

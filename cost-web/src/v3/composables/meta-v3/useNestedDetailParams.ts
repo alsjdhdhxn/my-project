@@ -26,7 +26,7 @@ export function useNestedDetailParams(params: {
   detailRowClassByTab?: Ref<Record<string, ((params: any) => string | undefined) | undefined>>;
   detailRowClassRulesByTab?: Ref<Record<string, RowClassRule[]>>;
   detailGridOptionsByTab?: Ref<Record<string, ResolvedGridOptions>>;
-  applyGridConfig?: (gridKey: string, api: any, columnApi: any) => void;
+  applyGridConfig?: (gridKey: string, api: any, columnApi: any, sourceColumnDefs?: ColDef[]) => void;
   getDetailContextMenuItems: (masterId: number, masterRowKey: string, tabKey: string) => (params: any) => any[];
   onCellEditingStarted: () => void;
   onCellEditingStopped: () => void;

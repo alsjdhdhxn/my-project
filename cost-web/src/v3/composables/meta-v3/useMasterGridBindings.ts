@@ -33,7 +33,7 @@ type RuntimeApi = {
   copyDetailRow?: (masterId: number, tabKey: string, row: any, masterRowKey?: string) => void;
   save?: () => void;
   saveGridConfig?: (gridKey: string, api: any, columnApi: any) => void;
-  applyGridConfig?: (gridKey: string, api: any, columnApi: any) => void;
+  applyGridConfig?: (gridKey: string, api: any, columnApi: any, sourceColumnDefs?: ColDef[]) => void;
   customExportConfigs?: Ref<CustomExportConfig[]> | CustomExportConfig[];
   executeCustomExport?: (exportCode: string, mode: 'all' | 'current') => void;
   executeAction?: (

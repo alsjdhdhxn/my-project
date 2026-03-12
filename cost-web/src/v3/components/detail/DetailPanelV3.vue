@@ -20,7 +20,7 @@ const props = defineProps<{
   cellClassRules: ColDef['cellClassRules'];
   defaultViewMode?: 'tab' | 'stack';
   viewMode?: 'tab' | 'stack';
-  applyGridConfig?: (gridKey: string, api: any, columnApi: any) => void;
+  applyGridConfig?: (gridKey: string, api: any, columnApi: any, sourceColumnDefs?: ColDef[]) => void;
   onDetailCellValueChanged: (event: any, masterId: number, tabKey: string, masterRowKey?: string) => void;
   onDetailCellClicked: (event: any, masterId: number, tabKey: string) => void;
   onCellEditingStarted: () => void;
