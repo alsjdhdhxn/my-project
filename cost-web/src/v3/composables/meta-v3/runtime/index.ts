@@ -22,6 +22,7 @@ import {
   shouldUseCalcOnlyHotReload
 } from './helpers';
 import { useRuntimeActions, type RuntimeActionHandler } from './useRuntimeActions';
+import { useRuntimeState } from './useRuntimeState';
 import type { ComponentState, FormState, GridState, MetaError, RuntimeFeatures, RuntimeStage } from './types';
 
 type NotifyFn = (message: string) => void;
@@ -70,10 +71,6 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
   const resolvedFeatures = ref<Required<RuntimeFeatures>>(resolveFeatures(features));
   const logger = createRuntimeLogger(pageCode, notifyError);
 
-  const isReady = ref(false);
-  const componentStateByKey = ref<Record<string, ComponentState>>({});
-  const componentErrors = ref<Record<string, MetaError>>({});
-
   const masterGridApi = shallowRef<GridApi | null>(null);
   const detailGridApisByTab = ref<Record<string, any>>({});
   const activeMasterRowKey = ref<string | null>(null);
@@ -87,6 +84,31 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     ...metaApi
   } = meta;
   const gridConfig = useUserGridConfig({ pageCode, notifyError, notifySuccess });
+  const isReady = ref(false);
+  const {
+    runtimeStatus,
+    runtimeError,
+    componentStateByKey,
+    componentErrors,
+    reportComponentError,
+    refreshAutoFeatures
+  } = useRuntimeState({
+    pageCode,
+    logger,
+    autoFeatureEnabled,
+    resolvedFeatures,
+    meta: {
+      pageConfig: meta.pageConfig,
+      detailCalcRulesByTab: meta.detailCalcRulesByTab,
+      compiledAggRules: meta.compiledAggRules,
+      compiledMasterCalcRules: meta.compiledMasterCalcRules,
+      masterLookupRules: meta.masterLookupRules,
+      detailLookupRulesByTab: meta.detailLookupRulesByTab,
+      masterGridKey: meta.masterGridKey,
+      pageComponents: meta.pageComponents
+    },
+    makeError
+  });
 
   const recalcAggregatesRef = { current: (_masterId: number) => {} };
   const recalcAggregatesProxy = (masterId: number) => {
@@ -304,63 +326,6 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
   };
 
   runtimeActions.registerActionHandler('advancedSearch', () => advancedSearch.open());
-
-  const runtimeStatus = ref<'loading' | 'ready' | 'error'>('loading');
-  const runtimeError = ref<MetaError | null>(null);
-
-  function resolveComponentType(componentKey: string) {
-    const components = meta.pageComponents.value || [];
-    const match = findComponentByKey(components, componentKey);
-    return match?.componentType || 'UNKNOWN';
-  }
-
-  function applyErrorToState(componentKey: string, error: MetaError) {
-    const state = componentStateByKey.value[componentKey];
-    if (state) {
-      state.status = 'error';
-      state.error = error;
-      return;
-    }
-    componentStateByKey.value[componentKey] = {
-      componentKey,
-      componentType: resolveComponentType(componentKey),
-      status: 'error',
-      error
-    };
-  }
-
-  function reportComponentError(componentKey: string, stage: RuntimeStage, message: string, raw?: unknown) {
-    const error = makeError({ pageCode, stage, message, componentKey, raw });
-    componentErrors.value[componentKey] = error;
-    applyErrorToState(componentKey, error);
-    logger.error(error);
-  }
-
-  function deriveFeaturesFromMeta(): Required<RuntimeFeatures> {
-    const hasTabs = (meta.pageConfig.value?.tabs?.length ?? 0) > 0;
-    const hasDetailCalc = Object.values(meta.detailCalcRulesByTab.value || {}).some(list => (list?.length ?? 0) > 0);
-    const hasBroadcast = hasTabs && hasDetailCalc;
-    const hasMasterCalc = (meta.compiledMasterCalcRules.value?.length ?? 0) > 0;
-    const hasAgg = (meta.compiledAggRules.value?.length ?? 0) > 0 || hasMasterCalc;
-    const masterLookup = (meta.masterLookupRules.value?.length ?? 0) > 0;
-    const detailLookup = Object.values(meta.detailLookupRulesByTab.value || {}).some(list => (list?.length ?? 0) > 0);
-    const hasLookup = masterLookup || detailLookup;
-    const hasGrid = Boolean(meta.masterGridKey.value || findFirstGridKey(meta.pageComponents.value || []));
-
-    return {
-      detailTabs: hasTabs,
-      broadcast: hasBroadcast,
-      aggregates: hasAgg,
-      lookup: hasLookup,
-      export: hasGrid,
-      contextMenu: hasGrid
-    };
-  }
-
-  function refreshAutoFeatures() {
-    if (!autoFeatureEnabled) return;
-    resolvedFeatures.value = deriveFeaturesFromMeta();
-  }
 
   async function loadComponents() {
     logger.log('loadComponents', 'start');
