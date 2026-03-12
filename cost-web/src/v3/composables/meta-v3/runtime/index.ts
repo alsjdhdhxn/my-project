@@ -15,6 +15,7 @@ import { useRuntimeLookup } from './useRuntimeLookup';
 import { useRuntimeMetadataReload } from './useRuntimeMetadataReload';
 import { useRuntimeActions } from './useRuntimeActions';
 import { useRuntimeState } from './useRuntimeState';
+import { useRuntimeMutations } from './useRuntimeMutations';
 import type { MetaError, RuntimeFeatures, RuntimeStage } from './types';
 
 type NotifyFn = (message: string) => void;
@@ -143,41 +144,17 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
 
   recalcAggregatesRef.current = calc.recalcAggregates;
 
-  function addMasterRow() {
-    const newRow = addMasterRowRaw();
-    if (newRow) {
-      calc.runMasterCalc(null, newRow);
-    }
-    return newRow;
-  }
-
-  function finalizeDetailMutation(masterId: number, tabKey: string, row: any, masterRowKey?: string) {
-    if (!row) return row;
-    if (resolvedFeatures.value.detailTabs) {
-      const api = detailGridApisByTab.value?.[tabKey];
-      calc.runDetailCalc(null, api, row, masterId, tabKey, masterRowKey);
-    }
-    recalcAggregatesProxy(masterId, masterRowKey);
-    return row;
-  }
-
-  function addDetailRow(masterId: number, tabKey: string, masterRowKey?: string) {
-    const newRow = addDetailRowRaw(masterId, tabKey, masterRowKey);
-    return finalizeDetailMutation(masterId, tabKey, newRow, masterRowKey);
-  }
-
-  function deleteDetailRow(masterId: number, tabKey: string, row: any, masterRowKey?: string) {
-    const deleted = deleteDetailRowRaw(masterId, tabKey, row, masterRowKey);
-    if (deleted) {
-      recalcAggregatesProxy(masterId, masterRowKey);
-    }
-    return deleted;
-  }
-
-  function copyDetailRow(masterId: number, tabKey: string, sourceRow: any, masterRowKey?: string) {
-    const newRow = copyDetailRowRaw(masterId, tabKey, sourceRow, masterRowKey);
-    return finalizeDetailMutation(masterId, tabKey, newRow, masterRowKey);
-  }
+  const { addMasterRow, addDetailRow, deleteDetailRow, copyDetailRow } = useRuntimeMutations({
+    resolvedFeatures,
+    detailGridApisByTab,
+    addMasterRowRaw,
+    addDetailRowRaw,
+    deleteDetailRowRaw,
+    copyDetailRowRaw,
+    runMasterCalc: calc.runMasterCalc,
+    runDetailCalc: calc.runDetailCalc,
+    recalcAggregates: recalcAggregatesProxy
+  });
 
   const runtimeLookup = useRuntimeLookup({
     resolvedFeatures,
