@@ -3,7 +3,6 @@ import type { ColDef } from 'ag-grid-community';
 import { fetchPageComponents } from '@/service/api';
 import {
   type LookupRule,
-  extractLookupRules,
   loadTableMeta
 } from '@/v3/composables/meta-v3/useMetaColumns';
 import type {
@@ -21,28 +20,17 @@ import {
   type ValidationRule,
   compileAggRules,
   compileCalcRules,
-  parsePageComponents,
-  parseValidationRules
+  parsePageComponents
 } from '@/v3/logic/calc-engine';
 import {
-  applyCellStyleRules,
   attachGroupCellRenderer,
   collectPageRules,
   getComponentRules,
   groupRulesByComponent,
-  parseAggregateRuleConfig,
-  parseCalcRuleConfig,
-  parseCellEditableRule,
-  parseContextMenuRule,
   parseGridOptionsRule,
-  parseGridStyleRule,
-  parseLookupRuleConfig,
   parseRelationRule,
   parseRoleBindingRule,
-  parseRowEditableRule,
   parseSummaryConfigRule,
-  parseToolbarRule,
-  parseValidationRuleConfig
 } from '@/v3/composables/meta-v3/usePageRules';
 import {
   type ResolvedGridOptions,
@@ -51,6 +39,7 @@ import {
   normalizeGridOptions
 } from '@/v3/composables/meta-v3/grid-options';
 import { DIRTY_CELL_CLASS_RULES, mergeCellClassRules } from '@/v3/composables/meta-v3/cell-style';
+import { compileMetaRules } from '@/v3/composables/meta-v3/useRuleCompiler';
 
 function buildComponentTree(components: PageComponentWithRules[]): PageComponentWithRules[] {
   const hasChildren = components.some(component => Array.isArray(component.children) && component.children.length > 0);
@@ -575,110 +564,41 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
   }
 
   function compileRules() {
-    const config = pageConfig.value;
-    if (!config) return false;
-
-    const resolvedMasterGridKey = masterGridKey.value ?? undefined;
-    const resolvedDetailTabsKey = detailTabsKey.value ?? undefined;
-    const rulesMap = rulesByComponent.value;
-    const masterRuleKeys = uniqueKeys([resolvedMasterGridKey, 'master', 'masterGrid']);
-    const masterRules = collectRulesByKeys(rulesMap, masterRuleKeys);
-    const masterRuleLabel = resolvedMasterGridKey || 'master';
-
-    const masterValidation = parseValidationRuleConfig(masterRuleLabel, masterRules);
-    masterValidationRules.value =
-      masterValidation.length > 0 ? masterValidation : parseValidationRules(masterColumnMeta.value);
-
-    const masterLookup = parseLookupRuleConfig(masterRuleLabel, masterRules);
-    masterLookupRules.value = mergeLookupRules(extractLookupRules(masterColumnMeta.value), masterLookup);
-
-    // 给有 lookup 的列添加高亮样式
-    const lookupFields = new Set(masterLookupRules.value.map(r => r.columnName));
-    if (lookupFields.size > 0) {
-      masterColumnDefs.value = masterColumnDefs.value.map(col => {
-        if (col.field && lookupFields.has(col.field)) {
-          return { ...col, cellClass: 'lookup-field' };
-        }
-        return col;
-      });
-    }
-
-    const masterCalcRules = parseCalcRuleConfig(masterRuleLabel, masterRules);
-    if (masterCalcRules.length > 0) {
-      compiledMasterCalcRules.value = compileCalcRules(masterCalcRules, `${pageCode}_master`);
-    } else {
-      compiledMasterCalcRules.value = [];
-    }
-
-    const masterAggRules = parseAggregateRuleConfig(masterRuleLabel, masterRules);
-    if (masterAggRules.length > 0) {
-      compiledAggRules.value = compileAggRules(masterAggRules, `${pageCode}_agg`);
-    } else if (config.aggregates?.length) {
-      compiledAggRules.value = compileAggRules(config.aggregates, `${pageCode}_agg`);
-    } else {
-      compiledAggRules.value = [];
-    }
-
-    detailValidationRulesByTab.value = {};
-    detailLookupRulesByTab.value = {};
-    detailCalcRulesByTab.value = {};
-    detailContextMenuByTab.value = {};
-
-    // 获取主表组件配置，用于读取工具栏、右键菜单等规则
-    const masterComponentConfig = getComponentConfig(pageComponents.value || [], resolvedMasterGridKey || 'masterGrid');
-    masterContextMenu.value = parseContextMenuRule(masterRuleLabel, masterRules, masterComponentConfig);
-    masterRowEditableRules.value = parseRowEditableRule(masterRuleLabel, masterRules);
-    masterCellEditableRules.value = parseCellEditableRule(masterRuleLabel, masterRules);
-    masterRowClassRules.value = parseGridStyleRule(masterRuleLabel, masterRules);
-    // 应用主表单元格级样式规则
-    masterColumnDefs.value = applyCellStyleRules(masterColumnDefs.value, masterRowClassRules.value);
-    masterToolbar.value = parseToolbarRule(masterRuleLabel, masterRules, masterComponentConfig);
-    detailContextMenuDefault.value = null;
-    const detailGlobalRules = getComponentRules(rulesMap, ['detailTabs']);
-    detailContextMenuDefault.value = parseContextMenuRule('detailTabs', detailGlobalRules);
-
-    for (const tab of config.tabs || []) {
-      const tabRules = getComponentRules(rulesMap, [tab.key]);
-      const rawColumns = detailColumnMetaByTab.value[tab.key] || [];
-      const detailValidation = parseValidationRuleConfig(tab.key, tabRules);
-      detailValidationRulesByTab.value[tab.key] =
-        detailValidation.length > 0 ? detailValidation : parseValidationRules(rawColumns);
-
-      const detailLookup = parseLookupRuleConfig(tab.key, tabRules);
-      detailLookupRulesByTab.value[tab.key] = mergeLookupRules(extractLookupRules(rawColumns), detailLookup);
-
-      // 给有 lookup 的列添加高亮样式
-      const detailLookupFields = new Set(detailLookupRulesByTab.value[tab.key].map(r => r.columnName));
-      if (detailLookupFields.size > 0 && detailColumnsByTab.value[tab.key]) {
-        detailColumnsByTab.value[tab.key] = detailColumnsByTab.value[tab.key].map(col => {
-          if (col.field && detailLookupFields.has(col.field)) {
-            return { ...col, cellClass: 'lookup-field' };
-          }
-          return col;
-        });
-      }
-
-      const detailCalcRules = parseCalcRuleConfig(tab.key, tabRules);
-      if (detailCalcRules.length > 0) {
-        detailCalcRulesByTab.value[tab.key] = compileCalcRules(detailCalcRules, `${pageCode}_${tab.key}`);
-      } else {
-        detailCalcRulesByTab.value[tab.key] = [];
-      }
-      const detailGridConfig = getDetailGridComponentConfig(pageComponents.value || [], tab.key);
-      detailContextMenuByTab.value[tab.key] =
-        parseContextMenuRule(tab.key, tabRules, detailGridConfig) || detailContextMenuDefault.value;
-      detailToolbarByTab.value[tab.key] = parseToolbarRule(tab.key, tabRules, detailGridConfig);
-      detailRowClassRulesByTab.value[tab.key] = parseGridStyleRule(tab.key, tabRules);
-      if (detailColumnsByTab.value[tab.key]) {
-        detailColumnsByTab.value[tab.key] = applyCellStyleRules(
-          detailColumnsByTab.value[tab.key],
-          detailRowClassRulesByTab.value[tab.key] || []
-        );
-      }
-      detailRowEditableRulesByTab.value[tab.key] = parseRowEditableRule(tab.key, tabRules);
-      detailCellEditableRulesByTab.value[tab.key] = parseCellEditableRule(tab.key, tabRules);
-    }
-    return true;
+    return compileMetaRules({
+      pageCode,
+      pageConfig: pageConfig.value,
+      pageComponents: pageComponents.value || [],
+      rulesByComponent: rulesByComponent.value,
+      masterGridKey: masterGridKey.value ?? undefined,
+      detailTabsKey: detailTabsKey.value ?? undefined,
+      masterColumnDefs,
+      detailColumnsByTab,
+      masterColumnMeta,
+      detailColumnMetaByTab,
+      masterValidationRules,
+      detailValidationRulesByTab,
+      masterLookupRules,
+      detailLookupRulesByTab,
+      compiledMasterCalcRules,
+      compiledAggRules,
+      detailCalcRulesByTab,
+      masterContextMenu,
+      detailContextMenuDefault,
+      detailContextMenuByTab,
+      masterRowEditableRules,
+      masterCellEditableRules,
+      masterRowClassRules,
+      detailRowClassRulesByTab,
+      detailRowEditableRulesByTab,
+      detailCellEditableRulesByTab,
+      masterToolbar,
+      detailToolbarByTab,
+      uniqueKeys,
+      collectRulesByKeys,
+      mergeLookupRules,
+      getComponentConfig,
+      getDetailGridComponentConfig
+    });
   }
 
   async function loadMetadata() {
