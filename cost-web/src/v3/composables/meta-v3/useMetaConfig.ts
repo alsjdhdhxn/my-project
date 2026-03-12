@@ -1,105 +1,27 @@
 import { shallowRef } from 'vue';
 import type { ColDef } from 'ag-grid-community';
 import { fetchPageComponents } from '@/service/api';
-import { type LookupRule, loadTableMeta } from '@/v3/composables/meta-v3/useMetaColumns';
+import { type LookupRule } from '@/v3/composables/meta-v3/useMetaColumns';
 import { parseMetaConfig } from '@/v3/composables/meta-v3/useConfigParser';
+import { loadPageMeta } from '@/v3/composables/meta-v3/useMetaLoader';
 import type {
   ContextMenuRule,
   PageComponentWithRules,
   PageRule,
-  RelationRule,
   SplitLayoutConfig,
   ToolbarRule
 } from '@/v3/composables/meta-v3/types';
 import { type ParsedPageConfig, type ValidationRule, compileAggRules, compileCalcRules } from '@/v3/logic/calc-engine';
-import { attachGroupCellRenderer, collectPageRules, groupRulesByComponent, parseRelationRule, parseRoleBindingRule } from '@/v3/composables/meta-v3/usePageRules';
-import { type ResolvedGridOptions, applyGroupByColumns } from '@/v3/composables/meta-v3/grid-options';
-import { DIRTY_CELL_CLASS_RULES, mergeCellClassRules } from '@/v3/composables/meta-v3/cell-style';
 import {
   buildComponentTree,
-  collectComponentKeysByType,
   getComponentConfig,
   getDetailGridComponentConfig,
-  injectMasterDetailRoot
+  injectMasterDetailRoot,
+  resolveLayoutKeys
 } from '@/v3/composables/meta-v3/useComponentLoader';
+import { collectPageRules, groupRulesByComponent } from '@/v3/composables/meta-v3/usePageRules';
+import type { ResolvedGridOptions } from '@/v3/composables/meta-v3/grid-options';
 import { compileMetaRules } from '@/v3/composables/meta-v3/useRuleCompiler';
-
-function normalizeRole(role?: string): string | null {
-  if (!role) return null;
-  const normalized = role.trim().toUpperCase();
-  return normalized.length > 0 ? normalized : null;
-}
-
-function resolveLayoutKeys(
-  components: PageComponentWithRules[],
-  rulesByComponent: Map<string, PageRule[]>
-): { masterGridKey?: string; detailTabsKey?: string; detailType?: string; splitConfig?: SplitLayoutConfig } {
-  let relation: RelationRule | null = null;
-  const roleMap = new Map<string, string>();
-
-  const visit = (component: PageComponentWithRules) => {
-    const rules = rulesByComponent.get(component.componentKey) || [];
-    const roleRule = parseRoleBindingRule(component.componentKey, rules);
-    const normalizedRole = normalizeRole(roleRule?.role);
-    if (normalizedRole) {
-      roleMap.set(component.componentKey, normalizedRole);
-    }
-
-    const relationRule = parseRelationRule(component.componentKey, rules);
-    if (relationRule) {
-      relation = { ...(relation || {}), ...relationRule };
-    }
-
-    if (Array.isArray(component.children)) {
-      component.children.forEach(visit);
-    }
-  };
-
-  components.forEach(visit);
-
-  const relationValue = relation as RelationRule | null;
-  let masterGridKey = relationValue?.masterKey;
-  let detailTabsKey = relationValue?.detailKey;
-
-  if (!masterGridKey) {
-    for (const [key, role] of roleMap.entries()) {
-      if (role === 'MASTER_GRID' || role === 'MASTER') {
-        masterGridKey = key;
-        break;
-      }
-    }
-  }
-
-  if (!detailTabsKey) {
-    for (const [key, role] of roleMap.entries()) {
-      if (role === 'DETAIL_TABS' || role === 'DETAIL') {
-        detailTabsKey = key;
-        break;
-      }
-    }
-  }
-
-  if (!masterGridKey) {
-    const gridKeys = collectComponentKeysByType(components, 'GRID');
-    if (gridKeys.length === 1) {
-      masterGridKey = gridKeys[0];
-    }
-  }
-
-  if (!detailTabsKey) {
-    const detailGridKeys = collectComponentKeysByType(components, 'DETAIL_GRID');
-    if (detailGridKeys.length > 0) {
-      detailTabsKey = 'detailTabs';
-    }
-  }
-
-  return {
-    masterGridKey,
-    detailTabsKey,
-    detailType: relationValue?.detailType,
-    splitConfig: relationValue?.splitConfig
-  };
-}
 
 function uniqueKeys(keys: Array<string | undefined | null>): string[] {
   const result: string[] = [];
@@ -121,27 +43,6 @@ function collectRulesByKeys(rulesByComponent: Map<string, PageRule[]>, keys: str
     const rules = rulesByComponent.get(key);
     if (rules && rules.length > 0) {
       result.push(...rules);
-    }
-  }
-
-  return result;
-}
-
-function extractSumFieldsFromMetadata(columns: Array<{ columnName?: string; rulesConfig?: string }>): string[] {
-  const result: string[] = [];
-  const seen = new Set<string>();
-
-  for (const col of columns || []) {
-    if (!col.columnName || seen.has(col.columnName) || !col.rulesConfig) continue;
-
-    try {
-      const config = JSON.parse(col.rulesConfig);
-      if (config?.aggFunc === 'sum') {
-        result.push(col.columnName);
-        seen.add(col.columnName);
-      }
-    } catch {
-      // Ignore invalid rulesConfig.
     }
   }
 
@@ -187,7 +88,6 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
   const detailSplitConfig = shallowRef<SplitLayoutConfig | null>(null);
   const masterGridKey = shallowRef<string | null>(null);
   const detailTabsKey = shallowRef<string | null>(null);
-
   const masterValidationRules = shallowRef<ValidationRule[]>([]);
   const detailValidationRulesByTab = shallowRef<Record<string, ValidationRule[]>>({});
   const masterColumnMeta = shallowRef<any[]>([]);
@@ -195,7 +95,6 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
   const masterContextMenu = shallowRef<ContextMenuRule | null>(null);
   const detailContextMenuByTab = shallowRef<Record<string, ContextMenuRule | null>>({});
   const detailContextMenuDefault = shallowRef<ContextMenuRule | null>(null);
-
   const masterLookupRules = shallowRef<LookupRule[]>([]);
   const detailLookupRulesByTab = shallowRef<Record<string, LookupRule[]>>({});
   const layoutDetailTypeRef = shallowRef<string | null>(null);
@@ -216,28 +115,6 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
   const detailToolbarByTab = shallowRef<Record<string, ToolbarRule | null>>({});
   const masterSumFields = shallowRef<string[]>([]);
   const detailSumFieldsByTab = shallowRef<Record<string, string[]>>({});
-
-  function resolveRuntimeColumnName(rawColumns: any[], targetColumn?: string | null, fallback = 'ID') {
-    const normalizedTarget = String(targetColumn || '').trim().toUpperCase();
-    if (normalizedTarget) {
-      const byTarget = rawColumns.find(
-        col => String(col?.targetColumn || '').trim().toUpperCase() === normalizedTarget
-      );
-      if (byTarget?.columnName) return String(byTarget.columnName);
-
-      const byColumn = rawColumns.find(
-        col => String(col?.columnName || '').trim().toUpperCase() === normalizedTarget
-      );
-      if (byColumn?.columnName) return String(byColumn.columnName);
-
-      const byQuery = rawColumns.find(
-        col => String(col?.queryColumn || '').trim().toUpperCase() === normalizedTarget
-      );
-      if (byQuery?.columnName) return String(byQuery.columnName);
-    }
-
-    return fallback;
-  }
 
   async function loadComponents() {
     const pageRes = await fetchPageComponents(pageCode);
@@ -302,64 +179,30 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
   async function loadMeta() {
     if (!pageConfig.value) return false;
 
-    const config = pageConfig.value;
-    const resolvedMasterGridKey = masterGridKey.value ?? undefined;
+    const pageMeta = await loadPageMeta({
+      pageCode,
+      pageConfig: pageConfig.value,
+      masterGridKey: masterGridKey.value ?? undefined,
+      masterGridOptions: masterGridOptions.value,
+      detailGridOptionsByTab: detailGridOptionsByTab.value
+    });
 
-    const masterMeta = await loadTableMeta(config.masterTableCode, pageCode, resolvedMasterGridKey ?? 'masterGrid');
-    if (!masterMeta) {
+    if (!pageMeta) {
       notifyError('加载主表元数据失败');
       return false;
     }
 
-    const masterColumns = mergeCellClassRules(
-      attachGroupCellRenderer(applyGroupByColumns(masterMeta.columns, masterGridOptions.value?.groupBy)),
-      DIRTY_CELL_CLASS_RULES
-    );
-    masterColumnDefs.value = masterColumns;
-    masterRowClassGetter.value = masterMeta.getRowClass;
-    masterColumnMeta.value = masterMeta.rawColumns || [];
-    masterPkColumn.value = resolveRuntimeColumnName(masterMeta.rawColumns || [], masterMeta.metadata.pkColumn, 'ID');
-    masterSumFields.value = extractSumFieldsFromMetadata(masterMeta.rawColumns || []);
-
-    detailColumnsByTab.value = {};
-    detailRowClassGetterByTab.value = {};
-    detailColumnMetaByTab.value = {};
-    detailFkColumnByTab.value = {};
-    detailPkColumnByTab.value = {};
-    detailSumFieldsByTab.value = {};
-
-    for (const tab of config.tabs || []) {
-      const tableCode = tab.tableCode || config.detailTableCode;
-      if (!tableCode) continue;
-
-      const detailMeta = await loadTableMeta(tableCode, pageCode, tab.key);
-      if (!detailMeta) {
-        console.warn(`[load detail meta failed] ${tableCode}`);
-        continue;
-      }
-
-      const tabGridOptions = detailGridOptionsByTab.value[tab.key];
-      detailColumnsByTab.value[tab.key] = mergeCellClassRules(
-        applyGroupByColumns(detailMeta.columns, tabGridOptions?.groupBy),
-        DIRTY_CELL_CLASS_RULES
-      );
-      detailRowClassGetterByTab.value[tab.key] = detailMeta.getRowClass;
-      detailSumFieldsByTab.value[tab.key] = extractSumFieldsFromMetadata(detailMeta.rawColumns || []);
-
-      const fkColumnName = detailMeta.metadata.parentFkColumn;
-      detailFkColumnByTab.value[tab.key] = fkColumnName
-        ? detailMeta.rawColumns.find(col => col.columnName.toUpperCase() === fkColumnName.toUpperCase())?.columnName ||
-          fkColumnName
-        : masterPkColumn.value;
-
-      detailPkColumnByTab.value[tab.key] = resolveRuntimeColumnName(
-        detailMeta.rawColumns || [],
-        detailMeta.metadata.pkColumn,
-        'ID'
-      );
-      detailColumnMetaByTab.value[tab.key] = detailMeta.rawColumns || [];
-    }
-
+    masterColumnDefs.value = pageMeta.masterColumnDefs;
+    masterRowClassGetter.value = pageMeta.masterRowClassGetter;
+    masterColumnMeta.value = pageMeta.masterColumnMeta;
+    masterPkColumn.value = pageMeta.masterPkColumn;
+    masterSumFields.value = pageMeta.masterSumFields;
+    detailColumnsByTab.value = pageMeta.detailColumnsByTab;
+    detailRowClassGetterByTab.value = pageMeta.detailRowClassGetterByTab;
+    detailColumnMetaByTab.value = pageMeta.detailColumnMetaByTab;
+    detailFkColumnByTab.value = pageMeta.detailFkColumnByTab;
+    detailPkColumnByTab.value = pageMeta.detailPkColumnByTab;
+    detailSumFieldsByTab.value = pageMeta.detailSumFieldsByTab;
     return true;
   }
 
