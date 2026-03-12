@@ -1,50 +1,26 @@
 import { shallowRef } from 'vue';
 import type { ColDef } from 'ag-grid-community';
 import { fetchPageComponents } from '@/service/api';
-import {
-  type LookupRule,
-  loadTableMeta
-} from '@/v3/composables/meta-v3/useMetaColumns';
+import { type LookupRule, loadTableMeta } from '@/v3/composables/meta-v3/useMetaColumns';
+import { parseMetaConfig } from '@/v3/composables/meta-v3/useConfigParser';
 import type {
   ContextMenuRule,
-  GridOptionsRule,
   PageComponentWithRules,
   PageRule,
   RelationRule,
   SplitLayoutConfig,
   ToolbarRule
 } from '@/v3/composables/meta-v3/types';
-import {
-  type NestedConfig,
-  type ParsedPageConfig,
-  type ValidationRule,
-  compileAggRules,
-  compileCalcRules,
-  parsePageComponents
-} from '@/v3/logic/calc-engine';
-import {
-  attachGroupCellRenderer,
-  collectPageRules,
-  getComponentRules,
-  groupRulesByComponent,
-  parseGridOptionsRule,
-  parseRelationRule,
-  parseRoleBindingRule,
-  parseSummaryConfigRule,
-} from '@/v3/composables/meta-v3/usePageRules';
-import {
-  type ResolvedGridOptions,
-  applyGroupByColumns,
-  mergeGridOptions,
-  normalizeGridOptions
-} from '@/v3/composables/meta-v3/grid-options';
+import { type ParsedPageConfig, type ValidationRule, compileAggRules, compileCalcRules } from '@/v3/logic/calc-engine';
+import { attachGroupCellRenderer, collectPageRules, groupRulesByComponent, parseRelationRule, parseRoleBindingRule } from '@/v3/composables/meta-v3/usePageRules';
+import { type ResolvedGridOptions, applyGroupByColumns } from '@/v3/composables/meta-v3/grid-options';
 import { DIRTY_CELL_CLASS_RULES, mergeCellClassRules } from '@/v3/composables/meta-v3/cell-style';
 import {
   buildComponentTree,
   collectComponentKeysByType,
   getComponentConfig,
   getDetailGridComponentConfig,
-  injectMasterDetailRoot,
+  injectMasterDetailRoot
 } from '@/v3/composables/meta-v3/useComponentLoader';
 import { compileMetaRules } from '@/v3/composables/meta-v3/useRuleCompiler';
 
@@ -54,14 +30,6 @@ function normalizeRole(role?: string): string | null {
   return normalized.length > 0 ? normalized : null;
 }
 
-/**
- * 根据 componentKey 查找组件
- */
-/**
- * 获取组件的 componentConfig
- */
-/**
- * 获取 DETAIL_GRID 组件的 componentConfig（按 componentKey 查找） */
 function resolveLayoutKeys(
   components: PageComponentWithRules[],
   rulesByComponent: Map<string, PageRule[]>
@@ -73,15 +41,20 @@ function resolveLayoutKeys(
     const rules = rulesByComponent.get(component.componentKey) || [];
     const roleRule = parseRoleBindingRule(component.componentKey, rules);
     const normalizedRole = normalizeRole(roleRule?.role);
-    if (normalizedRole) roleMap.set(component.componentKey, normalizedRole);
+    if (normalizedRole) {
+      roleMap.set(component.componentKey, normalizedRole);
+    }
 
     const relationRule = parseRelationRule(component.componentKey, rules);
-    if (relationRule) relation = { ...(relation || {}), ...relationRule };
+    if (relationRule) {
+      relation = { ...(relation || {}), ...relationRule };
+    }
 
     if (Array.isArray(component.children)) {
       component.children.forEach(visit);
     }
   };
+
   components.forEach(visit);
 
   const relationValue = relation as RelationRule | null;
@@ -108,13 +81,16 @@ function resolveLayoutKeys(
 
   if (!masterGridKey) {
     const gridKeys = collectComponentKeysByType(components, 'GRID');
-    if (gridKeys.length === 1) masterGridKey = gridKeys[0];
+    if (gridKeys.length === 1) {
+      masterGridKey = gridKeys[0];
+    }
   }
 
   if (!detailTabsKey) {
     const detailGridKeys = collectComponentKeysByType(components, 'DETAIL_GRID');
-    // 占位 key，实际 tab key 会在 DETAIL_GRID 解析后确定
-    if (detailGridKeys.length > 0) detailTabsKey = 'detailTabs';
+    if (detailGridKeys.length > 0) {
+      detailTabsKey = 'detailTabs';
+    }
   }
 
   return {
@@ -128,28 +104,36 @@ function resolveLayoutKeys(
 function uniqueKeys(keys: Array<string | undefined | null>): string[] {
   const result: string[] = [];
   const seen = new Set<string>();
+
   for (const key of keys) {
     if (!key || seen.has(key)) continue;
     seen.add(key);
     result.push(key);
   }
+
   return result;
 }
 
 function collectRulesByKeys(rulesByComponent: Map<string, PageRule[]>, keys: string[]): PageRule[] {
   const result: PageRule[] = [];
+
   for (const key of keys) {
     const rules = rulesByComponent.get(key);
-    if (rules && rules.length > 0) result.push(...rules);
+    if (rules && rules.length > 0) {
+      result.push(...rules);
+    }
   }
+
   return result;
 }
 
 function extractSumFieldsFromMetadata(columns: Array<{ columnName?: string; rulesConfig?: string }>): string[] {
   const result: string[] = [];
   const seen = new Set<string>();
+
   for (const col of columns || []) {
     if (!col.columnName || seen.has(col.columnName) || !col.rulesConfig) continue;
+
     try {
       const config = JSON.parse(col.rulesConfig);
       if (config?.aggFunc === 'sum') {
@@ -157,61 +141,29 @@ function extractSumFieldsFromMetadata(columns: Array<{ columnName?: string; rule
         seen.add(col.columnName);
       }
     } catch {
-      // ignore invalid rulesConfig
+      // Ignore invalid rulesConfig.
     }
   }
+
   return result;
 }
 
 function mergeLookupRules(metadataRules: LookupRule[], pageRules: LookupRule[]): LookupRule[] {
   const map = new Map<string, LookupRule>();
+
   for (const rule of metadataRules || []) {
     if (rule?.columnName) {
       map.set(rule.columnName, rule);
     }
   }
+
   for (const rule of pageRules || []) {
     if (rule?.columnName) {
       map.set(rule.columnName, rule);
     }
   }
+
   return Array.from(map.values());
-}
-
-function mergeNestedConfig(base: NestedConfig | undefined, override: NestedConfig): NestedConfig {
-  const merged: NestedConfig = { ...(base || {}) };
-  const hasOwn = (key: keyof NestedConfig) => Object.hasOwn(override, key);
-  if (hasOwn('enabled')) merged.enabled = override.enabled;
-  if (hasOwn('summaryColumns')) merged.summaryColumns = override.summaryColumns;
-  if (hasOwn('summaryAggregates')) merged.summaryAggregates = override.summaryAggregates;
-  if (hasOwn('groupLabelField')) merged.groupLabelField = override.groupLabelField;
-  if (hasOwn('groupLabelHeader')) merged.groupLabelHeader = override.groupLabelHeader;
-
-  if (merged.enabled == null && (hasOwn('summaryColumns') || hasOwn('summaryAggregates'))) {
-    merged.enabled = true;
-  }
-
-  return merged;
-}
-
-function enterpriseToGridOptions(enterprise?: ParsedPageConfig['enterpriseConfig']): GridOptionsRule | null {
-  if (!enterprise) return null;
-  return {
-    enableSidebar: enterprise.enableSidebar,
-    cellSelection: enterprise.cellSelection,
-    groupBy: enterprise.groupBy,
-    groupColumnName: enterprise.groupColumnName
-  };
-}
-
-function inheritDetailGridOptions(master?: ResolvedGridOptions | null): ResolvedGridOptions {
-  if (!master) return {};
-  return {
-    sideBar: master.sideBar,
-    cellSelection: master.cellSelection,
-    autoSizeColumns: master.autoSizeColumns,
-    autoSizeMode: master.autoSizeMode
-  };
 }
 
 export function useMetaConfig(pageCode: string, notifyError: (message: string) => void) {
@@ -266,39 +218,31 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
   const detailSumFieldsByTab = shallowRef<Record<string, string[]>>({});
 
   function resolveRuntimeColumnName(rawColumns: any[], targetColumn?: string | null, fallback = 'ID') {
-    const normalizedTarget = String(targetColumn || '')
-      .trim()
-      .toUpperCase();
+    const normalizedTarget = String(targetColumn || '').trim().toUpperCase();
     if (normalizedTarget) {
       const byTarget = rawColumns.find(
-        col =>
-          String(col?.targetColumn || '')
-            .trim()
-            .toUpperCase() === normalizedTarget
+        col => String(col?.targetColumn || '').trim().toUpperCase() === normalizedTarget
       );
       if (byTarget?.columnName) return String(byTarget.columnName);
+
       const byColumn = rawColumns.find(
-        col =>
-          String(col?.columnName || '')
-            .trim()
-            .toUpperCase() === normalizedTarget
+        col => String(col?.columnName || '').trim().toUpperCase() === normalizedTarget
       );
       if (byColumn?.columnName) return String(byColumn.columnName);
+
       const byQuery = rawColumns.find(
-        col =>
-          String(col?.queryColumn || '')
-            .trim()
-            .toUpperCase() === normalizedTarget
+        col => String(col?.queryColumn || '').trim().toUpperCase() === normalizedTarget
       );
       if (byQuery?.columnName) return String(byQuery.columnName);
     }
+
     return fallback;
   }
 
   async function loadComponents() {
     const pageRes = await fetchPageComponents(pageCode);
     if (pageRes.error || !pageRes.data) {
-      notifyError('????????');
+      notifyError('加载页面组件失败');
       return false;
     }
 
@@ -326,91 +270,32 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
   function parseConfig() {
     const components = pageComponents.value || [];
     if (components.length === 0) {
-      notifyError('????????');
+      notifyError('页面组件为空');
       return false;
     }
 
-    const resolvedMasterGridKey = masterGridKey.value ?? undefined;
-    const resolvedDetailTabsKey = detailTabsKey.value ?? undefined;
-    const config = parsePageComponents(components, {
-      masterGridKey: resolvedMasterGridKey,
-      detailTabsKey: resolvedDetailTabsKey
+    const parsedConfig = parseMetaConfig({
+      components,
+      rulesByComponent: rulesByComponent.value,
+      masterGridKey: masterGridKey.value ?? undefined,
+      detailTabsKey: detailTabsKey.value ?? undefined,
+      layoutDetailType: layoutDetailTypeRef.value,
+      layoutSplitConfig: layoutSplitConfigRef.value,
+      uniqueKeys,
+      collectRulesByKeys
     });
-    if (!config) {
-      notifyError('????????');
+
+    if (!parsedConfig) {
+      notifyError('页面配置解析失败');
       return false;
     }
 
-    const rulesMap = rulesByComponent.value;
-
-    // 从主表规则中读取 broadcast/summary 等全局配置覆盖
-    const masterRuleKeysForGlobal = uniqueKeys([resolvedMasterGridKey, 'master', 'masterGrid']);
-    const masterRulesForGlobal = collectRulesByKeys(rulesMap, masterRuleKeysForGlobal);
-    const masterRuleLabelForGlobal = resolvedMasterGridKey || 'master';
-
-    const summaryOverride = parseSummaryConfigRule(masterRuleLabelForGlobal, masterRulesForGlobal);
-    if (summaryOverride !== null) {
-      config.nestedConfig = mergeNestedConfig(config.nestedConfig, summaryOverride);
-    }
-
-    // 从表级别的全局规则仍然支持通过 detailTabs 统一下发
-    const detailGridKeys = collectComponentKeysByType(components, 'DETAIL_GRID');
-    let detailTabsRules: PageRule[] = [];
-    const detailTabsRuleLabel = resolvedDetailTabsKey || 'detailTabs';
-
-    if (resolvedDetailTabsKey) {
-      detailTabsRules = getComponentRules(rulesMap, [resolvedDetailTabsKey]);
-    } else if (detailGridKeys.length > 0) {
-      // 尝试使用 detailTabs key 读取全局从表规则
-      detailTabsRules = getComponentRules(rulesMap, ['detailTabs']);
-    }
-
-    const resolvedDetailType = layoutDetailTypeRef.value?.toLowerCase();
-    detailLayoutMode.value = resolvedDetailType === 'split' ? 'split' : 'nested';
-    detailSplitConfig.value = layoutSplitConfigRef.value || null;
-
-    pageConfig.value = config;
-    broadcastFields.value = [];
-
-    const enterpriseOptions = normalizeGridOptions(enterpriseToGridOptions(config.enterpriseConfig));
-    const masterRuleKeys = uniqueKeys([resolvedMasterGridKey, 'master', 'masterGrid']);
-    const masterRules = collectRulesByKeys(rulesMap, masterRuleKeys);
-    const masterRuleLabel = resolvedMasterGridKey || 'master';
-    const masterGridRuleOptions = normalizeGridOptions(parseGridOptionsRule(masterRuleLabel, masterRules));
-    const mergedMasterOptions = mergeGridOptions(enterpriseOptions, masterGridRuleOptions);
-    // V3 强制主表使用 SSRM，不接受元数据中的其他 rowModelType
-    if (mergedMasterOptions.rowModelType && mergedMasterOptions.rowModelType !== 'serverSide') {
-      console.warn(`[V3] 主表 rowModelType 配置为 "${mergedMasterOptions.rowModelType}"，已强制覆盖为 "serverSide"`);
-    }
-    mergedMasterOptions.rowModelType = 'serverSide';
-    // SSRM 默认分页块大小
-    if (!mergedMasterOptions.cacheBlockSize) {
-      mergedMasterOptions.cacheBlockSize = 100;
-    }
-    masterGridOptions.value = mergedMasterOptions;
-
-    const detailBaseRuleOptions = normalizeGridOptions(parseGridOptionsRule(detailTabsRuleLabel, detailTabsRules));
-    const detailBaseOptions = mergeGridOptions(
-      inheritDetailGridOptions(masterGridOptions.value),
-      detailBaseRuleOptions
-    );
-
-    detailGridOptionsByTab.value = {};
-    for (const tab of config.tabs || []) {
-      const tabRules = getComponentRules(rulesMap, [tab.key]);
-      const tabGridRuleOptions = normalizeGridOptions(parseGridOptionsRule(tab.key, tabRules));
-      const mergedTabOptions = mergeGridOptions(detailBaseOptions, tabGridRuleOptions);
-      // V3 强制明细表使用 Client-Side，不接受元数据中的其他 rowModelType
-      if (mergedTabOptions.rowModelType && mergedTabOptions.rowModelType !== 'clientSide') {
-        console.warn(
-          `[V3] 明细表 ${tab.key} rowModelType 配置为 "${mergedTabOptions.rowModelType}"，已强制覆盖为 "clientSide"`
-        );
-      }
-      // 删除 rowModelType，保留 ag-grid 默认的 clientSide 模式
-      delete mergedTabOptions.rowModelType;
-      detailGridOptionsByTab.value[tab.key] = mergedTabOptions;
-    }
-
+    pageConfig.value = parsedConfig.pageConfig;
+    broadcastFields.value = parsedConfig.broadcastFields;
+    masterGridOptions.value = parsedConfig.masterGridOptions;
+    detailGridOptionsByTab.value = parsedConfig.detailGridOptionsByTab;
+    detailLayoutMode.value = parsedConfig.detailLayoutMode;
+    detailSplitConfig.value = parsedConfig.detailSplitConfig;
     return true;
   }
 
@@ -422,7 +307,7 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
 
     const masterMeta = await loadTableMeta(config.masterTableCode, pageCode, resolvedMasterGridKey ?? 'masterGrid');
     if (!masterMeta) {
-      notifyError('?????????');
+      notifyError('加载主表元数据失败');
       return false;
     }
 
@@ -455,10 +340,7 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
 
       const tabGridOptions = detailGridOptionsByTab.value[tab.key];
       detailColumnsByTab.value[tab.key] = mergeCellClassRules(
-        applyGroupByColumns(
-          detailMeta.columns,
-          tabGridOptions?.groupBy
-        ),
+        applyGroupByColumns(detailMeta.columns, tabGridOptions?.groupBy),
         DIRTY_CELL_CLASS_RULES
       );
       detailRowClassGetterByTab.value[tab.key] = detailMeta.getRowClass;
