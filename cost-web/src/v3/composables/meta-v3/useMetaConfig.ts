@@ -14,8 +14,6 @@ import type {
 import { type ParsedPageConfig, type ValidationRule, compileAggRules, compileCalcRules } from '@/v3/logic/calc-engine';
 import {
   buildComponentTree,
-  getComponentConfig,
-  getDetailGridComponentConfig,
   injectMasterDetailRoot,
   resolveLayoutKeys
 } from '@/v3/composables/meta-v3/useComponentLoader';
@@ -189,9 +187,7 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
       detailRowEditableRulesByTab,
       detailCellEditableRulesByTab,
       masterToolbar,
-      detailToolbarByTab,
-      getComponentConfig,
-      getDetailGridComponentConfig
+      detailToolbarByTab
     });
   }
 

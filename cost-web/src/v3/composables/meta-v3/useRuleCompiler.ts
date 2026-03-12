@@ -30,6 +30,7 @@ import {
   parseToolbarRule,
   parseValidationRuleConfig
 } from '@/v3/composables/meta-v3/usePageRules';
+import { getComponentConfig, getDetailGridComponentConfig } from '@/v3/composables/meta-v3/useComponentLoader';
 import { collectRulesByKeys, mergeLookupRules, uniqueKeys } from '@/v3/composables/meta-v3/meta-config-shared';
 
 type ColumnMetadata = Api.Metadata.ColumnMetadata;
@@ -65,8 +66,6 @@ type RuleCompilerParams = {
   detailCellEditableRulesByTab: ShallowRef<Record<string, CellEditableRule[]>>;
   masterToolbar: ShallowRef<ToolbarRule | null>;
   detailToolbarByTab: ShallowRef<Record<string, ToolbarRule | null>>;
-  getComponentConfig: (components: PageComponentWithRules[], key: string) => string | undefined;
-  getDetailGridComponentConfig: (components: PageComponentWithRules[], key: string) => string | undefined;
 };
 
 function applyLookupFieldClass(columns: ColDef[], lookupRules: LookupRule[]): ColDef[] {
@@ -120,10 +119,7 @@ export function compileMetaRules(params: RuleCompilerParams): boolean {
   params.detailCalcRulesByTab.value = {};
   params.detailContextMenuByTab.value = {};
 
-  const masterComponentConfig = params.getComponentConfig(
-    params.pageComponents || [],
-    resolvedMasterGridKey || 'masterGrid'
-  );
+  const masterComponentConfig = getComponentConfig(params.pageComponents || [], resolvedMasterGridKey || 'masterGrid');
   params.masterContextMenu.value = parseContextMenuRule(masterRuleLabel, masterRules, masterComponentConfig);
   params.masterRowEditableRules.value = parseRowEditableRule(masterRuleLabel, masterRules);
   params.masterCellEditableRules.value = parseCellEditableRule(masterRuleLabel, masterRules);
@@ -163,7 +159,7 @@ export function compileMetaRules(params: RuleCompilerParams): boolean {
       params.detailCalcRulesByTab.value[tab.key] = [];
     }
 
-    const detailGridConfig = params.getDetailGridComponentConfig(params.pageComponents || [], tab.key);
+    const detailGridConfig = getDetailGridComponentConfig(params.pageComponents || [], tab.key);
     params.detailContextMenuByTab.value[tab.key] =
       parseContextMenuRule(tab.key, tabRules, detailGridConfig) || params.detailContextMenuDefault.value;
     params.detailToolbarByTab.value[tab.key] = parseToolbarRule(tab.key, tabRules, detailGridConfig);
