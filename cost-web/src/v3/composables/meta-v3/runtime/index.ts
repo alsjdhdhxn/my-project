@@ -1,4 +1,4 @@
-import { ref, shallowRef, watch } from 'vue';
+import { ref, shallowRef } from 'vue';
 import type { GridApi } from 'ag-grid-community';
 import { useMetaConfig } from '@/v3/composables/meta-v3/useMetaConfig';
 import { useMasterDetailData } from '@/v3/composables/meta-v3/useMasterDetailData';
@@ -12,14 +12,12 @@ import { useMasterGridBindings } from '@/v3/composables/meta-v3/useMasterGridBin
 import { resolveFormRenderer } from '@/v3/composables/meta-v3/form-renderer-registry';
 import { buildCellEditableCallback } from '@/v3/composables/meta-v3/usePageRules';
 import { createRuntimeLogger } from './logger';
-import {
-  findFirstGridKey,
-  flattenComponents
-} from './helpers';
+import { findFirstGridKey, flattenComponents } from './helpers';
+import { useRuntimeComponentState } from './useRuntimeComponentState';
 import { useRuntimeMetadataReload } from './useRuntimeMetadataReload';
 import { useRuntimeActions, type RuntimeActionHandler } from './useRuntimeActions';
 import { useRuntimeState } from './useRuntimeState';
-import type { ComponentState, FormState, GridState, MetaError, RuntimeFeatures, RuntimeStage } from './types';
+import type { FormState, GridState, MetaError, RuntimeFeatures, RuntimeStage } from './types';
 
 type NotifyFn = (message: string) => void;
 
@@ -370,54 +368,19 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     return ok;
   }
 
-  let watchersAttached = false;
+  const runtimeComponentState = useRuntimeComponentState({
+    logger,
+    meta: {
+      pageComponents: meta.pageComponents,
+      masterGridKey: meta.masterGridKey,
+      masterColumnDefs: meta.masterColumnDefs
+    },
+    componentStateByKey,
+    componentErrors
+  });
 
   function buildStates() {
-    logger.log('buildStates', 'start');
-    const components = meta.pageComponents.value || [];
-    const flatComponents = flattenComponents(components);
-    const nextStates: Record<string, ComponentState> = {};
-
-    for (const component of flatComponents) {
-      nextStates[component.componentKey] = {
-        componentKey: component.componentKey,
-        componentType: component.componentType,
-        status: 'ready',
-        error: componentErrors.value[component.componentKey]
-      };
-      if (componentErrors.value[component.componentKey]) {
-        nextStates[component.componentKey].status = 'error';
-      }
-    }
-
-    const masterKey = meta.masterGridKey.value || findFirstGridKey(components);
-    if (masterKey) {
-      const gridError = componentErrors.value[masterKey];
-      const gridState: GridState = {
-        componentKey: masterKey,
-        componentType: 'GRID',
-        status: gridError ? 'error' : 'ready',
-        error: gridError,
-        rowData: [],
-        columnDefs: meta.masterColumnDefs.value || []
-      };
-      nextStates[masterKey] = gridState;
-    }
-
-    componentStateByKey.value = nextStates;
-
-    if (!watchersAttached && masterKey) {
-      watchersAttached = true;
-      // V3 uses SSRM; no need to watch rowData for grid updates
-      watch(
-        meta.masterColumnDefs,
-        defs => {
-          const state = componentStateByKey.value[masterKey] as GridState | undefined;
-          if (state) state.columnDefs = defs || [];
-        },
-        { deep: false }
-      );
-    }
+    return runtimeComponentState.buildStates();
   }
 
   function applyExtensions() {
@@ -428,7 +391,6 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     const gridState = masterKey ? (componentStateByKey.value[masterKey] as GridState | undefined) : undefined;
 
     const masterGridOptions = meta.masterGridOptions?.value;
-    // V3 强制使用 SSRM 数据源
     const dataSource = (runtimeApi as any).createServerSideDataSource?.({
       pageSize: masterGridOptions?.cacheBlockSize || 100
     });
