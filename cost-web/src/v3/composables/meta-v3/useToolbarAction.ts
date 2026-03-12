@@ -25,17 +25,11 @@ export type ToolbarActionContext = {
   dialog: ReturnType<typeof useDialog>;
 };
 
-/**
- * 处理工具栏/右键菜单按钮点击
- * 统一处理 refreshMode 逻辑和确认弹窗
- */
 export async function handleToolbarAction(item: ToolbarItem, ctx: ToolbarActionContext): Promise<void> {
   if (!item.action) return;
 
   const { getSelectedRow, executeAction, dialog } = ctx;
   const row = getSelectedRow();
-
-  // 默认刷新模式：需要选中行时刷新行，否则刷新全部
   const defaultRefreshMode = item.requiresRow ? 'row' : 'all';
   const refreshMode = item.refreshMode ?? defaultRefreshMode;
 
@@ -47,7 +41,6 @@ export async function handleToolbarAction(item: ToolbarItem, ctx: ToolbarActionC
     });
   };
 
-  // 如果有确认提示
   if (item.confirm) {
     dialog.warning({
       title: '确认',
@@ -62,10 +55,6 @@ export async function handleToolbarAction(item: ToolbarItem, ctx: ToolbarActionC
   await doExecute();
 }
 
-/**
- * 计算按钮的 refreshMode
- * 用于右键菜单等场景
- */
 export function resolveRefreshMode(item: {
   requiresRow?: boolean;
   refreshMode?: 'all' | 'row' | 'detail' | 'none';

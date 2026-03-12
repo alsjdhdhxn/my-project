@@ -14,6 +14,13 @@ import {
 } from 'naive-ui';
 import { Icon } from '@iconify/vue';
 import LookupDialog from '@/v3/components/LookupDialog.vue';
+import {
+  getEmptyAdvancedSearchSecondaryValue,
+  getEmptyAdvancedSearchValue,
+  isAdvancedSearchMultiValueOperator,
+  isAdvancedSearchNullaryOperator,
+  isAdvancedSearchRangeOperator
+} from '@/v3/composables/meta-v3/advanced-search-values';
 
 type SearchCondition = {
   key: string;
@@ -61,7 +68,7 @@ const lookupDialogRef = ref<LookupDialogExpose | null>(null);
 const currentLookupCondition = ref<SearchCondition | null>(null);
 
 const currentLookupCode = computed(() => currentLookupCondition.value?.lookupCode || '');
-const isLookupMultiple = computed(() => isMultiValueOperator(currentLookupCondition.value?.operator));
+const isLookupMultiple = computed(() => isAdvancedSearchMultiValueOperator(currentLookupCondition.value?.operator));
 const modalStyle = {
   width: '560px',
   maxWidth: 'calc(100vw - 48px)'
@@ -74,18 +81,6 @@ const currentLookupMapping = computed(() => {
   }
   return mapping;
 });
-
-function isRangeOperator(operator?: string) {
-  return operator === 'between' || operator === 'notBetween';
-}
-
-function isMultiValueOperator(operator?: string) {
-  return operator === 'in' || operator === 'notIn';
-}
-
-function isNullaryOperator(operator?: string) {
-  return operator === 'isNull' || operator === 'isNotNull';
-}
 
 function getOperatorOptions(cond: SearchCondition) {
   if (cond.dataType === 'number') {
@@ -132,15 +127,25 @@ function getOperatorOptions(cond: SearchCondition) {
 
 function handleOperatorChange(cond: SearchCondition, operator: string) {
   cond.operator = operator;
-  if (!isRangeOperator(operator)) {
-    cond.value2 = '';
+  if (!isAdvancedSearchRangeOperator(operator)) {
+    cond.value2 = getEmptyAdvancedSearchSecondaryValue({
+      inputMode: cond.inputMode,
+      dataType: cond.dataType
+    });
   }
-  if (isNullaryOperator(operator)) {
-    cond.value = cond.inputMode === 'select' ? null : '';
-    cond.value2 = '';
+  if (isAdvancedSearchNullaryOperator(operator)) {
+    cond.value = getEmptyAdvancedSearchValue({
+      inputMode: cond.inputMode,
+      dataType: cond.dataType,
+      operator
+    });
+    cond.value2 = getEmptyAdvancedSearchSecondaryValue({
+      inputMode: cond.inputMode,
+      dataType: cond.dataType
+    });
     return;
   }
-  if (isMultiValueOperator(operator)) {
+  if (isAdvancedSearchMultiValueOperator(operator)) {
     if (cond.inputMode === 'select' || cond.inputMode === 'lookup') {
       if (!Array.isArray(cond.value)) {
         if (cond.value === null || cond.value === undefined || cond.value === '') {
@@ -155,39 +160,49 @@ function handleOperatorChange(cond: SearchCondition, operator: string) {
       cond.value = cond.value.join(',');
     }
   } else if (Array.isArray(cond.value)) {
-    cond.value = cond.value[0] ?? (cond.inputMode === 'select' ? null : '');
+    cond.value =
+      cond.value[0] ??
+      getEmptyAdvancedSearchValue({
+        inputMode: cond.inputMode,
+        dataType: cond.dataType,
+        operator
+      });
   }
 }
 
 function shouldUseLookupInput(cond: SearchCondition) {
-  return cond.inputMode === 'lookup' && !isRangeOperator(cond.operator) && !isNullaryOperator(cond.operator);
+  return (
+    cond.inputMode === 'lookup' &&
+    !isAdvancedSearchRangeOperator(cond.operator) &&
+    !isAdvancedSearchNullaryOperator(cond.operator)
+  );
 }
 
 function shouldUseSelectInput(cond: SearchCondition) {
-  return cond.inputMode === 'select' && !isNullaryOperator(cond.operator);
+  return cond.inputMode === 'select' && !isAdvancedSearchNullaryOperator(cond.operator);
 }
 
 function shouldUseNumberInput(cond: SearchCondition) {
   return (
     cond.dataType === 'number' &&
     cond.inputMode !== 'select' &&
-    !isRangeOperator(cond.operator) &&
-    !isMultiValueOperator(cond.operator) &&
-    !isNullaryOperator(cond.operator) &&
+    !isAdvancedSearchRangeOperator(cond.operator) &&
+    !isAdvancedSearchMultiValueOperator(cond.operator) &&
+    !isAdvancedSearchNullaryOperator(cond.operator) &&
     cond.operator !== 'like' &&
     cond.operator !== 'notLike'
   );
 }
 
 function shouldUseNumberRangeInput(cond: SearchCondition) {
-  return cond.dataType === 'number' && cond.inputMode !== 'select' && isRangeOperator(cond.operator);
+  return cond.dataType === 'number' && cond.inputMode !== 'select' && isAdvancedSearchRangeOperator(cond.operator);
 }
 
 function shouldUseDateInput(cond: SearchCondition) {
   return (
     (cond.dataType === 'date' || cond.dataType === 'datetime') &&
     cond.inputMode !== 'select' &&
-    !isRangeOperator(cond.operator)
+    !isAdvancedSearchRangeOperator(cond.operator)
   );
 }
 
@@ -195,12 +210,12 @@ function shouldUseDateRangeInput(cond: SearchCondition) {
   return (
     (cond.dataType === 'date' || cond.dataType === 'datetime') &&
     cond.inputMode !== 'select' &&
-    isRangeOperator(cond.operator)
+    isAdvancedSearchRangeOperator(cond.operator)
   );
 }
 
 function shouldUseTextInput(cond: SearchCondition) {
-  if (isRangeOperator(cond.operator) || isNullaryOperator(cond.operator)) {
+  if (isAdvancedSearchRangeOperator(cond.operator) || isAdvancedSearchNullaryOperator(cond.operator)) {
     return false;
   }
   if (
@@ -217,7 +232,7 @@ function shouldUseTextInput(cond: SearchCondition) {
 }
 
 function markEnabled(cond: SearchCondition) {
-  if (isNullaryOperator(cond.operator)) {
+  if (isAdvancedSearchNullaryOperator(cond.operator)) {
     cond.enabled = true;
     return;
   }
@@ -229,14 +244,15 @@ function markEnabled(cond: SearchCondition) {
 }
 
 function clearConditionValue(cond: SearchCondition) {
-  if (isMultiValueOperator(cond.operator) && (cond.inputMode === 'select' || cond.inputMode === 'lookup')) {
-    cond.value = [];
-  } else if (cond.inputMode === 'select') {
-    cond.value = null;
-  } else {
-    cond.value = '';
-  }
-  cond.value2 = '';
+  cond.value = getEmptyAdvancedSearchValue({
+    inputMode: cond.inputMode,
+    dataType: cond.dataType,
+    operator: cond.operator
+  });
+  cond.value2 = getEmptyAdvancedSearchSecondaryValue({
+    inputMode: cond.inputMode,
+    dataType: cond.dataType
+  });
   cond.enabled = false;
 }
 
@@ -250,12 +266,18 @@ function showCondition(cond: SearchCondition) {
 }
 
 function handleSingleValueChange(cond: SearchCondition, value: any) {
-  cond.value = value ?? '';
+  cond.value =
+    value ??
+    getEmptyAdvancedSearchValue({
+      inputMode: cond.inputMode,
+      dataType: cond.dataType,
+      operator: cond.operator
+    });
   markEnabled(cond);
 }
 
 function handleSelectValueChange(cond: SearchCondition, value: any) {
-  cond.value = value ?? (isMultiValueOperator(cond.operator) ? [] : null);
+  cond.value = value ?? (isAdvancedSearchMultiValueOperator(cond.operator) ? [] : null);
   markEnabled(cond);
 }
 
@@ -313,7 +335,7 @@ function splitLookupValues(value: string) {
 }
 
 function handleLookupInputChange(cond: SearchCondition, value: string) {
-  if (isMultiValueOperator(cond.operator)) {
+  if (isAdvancedSearchMultiValueOperator(cond.operator)) {
     cond.value = splitLookupValues(value);
   } else {
     cond.value = value;
@@ -330,7 +352,7 @@ async function openLookup(cond: SearchCondition) {
 
 function handleLookupSelect(fillData: Record<string, any> | Record<string, any>[]) {
   if (!currentLookupCondition.value) return;
-  if (isMultiValueOperator(currentLookupCondition.value.operator)) {
+  if (isAdvancedSearchMultiValueOperator(currentLookupCondition.value.operator)) {
     const values = Array.from(
       new Set(
         (Array.isArray(fillData) ? fillData : [fillData])
@@ -410,7 +432,7 @@ function handleLookupCancel() {
             v-model:value="cond.value"
             size="small"
             class="condition-value"
-            :placeholder="isMultiValueOperator(cond.operator) ? '多个值用逗号分隔' : '请输入'"
+            :placeholder="isAdvancedSearchMultiValueOperator(cond.operator) ? '多个值用逗号分隔' : '请输入'"
             :show-count="false"
             @input="() => markEnabled(cond)"
             @keyup.enter="advancedSearch.executeSearch"
@@ -422,7 +444,9 @@ function handleLookupCancel() {
               size="small"
               class="condition-value"
               :placeholder="
-                isMultiValueOperator(cond.operator) ? '可输入多个值，或点右侧选择' : '可直接输入，或点右侧选择'
+                isAdvancedSearchMultiValueOperator(cond.operator)
+                  ? '可输入多个值，或点右侧选择'
+                  : '可直接输入，或点右侧选择'
               "
               :show-count="false"
               clearable
@@ -441,7 +465,7 @@ function handleLookupCancel() {
             v-else-if="shouldUseSelectInput(cond)"
             :value="cond.value"
             :options="cond.options || []"
-            :multiple="isMultiValueOperator(cond.operator)"
+            :multiple="isAdvancedSearchMultiValueOperator(cond.operator)"
             :loading="!!cond.loadingOptions"
             size="small"
             class="condition-value"

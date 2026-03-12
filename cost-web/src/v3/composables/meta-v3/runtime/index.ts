@@ -1,6 +1,5 @@
 import { nextTick, ref, shallowRef, watch } from 'vue';
 import type { GridApi } from 'ag-grid-community';
-import { executePageRuleAction } from '@/service/api/dynamic';
 import { useMetaConfig } from '@/v3/composables/meta-v3/useMetaConfig';
 import { useMasterDetailData } from '@/v3/composables/meta-v3/useMasterDetailData';
 import { useCalcBroadcast } from '@/v3/composables/meta-v3/useCalcBroadcast';
@@ -14,6 +13,7 @@ import { resolveFormRenderer } from '@/v3/composables/meta-v3/form-renderer-regi
 import { buildCellEditableCallback } from '@/v3/composables/meta-v3/usePageRules';
 import { clearCalcCache } from '@/v3/logic/calc-engine';
 import { createRuntimeLogger } from './logger';
+import { useRuntimeActions, type RuntimeActionHandler } from './useRuntimeActions';
 import type { ComponentState, FormState, GridState, MetaError, RuntimeFeatures, RuntimeStage } from './types';
 
 type NotifyFn = (message: string) => void;
@@ -144,12 +144,6 @@ function shouldUseCalcOnlyHotReload(payload?: Record<string, any>): boolean {
   if (entity && entity !== 'RULE') return false;
   return calcLikeRuleTypes.has(ruleType);
 }
-
-type ActionHandler = (context: {
-  actionCode: string;
-  runtime: any;
-  options?: { tableCode?: string; data?: Record<string, any> };
-}) => Promise<void> | void;
 
 export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFeatures) {
   const { pageCode, notifyInfo, notifyError, notifySuccess } = options;
@@ -298,15 +292,24 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     notifySuccess
   });
 
-  const actionHandlers = new Map<string, ActionHandler>();
+  let runtimeApi: any;
+  const runtimeActions = useRuntimeActions({
+    pageCode,
+    notifyError,
+    notifySuccess,
+    getRuntime: () => runtimeApi,
+    masterGridApi,
+    activeMasterRowKey,
+    pageConfig: meta.pageConfig,
+    data
+  });
 
-  function registerActionHandler(actionCode: string, handler: ActionHandler) {
-    if (!actionCode || typeof handler !== 'function') return;
-    actionHandlers.set(actionCode, handler);
+  function registerActionHandler(actionCode: string, handler: RuntimeActionHandler) {
+    runtimeActions.registerActionHandler(actionCode, handler);
   }
 
-  function resolveActionHandler(actionCode: string): ActionHandler | null {
-    return actionHandlers.get(actionCode) || null;
+  function resolveActionHandler(actionCode: string): RuntimeActionHandler | null {
+    return runtimeActions.resolveActionHandler(actionCode);
   }
 
   async function executeAction(
@@ -318,88 +321,10 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
       componentKey?: string;
     }
   ) {
-    if (!actionCode) return;
-    const handler = resolveActionHandler(actionCode);
-    if (handler) {
-      try {
-        await handler({ actionCode, runtime: runtimeApi, options });
-      } catch (error: any) {
-        notifyError(error?.message || 'Action failed');
-      }
-      return;
-    }
-
-    // Execute action from T_COST_PAGE_RULE
-    const { error } = await executePageRuleAction(pageCode, {
-      componentKey: options?.componentKey,
-      actionCode,
-      data: options?.data
-    });
-    if (error) {
-      notifyError('Action failed');
-      return;
-    }
-
-    notifySuccess('执行成功');
-
-    // Refresh by refreshMode
-    const refreshMode = options?.refreshMode ?? 'detail';
-    console.log('[executeAction] refreshMode:', refreshMode, 'detailCache size:', data.detailCache?.size);
-
-    if (refreshMode === 'none') {
-      return;
-    }
-
-    const api = masterGridApi.value as any;
-    const currentRow =
-      options?.selectedRow ??
-      (activeMasterRowKey.value ? data.getMasterRowByRowKey(activeMasterRowKey.value) : null);
-    const rowId = currentRow?.id;
-    const rowKey = currentRow?._rowKey ?? activeMasterRowKey.value;
-    const hasDetailTabs = (meta.pageConfig.value?.tabs?.length || 0) > 0;
-    const syncCurrentContext = async () => {
-      if (rowId === null || rowId === undefined || !rowKey) return;
-      await data.reloadMasterRow(rowId, rowKey);
-      if (hasDetailTabs) {
-        await data.loadDetailData(rowId, rowKey);
-      }
-    };
-    const restoreSelection = () => {
-      setTimeout(() => {
-        api?.forEachNode?.((node: any) => {
-          if (node.data?.id === rowId) {
-            node.setSelected(true);
-          }
-        });
-      }, 100);
-    };
-
-    // refreshMode === 'all' 时清空所有缓存，否则只清当前行缓存
-    if (refreshMode === 'all') {
-      console.log('[executeAction] clearing all cache');
-      data.clearAllCache();
-    } else if (rowKey && data.detailCache) {
-      data.detailCache.delete(rowKey);
-    }
-
-    if (refreshMode === 'detail') {
-      await syncCurrentContext();
-      return;
-    }
-
-    if (refreshMode === 'row') {
-      await syncCurrentContext();
-      restoreSelection();
-      return;
-    }
-
-    // refreshMode === 'all'
-    api?.refreshServerSide?.({ purge: false });
-    await syncCurrentContext();
-    restoreSelection();
+    await runtimeActions.executeAction(actionCode, options);
   }
 
-  const runtimeApi = {
+  runtimeApi = {
     pageCode,
     masterGridApi,
     detailGridApisByTab,
@@ -459,7 +384,7 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     saveGridConfig: gridConfig.saveGridConfig
   };
 
-  registerActionHandler('advancedSearch', () => advancedSearch.open());
+  runtimeActions.registerActionHandler('advancedSearch', () => advancedSearch.open());
 
   const runtimeStatus = ref<'loading' | 'ready' | 'error'>('loading');
   const runtimeError = ref<MetaError | null>(null);

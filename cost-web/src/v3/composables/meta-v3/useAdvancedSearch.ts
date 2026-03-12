@@ -5,6 +5,15 @@ import type { DynamicQueryCondition } from '@/service/api';
 import { fetchDictItems, fetchLookupConfig } from '@/service/api';
 import type { ParsedPageConfig } from '@/v3/logic/calc-engine';
 import type { LookupRuleConfig } from '@/v3/composables/meta-v3/types';
+import {
+  getEmptyAdvancedSearchSecondaryValue,
+  getEmptyAdvancedSearchValue,
+  isAdvancedSearchMultiValueOperator,
+  isAdvancedSearchNullaryOperator,
+  isAdvancedSearchRangeOperator,
+  normalizeAdvancedSearchSecondaryValue,
+  normalizeAdvancedSearchValue
+} from '@/v3/composables/meta-v3/advanced-search-values';
 
 type SearchDataType = 'string' | 'number' | 'date' | 'datetime';
 type SearchInputMode = 'text' | 'number' | 'date' | 'datetime' | 'select' | 'lookup';
@@ -299,36 +308,14 @@ function getDefaultOperator(field: AdvancedSearchField) {
   return 'eq';
 }
 
-function isRangeOperator(operator?: string) {
-  return operator === 'between' || operator === 'notBetween';
-}
-
-function isMultiValueOperator(operator?: string) {
-  return operator === 'in' || operator === 'notIn';
-}
-
-function isNullaryOperator(operator?: string) {
-  return operator === 'isNull' || operator === 'isNotNull';
-}
-
-function getEmptyConditionValue(inputMode: SearchInputMode, operator: string) {
-  if (isMultiValueOperator(operator) && (inputMode === 'select' || inputMode === 'lookup')) {
-    return [];
-  }
-  if (inputMode === 'select') {
-    return null;
-  }
-  return '';
-}
-
 function hasConditionValue(condition: AdvancedSearchCondition) {
-  if (isNullaryOperator(condition.operator)) {
+  if (isAdvancedSearchNullaryOperator(condition.operator)) {
     return true;
   }
-  if (isRangeOperator(condition.operator)) {
+  if (isAdvancedSearchRangeOperator(condition.operator)) {
     return condition.value !== null && condition.value !== '' && condition.value2 !== null && condition.value2 !== '';
   }
-  if (isMultiValueOperator(condition.operator)) {
+  if (isAdvancedSearchMultiValueOperator(condition.operator)) {
     if (Array.isArray(condition.value)) {
       return condition.value.length > 0;
     }
@@ -452,8 +439,17 @@ export function useAdvancedSearch(params: {
         options: definition.options.length > 0 ? definition.options : existing?.options || [],
         lookupValueField: definition.lookupValueField || existing?.lookupValueField,
         operator,
-        value: existing?.value ?? getEmptyConditionValue(definition.inputMode, operator),
-        value2: existing?.value2 ?? '',
+        value: normalizeAdvancedSearchValue({
+          inputMode: definition.inputMode,
+          dataType: definition.dataType,
+          operator,
+          value: existing?.value
+        }),
+        value2: normalizeAdvancedSearchSecondaryValue({
+          inputMode: definition.inputMode,
+          dataType: definition.dataType,
+          value: existing?.value2
+        }),
         enabled: existing?.enabled || false,
         visible: existing?.visible ?? true,
         loadingOptions: existing?.loadingOptions || false
@@ -468,7 +464,7 @@ export function useAdvancedSearch(params: {
       .filter(condition => condition.enabled && hasConditionValue(condition))
       .map(condition => {
         const value = condition.value;
-        if (isRangeOperator(condition.operator)) {
+        if (isAdvancedSearchRangeOperator(condition.operator)) {
           return {
             tableKey: condition.tableKey,
             field: condition.field,
@@ -477,7 +473,7 @@ export function useAdvancedSearch(params: {
             value2: condition.value2
           };
         }
-        if (isMultiValueOperator(condition.operator)) {
+        if (isAdvancedSearchMultiValueOperator(condition.operator)) {
           return {
             tableKey: condition.tableKey,
             field: condition.field,
@@ -485,7 +481,7 @@ export function useAdvancedSearch(params: {
             value: Array.isArray(value) ? value : splitInValue(String(value ?? ''))
           };
         }
-        if (isNullaryOperator(condition.operator)) {
+        if (isAdvancedSearchNullaryOperator(condition.operator)) {
           return {
             tableKey: condition.tableKey,
             field: condition.field,
@@ -522,8 +518,15 @@ export function useAdvancedSearch(params: {
   function clearSearch() {
     searchConditions.value = searchConditions.value.map(condition => ({
       ...condition,
-      value: getEmptyConditionValue(condition.inputMode, condition.operator),
-      value2: '',
+      value: getEmptyAdvancedSearchValue({
+        inputMode: condition.inputMode,
+        dataType: condition.dataType,
+        operator: condition.operator
+      }),
+      value2: getEmptyAdvancedSearchSecondaryValue({
+        inputMode: condition.inputMode,
+        dataType: condition.dataType
+      }),
       enabled: false
     }));
     clearAdvancedConditions();

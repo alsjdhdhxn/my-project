@@ -82,7 +82,6 @@ onMounted(async () => {
   justify-content: center;
 }
 
-/* ????????? */
 :deep(.cell-new) {
   background-color: #0b3d91 !important;
   color: #ffffff;
@@ -99,7 +98,6 @@ onMounted(async () => {
   background-color: #f8d7da !important;
   text-decoration: line-through;
 }
-/* ???? */
 :deep(.row-deleted) {
   opacity: 0.5;
 }
@@ -120,7 +118,6 @@ onMounted(async () => {
 :deep(.row-iserp-price-null) {
   background-color: #f8d7da !important;
 }
-/* ???? */
 :deep(.ag-header-cell-label) {
   white-space: normal !important;
   line-height: 1.2;
