@@ -1,68 +1,54 @@
-import { shallowRef } from 'vue';
-import type { ColDef } from 'ag-grid-community';
-import { type LookupRule } from '@/v3/composables/meta-v3/useMetaColumns';
 import { parseMetaConfig } from '@/v3/composables/meta-v3/useConfigParser';
 import { loadPageMeta } from '@/v3/composables/meta-v3/useMetaLoader';
-import type {
-  ContextMenuRule,
-  PageComponentWithRules,
-  PageRule,
-  SplitLayoutConfig,
-  ToolbarRule
-} from '@/v3/composables/meta-v3/types';
-import { type ParsedPageConfig, type ValidationRule, compileAggRules, compileCalcRules } from '@/v3/logic/calc-engine';
+import { createMetaConfigState } from '@/v3/composables/meta-v3/createMetaConfigState';
 import { loadPageComponents } from '@/v3/composables/meta-v3/useComponentLoader';
-import type { ResolvedGridOptions } from '@/v3/composables/meta-v3/grid-options';
 import { compileMetaRules } from '@/v3/composables/meta-v3/useRuleCompiler';
 
 export function useMetaConfig(pageCode: string, notifyError: (message: string) => void) {
-  const pageConfig = shallowRef<ParsedPageConfig | null>(null);
-  const pageComponents = shallowRef<PageComponentWithRules[]>([]);
-  const rulesByComponent = shallowRef<Map<string, PageRule[]>>(new Map());
-  const broadcastFields = shallowRef<string[]>([]);
-  const masterColumnDefs = shallowRef<ColDef[]>([]);
-  const detailColumnsByTab = shallowRef<Record<string, ColDef[]>>({});
-  const detailCalcRulesByTab = shallowRef<Record<string, ReturnType<typeof compileCalcRules>>>({});
-  const detailFkColumnByTab = shallowRef<Record<string, string>>({});
-  const masterPkColumn = shallowRef<string>('ID');
-  const detailPkColumnByTab = shallowRef<Record<string, string>>({});
-  const compiledAggRules = shallowRef<ReturnType<typeof compileAggRules>>([]);
-  const compiledMasterCalcRules = shallowRef<ReturnType<typeof compileCalcRules>>([]);
-  const masterRowClassGetter = shallowRef<((params: any) => string | undefined) | undefined>(undefined);
-  const detailRowClassGetterByTab = shallowRef<Record<string, ((params: any) => string | undefined) | undefined>>({});
-  const masterGridOptions = shallowRef<ResolvedGridOptions | null>(null);
-  const detailGridOptionsByTab = shallowRef<Record<string, ResolvedGridOptions>>({});
-  const detailLayoutMode = shallowRef<'nested' | 'split'>('nested');
-  const detailSplitConfig = shallowRef<SplitLayoutConfig | null>(null);
-  const masterGridKey = shallowRef<string | null>(null);
-  const detailTabsKey = shallowRef<string | null>(null);
-  const masterValidationRules = shallowRef<ValidationRule[]>([]);
-  const detailValidationRulesByTab = shallowRef<Record<string, ValidationRule[]>>({});
-  const masterColumnMeta = shallowRef<any[]>([]);
-  const detailColumnMetaByTab = shallowRef<Record<string, any[]>>({});
-  const masterContextMenu = shallowRef<ContextMenuRule | null>(null);
-  const detailContextMenuByTab = shallowRef<Record<string, ContextMenuRule | null>>({});
-  const detailContextMenuDefault = shallowRef<ContextMenuRule | null>(null);
-  const masterLookupRules = shallowRef<LookupRule[]>([]);
-  const detailLookupRulesByTab = shallowRef<Record<string, LookupRule[]>>({});
-  const layoutDetailTypeRef = shallowRef<string | null>(null);
-  const layoutSplitConfigRef = shallowRef<SplitLayoutConfig | null>(null);
-  const masterRowEditableRules = shallowRef<import('@/v3/composables/meta-v3/types').RowEditableRule[]>([]);
-  const masterCellEditableRules = shallowRef<import('@/v3/composables/meta-v3/types').CellEditableRule[]>([]);
-  const masterRowClassRules = shallowRef<import('@/v3/composables/meta-v3/types').GridStyleRule[]>([]);
-  const detailRowClassRulesByTab = shallowRef<Record<string, import('@/v3/composables/meta-v3/types').GridStyleRule[]>>(
-    {}
-  );
-  const detailRowEditableRulesByTab = shallowRef<
-    Record<string, import('@/v3/composables/meta-v3/types').RowEditableRule[]>
-  >({});
-  const detailCellEditableRulesByTab = shallowRef<
-    Record<string, import('@/v3/composables/meta-v3/types').CellEditableRule[]>
-  >({});
-  const masterToolbar = shallowRef<ToolbarRule | null>(null);
-  const detailToolbarByTab = shallowRef<Record<string, ToolbarRule | null>>({});
-  const masterSumFields = shallowRef<string[]>([]);
-  const detailSumFieldsByTab = shallowRef<Record<string, string[]>>({});
+  const state = createMetaConfigState();
+  const {
+    pageConfig,
+    pageComponents,
+    rulesByComponent,
+    broadcastFields,
+    masterColumnDefs,
+    detailColumnsByTab,
+    detailCalcRulesByTab,
+    detailFkColumnByTab,
+    masterPkColumn,
+    detailPkColumnByTab,
+    compiledAggRules,
+    compiledMasterCalcRules,
+    masterRowClassGetter,
+    detailRowClassGetterByTab,
+    masterGridOptions,
+    detailGridOptionsByTab,
+    detailLayoutMode,
+    detailSplitConfig,
+    masterGridKey,
+    detailTabsKey,
+    masterValidationRules,
+    detailValidationRulesByTab,
+    masterColumnMeta,
+    detailColumnMetaByTab,
+    masterContextMenu,
+    detailContextMenuByTab,
+    detailContextMenuDefault,
+    masterLookupRules,
+    detailLookupRulesByTab,
+    layoutDetailTypeRef,
+    layoutSplitConfigRef,
+    masterRowEditableRules,
+    masterCellEditableRules,
+    masterRowClassRules,
+    detailRowClassRulesByTab,
+    detailRowEditableRulesByTab,
+    detailCellEditableRulesByTab,
+    masterToolbar,
+    detailToolbarByTab,
+    masterSumFields,
+    detailSumFieldsByTab
+  } = state;
 
   async function loadComponents() {
     const componentBundle = await loadPageComponents(pageCode);
