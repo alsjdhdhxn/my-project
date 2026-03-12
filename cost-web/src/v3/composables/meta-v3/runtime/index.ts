@@ -8,16 +8,15 @@ import { useAdvancedSearch } from '@/v3/composables/meta-v3/useAdvancedSearch';
 import { useSave } from '@/v3/composables/meta-v3/useSave';
 import { useUserGridConfig } from '@/v3/composables/meta-v3/useUserGridConfig';
 import { useCustomExport } from '@/v3/composables/meta-v3/useCustomExport';
-import { useMasterGridBindings } from '@/v3/composables/meta-v3/useMasterGridBindings';
-import { resolveFormRenderer } from '@/v3/composables/meta-v3/form-renderer-registry';
 import { buildCellEditableCallback } from '@/v3/composables/meta-v3/usePageRules';
 import { createRuntimeLogger } from './logger';
-import { findFirstGridKey, flattenComponents } from './helpers';
+import { findFirstGridKey } from './helpers';
 import { useRuntimeComponentState } from './useRuntimeComponentState';
+import { useRuntimeExtensions } from './useRuntimeExtensions';
 import { useRuntimeMetadataReload } from './useRuntimeMetadataReload';
 import { useRuntimeActions, type RuntimeActionHandler } from './useRuntimeActions';
 import { useRuntimeState } from './useRuntimeState';
-import type { FormState, GridState, MetaError, RuntimeFeatures, RuntimeStage } from './types';
+import type { MetaError, RuntimeFeatures, RuntimeStage } from './types';
 
 type NotifyFn = (message: string) => void;
 
@@ -378,72 +377,30 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     componentStateByKey,
     componentErrors
   });
+  const runtimeExtensions = useRuntimeExtensions({
+    logger,
+    meta: {
+      pageComponents: meta.pageComponents,
+      masterGridKey: meta.masterGridKey,
+      masterColumnDefs: meta.masterColumnDefs,
+      masterGridOptions: meta.masterGridOptions,
+      masterRowClassGetter: meta.masterRowClassGetter,
+      masterContextMenu: meta.masterContextMenu,
+      masterRowEditableRules: meta.masterRowEditableRules,
+      masterSumFields: meta.masterSumFields
+    },
+    componentStateByKey,
+    resolvedFeatures,
+    notifyError,
+    getRuntime: () => runtimeApi
+  });
 
   function buildStates() {
     return runtimeComponentState.buildStates();
   }
 
   function applyExtensions() {
-    logger.log('applyExtensions', 'start');
-    const components = meta.pageComponents.value || [];
-    const flatComponents = flattenComponents(components);
-    const masterKey = meta.masterGridKey.value || findFirstGridKey(components);
-    const gridState = masterKey ? (componentStateByKey.value[masterKey] as GridState | undefined) : undefined;
-
-    const masterGridOptions = meta.masterGridOptions?.value;
-    const dataSource = (runtimeApi as any).createServerSideDataSource?.({
-      pageSize: masterGridOptions?.cacheBlockSize || 100
-    });
-
-    if (masterKey && gridState) {
-      const bindings = useMasterGridBindings({
-        runtime: runtimeApi,
-        metaRowClassGetter: meta.masterRowClassGetter?.value,
-        gridOptions: masterGridOptions,
-        columnDefs: meta.masterColumnDefs,
-        gridKey: masterKey,
-        contextMenuConfig: meta.masterContextMenu?.value,
-        rowEditableRules: meta.masterRowEditableRules?.value,
-        dataSource,
-        sumFields: meta.masterSumFields?.value,
-        notifyError
-      });
-
-      gridState.defaultColDef = bindings.defaultColDef;
-      gridState.rowSelection = bindings.rowSelection;
-      gridState.autoSizeStrategy = bindings.autoSizeStrategy;
-      gridState.getRowId = bindings.getRowId;
-      gridState.getRowClass = bindings.getRowClass;
-      gridState.getRowStyle = bindings.getRowStyle;
-      gridState.getContextMenuItems = resolvedFeatures.value.contextMenu ? bindings.getContextMenuItems : undefined;
-      gridState.gridOptions = bindings.gridOptions;
-      gridState.dataSource = dataSource;
-      gridState.rowHeight = bindings.rowHeight;
-      gridState.headerHeight = bindings.headerHeight;
-      gridState.onGridReady = bindings.onGridReady;
-      gridState.onCellEditingStarted = bindings.onCellEditingStarted;
-      gridState.onCellEditingStopped = bindings.onCellEditingStopped;
-      gridState.onCellValueChanged = bindings.onCellValueChanged;
-      gridState.onCellClicked = bindings.onCellClicked;
-      gridState.onFilterChanged = bindings.onFilterChanged;
-    }
-
-    for (const component of flatComponents) {
-      if (component.componentType !== 'FORM') continue;
-      const state = componentStateByKey.value[component.componentKey] as FormState | undefined;
-      if (!state) continue;
-      let config: { rendererKey?: string; variantKey?: string; placeholder?: string } = {};
-      try {
-        config = component.componentConfig ? JSON.parse(component.componentConfig) : {};
-      } catch (error) {
-        console.warn('[MetaV3] form config parse failed', error);
-      }
-      const rendererKey = config.rendererKey || config.variantKey;
-      if (rendererKey) {
-        state.renderer = resolveFormRenderer(rendererKey) || state.renderer;
-      }
-      if (config.placeholder) state.placeholder = config.placeholder;
-    }
+    return runtimeExtensions.applyExtensions();
   }
 
   const { reloadMetadata } = useRuntimeMetadataReload({
