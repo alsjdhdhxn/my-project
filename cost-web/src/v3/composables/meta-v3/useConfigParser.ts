@@ -2,6 +2,7 @@ import type { GridOptionsRule, PageComponentWithRules, PageRule, SplitLayoutConf
 import { collectComponentKeysByType } from '@/v3/composables/meta-v3/useComponentLoader';
 import { type ResolvedGridOptions, mergeGridOptions, normalizeGridOptions } from '@/v3/composables/meta-v3/grid-options';
 import { getComponentRules, parseGridOptionsRule, parseSummaryConfigRule } from '@/v3/composables/meta-v3/usePageRules';
+import { collectRulesByKeys, uniqueKeys } from '@/v3/composables/meta-v3/meta-config-shared';
 import { type NestedConfig, type ParsedPageConfig, parsePageComponents } from '@/v3/logic/calc-engine';
 
 type ParseMetaConfigParams = {
@@ -11,8 +12,6 @@ type ParseMetaConfigParams = {
   detailTabsKey?: string;
   layoutDetailType?: string | null;
   layoutSplitConfig?: SplitLayoutConfig | null;
-  uniqueKeys: (keys: Array<string | undefined | null>) => string[];
-  collectRulesByKeys: (rulesByComponent: Map<string, PageRule[]>, keys: string[]) => PageRule[];
 };
 
 type ParseMetaConfigResult = {
@@ -75,8 +74,8 @@ export function parseMetaConfig(params: ParseMetaConfigParams): ParseMetaConfigR
     return null;
   }
 
-  const masterRuleKeysForGlobal = params.uniqueKeys([resolvedMasterGridKey, 'master', 'masterGrid']);
-  const masterRulesForGlobal = params.collectRulesByKeys(params.rulesByComponent, masterRuleKeysForGlobal);
+  const masterRuleKeysForGlobal = uniqueKeys([resolvedMasterGridKey, 'master', 'masterGrid']);
+  const masterRulesForGlobal = collectRulesByKeys(params.rulesByComponent, masterRuleKeysForGlobal);
   const masterRuleLabelForGlobal = resolvedMasterGridKey || 'master';
   const summaryOverride = parseSummaryConfigRule(masterRuleLabelForGlobal, masterRulesForGlobal);
   if (summaryOverride !== null) {
@@ -94,8 +93,8 @@ export function parseMetaConfig(params: ParseMetaConfigParams): ParseMetaConfigR
   }
 
   const enterpriseOptions = normalizeGridOptions(enterpriseToGridOptions(pageConfig.enterpriseConfig));
-  const masterRuleKeys = params.uniqueKeys([resolvedMasterGridKey, 'master', 'masterGrid']);
-  const masterRules = params.collectRulesByKeys(params.rulesByComponent, masterRuleKeys);
+  const masterRuleKeys = uniqueKeys([resolvedMasterGridKey, 'master', 'masterGrid']);
+  const masterRules = collectRulesByKeys(params.rulesByComponent, masterRuleKeys);
   const masterRuleLabel = resolvedMasterGridKey || 'master';
   const masterGridRuleOptions = normalizeGridOptions(parseGridOptionsRule(masterRuleLabel, masterRules));
   const masterGridOptions = mergeGridOptions(enterpriseOptions, masterGridRuleOptions);

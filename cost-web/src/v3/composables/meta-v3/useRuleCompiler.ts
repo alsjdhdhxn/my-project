@@ -30,6 +30,7 @@ import {
   parseToolbarRule,
   parseValidationRuleConfig
 } from '@/v3/composables/meta-v3/usePageRules';
+import { collectRulesByKeys, mergeLookupRules, uniqueKeys } from '@/v3/composables/meta-v3/meta-config-shared';
 
 type ColumnMetadata = Api.Metadata.ColumnMetadata;
 type CompiledCalcRules = ReturnType<typeof compileCalcRules>;
@@ -64,9 +65,6 @@ type RuleCompilerParams = {
   detailCellEditableRulesByTab: ShallowRef<Record<string, CellEditableRule[]>>;
   masterToolbar: ShallowRef<ToolbarRule | null>;
   detailToolbarByTab: ShallowRef<Record<string, ToolbarRule | null>>;
-  uniqueKeys: (keys: Array<string | undefined | null>) => string[];
-  collectRulesByKeys: (rulesByComponent: Map<string, PageRule[]>, keys: string[]) => PageRule[];
-  mergeLookupRules: (metadataRules: LookupRule[], pageRules: LookupRule[]) => LookupRule[];
   getComponentConfig: (components: PageComponentWithRules[], key: string) => string | undefined;
   getDetailGridComponentConfig: (components: PageComponentWithRules[], key: string) => string | undefined;
 };
@@ -89,8 +87,8 @@ export function compileMetaRules(params: RuleCompilerParams): boolean {
 
   const resolvedMasterGridKey = params.masterGridKey ?? undefined;
   const resolvedDetailTabsKey = params.detailTabsKey ?? undefined;
-  const masterRuleKeys = params.uniqueKeys([resolvedMasterGridKey, 'master', 'masterGrid']);
-  const masterRules = params.collectRulesByKeys(params.rulesByComponent, masterRuleKeys);
+  const masterRuleKeys = uniqueKeys([resolvedMasterGridKey, 'master', 'masterGrid']);
+  const masterRules = collectRulesByKeys(params.rulesByComponent, masterRuleKeys);
   const masterRuleLabel = resolvedMasterGridKey || 'master';
 
   const masterValidation = parseValidationRuleConfig(masterRuleLabel, masterRules);
@@ -98,7 +96,7 @@ export function compileMetaRules(params: RuleCompilerParams): boolean {
     masterValidation.length > 0 ? masterValidation : parseValidationRules(params.masterColumnMeta.value);
 
   const masterLookup = parseLookupRuleConfig(masterRuleLabel, masterRules);
-  params.masterLookupRules.value = params.mergeLookupRules(extractLookupRules(params.masterColumnMeta.value), masterLookup);
+  params.masterLookupRules.value = mergeLookupRules(extractLookupRules(params.masterColumnMeta.value), masterLookup);
   params.masterColumnDefs.value = applyLookupFieldClass(params.masterColumnDefs.value, params.masterLookupRules.value);
 
   const masterCalcRules = parseCalcRuleConfig(masterRuleLabel, masterRules);
@@ -149,7 +147,7 @@ export function compileMetaRules(params: RuleCompilerParams): boolean {
       detailValidation.length > 0 ? detailValidation : parseValidationRules(rawColumns);
 
     const detailLookup = parseLookupRuleConfig(tab.key, tabRules);
-    params.detailLookupRulesByTab.value[tab.key] = params.mergeLookupRules(extractLookupRules(rawColumns), detailLookup);
+    params.detailLookupRulesByTab.value[tab.key] = mergeLookupRules(extractLookupRules(rawColumns), detailLookup);
 
     if (params.detailColumnsByTab.value[tab.key]) {
       params.detailColumnsByTab.value[tab.key] = applyLookupFieldClass(

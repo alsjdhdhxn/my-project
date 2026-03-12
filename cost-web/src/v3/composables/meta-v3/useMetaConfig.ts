@@ -23,50 +23,6 @@ import { collectPageRules, groupRulesByComponent } from '@/v3/composables/meta-v
 import type { ResolvedGridOptions } from '@/v3/composables/meta-v3/grid-options';
 import { compileMetaRules } from '@/v3/composables/meta-v3/useRuleCompiler';
 
-function uniqueKeys(keys: Array<string | undefined | null>): string[] {
-  const result: string[] = [];
-  const seen = new Set<string>();
-
-  for (const key of keys) {
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    result.push(key);
-  }
-
-  return result;
-}
-
-function collectRulesByKeys(rulesByComponent: Map<string, PageRule[]>, keys: string[]): PageRule[] {
-  const result: PageRule[] = [];
-
-  for (const key of keys) {
-    const rules = rulesByComponent.get(key);
-    if (rules && rules.length > 0) {
-      result.push(...rules);
-    }
-  }
-
-  return result;
-}
-
-function mergeLookupRules(metadataRules: LookupRule[], pageRules: LookupRule[]): LookupRule[] {
-  const map = new Map<string, LookupRule>();
-
-  for (const rule of metadataRules || []) {
-    if (rule?.columnName) {
-      map.set(rule.columnName, rule);
-    }
-  }
-
-  for (const rule of pageRules || []) {
-    if (rule?.columnName) {
-      map.set(rule.columnName, rule);
-    }
-  }
-
-  return Array.from(map.values());
-}
-
 export function useMetaConfig(pageCode: string, notifyError: (message: string) => void) {
   const pageConfig = shallowRef<ParsedPageConfig | null>(null);
   const pageComponents = shallowRef<PageComponentWithRules[]>([]);
@@ -157,9 +113,7 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
       masterGridKey: masterGridKey.value ?? undefined,
       detailTabsKey: detailTabsKey.value ?? undefined,
       layoutDetailType: layoutDetailTypeRef.value,
-      layoutSplitConfig: layoutSplitConfigRef.value,
-      uniqueKeys,
-      collectRulesByKeys
+      layoutSplitConfig: layoutSplitConfigRef.value
     });
 
     if (!parsedConfig) {
@@ -236,9 +190,6 @@ export function useMetaConfig(pageCode: string, notifyError: (message: string) =
       detailCellEditableRulesByTab,
       masterToolbar,
       detailToolbarByTab,
-      uniqueKeys,
-      collectRulesByKeys,
-      mergeLookupRules,
       getComponentConfig,
       getDetailGridComponentConfig
     });
