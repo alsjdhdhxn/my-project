@@ -193,8 +193,8 @@ public class DynamicDataService {
     /**
      * Lookup 查询（不依赖表元数据）
      */
-    public PageResult<Map<String, Object>> queryLookupData(String lookupCode, Integer page, Integer pageSize, 
-            String filterColumn, String filterValue) {
+    public PageResult<Map<String, Object>> queryLookupData(String lookupCode, Integer page, Integer pageSize,
+            String filterColumn, String filterValue, String keyword) {
         LookupConfigDTO config = metadataService.getLookupConfig(lookupCode);
         if (config == null || StrUtil.isBlank(config.dataSource())) {
             throw new BusinessException(400, "Lookup 数据源不能为空");
@@ -213,6 +213,16 @@ public class DynamicDataService {
             // 对 filterValue 进行转义防止 SQL 注入
             String safeValue = filterValue.replace("'", "''");
             whereClause.append(String.format(" AND %s = '%s'", filterColumn, safeValue));
+        }
+        if (StrUtil.isNotBlank(keyword)) {
+            String safeKeyword = keyword.trim().replace("'", "''");
+            List<String> searchColumns = resolveLookupSearchColumns(config);
+            if (!searchColumns.isEmpty()) {
+                String likeClause = searchColumns.stream()
+                        .map(column -> "NVL(TO_CHAR(" + column + "), '') LIKE '%" + safeKeyword + "%'")
+                        .collect(Collectors.joining(" OR "));
+                whereClause.append(" AND (").append(likeClause).append(")");
+            }
         }
         
         String countSql = String.format("SELECT COUNT(*) FROM %s%s", dataSource, whereClause);
@@ -238,6 +248,28 @@ public class DynamicDataService {
                 .collect(Collectors.toList());
 
         return new PageResult<>(result, total == null ? 0 : total, currentPage, pSize);
+    }
+
+    private List<String> resolveLookupSearchColumns(LookupConfigDTO config) {
+        LinkedHashSet<String> columns = new LinkedHashSet<>();
+        if (config.displayColumns() != null) {
+            for (LookupConfigDTO.DisplayColumn column : config.displayColumns()) {
+                String field = StrUtil.trimToNull(column.field());
+                if (field == null) continue;
+                validateIdentifier(field, "lookupSearchColumn");
+                columns.add(field);
+            }
+        }
+        addLookupSearchColumn(columns, config.valueField());
+        addLookupSearchColumn(columns, config.labelField());
+        return new ArrayList<>(columns);
+    }
+
+    private void addLookupSearchColumn(LinkedHashSet<String> columns, String field) {
+        String normalized = StrUtil.trimToNull(field);
+        if (normalized == null) return;
+        validateIdentifier(normalized, "lookupSearchColumn");
+        columns.add(normalized);
     }
 
     public Map<String, Object> getById(String tableCode, Long id) {

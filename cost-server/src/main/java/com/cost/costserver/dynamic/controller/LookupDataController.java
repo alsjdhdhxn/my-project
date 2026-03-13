@@ -29,7 +29,8 @@ public class LookupDataController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(required = false) Integer pageSize,
             @RequestParam(required = false) String filterColumn,
-            @RequestParam(required = false) String filterValue) {
-        return Result.ok(dynamicDataService.queryLookupData(lookupCode, page, pageSize, filterColumn, filterValue));
+            @RequestParam(required = false) String filterValue,
+            @RequestParam(required = false) String keyword) {
+        return Result.ok(dynamicDataService.queryLookupData(lookupCode, page, pageSize, filterColumn, filterValue, keyword));
     }
 }

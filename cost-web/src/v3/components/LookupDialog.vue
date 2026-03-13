@@ -64,6 +64,7 @@ const searchText = ref('');
 const selectedRow = ref<Record<string, any> | null>(null);
 const selectedRows = ref<Record<string, any>[]>([]);
 let gridApi: GridApi | null = null;
+let searchTimer: ReturnType<typeof setTimeout> | null = null;
 
 const dialogWidth = ref(1050);
 const dialogHeight = ref(550);
@@ -228,16 +229,27 @@ async function loadData() {
     params.filterColumn = props.filterColumn;
     params.filterValue = filterValue;
   }
+  const keyword = searchText.value.trim();
+  if (keyword) {
+    params.keyword = keyword;
+  }
 
   const { data } = await request<{ list: Record<string, any>[] }>({
     url: `/api/lookup/${props.lookupCode}/data`,
     params
   });
   tableRows.value = data?.list || [];
+  selectedRow.value = null;
+  selectedRows.value = [];
 }
 
 function handleSearch() {
-  gridApi?.setGridOption('quickFilterText', searchText.value || '');
+  if (searchTimer) {
+    clearTimeout(searchTimer);
+  }
+  searchTimer = setTimeout(() => {
+    loadData();
+  }, 250);
 }
 
 function handleCancel() {
@@ -289,6 +301,9 @@ function onSelectionChanged(event: SelectionChangedEvent) {
 watch(searchText, handleSearch);
 
 onUnmounted(() => {
+  if (searchTimer) {
+    clearTimeout(searchTimer);
+  }
   document.removeEventListener('mousemove', onDrag);
   document.removeEventListener('mouseup', stopDrag);
   document.removeEventListener('mousemove', onResize);
