@@ -1,12 +1,12 @@
 import type { Ref, ShallowRef } from 'vue';
 import type { GridApi } from 'ag-grid-community';
 import { fetchDynamicDataById, searchDynamicData } from '@/service/api';
-import { buildCopyExcludedFields, clearCopiedIdentityFields } from '@/v3/composables/meta-v3/copy-row-fields';
 import { debugLog } from '@/v3/composables/meta-v3/debug';
 import { useDetailGridSync } from '@/v3/composables/meta-v3/useDetailGridSync';
 import { useDetailRowMutations } from '@/v3/composables/meta-v3/useDetailRowMutations';
+import { useMasterRowMutations } from '@/v3/composables/meta-v3/useMasterRowMutations';
 import { useMasterQueryState } from '@/v3/composables/meta-v3/useMasterQueryState';
-import { type ParsedPageConfig, type RowData, ensureRowKey, generateTempId, initRowData } from '@/v3/logic/calc-engine';
+import { type ParsedPageConfig, type RowData, ensureRowKey, initRowData } from '@/v3/logic/calc-engine';
 
 export function useMasterDetailData(params: {
   pageCode: string;
@@ -177,137 +177,21 @@ export function useMasterDetailData(params: {
     return refreshedRow;
   }
 
-  function addMasterRow() {
-    const api = masterGridApi.value;
-    const newRow = initRowData({ id: generateTempId() }, true);
-    ensureRowKey(newRow);
-
-    // 获取当前选中行的索引，用于在其下方插入
-    const selectedNodes = api?.getSelectedNodes() || [];
-    const insertIndex =
-      selectedNodes.length > 0 && selectedNodes[0].rowIndex != null ? selectedNodes[0].rowIndex + 1 : 0;
-
-    // 更新本地缓存（仅客户端模式）
-
-    // V3 强制使用 SSRM：使用事务 API 插入行到 Grid
-    if (api) {
-      api.applyServerSideTransaction({
-        route: [],
-        add: [newRow],
-        addIndex: insertIndex
-      });
-    }
-
-    // 滚动到新行位置
-    setTimeout(() => {
-      api?.ensureIndexVisible(insertIndex, 'middle');
-      // 选中新行
-      const newNode = api?.getRowNode(String(newRow._rowKey));
-      if (newNode) {
-        newNode.setSelected(true, true);
-      }
-    }, 100);
-
-    return newRow;
-  }
-
-  function deleteMasterRow(row: RowData) {
-    if (!row) return;
-    const api = masterGridApi.value;
-    const currentRow = resolveCurrentMasterRow(row);
-
-    if (!isPersistedRow(currentRow)) {
-      // 新增行直接删除
-
-      // V3 强制使用 SSRM：使用事务 API 删除行
-      if (api) {
-        api.applyServerSideTransaction({
-          route: [],
-          remove: [currentRow]
-        });
-      }
-    } else {
-      // 已有行标记删除
-      currentRow._isDeleted = true;
-      const node = api?.getRowNode(String(ensureRowKey(currentRow)));
-      if (node) api?.refreshCells({ rowNodes: [node] });
-    }
-  }
-
-  async function copyMasterRow(sourceRow: RowData) {
-    if (!sourceRow) return;
-    const api = masterGridApi.value;
-    const sourceMasterId = sourceRow.id;
-    ensureRowKey(sourceRow);
-    const sourceRowKey = sourceRow._rowKey as string;
-    const newMasterId = generateTempId();
-    const newRow = initRowData({ id: newMasterId }, true);
-    const masterCopyExcludedFields = buildCopyExcludedFields(masterPkColumn.value);
-    ensureRowKey(newRow);
-
-    for (const [key, value] of Object.entries(sourceRow)) {
-      if (!key.startsWith('_') && !masterCopyExcludedFields.has(key)) newRow[key] = value;
-    }
-    clearCopiedIdentityFields(newRow, masterPkColumn.value);
-
-    // 获取源行的索引，在其下方插入
-    const sourceNode = api?.getRowNode(String(sourceRowKey));
-    const insertIndex = sourceNode?.rowIndex != null ? sourceNode.rowIndex + 1 : 0;
-
-    // V3 强制使用 SSRM：使用事务 API 插入行到 Grid
-    if (api) {
-      api.applyServerSideTransaction({
-        route: [],
-        add: [newRow],
-        addIndex: insertIndex
-      });
-    }
-
-    // 复制子表数据
-    if (sourceMasterId != null && sourceRowKey) {
-      let sourceCached = detailCache.get(sourceRowKey);
-      if (!sourceCached) {
-        await loadDetailData(sourceMasterId, sourceRowKey);
-        sourceCached = detailCache.get(sourceRowKey);
-      }
-
-      if (sourceCached) {
-        const newCached: Record<string, RowData[]> = {};
-        for (const [tabKey, rows] of Object.entries(sourceCached)) {
-          const fkColumn = detailFkColumnByTab.value[tabKey] || 'masterId';
-          const detailPkColumn = detailPkColumnByTab.value[tabKey];
-          const detailCopyExcludedFields = buildCopyExcludedFields(detailPkColumn, fkColumn);
-          newCached[tabKey] = rows
-            .filter(r => !r._isDeleted)
-            .map(r => {
-              const newDetailRow = initRowData({ id: generateTempId(), [fkColumn]: newMasterId }, true);
-              for (const [key, value] of Object.entries(r)) {
-                if (!key.startsWith('_') && !detailCopyExcludedFields.has(key)) newDetailRow[key] = value;
-              }
-              clearCopiedIdentityFields(newDetailRow, detailPkColumn);
-              return newDetailRow;
-            });
-        }
-        detailCache.set(newRow._rowKey as string, newCached);
-      }
-    }
-
-    // 滚动到新行位置并选中
-    setTimeout(() => {
-      api?.ensureIndexVisible(insertIndex, 'middle');
-      const newNode = api?.getRowNode(String(newRow._rowKey));
-      if (newNode) {
-        newNode.setSelected(true, true);
-      }
-    }, 100);
-
-    return newRow;
-  }
-
   /** 清空所有业务数据缓存 */
   function clearAllCache() {
     detailCache.clear();
   }
+
+  const { addMasterRow, deleteMasterRow, copyMasterRow } = useMasterRowMutations({
+    masterGridApi,
+    masterPkColumn,
+    detailCache,
+    detailFkColumnByTab,
+    detailPkColumnByTab,
+    loadDetailData,
+    resolveCurrentMasterRow,
+    isPersistedRow
+  });
 
   const { addDetailRow, deleteDetailRow, copyDetailRow } = useDetailRowMutations({
     detailCache,
