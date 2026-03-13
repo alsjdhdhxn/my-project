@@ -1,15 +1,13 @@
 import type { Ref, ShallowRef } from 'vue';
 import type { GridApi } from 'ag-grid-community';
-import { useDetailGridSync } from '@/v3/composables/meta-v3/useDetailGridSync';
-import { useDetailDataLoader } from '@/v3/composables/meta-v3/useDetailDataLoader';
-import { useDetailRowMutations } from '@/v3/composables/meta-v3/useDetailRowMutations';
+import { useDetailStore } from '@/v3/composables/meta-v3/useDetailStore';
 import { useMasterRowMutations } from '@/v3/composables/meta-v3/useMasterRowMutations';
 import { useMasterQueryState } from '@/v3/composables/meta-v3/useMasterQueryState';
 import { useMasterRowReload } from '@/v3/composables/meta-v3/useMasterRowReload';
 import { useMasterRowAccess } from '@/v3/composables/meta-v3/useMasterRowAccess';
 import { isPersistedRow } from '@/v3/composables/meta-v3/row-persistence';
-import { resolveCurrentDetailRow, resolveCurrentMasterRow } from '@/v3/composables/meta-v3/row-resolution';
-import { type ParsedPageConfig, type RowData } from '@/v3/logic/calc-engine';
+import { resolveCurrentMasterRow } from '@/v3/composables/meta-v3/row-resolution';
+import { type ParsedPageConfig } from '@/v3/logic/calc-engine';
 
 export function useMasterDetailData(params: {
   pageCode: string;
@@ -32,49 +30,30 @@ export function useMasterDetailData(params: {
     notifyError
   } = params;
 
-  const detailCache = new Map<string, Record<string, RowData[]>>();
-  const { setDetailRows, refreshDetailCells, replaceDetailRows } = useDetailGridSync({
-    masterGridApi,
-    detailGridApisByTab
-  });
   const { getMasterRowByRowKey, getMasterRowById, resolveMasterRowKey } = useMasterRowAccess({
     masterGridApi
   });
-  const { loadDetailData } = useDetailDataLoader({
+  const detailStore = useDetailStore({
     pageCode,
     pageConfig,
     detailFkColumnByTab,
     detailPkColumnByTab,
-    detailCache,
-    replaceDetailRows,
+    masterGridApi,
+    detailGridApisByTab,
     resolveMasterRowKey,
     notifyError
   });
-
-  /** 清空所有业务数据缓存 */
-  function clearAllCache() {
-    detailCache.clear();
-  }
+  const { cache: cacheApi, loader: detailLoaderApi, detail: detailApi } = detailStore;
 
   const { addMasterRow, deleteMasterRow, copyMasterRow } = useMasterRowMutations({
     masterGridApi,
     masterPkColumn,
-    detailCache,
+    detailCache: cacheApi.detailCache,
     detailFkColumnByTab,
     detailPkColumnByTab,
-    loadDetailData,
+    loadDetailData: detailLoaderApi.loadDetailData,
     resolveCurrentMasterRow: row => resolveCurrentMasterRow(row, { getMasterRowByRowKey, getMasterRowById }),
     isPersistedRow
-  });
-
-  const { addDetailRow, deleteDetailRow, copyDetailRow } = useDetailRowMutations({
-    detailCache,
-    detailFkColumnByTab,
-    detailPkColumnByTab,
-    resolveMasterRowKey,
-    resolveCurrentDetailRow,
-    setDetailRows,
-    refreshDetailCells
   });
 
   const { advancedConditions, setAdvancedConditions, clearAdvancedConditions, createServerSideDataSource } =
@@ -95,8 +74,7 @@ export function useMasterDetailData(params: {
 
   return {
     cache: {
-      detailCache,
-      clearAllCache
+      ...cacheApi
     },
     query: {
       advancedConditions,
@@ -110,7 +88,7 @@ export function useMasterDetailData(params: {
       resolveMasterRowKey
     },
     loader: {
-      loadDetailData,
+      ...detailLoaderApi,
       reloadMasterRow
     },
     master: {
@@ -119,9 +97,7 @@ export function useMasterDetailData(params: {
       copyMasterRow
     },
     detail: {
-      addDetailRow,
-      deleteDetailRow,
-      copyDetailRow
+      ...detailApi
     }
   };
 }
