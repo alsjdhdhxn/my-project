@@ -48,7 +48,7 @@ const props = defineProps<{
   runtime: any;
 }>();
 
-const advancedSearch = computed(() => props.runtime?.advancedSearch || {});
+const advancedSearch = computed(() => props.runtime?.actions?.advancedSearch || {});
 const searchConditions = computed<SearchCondition[]>(() => unref(advancedSearch.value.searchConditions) || []);
 const visibleConditions = computed<SearchCondition[]>(() => unref(advancedSearch.value.visibleConditions) || []);
 const hiddenConditions = computed<SearchCondition[]>(() => searchConditions.value.filter(cond => !cond.visible));

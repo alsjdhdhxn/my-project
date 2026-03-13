@@ -41,7 +41,7 @@ const RendererBoundary = defineComponent({
       errorMessage.value = message || 'Renderer failed';
 
       const runtime = boundaryProps.runtime as MetaRuntime;
-      runtime.reportComponentError(boundaryProps.component.componentKey, 'render', message, err);
+      runtime.state.reportComponentError(boundaryProps.component.componentKey, 'render', message, err);
       return false;
     });
 

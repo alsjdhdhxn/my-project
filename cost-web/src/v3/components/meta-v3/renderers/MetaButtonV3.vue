@@ -36,7 +36,7 @@ function parseButtonConfig(config?: string): ButtonConfig {
 }
 
 function resolveComponentState(): Record<string, any> {
-  const source = props.runtime?.componentStateByKey;
+  const source = props.runtime?.state?.componentStateByKey;
   const stateByKey = (source && 'value' in source ? source.value : source) as ComponentStateByKey | undefined;
   if (!stateByKey) return {};
   return stateByKey[props.component.componentKey] || {};
@@ -78,17 +78,18 @@ function handleClick() {
   if (!action) return;
 
   const runtime = props.runtime as Record<string, any>;
-  if (typeof runtime[action] === 'function') {
-    runtime[action](props.component);
+  const actions = runtime.actions;
+  if (typeof actions?.[action] === 'function') {
+    actions[action](props.component);
     return;
   }
-  if (typeof runtime.executeAction === 'function') {
+  if (typeof actions?.executeAction === 'function') {
     const selectedRow = getSelectedRow();
     // 默认刷新模式：需要选中行时刷新行，否则刷新全部
     const defaultRefreshMode = requiresRow.value ? 'row' : 'all';
     const refreshMode = config.value.refreshMode ?? defaultRefreshMode;
 
-    runtime.executeAction(action, {
+    actions.executeAction(action, {
       tableCode: config.value.tableCode,
       data: config.value.actionData,
       selectedRow,

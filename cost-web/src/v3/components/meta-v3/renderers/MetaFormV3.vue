@@ -9,7 +9,7 @@ const props = defineProps<{
 }>();
 
 function resolveComponentState(): Record<string, any> {
-  const source = props.runtime?.componentStateByKey;
+  const source = props.runtime?.state?.componentStateByKey;
   const stateByKey = (source && 'value' in source ? source.value : source) as ComponentStateByKey | undefined;
   if (!stateByKey) return {};
   return stateByKey[props.component.componentKey] || {};

@@ -16,7 +16,8 @@ const runtime = useBaseRuntime({
   notifySuccess: msg => message.success(msg)
 });
 
-const { isReady, pageComponents, init } = runtime;
+const { isReady, init } = runtime;
+const pageComponents = runtime.meta?.pageComponents;
 const {
   lookupDialogRef,
   currentLookupRule,
@@ -24,15 +25,15 @@ const {
   currentLookupCellValue,
   onLookupSelect,
   onLookupCancel
-} = runtime as any;
-const pageError = (runtime as any).pageError;
+} = runtime.lookup;
+const pageError = runtime.state.pageError;
 
 // WebSocket 订阅：元数据配置变更时热重载
 const { subscribe } = useWebSocket();
 subscribe('META_CONFIG_CHANGED', payload => {
   const changedPageCode = payload.pageCode;
   if (!changedPageCode || changedPageCode === props.pageCode) {
-    (runtime as any).reloadMetadata?.(payload);
+    runtime.reloadMetadata?.(payload);
   }
 });
 

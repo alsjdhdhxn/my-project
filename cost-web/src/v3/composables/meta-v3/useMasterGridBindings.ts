@@ -21,19 +21,25 @@ import { ensureRowKey } from '@/v3/logic/calc-engine';
 // 用于追踪已包装 editable 的列定义
 const wrappedEditableColumns = new WeakSet<ColDef>();
 
-type RuntimeApi = {
-  masterGridApi?: Ref<any>;
-  masterGridKey?: Ref<string | null> | string | null;
-  broadcastFields?: Ref<string[]>;
-  addMasterRow: () => void;
-  deleteMasterRow: (row: any) => void;
-  copyMasterRow: (row: any) => void;
-  addDetailRow: (masterId: number, tabKey: string, masterRowKey?: string) => void;
-  deleteDetailRow: (masterId: number, tabKey: string, row: any, masterRowKey?: string) => void;
-  copyDetailRow: (masterId: number, tabKey: string, row: any, masterRowKey?: string) => void;
+type MasterGridBindingDeps = {
+  masterGridApi: Ref<any>;
+  masterGridKey: Ref<string | null> | string | null;
+  masterCellEditableRules?: Ref<CellEditableRule[]> | CellEditableRule[];
+  masterRowEditableRules?: Ref<RowEditableRule[]> | RowEditableRule[];
+  masterRowClassRules?: Ref<RowClassRule[]> | RowClassRule[];
+  masterSumFields?: Ref<string[]> | string[];
+  masterStore: {
+    addMasterRow: () => void;
+    deleteMasterRow: (row: any) => void;
+    copyMasterRow: (row: any) => void;
+  };
+  detailStore: {
+    addDetailRow: (masterId: number, tabKey: string, masterRowKey?: string) => void;
+    deleteDetailRow: (masterId: number, tabKey: string, row: any, masterRowKey?: string) => void;
+    copyDetailRow: (masterId: number, tabKey: string, row: any, masterRowKey?: string) => void;
+  };
   save: () => void;
   saveGridConfig?: (gridKey: string, api: any, columnApi: any) => void;
-  applyGridConfig?: (gridKey: string, api: any, columnApi: any, sourceColumnDefs?: ColDef[]) => void;
   customExportConfigs?: Ref<CustomExportConfig[]> | CustomExportConfig[];
   executeCustomExport?: (exportCode: string, mode: 'all' | 'current') => void;
   executeAction?: (
@@ -47,22 +53,17 @@ type RuntimeApi = {
 };
 
 export function useMasterGridBindings(params: {
-  runtime: RuntimeApi;
+  deps: MasterGridBindingDeps;
   isUserEditing?: Ref<boolean>;
   metaRowClassGetter?: (params: any) => string | undefined;
   gridOptions?: ResolvedGridOptions | null;
   columnDefs?: Ref<ColDef[]>;
   onSelectionChanged?: (rows: any[]) => void;
-  gridKey?: string | null;
   contextMenuConfig?: ContextMenuRule | null;
-  rowEditableRules?: RowEditableRule[];
-  cellEditableRules?: CellEditableRule[];
-  rowClassRules?: RowClassRule[];
   dataSource?: any;
-  sumFields?: string[];
   notifyError?: (message: string) => void;
 }) {
-  const { runtime } = params;
+  const { deps } = params;
   const isUserEditing = params.isUserEditing ?? ref(false);
   const metaRowClassGetter = params.metaRowClassGetter;
   const gridOptions = params.gridOptions || null;
@@ -75,8 +76,8 @@ export function useMasterGridBindings(params: {
   let _cachedEditableCallback: ((params: any) => boolean) | undefined;
 
   function getEditableCallback(): ((params: any) => boolean) | undefined {
-    const cellRules = (runtime as any).masterCellEditableRules?.value ?? params.cellEditableRules ?? [];
-    const rowRules = (runtime as any).masterRowEditableRules?.value ?? params.rowEditableRules ?? [];
+    const cellRules = deps.masterCellEditableRules?.value ?? deps.masterCellEditableRules ?? [];
+    const rowRules = deps.masterRowEditableRules?.value ?? deps.masterRowEditableRules ?? [];
     // 规则引用没变就复用缓存
     if (cellRules === _cachedCellRules && rowRules === _cachedRowRules) {
       return _cachedEditableCallback;
@@ -163,7 +164,7 @@ export function useMasterGridBindings(params: {
   let _cachedRowStyleCallback: ((params: any) => Record<string, string> | undefined) | undefined;
 
   function getLatestRowClassCallback() {
-    const rules = (runtime as any).masterRowClassRules?.value ?? params.rowClassRules ?? [];
+    const rules = deps.masterRowClassRules?.value ?? deps.masterRowClassRules ?? [];
     if (rules === _cachedStyleRules) return _cachedRowClassCallback;
     _cachedStyleRules = rules;
     _cachedRowClassCallback = buildRowClassCallback(rules);
@@ -172,7 +173,7 @@ export function useMasterGridBindings(params: {
   }
 
   function getLatestRowStyleCallback() {
-    const rules = (runtime as any).masterRowClassRules?.value ?? params.rowClassRules ?? [];
+    const rules = deps.masterRowClassRules?.value ?? deps.masterRowClassRules ?? [];
     if (rules !== _cachedStyleRules) {
       _cachedStyleRules = rules;
       _cachedRowClassCallback = buildRowClassCallback(rules);
@@ -182,12 +183,12 @@ export function useMasterGridBindings(params: {
   }
 
   const dataSource = params.dataSource;
-  const sumFields = params.sumFields ?? (runtime as any).masterSumFields?.value ?? [];
+  const sumFields = deps.masterSumFields?.value ?? deps.masterSumFields ?? [];
 
   /** 更新主表底部汇总行（从当前已渲染的行数据直接计算） */
   function updatePinnedSumRow() {
     if (!sumFields.length) return;
-    const api = runtime.masterGridApi?.value;
+    const api = deps.masterGridApi.value;
     if (!api) return;
     // SSRM 下 forEachNode 不可靠，改用 getRenderedNodes 取当前已加载的行
     const renderedNodes = api.getRenderedNodes?.() ?? [];
@@ -217,21 +218,20 @@ export function useMasterGridBindings(params: {
   }
 
   const resolveGridKey = (key?: string | null) => (key && key.trim().length > 0 ? key : 'masterGrid');
-  const runtimeMasterKey = (runtime as any).masterGridKey?.value ?? (runtime as any).masterGridKey;
-  const masterGridKey = resolveGridKey(params.gridKey ?? runtimeMasterKey);
+  const masterGridKey = resolveGridKey(deps.masterGridKey?.value ?? deps.masterGridKey);
 
   const { getMasterContextMenuItems } = useGridContextMenu({
-    addMasterRow: runtime.addMasterRow,
-    deleteMasterRow: runtime.deleteMasterRow,
-    copyMasterRow: runtime.copyMasterRow,
-    addDetailRow: runtime.addDetailRow,
-    deleteDetailRow: runtime.deleteDetailRow,
-    copyDetailRow: runtime.copyDetailRow,
-    save: runtime.save,
-    saveGridConfig: (runtime as any).saveGridConfig,
-    customExportConfigs: runtime.customExportConfigs,
-    executeCustomExport: runtime.executeCustomExport,
-    executeAction: runtime.executeAction,
+    addMasterRow: deps.masterStore.addMasterRow,
+    deleteMasterRow: deps.masterStore.deleteMasterRow,
+    copyMasterRow: deps.masterStore.copyMasterRow,
+    addDetailRow: deps.detailStore.addDetailRow,
+    deleteDetailRow: deps.detailStore.deleteDetailRow,
+    copyDetailRow: deps.detailStore.copyDetailRow,
+    save: deps.save,
+    saveGridConfig: deps.saveGridConfig,
+    customExportConfigs: deps.customExportConfigs,
+    executeCustomExport: deps.executeCustomExport,
+    executeAction: deps.executeAction,
     masterGridKey,
     masterMenuConfig: params.contextMenuConfig,
     isRowEditable: editableCallback ? (row: any) => editableCallback({ data: row, colDef: {} }) : undefined,
@@ -239,7 +239,7 @@ export function useMasterGridBindings(params: {
   });
 
   function onGridReady(params: GridReadyEvent) {
-    if (runtime.masterGridApi) runtime.masterGridApi.value = params.api;
+    deps.masterGridApi.value = params.api;
     params.api.addEventListener('columnVisible', (event: any) => {
       const colId = String(event?.column?.getColId?.() ?? '').trim();
       if (!colId) return;
@@ -302,13 +302,13 @@ export function useMasterGridBindings(params: {
     const source = String((event as any)?.source || '').toLowerCase();
     const isApiChange = source === 'api' || source === 'rowdatachanged';
     const changeType = isApiChange ? 'calc' : 'user';
-    runtime.markFieldChange?.(row, field, event.oldValue, event.newValue, changeType);
-    runtime.masterGridApi?.value?.refreshCells({ rowNodes: [event.node], columns: [field], force: true });
+    deps.markFieldChange?.(row, field, event.oldValue, event.newValue, changeType);
+    deps.masterGridApi.value?.refreshCells({ rowNodes: [event.node], columns: [field], force: true });
 
     if (!isApiChange) {
-      const calcChanged = runtime.runMasterCalc?.(event.node, row, { [field]: event.newValue }) || [];
+      const calcChanged = deps.runMasterCalc?.(event.node, row, { [field]: event.newValue }) || [];
       const changedFields = [field, ...calcChanged].filter(Boolean);
-      await runtime.broadcastToDetail?.(masterId, row, changedFields);
+      await deps.broadcastToDetail?.(masterId, row, changedFields);
     }
 
     // 任何单元格变化后都重算汇总（calc 联动可能改了求和字段）
@@ -320,11 +320,11 @@ export function useMasterGridBindings(params: {
   function onCellClicked(event: any) {
     // 汇总行不响应点击
     if (event.node?.rowPinned) return;
-    runtime.onMasterCellClicked?.(event);
+    deps.onMasterCellClicked?.(event);
   }
 
   function onSelectionChanged() {
-    const rows = runtime.masterGridApi?.value?.getSelectedRows?.() || [];
+    const rows = deps.masterGridApi.value?.getSelectedRows?.() || [];
     params.onSelectionChanged?.(rows);
   }
 

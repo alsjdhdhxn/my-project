@@ -6,6 +6,7 @@ import type { ColDef, GridReadyEvent } from 'ag-grid-community';
 import type { PageComponentWithRules, ToolbarRule } from '@/v3/composables/meta-v3/types';
 import type { ComponentStateByKey, MetaRuntime } from '@/v3/composables/meta-v3/runtime/types';
 import { handleToolbarAction } from '@/v3/composables/meta-v3/useToolbarAction';
+import { useMasterGridBindings } from '@/v3/composables/meta-v3/useMasterGridBindings';
 
 type GridConfig = {
   width?: string | number;
@@ -19,6 +20,17 @@ const props = defineProps<{
 }>();
 
 const dialog = useDialog();
+const runtime = props.runtime as any;
+const meta = runtime?.meta;
+const calc = runtime?.calc;
+const lookup = runtime?.lookup;
+const actions = runtime?.actions;
+const gridConfigApi = runtime?.gridConfig;
+const customExportConfigs = actions?.customExportConfigs;
+const executeCustomExport = actions?.executeCustomExport;
+const executeAction = actions?.executeAction;
+const save = actions?.save;
+const saveGridConfig = gridConfigApi?.saveGridConfig;
 
 function parseGridConfig(config?: string): GridConfig {
   if (!config) return {};
@@ -31,7 +43,7 @@ function parseGridConfig(config?: string): GridConfig {
 }
 
 function resolveComponentState(): Record<string, any> {
-  const source = props.runtime?.componentStateByKey;
+  const source = runtime?.state?.componentStateByKey;
   const stateByKey = (source && 'value' in source ? source.value : source) as ComponentStateByKey | undefined;
   if (!stateByKey) return {};
   return stateByKey[props.component.componentKey] || {};
@@ -39,10 +51,52 @@ function resolveComponentState(): Record<string, any> {
 
 const state = computed(() => resolveComponentState());
 const gridConfig = computed(() => parseGridConfig(props.component.componentConfig));
+const masterGridKey = computed(() => meta?.masterGridKey?.value ?? meta?.masterGridKey ?? null);
+const isMasterGrid = computed(
+  () => props.component.componentType === 'GRID' && props.component.componentKey === masterGridKey.value
+);
+
+let cachedDataSource: any = null;
+function getMasterDataSource() {
+  if (!cachedDataSource) {
+    const masterGridOptions = meta?.masterGridOptions?.value ?? meta?.masterGridOptions;
+    cachedDataSource = runtime?.masterStore?.createServerSideDataSource({
+      pageSize: masterGridOptions?.cacheBlockSize || 100
+    });
+  }
+  return cachedDataSource;
+}
+
+const masterBindings = useMasterGridBindings({
+  deps: {
+    masterGridApi: runtime.masterGridApi,
+    masterGridKey: meta?.masterGridKey,
+    masterCellEditableRules: meta?.masterCellEditableRules,
+    masterRowEditableRules: meta?.masterRowEditableRules,
+    masterRowClassRules: meta?.masterRowClassRules,
+    masterSumFields: meta?.masterSumFields,
+    masterStore: runtime.masterStore,
+    detailStore: runtime.detailStore,
+    save,
+    saveGridConfig,
+    customExportConfigs,
+    executeCustomExport,
+    executeAction,
+    markFieldChange: calc?.markFieldChange,
+    runMasterCalc: calc?.runMasterCalc,
+    broadcastToDetail: calc?.broadcastToDetail,
+    onMasterCellClicked: lookup?.onMasterCellClicked
+  },
+  metaRowClassGetter: meta?.masterRowClassGetter?.value ?? meta?.masterRowClassGetter,
+  gridOptions: meta?.masterGridOptions?.value ?? meta?.masterGridOptions ?? null,
+  columnDefs: meta?.masterColumnDefs,
+  contextMenuConfig: meta?.masterContextMenu?.value ?? meta?.masterContextMenu ?? null,
+  dataSource: getMasterDataSource()
+});
 
 // 工具栏
 const masterToolbar = computed<ToolbarRule | null>(() => {
-  const source = (props.runtime as any)?.masterToolbar;
+  const source = meta?.masterToolbar;
   return source?.value ?? source ?? null;
 });
 
@@ -53,7 +107,6 @@ const toolbarItems = computed(() => {
 });
 
 async function handleToolbarClick(item: any) {
-  const executeAction = (props.runtime as any)?.executeAction;
   if (!executeAction) {
     console.warn('[MetaGridV3] executeAction not found in runtime');
     return;
@@ -61,7 +114,7 @@ async function handleToolbarClick(item: any) {
 
   await handleToolbarAction(item, {
     getSelectedRow: () => {
-      const api = (props.runtime as any)?.masterGridApi?.value;
+      const api = runtime?.masterGridApi?.value;
       const selectedRows = api?.getSelectedRows?.() || [];
       return selectedRows[0] || null;
     },
@@ -88,27 +141,52 @@ const gridClass = computed(() => gridConfig.value.className || '');
 
 const status = computed(() => state.value.status || 'ready');
 const errorMessage = computed(() => state.value.error?.message || '组件加载失败');
+const contextMenuEnabled = computed(() => runtime?.features?.contextMenu !== false);
 
-const columnDefs = computed<ColDef[]>(() => unwrap(state.value.columnDefs) ?? []);
-const defaultColDef = computed<ColDef>(() => unwrap(state.value.defaultColDef) || {});
+const columnDefs = computed<ColDef[]>(() =>
+  isMasterGrid.value ? unwrap(meta?.masterColumnDefs) ?? [] : unwrap(state.value.columnDefs) ?? []
+);
+const defaultColDef = computed<ColDef>(() =>
+  isMasterGrid.value ? masterBindings.defaultColDef : unwrap(state.value.defaultColDef) || {}
+);
 
-const gridOptions = computed(() => unwrap(state.value.gridOptions) ?? {});
+const gridOptions = computed(() =>
+  isMasterGrid.value ? masterBindings.gridOptions : unwrap(state.value.gridOptions) ?? {}
+);
 const rowModelType = computed(() => gridOptions.value?.rowModelType);
-const dataSource = computed(() => unwrap(state.value.dataSource));
+const dataSource = computed(() => (isMasterGrid.value ? getMasterDataSource() : unwrap(state.value.dataSource)));
 const rowData = computed(() => {
   if (rowModelType.value === 'serverSide') return undefined;
   return unwrap(state.value.rowData) ?? [];
 });
-const rowSelection = computed(() => unwrap(state.value.rowSelection));
-const autoSizeStrategy = computed(() => unwrap(state.value.autoSizeStrategy));
-const getRowId = computed(() => unwrap(state.value.getRowId));
-const getRowClass = computed(() => unwrap(state.value.getRowClass));
-const getRowStyle = computed(() => unwrap(state.value.getRowStyle));
-const getContextMenuItems = computed(() => unwrap(state.value.getContextMenuItems));
-const rowHeight = computed(() => unwrap(state.value.rowHeight));
-const headerHeight = computed(() => unwrap(state.value.headerHeight));
+const rowSelection = computed(() => (isMasterGrid.value ? masterBindings.rowSelection : unwrap(state.value.rowSelection)));
+const autoSizeStrategy = computed(() =>
+  isMasterGrid.value ? masterBindings.autoSizeStrategy : unwrap(state.value.autoSizeStrategy)
+);
+const getRowId = computed(() => (isMasterGrid.value ? masterBindings.getRowId : unwrap(state.value.getRowId)));
+const getRowClass = computed(() =>
+  isMasterGrid.value ? masterBindings.getRowClass : unwrap(state.value.getRowClass)
+);
+const getRowStyle = computed(() =>
+  isMasterGrid.value ? masterBindings.getRowStyle : unwrap(state.value.getRowStyle)
+);
+const getContextMenuItems = computed(() =>
+  isMasterGrid.value
+    ? contextMenuEnabled.value
+      ? masterBindings.getContextMenuItems
+      : undefined
+    : unwrap(state.value.getContextMenuItems)
+);
+const rowHeight = computed(() => (isMasterGrid.value ? masterBindings.rowHeight : unwrap(state.value.rowHeight)));
+const headerHeight = computed(() =>
+  isMasterGrid.value ? masterBindings.headerHeight : unwrap(state.value.headerHeight)
+);
 
 function handleGridReady(params: GridReadyEvent) {
+  if (isMasterGrid.value) {
+    masterBindings.onGridReady(params);
+    return;
+  }
   state.value.onGridReady?.(params);
   const ds = dataSource.value;
   if (rowModelType.value === 'serverSide' && ds) {
@@ -117,22 +195,42 @@ function handleGridReady(params: GridReadyEvent) {
 }
 
 function handleCellValueChanged(event: any) {
+  if (isMasterGrid.value) {
+    void masterBindings.onCellValueChanged(event);
+    return;
+  }
   state.value.onCellValueChanged?.(event);
 }
 
 function handleCellClicked(event: any) {
+  if (isMasterGrid.value) {
+    masterBindings.onCellClicked(event);
+    return;
+  }
   state.value.onCellClicked?.(event);
 }
 
 function handleCellEditingStarted(event: any) {
+  if (isMasterGrid.value) {
+    masterBindings.onCellEditingStarted(event);
+    return;
+  }
   state.value.onCellEditingStarted?.(event);
 }
 
 function handleCellEditingStopped(event: any) {
+  if (isMasterGrid.value) {
+    masterBindings.onCellEditingStopped(event);
+    return;
+  }
   state.value.onCellEditingStopped?.(event);
 }
 
 function handleFilterChanged() {
+  if (isMasterGrid.value) {
+    masterBindings.onFilterChanged();
+    return;
+  }
   state.value.onFilterChanged?.();
 }
 

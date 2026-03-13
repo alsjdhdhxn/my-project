@@ -14,7 +14,8 @@ import { useRuntimeMetadataReload } from './useRuntimeMetadataReload';
 import { useRuntimeActions } from './useRuntimeActions';
 import { useRuntimeState } from './useRuntimeState';
 import { useRuntimeMutations } from './useRuntimeMutations';
-import { useRuntimeInitialization } from './useRuntimeInitialization';
+import { useRuntimeBootstrap } from './useRuntimeBootstrap';
+import { useRuntimeComponentState } from './useRuntimeComponentState';
 import type { MetaError, RuntimeFeatures, RuntimeStage } from './types';
 
 type NotifyFn = (message: string) => void;
@@ -214,7 +215,7 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     notifyInfo
   });
 
-  const { save, isSaving } = useSave({
+  const { save } = useSave({
     pageCode,
     pageConfig: meta.pageConfig,
     detailCache: detailStore.detailCache,
@@ -263,64 +264,71 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     }
   });
 
-  runtimeApi = {
-    masterGridApi,
-    detailGridApisByTab,
-    activeMasterRowKey,
-    ...metaApi,
-    componentStateByKey,
-    detailCache: detailStore.detailCache,
-    createServerSideDataSource: masterStore.createServerSideDataSource,
-    getMasterRowById: masterStore.getMasterRowById,
-    loadDetailData: detailStore.loadDetailData,
-    addMasterRow,
-    deleteMasterRow: masterStore.deleteMasterRow,
-    addDetailRow,
-    deleteDetailRow,
-    copyMasterRow: masterStore.copyMasterRow,
-    copyDetailRow,
-    ...calcApi,
-    ...runtimeLookup,
-    customExportConfigs: customExport.customExportConfigs,
-    executeCustomExport: customExport.executeCustomExport,
+  const actions = {
     advancedSearch,
     executeAction,
     save,
-    isSaving,
+    customExportConfigs: customExport.customExportConfigs,
+    executeCustomExport: customExport.executeCustomExport
+  };
+
+  const gridConfigApi = {
     applyGridConfig: gridConfig.applyGridConfig,
     saveGridConfig: gridConfig.saveGridConfig
   };
 
+  const stateApi = {
+    componentStateByKey,
+    pageError: runtimeError,
+    reportComponentError
+  };
+
+  runtimeApi = {
+    masterGridApi,
+    detailGridApisByTab,
+    activeMasterRowKey,
+    masterStore,
+    detailStore,
+    meta: metaApi,
+    state: stateApi,
+    calc: calcApi,
+    lookup: runtimeLookup,
+    actions,
+    gridConfig: gridConfigApi
+  };
+
   registerActionHandler('advancedSearch', () => advancedSearch.open());
 
-  const { init, loadComponents, parseConfig, loadMeta, compileRules } = useRuntimeInitialization({
-    pageCode,
+  const { buildStates, applyExtensions } = useRuntimeComponentState({
     logger,
     meta: {
       pageComponents: meta.pageComponents,
       masterGridKey: meta.masterGridKey,
-      masterColumnDefs: meta.masterColumnDefs,
-      masterGridOptions: meta.masterGridOptions,
-      masterRowClassGetter: meta.masterRowClassGetter,
-      masterContextMenu: meta.masterContextMenu,
-      masterRowEditableRules: meta.masterRowEditableRules,
-      masterSumFields: meta.masterSumFields
+      masterColumnDefs: meta.masterColumnDefs
+    },
+    componentStateByKey,
+    componentErrors
+  });
+
+  const { init, loadComponents, parseConfig, loadMeta, compileRules } = useRuntimeBootstrap({
+    pageCode,
+    logger,
+    meta: {
+      pageComponents: meta.pageComponents,
+      masterGridKey: meta.masterGridKey
     },
     runtimeStatus,
     runtimeError,
     isReady,
-    componentStateByKey,
-    componentErrors,
-    resolvedFeatures,
-    notifyError,
-    getRuntime: () => runtimeApi,
     reportComponentError,
     refreshAutoFeatures,
     makeError,
     loadComponentsRaw,
     parseConfigRaw,
     loadMetaRaw,
-    compileRulesRaw
+    compileRulesRaw,
+    buildStates,
+    applyExtensions
   });
 
   const { reloadMetadata } = useRuntimeMetadataReload({
@@ -349,9 +357,7 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
 
   return {
     isReady,
-    pageError: runtimeError,
     features: resolvedFeatures,
-    reportComponentError,
     init,
     reloadMetadata,
     ...runtimeApi

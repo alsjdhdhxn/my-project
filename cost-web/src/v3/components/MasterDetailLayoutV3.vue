@@ -18,23 +18,18 @@ const dialog = useDialog();
 
 const themeStore = useThemeStore();
 const runtime = props.runtime;
-
-// 🔍 调试：监控可能导致 Grid 重置的属性变化
-watch(
-  () => runtime.masterColumnDefs?.value,
-  (newVal, oldVal) => {
-    if (newVal !== oldVal) {
-      console.warn('[DEBUG] masterColumnDefs changed!', { newLength: newVal?.length, oldLength: oldVal?.length });
-    }
-  },
-  { deep: false }
-);
+const meta = runtime.meta;
+const masterStore = runtime.masterStore;
+const detailStore = runtime.detailStore;
+const masterGridApi = runtime.masterGridApi;
+const calc = runtime.calc;
+const lookup = runtime.lookup;
+const actions = runtime.actions;
+const gridConfigApi = runtime.gridConfig;
 
 const {
   masterColumnDefs,
   detailColumnsByTab,
-  detailCache,
-  getMasterRowById,
   pageConfig,
   masterRowClassGetter,
   detailRowClassGetterByTab,
@@ -44,31 +39,23 @@ const {
   masterGridOptions,
   detailGridOptionsByTab,
   detailSumFieldsByTab,
-  detailGridApisByTab,
   masterContextMenu,
   detailContextMenuByTab,
   masterRowEditableRules,
   masterRowClassRules,
   masterToolbar,
-  detailToolbarByTab,
-  applyGridConfig,
-  loadDetailData,
-  addMasterRow,
-  deleteMasterRow,
-  addDetailRow,
-  deleteDetailRow,
-  copyMasterRow,
-  copyDetailRow,
-  markFieldChange,
-  runDetailCalc,
-  recalcAggregates,
-  onDetailCellClicked,
-  save,
-  saveGridConfig,
-  executeAction,
-  openBatchSelect,
-  activeMasterRowKey: runtimeActiveMasterRowKey
-} = runtime;
+  detailToolbarByTab
+} = meta;
+const detailGridApisByTab = runtime.detailGridApisByTab;
+const activeMasterRowKey = runtime.activeMasterRowKey;
+
+const { save, executeAction, customExportConfigs, executeCustomExport } = actions;
+const { applyGridConfig, saveGridConfig } = gridConfigApi;
+const { markFieldChange, runDetailCalc, recalcAggregates, broadcastToDetail, runMasterCalc } = calc;
+const { onDetailCellClicked, onMasterCellClicked: handleLookupMasterCellClick } = lookup;
+
+const { detailCache, loadDetailData, addDetailRow, deleteDetailRow, copyDetailRow } = detailStore;
+const { createServerSideDataSource, getMasterRowById, addMasterRow, deleteMasterRow, copyMasterRow } = masterStore;
 
 const editingState = ref(false);
 
@@ -175,7 +162,7 @@ function handleDropdownSelect(key: string, parentItem: MergedToolbarItem) {
       addDetailRow(masterId, tabKey, masterRowKey || undefined);
       break;
     case 'copyRow': {
-      const api = detailGridApisByTab?.value?.[tabKey];
+      const api = detailGridApisByTab.value[tabKey];
       const selectedRows = api?.getSelectedRows?.() || [];
       if (selectedRows.length === 0) {
         window.$message?.warning('请先选择要复制的行');
@@ -185,7 +172,7 @@ function handleDropdownSelect(key: string, parentItem: MergedToolbarItem) {
       break;
     }
     case 'deleteRow': {
-      const api = detailGridApisByTab?.value?.[tabKey];
+      const api = detailGridApisByTab.value[tabKey];
       const selectedRows = api?.getSelectedRows?.() || [];
       if (selectedRows.length === 0) {
         window.$message?.warning('请先选择要删除的行');
@@ -244,7 +231,7 @@ async function handleToolbarClick(item: any) {
       return;
     case 'saveGridConfig': {
       const api = masterGridApi?.value;
-      if (api) saveGridConfig?.(masterGridKey.value, api, null);
+      if (api) saveGridConfig(masterGridKey.value, api, null);
       return;
     }
     default:
@@ -263,12 +250,12 @@ const detailViewMode = computed(() => themeStore.detailViewMode);
 // 使用全局主题设置的masterDetailMode
 const masterDetailMode = computed(() => themeStore.masterDetailMode);
 
-const detailFeatureEnabled = computed(() => runtime?.features?.detailTabs !== false);
+const detailFeatureEnabled = computed(() => runtime.features?.detailTabs !== false);
 const hasDetailTabs = computed(() => detailFeatureEnabled.value && (pageConfig.value?.tabs?.length || 0) > 0);
 const detailTabs = computed(() => pageConfig.value?.tabs || []);
-const detailLayoutMode = computed(() => runtime?.detailLayoutMode?.value ?? runtime?.detailLayoutMode ?? 'nested');
+const detailLayoutMode = computed(() => meta.detailLayoutMode?.value ?? meta.detailLayoutMode ?? 'nested');
 const splitConfig = computed(() => {
-  const config = runtime?.detailSplitConfig?.value ?? runtime?.detailSplitConfig ?? {};
+  const config = meta.detailSplitConfig?.value ?? meta.detailSplitConfig ?? {};
   return {
     defaultSize: config?.defaultSize ?? 0.5,
     min: config?.min ?? 0.2,
@@ -309,18 +296,12 @@ const detailRowEditableByTab = computed(() => {
   const tabs = pageConfig.value?.tabs || [];
   for (const tab of tabs) {
     const rules = detailRowEditableRulesByTab?.value?.[tab.key] || [];
-    console.log(`[DEBUG] detailRowEditableByTab - tab: ${tab.key}, rules:`, rules);
     const callback = buildRowEditableCallback(rules);
     result[tab.key] = callback ? (row: any) => callback({ data: row }) : undefined;
   }
-  console.log(
-    '[DEBUG] detailRowEditableByTab result:',
-    Object.keys(result).map(k => `${k}: ${result[k] ? 'has callback' : 'undefined'}`)
-  );
   return result;
 });
 const activeMasterId = ref<number | null>(null);
-const activeMasterRowKey = ref<string | null>(null);
 const activeDetailTab = ref<string>('');
 
 const masterGridOptionsValue = computed(() => masterGridOptions?.value || null);
@@ -335,7 +316,7 @@ function normalizeMasterId(value: unknown): number | null {
 let cachedDataSource: any = null;
 function getDataSource() {
   if (!cachedDataSource) {
-    cachedDataSource = runtime?.createServerSideDataSource?.({
+    cachedDataSource = createServerSideDataSource({
       pageSize: masterGridOptionsValue.value?.cacheBlockSize
     });
   }
@@ -362,14 +343,30 @@ const {
   onFilterChanged,
   onSelectionChanged
 } = useMasterGridBindings({
-  runtime,
+  deps: {
+    masterGridApi: runtime.masterGridApi,
+    masterGridKey: meta.masterGridKey,
+    masterCellEditableRules: meta.masterCellEditableRules,
+    masterRowEditableRules,
+    masterRowClassRules,
+    masterSumFields: meta.masterSumFields,
+    masterStore,
+    detailStore,
+    save,
+    saveGridConfig,
+    customExportConfigs,
+    executeCustomExport,
+    executeAction,
+    markFieldChange,
+    runMasterCalc,
+    broadcastToDetail,
+    onMasterCellClicked: handleLookupMasterCellClick
+  },
   isUserEditing: editingState,
   metaRowClassGetter: masterRowClassGetter?.value,
   gridOptions: masterGridOptionsValue.value,
   columnDefs: masterColumnDefs,
   contextMenuConfig: masterContextMenu,
-  rowEditableRules: masterRowEditableRules?.value,
-  rowClassRules: masterRowClassRules?.value,
   dataSource: getDataSource(),
   onSelectionChanged: async rows => {
     if (!isSplitMode.value || !hasDetailTabs.value) return;
@@ -378,15 +375,12 @@ const {
     const nextRowKey = selected ? ensureRowKey(selected) : null;
     activeMasterId.value = nextId;
     activeMasterRowKey.value = nextRowKey ? String(nextRowKey) : null;
-    if (runtimeActiveMasterRowKey) {
-      runtimeActiveMasterRowKey.value = activeMasterRowKey.value;
-    }
     // loadDetailData 由 DetailPanelV3 的 watch(activeMasterId) 统一触发，此处不再重复调用
   }
 });
 
 const masterGridKey = computed(() => {
-  const key = runtime?.masterGridKey?.value ?? runtime?.masterGridKey;
+  const key = meta.masterGridKey?.value ?? meta.masterGridKey;
   return key && String(key).trim().length > 0 ? key : 'masterGrid';
 });
 
@@ -401,7 +395,6 @@ const { getDetailContextMenuItems } = useGridContextMenu({
   saveGridConfig,
   detailMenuByTab: detailContextMenuByTab,
   isDetailRowEditableByTab: detailRowEditableByTab,
-  openBatchSelect,
   getActiveMaster: () => ({
     id: activeMasterId.value,
     rowKey: activeMasterRowKey.value
@@ -409,13 +402,9 @@ const { getDetailContextMenuItems } = useGridContextMenu({
   notifyError: (msg: string) => window.$message?.error(msg)
 });
 
-const masterGridApi = ref<any>(null);
-
 function handleMasterGridReady(event: any) {
-  console.log('[DEBUG] handleMasterGridReady called, isSplitMode:', isSplitMode.value);
-  masterGridApi.value = event.api;
   onMasterGridReady(event);
-  applyGridConfig?.(masterGridKey.value, event.api, event.columnApi, unref(masterColumnDefs) || []);
+  applyGridConfig(masterGridKey.value, event.api, event.columnApi, unref(masterColumnDefs) || []);
 }
 
 // 刷新detail行高度
@@ -455,12 +444,10 @@ function onDetailCellValueChanged(event: any, masterId: number, tabKey: string, 
 }
 
 function registerDetailGridApi(tabKey: string, api: any) {
-  if (!detailGridApisByTab?.value) return;
   detailGridApisByTab.value[tabKey] = api;
 }
 
 function unregisterDetailGridApi(tabKey: string, api: any) {
-  if (!detailGridApisByTab?.value) return;
   if (detailGridApisByTab.value[tabKey] === api) {
     delete detailGridApisByTab.value[tabKey];
   }
@@ -544,7 +531,7 @@ function getRowHeight(params: any): number | undefined {
 // 检测指定主表行及其子表是否有未保存的修改
 function hasUnsavedChanges(masterId: number): boolean {
   // 检查主表行
-  const masterRow = getMasterRowById?.(masterId);
+  const masterRow = getMasterRowById(masterId);
   if (masterRow && (masterRow._isNew || masterRow._isDeleted || masterRow._dirtyFields)) {
     return true;
   }
