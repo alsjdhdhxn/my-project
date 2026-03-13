@@ -1,6 +1,7 @@
 import type { Ref } from 'vue';
 import { type RowData, generateTempId, initRowData } from '@/v3/logic/calc-engine';
 import { buildCopyExcludedFields, clearCopiedIdentityFields } from '@/v3/composables/meta-v3/copy-row-fields';
+import { isPersistedRow } from '@/v3/composables/meta-v3/row-persistence';
 
 export function useDetailRowMutations(params: {
   detailCache: Map<string, Record<string, RowData[]>>;
@@ -20,11 +21,6 @@ export function useDetailRowMutations(params: {
     setDetailRows,
     refreshDetailCells
   } = params;
-
-  function isPersistedRow(row: RowData | null | undefined) {
-    const numericId = typeof row?.id === 'number' ? row.id : Number(row?.id);
-    return Number.isFinite(numericId) && numericId > 0;
-  }
 
   function addDetailRow(masterId: number, tabKey: string, masterRowKey?: string) {
     const resolvedRowKey = masterRowKey ?? resolveMasterRowKey(masterId);

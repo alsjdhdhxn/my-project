@@ -6,6 +6,7 @@ import { useDetailGridSync } from '@/v3/composables/meta-v3/useDetailGridSync';
 import { useDetailRowMutations } from '@/v3/composables/meta-v3/useDetailRowMutations';
 import { useMasterRowMutations } from '@/v3/composables/meta-v3/useMasterRowMutations';
 import { useMasterQueryState } from '@/v3/composables/meta-v3/useMasterQueryState';
+import { isPersistedRow } from '@/v3/composables/meta-v3/row-persistence';
 import { type ParsedPageConfig, type RowData, ensureRowKey, initRowData } from '@/v3/logic/calc-engine';
 
 export function useMasterDetailData(params: {
@@ -54,11 +55,6 @@ export function useMasterDetailData(params: {
     });
     if (found) return found;
     return null;
-  }
-
-  function isPersistedRow(row: RowData | null | undefined) {
-    const numericId = typeof row?.id === 'number' ? row.id : Number(row?.id);
-    return Number.isFinite(numericId) && numericId > 0;
   }
 
   function resolveCurrentMasterRow(row: RowData) {
