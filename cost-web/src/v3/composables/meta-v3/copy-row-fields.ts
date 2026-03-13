@@ -26,3 +26,17 @@ export function copyRowFields(sourceRow: RowData, targetRow: RowData, excludedFi
     }
   }
 }
+
+export function applyCopiedRowFields(params: {
+  sourceRow: RowData;
+  targetRow: RowData;
+  excludeFields: Array<string | null | undefined>;
+  clearFields?: Array<string | null | undefined>;
+}) {
+  const { sourceRow, targetRow, excludeFields, clearFields = [] } = params;
+  const excludedFields = buildCopyExcludedFields(...excludeFields);
+  copyRowFields(sourceRow, targetRow, excludedFields);
+  if (clearFields.length > 0) {
+    clearCopiedIdentityFields(targetRow, ...clearFields);
+  }
+}

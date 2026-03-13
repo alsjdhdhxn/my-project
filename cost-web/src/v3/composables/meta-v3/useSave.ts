@@ -1,6 +1,7 @@
 import { type Ref, type ShallowRef, ref } from 'vue';
 import type { GridApi } from 'ag-grid-community';
 import { saveDynamicData } from '@/service/api';
+import { forEachNestedDetailGridApi } from '@/v3/composables/meta-v3/detail-grid-apis';
 import {
   type ParsedPageConfig,
   type RowData,
@@ -384,22 +385,15 @@ export function useSave(params: {
         const cached = detailCache.get(masterRowKey);
         if (!cached) continue;
 
-        const secondLevelInfo = masterGridApi.value?.getDetailGridInfo(`detail_${masterRowKey}`);
-        if (secondLevelInfo?.api) {
-          secondLevelInfo.api.forEachDetailGridInfo((detailInfo: any) => {
-            if (!detailInfo?.api) return;
-            let tabKey: string | undefined;
-            for (const key of Object.keys(cached)) {
-              if (detailInfo.id?.includes(key)) {
-                tabKey = key;
-                break;
-              }
-            }
-            if (!tabKey) return;
-            detailInfo.api.setGridOption?.('rowData', cached[tabKey]);
-            detailInfo.api.refreshCells?.({ force: true });
-          });
-        }
+        forEachNestedDetailGridApi({
+          masterGridApi,
+          masterRowKey,
+          tabKeys: Object.keys(cached),
+          callback: (api, tabKey) => {
+            api.setGridOption?.('rowData', cached[tabKey]);
+            api.refreshCells?.({ force: true });
+          }
+        });
 
         if (detailGridApisByTab?.value && activeMasterRowKey?.value === masterRowKey) {
           for (const [tabKey, rows] of Object.entries(cached)) {

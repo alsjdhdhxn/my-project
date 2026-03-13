@@ -2,6 +2,7 @@ import { type Ref, type ShallowRef, nextTick, ref } from 'vue';
 import type { GridApi } from 'ag-grid-community';
 import type { LookupRule } from '@/v3/composables/meta-v3/useMetaColumns';
 import { type RowData, ensureRowKey } from '@/v3/logic/calc-engine';
+import { forEachDetailGridApi } from '@/v3/composables/meta-v3/detail-grid-apis';
 
 type MarkFieldChange = (row: RowData, field: string, oldValue: any, newValue: any, type: 'user' | 'calc') => void;
 
@@ -92,6 +93,44 @@ export function useLookupDialog(params: {
     return changedFields;
   }
 
+  function findDetailLookupRow(rows: RowData[], rowId: number | null, rowKey: string | null) {
+    if (rowKey) {
+      return rows.find(candidate => String(ensureRowKey(candidate)) === rowKey) ?? null;
+    }
+    if (rowId != null) {
+      return rows.find(candidate => candidate.id === rowId) ?? null;
+    }
+    return null;
+  }
+
+  function applyLookupToDetailGrid(params: {
+    api: any;
+    row: RowData;
+    detailRowKey: string;
+    masterId: number;
+    tabKey: string;
+    masterRowKey: string;
+    changedFields: string[];
+  }) {
+    const { api, row, detailRowKey, masterId, tabKey, masterRowKey, changedFields } = params;
+    const node =
+      api?.getRowNode?.(String(detailRowKey)) ??
+      (() => {
+        let matchedNode: any = null;
+        api?.forEachNode?.((candidate: any) => {
+          if (!matchedNode && candidate?.data?._rowKey === detailRowKey) {
+            matchedNode = candidate;
+          }
+        });
+        return matchedNode;
+      })();
+
+    if (node && changedFields.length > 0) {
+      runDetailCalc(node, api, row, masterId, tabKey, masterRowKey, changedFields);
+    }
+    api?.refreshCells?.({ force: true });
+  }
+
   async function onMasterCellClicked(event: any) {
     if (event.node?.rowPinned) return;
     const field = event.colDef?.field;
@@ -170,36 +209,29 @@ export function useLookupDialog(params: {
       for (const [masterRowKey, tabData] of detailCache.entries()) {
         const rows = tabData[tabKey];
         if (!rows) continue;
-        const row = rows.find(r => (rowKey ? ensureRowKey(r) === rowKey : r.id === rowId));
+        const row = findDetailLookupRow(rows, rowId, rowKey);
         if (row) {
           const detailRowKey = ensureRowKey(row);
           const masterRow = getMasterRowByRowKey(masterRowKey);
           const masterId = masterRow?.id;
           if (masterId == null) break;
           const changedFields = applyLookupFillData(row, fillData);
-
-          const splitDetailApi = detailGridApisByTab?.value?.[tabKey];
-          if (splitDetailApi) {
-            const node = splitDetailApi.getRowNode?.(String(detailRowKey));
-            if (node && changedFields.length > 0) {
-              runDetailCalc(node, splitDetailApi, row, masterId, tabKey, masterRowKey, changedFields);
-            }
-            splitDetailApi.refreshCells?.({ force: true });
-          } else {
-            const secondLevelInfo = masterGridApi.value?.getDetailGridInfo(`detail_${masterRowKey}`);
-            if (secondLevelInfo?.api) {
-              secondLevelInfo.api.forEachDetailGridInfo((detailInfo: any) => {
-                if (detailInfo.id?.includes(tabKey)) {
-                  detailInfo.api.forEachNode((node: any) => {
-                    if (node.data?._rowKey === detailRowKey && changedFields.length > 0) {
-                      runDetailCalc(node, detailInfo.api, row, masterId, tabKey, masterRowKey, changedFields);
-                    }
-                  });
-                  detailInfo.api.refreshCells({ force: true });
-                }
-              });
-            }
-          }
+          forEachDetailGridApi({
+            masterGridApi,
+            detailGridApisByTab,
+            masterRowKey,
+            tabKey,
+            callback: api =>
+              applyLookupToDetailGrid({
+                api,
+                row,
+                detailRowKey,
+                masterId,
+                tabKey,
+                masterRowKey,
+                changedFields
+              })
+          });
           if (changedFields.length > 0) {
             recalcAggregates(masterId, masterRowKey);
           }

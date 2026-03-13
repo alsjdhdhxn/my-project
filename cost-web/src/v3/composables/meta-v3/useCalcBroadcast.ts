@@ -1,5 +1,6 @@
 import type { Ref, ShallowRef } from 'vue';
 import type { GridApi } from 'ag-grid-community';
+import { forEachNestedDetailGridApi } from '@/v3/composables/meta-v3/detail-grid-apis';
 import type { CalcRuleDependency, CalcRuntimeScope, ParsedPageConfig, RowData } from '@/v3/logic/calc-engine';
 import {
   buildCalcRuleDependencies,
@@ -505,28 +506,19 @@ export function useCalcBroadcast(params: {
       });
       return;
     }
-    const api = masterGridApi.value;
-    if (!api) return;
-    const secondLevelInfo = api.getDetailGridInfo(`detail_${masterRowKey}`);
-    if (!secondLevelInfo?.api) {
-      return;
-    }
     const cached = detailCache.get(masterRowKey);
     if (!cached) return;
     const tabs = pageConfig.value?.tabs || [];
 
-    secondLevelInfo.api.forEachDetailGridInfo((detailInfo: any) => {
-      if (!detailInfo?.api) return;
-      let tabKey: string | undefined;
-      for (const tab of tabs) {
-        if (detailInfo.id?.includes(tab.key)) {
-          tabKey = tab.key;
-          break;
-        }
+    forEachNestedDetailGridApi({
+      masterGridApi,
+      masterRowKey,
+      tabKeys: tabs.map(tab => tab.key),
+      callback: (detailApi, tabKey) => {
+        if (!cached[tabKey]) return;
+        detailApi.refreshCells({ force: true });
+        detailApi.refreshClientSideRowModel?.('aggregate');
       }
-      if (!tabKey || !cached[tabKey]) return;
-      detailInfo.api.refreshCells({ force: true });
-      detailInfo.api.refreshClientSideRowModel?.('aggregate');
     });
   }
 

@@ -1,6 +1,6 @@
 import type { Ref, ShallowRef } from 'vue';
 import type { GridApi } from 'ag-grid-community';
-import { buildCopyExcludedFields, clearCopiedIdentityFields, copyRowFields } from '@/v3/composables/meta-v3/copy-row-fields';
+import { applyCopiedRowFields } from '@/v3/composables/meta-v3/copy-row-fields';
 import { type RowData, ensureRowKey, generateTempId, initRowData } from '@/v3/logic/calc-engine';
 
 export function useMasterRowMutations(params: {
@@ -87,11 +87,14 @@ export function useMasterRowMutations(params: {
     const sourceRowKey = sourceRow._rowKey as string;
     const newMasterId = generateTempId();
     const newRow = initRowData({ id: newMasterId }, true);
-    const masterCopyExcludedFields = buildCopyExcludedFields(masterPkColumn.value);
     ensureRowKey(newRow);
 
-    copyRowFields(sourceRow, newRow, masterCopyExcludedFields);
-    clearCopiedIdentityFields(newRow, masterPkColumn.value);
+    applyCopiedRowFields({
+      sourceRow,
+      targetRow: newRow,
+      excludeFields: [masterPkColumn.value],
+      clearFields: [masterPkColumn.value]
+    });
 
     const sourceNode = api?.getRowNode(String(sourceRowKey));
     const insertIndex = sourceNode?.rowIndex != null ? sourceNode.rowIndex + 1 : 0;
@@ -108,13 +111,16 @@ export function useMasterRowMutations(params: {
         for (const [tabKey, rows] of Object.entries(sourceCached)) {
           const fkColumn = detailFkColumnByTab.value[tabKey] || 'masterId';
           const detailPkColumn = detailPkColumnByTab.value[tabKey];
-          const detailCopyExcludedFields = buildCopyExcludedFields(detailPkColumn, fkColumn);
           newCached[tabKey] = rows
             .filter(r => !r._isDeleted)
             .map(r => {
               const newDetailRow = initRowData({ id: generateTempId(), [fkColumn]: newMasterId }, true);
-              copyRowFields(r, newDetailRow, detailCopyExcludedFields);
-              clearCopiedIdentityFields(newDetailRow, detailPkColumn);
+              applyCopiedRowFields({
+                sourceRow: r,
+                targetRow: newDetailRow,
+                excludeFields: [detailPkColumn, fkColumn],
+                clearFields: [detailPkColumn]
+              });
               return newDetailRow;
             });
         }

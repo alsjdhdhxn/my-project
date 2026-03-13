@@ -1,6 +1,7 @@
 import type { Ref, ShallowRef } from 'vue';
 import type { GridApi } from 'ag-grid-community';
 import type { RowData } from '@/v3/logic/calc-engine';
+import { forEachDetailGridApi } from '@/v3/composables/meta-v3/detail-grid-apis';
 
 export function useDetailGridSync(params: {
   masterGridApi: ShallowRef<GridApi | null>;
@@ -9,19 +10,7 @@ export function useDetailGridSync(params: {
   const { masterGridApi, detailGridApisByTab } = params;
 
   function forEachDetailGrid(masterRowKey: string, tabKey: string, callback: (api: any) => void) {
-    const secondLevelInfo = masterGridApi.value?.getDetailGridInfo(`detail_${masterRowKey}`);
-    if (secondLevelInfo?.api) {
-      secondLevelInfo.api.forEachDetailGridInfo((detailInfo: any) => {
-        if (detailInfo.id?.includes(tabKey)) {
-          callback(detailInfo.api);
-        }
-      });
-    }
-
-    const tabApi = detailGridApisByTab?.value?.[tabKey];
-    if (tabApi) {
-      callback(tabApi);
-    }
+    forEachDetailGridApi({ masterGridApi, detailGridApisByTab, masterRowKey, tabKey, callback });
   }
 
   function setDetailRows(masterRowKey: string, tabKey: string, rows: RowData[]) {
