@@ -101,12 +101,6 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     makeError
   });
 
-  const recalcAggregatesRef = { current: (_masterId: number, _masterRowKey?: string) => {} };
-  const recalcAggregatesProxy = (masterId: number, masterRowKey?: string) => {
-    if (!resolvedFeatures.value.aggregates) return;
-    recalcAggregatesRef.current(masterId, masterRowKey);
-  };
-
   const dataApi = useMasterDetailData({
     pageCode,
     pageConfig: meta.pageConfig,
@@ -133,7 +127,31 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     detailGridApisByTab
   });
 
-  recalcAggregatesRef.current = calc.recalcAggregates;
+  const calcApi = {
+    markFieldChange: calc.markFieldChange,
+    runMasterCalc: calc.runMasterCalc,
+    runDetailCalc: (
+      node: any,
+      api: any,
+      row: any,
+      masterId: number,
+      tabKey: string,
+      masterRowKey?: string,
+      changedFields?: string | string[],
+      valueOverrides?: Record<string, any>
+    ) => {
+      if (!resolvedFeatures.value.detailTabs) return;
+      return calc.runDetailCalc(node, api, row, masterId, tabKey, masterRowKey, changedFields, valueOverrides);
+    },
+    recalcAggregates: (masterId: number, masterRowKey?: string) => {
+      if (!resolvedFeatures.value.aggregates) return;
+      return calc.recalcAggregates(masterId, masterRowKey);
+    },
+    broadcastToDetail: async (masterId: number, row: any, changedFields?: string | string[]) => {
+      if (!resolvedFeatures.value.broadcast) return;
+      return calc.broadcastToDetail(masterId, row, changedFields);
+    }
+  };
 
   const { addMasterRow, addDetailRow, deleteDetailRow, copyDetailRow } = useRuntimeMutations({
     resolvedFeatures,
@@ -142,9 +160,9 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     addDetailRowRaw: detailApi.addDetailRow,
     deleteDetailRowRaw: detailApi.deleteDetailRow,
     copyDetailRowRaw: detailApi.copyDetailRow,
-    runMasterCalc: calc.runMasterCalc,
-    runDetailCalc: calc.runDetailCalc,
-    recalcAggregates: recalcAggregatesProxy
+    runMasterCalc: calcApi.runMasterCalc,
+    runDetailCalc: calcApi.runDetailCalc,
+    recalcAggregates: calcApi.recalcAggregates
   });
 
   const runtimeLookup = useRuntimeLookup({
@@ -159,11 +177,11 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     getMasterRowByRowKey: accessApi.getMasterRowByRowKey,
     detailCache: cacheApi.detailCache,
     masterGridApi,
-    markFieldChange: calc.markFieldChange,
-    runMasterCalc: calc.runMasterCalc,
-    runDetailCalc: calc.runDetailCalc,
-    recalcAggregates: recalcAggregatesProxy,
-    broadcastToDetail: calc.broadcastToDetail,
+    markFieldChange: calcApi.markFieldChange,
+    runMasterCalc: calcApi.runMasterCalc,
+    runDetailCalc: calcApi.runDetailCalc,
+    recalcAggregates: calcApi.recalcAggregates,
+    broadcastToDetail: calcApi.broadcastToDetail,
     detailGridApisByTab
   });
 
@@ -249,29 +267,7 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     deleteDetailRow,
     copyMasterRow: masterApi.copyMasterRow,
     copyDetailRow,
-    markFieldChange: calc.markFieldChange,
-    runMasterCalc: calc.runMasterCalc,
-    runDetailCalc: (
-      node: any,
-      api: any,
-      row: any,
-      masterId: number,
-      tabKey: string,
-      masterRowKey?: string,
-      changedFields?: string | string[],
-      valueOverrides?: Record<string, any>
-    ) => {
-      if (!resolvedFeatures.value.detailTabs) return;
-      return calc.runDetailCalc(node, api, row, masterId, tabKey, masterRowKey, changedFields, valueOverrides);
-    },
-    recalcAggregates: (masterId: number) => {
-      if (!resolvedFeatures.value.aggregates) return;
-      return calc.recalcAggregates(masterId);
-    },
-    broadcastToDetail: async (masterId: number, row: any, changedFields?: string | string[]) => {
-      if (!resolvedFeatures.value.broadcast) return;
-      return calc.broadcastToDetail(masterId, row, changedFields);
-    },
+    ...calcApi,
     ...runtimeLookup,
     customExportConfigs: customExport.customExportConfigs,
     executeCustomExport: customExport.executeCustomExport,
@@ -335,8 +331,8 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     loadMeta: loadMetaRaw,
     compileRules: compileRulesRaw,
     refreshAutoFeatures,
-    runMasterCalc: calc.runMasterCalc,
-    broadcastToDetail: calc.broadcastToDetail
+    runMasterCalc: calcApi.runMasterCalc,
+    broadcastToDetail: calcApi.broadcastToDetail
   });
 
   return {
