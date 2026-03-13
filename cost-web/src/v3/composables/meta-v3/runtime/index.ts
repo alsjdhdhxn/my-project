@@ -8,14 +8,12 @@ import { useSave } from '@/v3/composables/meta-v3/useSave';
 import { useUserGridConfig } from '@/v3/composables/meta-v3/useUserGridConfig';
 import { useCustomExport } from '@/v3/composables/meta-v3/useCustomExport';
 import { createRuntimeLogger } from './logger';
-import { useRuntimeBootstrap } from './useRuntimeBootstrap';
-import { useRuntimeComponentState } from './useRuntimeComponentState';
-import { useRuntimeExtensions } from './useRuntimeExtensions';
 import { useRuntimeLookup } from './useRuntimeLookup';
 import { useRuntimeMetadataReload } from './useRuntimeMetadataReload';
 import { useRuntimeActions } from './useRuntimeActions';
 import { useRuntimeState } from './useRuntimeState';
 import { useRuntimeMutations } from './useRuntimeMutations';
+import { useRuntimeInitialization } from './useRuntimeInitialization';
 import type { MetaError, RuntimeFeatures, RuntimeStage } from './types';
 
 type NotifyFn = (message: string) => void;
@@ -287,17 +285,8 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
 
   registerActionHandler('advancedSearch', () => advancedSearch.open());
 
-  const { buildStates } = useRuntimeComponentState({
-    logger,
-    meta: {
-      pageComponents: meta.pageComponents,
-      masterGridKey: meta.masterGridKey,
-      masterColumnDefs: meta.masterColumnDefs
-    },
-    componentStateByKey,
-    componentErrors
-  });
-  const { applyExtensions } = useRuntimeExtensions({
+  const { init, loadComponents, parseConfig, loadMeta, compileRules } = useRuntimeInitialization({
+    pageCode,
     logger,
     meta: {
       pageComponents: meta.pageComponents,
@@ -309,30 +298,21 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
       masterRowEditableRules: meta.masterRowEditableRules,
       masterSumFields: meta.masterSumFields
     },
-    componentStateByKey,
-    resolvedFeatures,
-    notifyError,
-    getRuntime: () => runtimeApi
-  });
-  const { init, loadComponents, parseConfig, loadMeta, compileRules } = useRuntimeBootstrap({
-    pageCode,
-    logger,
-    meta: {
-      pageComponents: meta.pageComponents,
-      masterGridKey: meta.masterGridKey
-    },
     runtimeStatus,
     runtimeError,
     isReady,
+    componentStateByKey,
+    componentErrors,
+    resolvedFeatures,
+    notifyError,
+    getRuntime: () => runtimeApi,
     reportComponentError,
     refreshAutoFeatures,
     makeError,
     loadComponentsRaw,
     parseConfigRaw,
     loadMetaRaw,
-    compileRulesRaw,
-    buildStates,
-    applyExtensions
+    compileRulesRaw
   });
 
   const { reloadMetadata } = useRuntimeMetadataReload({
