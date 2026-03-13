@@ -8,6 +8,7 @@ import { useMasterRowMutations } from '@/v3/composables/meta-v3/useMasterRowMuta
 import { useMasterQueryState } from '@/v3/composables/meta-v3/useMasterQueryState';
 import { useMasterRowReload } from '@/v3/composables/meta-v3/useMasterRowReload';
 import { isPersistedRow } from '@/v3/composables/meta-v3/row-persistence';
+import { resolveCurrentDetailRow, resolveCurrentMasterRow } from '@/v3/composables/meta-v3/row-resolution';
 import { type ParsedPageConfig, type RowData, ensureRowKey, initRowData } from '@/v3/logic/calc-engine';
 
 export function useMasterDetailData(params: {
@@ -56,32 +57,6 @@ export function useMasterDetailData(params: {
     });
     if (found) return found;
     return null;
-  }
-
-  function resolveCurrentMasterRow(row: RowData) {
-    const rowKey = row?._rowKey ? String(row._rowKey) : null;
-    if (rowKey) {
-      const currentRow = getMasterRowByRowKey(rowKey);
-      if (currentRow) return currentRow;
-    }
-    if (isPersistedRow(row)) {
-      const currentRow = getMasterRowById(Number(row.id));
-      if (currentRow) return currentRow;
-    }
-    return row;
-  }
-
-  function resolveCurrentDetailRow(rows: RowData[], row: RowData) {
-    const rowKey = row?._rowKey ? String(row._rowKey) : null;
-    if (rowKey) {
-      const currentRow = rows.find(r => r._rowKey === rowKey);
-      if (currentRow) return currentRow;
-    }
-    if (row.id != null) {
-      const currentRow = rows.find(r => r.id === row.id);
-      if (currentRow) return currentRow;
-    }
-    return row;
   }
 
   function resolveMasterRowKey(masterId: number): string | null {
@@ -151,7 +126,7 @@ export function useMasterDetailData(params: {
     detailFkColumnByTab,
     detailPkColumnByTab,
     loadDetailData,
-    resolveCurrentMasterRow,
+    resolveCurrentMasterRow: row => resolveCurrentMasterRow(row, { getMasterRowByRowKey, getMasterRowById }),
     isPersistedRow
   });
 
