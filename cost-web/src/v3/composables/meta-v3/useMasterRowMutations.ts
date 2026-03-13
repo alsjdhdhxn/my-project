@@ -35,6 +35,17 @@ export function useMasterRowMutations(params: {
     }, 100);
   }
 
+  function insertMasterRow(row: RowData, insertIndex: number) {
+    const api = masterGridApi.value;
+    if (!api) return;
+    api.applyServerSideTransaction({
+      route: [],
+      add: [row],
+      addIndex: insertIndex
+    });
+    focusInsertedMasterRow(insertIndex, String(row._rowKey));
+  }
+
   function addMasterRow() {
     const api = masterGridApi.value;
     const newRow = initRowData({ id: generateTempId() }, true);
@@ -44,15 +55,7 @@ export function useMasterRowMutations(params: {
     const insertIndex =
       selectedNodes.length > 0 && selectedNodes[0].rowIndex != null ? selectedNodes[0].rowIndex + 1 : 0;
 
-    if (api) {
-      api.applyServerSideTransaction({
-        route: [],
-        add: [newRow],
-        addIndex: insertIndex
-      });
-    }
-
-    focusInsertedMasterRow(insertIndex, String(newRow._rowKey));
+    insertMasterRow(newRow, insertIndex);
 
     return newRow;
   }
@@ -93,14 +96,6 @@ export function useMasterRowMutations(params: {
     const sourceNode = api?.getRowNode(String(sourceRowKey));
     const insertIndex = sourceNode?.rowIndex != null ? sourceNode.rowIndex + 1 : 0;
 
-    if (api) {
-      api.applyServerSideTransaction({
-        route: [],
-        add: [newRow],
-        addIndex: insertIndex
-      });
-    }
-
     if (sourceMasterId != null && sourceRowKey) {
       let sourceCached = detailCache.get(sourceRowKey);
       if (!sourceCached) {
@@ -127,7 +122,7 @@ export function useMasterRowMutations(params: {
       }
     }
 
-    focusInsertedMasterRow(insertIndex, String(newRow._rowKey));
+    insertMasterRow(newRow, insertIndex);
 
     return newRow;
   }
