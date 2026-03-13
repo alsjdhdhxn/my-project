@@ -7,9 +7,10 @@ import { useDetailRowMutations } from '@/v3/composables/meta-v3/useDetailRowMuta
 import { useMasterRowMutations } from '@/v3/composables/meta-v3/useMasterRowMutations';
 import { useMasterQueryState } from '@/v3/composables/meta-v3/useMasterQueryState';
 import { useMasterRowReload } from '@/v3/composables/meta-v3/useMasterRowReload';
+import { useMasterRowAccess } from '@/v3/composables/meta-v3/useMasterRowAccess';
 import { isPersistedRow } from '@/v3/composables/meta-v3/row-persistence';
 import { resolveCurrentDetailRow, resolveCurrentMasterRow } from '@/v3/composables/meta-v3/row-resolution';
-import { type ParsedPageConfig, type RowData, ensureRowKey, initRowData } from '@/v3/logic/calc-engine';
+import { type ParsedPageConfig, type RowData, initRowData } from '@/v3/logic/calc-engine';
 
 export function useMasterDetailData(params: {
   pageCode: string;
@@ -37,34 +38,9 @@ export function useMasterDetailData(params: {
     masterGridApi,
     detailGridApisByTab
   });
-
-  function getMasterRowByRowKey(rowKey: string): RowData | null {
-    if (!rowKey) return null;
-    const api = masterGridApi.value as any;
-    const node = api?.getRowNode?.(String(rowKey));
-    if (node?.data) return node.data as RowData;
-    return null;
-  }
-
-  function getMasterRowById(id: number): RowData | null {
-    if (id == null) return null;
-    const api = masterGridApi.value as any;
-    let found: RowData | null = null;
-    api?.forEachNode?.((node: any) => {
-      if (node?.data?.id === id) {
-        found = node.data;
-      }
-    });
-    if (found) return found;
-    return null;
-  }
-
-  function resolveMasterRowKey(masterId: number): string | null {
-    const row = getMasterRowById(masterId);
-    if (!row) return null;
-    ensureRowKey(row);
-    return row._rowKey || null;
-  }
+  const { getMasterRowByRowKey, getMasterRowById, resolveMasterRowKey } = useMasterRowAccess({
+    masterGridApi
+  });
 
   async function loadDetailData(masterId: number, masterRowKey?: string) {
     const resolvedRowKey = masterRowKey ?? resolveMasterRowKey(masterId);
