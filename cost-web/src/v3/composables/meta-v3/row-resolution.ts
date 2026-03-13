@@ -1,5 +1,6 @@
 import { type RowData } from '@/v3/logic/calc-engine';
 import { isPersistedRow } from '@/v3/composables/meta-v3/row-persistence';
+import { findRowByIdentity } from '@/v3/composables/meta-v3/row-identity';
 
 export function resolveCurrentMasterRow(
   row: RowData,
@@ -22,14 +23,5 @@ export function resolveCurrentMasterRow(
 }
 
 export function resolveCurrentDetailRow(rows: RowData[], row: RowData) {
-  const rowKey = row?._rowKey ? String(row._rowKey) : null;
-  if (rowKey) {
-    const currentRow = rows.find(r => r._rowKey === rowKey);
-    if (currentRow) return currentRow;
-  }
-  if (row.id != null) {
-    const currentRow = rows.find(r => r.id === row.id);
-    if (currentRow) return currentRow;
-  }
-  return row;
+  return findRowByIdentity(rows, row);
 }

@@ -2,6 +2,7 @@ import type { Ref } from 'vue';
 import { type RowData, generateTempId, initRowData } from '@/v3/logic/calc-engine';
 import { buildCopyExcludedFields, clearCopiedIdentityFields, copyRowFields } from '@/v3/composables/meta-v3/copy-row-fields';
 import { isPersistedRow } from '@/v3/composables/meta-v3/row-persistence';
+import { isSameRowIdentity } from '@/v3/composables/meta-v3/row-identity';
 
 export function useDetailRowMutations(params: {
   detailCache: Map<string, Record<string, RowData[]>>;
@@ -55,7 +56,7 @@ export function useDetailRowMutations(params: {
     const currentRow = resolveCurrentDetailRow(detailRows.rows, row);
 
     if (!isPersistedRow(currentRow)) {
-      const idx = detailRows.rows.findIndex(r => r === currentRow || r._rowKey === currentRow._rowKey || r.id === currentRow.id);
+      const idx = detailRows.rows.findIndex(r => isSameRowIdentity(r, currentRow));
       if (idx >= 0) detailRows.rows.splice(idx, 1);
       setDetailRows(detailRows.masterRowKey, tabKey, detailRows.rows);
     } else {
