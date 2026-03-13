@@ -18,3 +18,11 @@ export function clearCopiedIdentityFields(row: RowData, ...fields: Array<string 
     delete row[field];
   }
 }
+
+export function copyRowFields(sourceRow: RowData, targetRow: RowData, excludedFields: Set<string>) {
+  for (const [key, value] of Object.entries(sourceRow)) {
+    if (!key.startsWith('_') && !excludedFields.has(key)) {
+      targetRow[key] = value;
+    }
+  }
+}

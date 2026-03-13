@@ -1,6 +1,6 @@
 import type { Ref } from 'vue';
 import { type RowData, generateTempId, initRowData } from '@/v3/logic/calc-engine';
-import { buildCopyExcludedFields, clearCopiedIdentityFields } from '@/v3/composables/meta-v3/copy-row-fields';
+import { buildCopyExcludedFields, clearCopiedIdentityFields, copyRowFields } from '@/v3/composables/meta-v3/copy-row-fields';
 import { isPersistedRow } from '@/v3/composables/meta-v3/row-persistence';
 
 export function useDetailRowMutations(params: {
@@ -65,9 +65,7 @@ export function useDetailRowMutations(params: {
     const detailCopyExcludedFields = buildCopyExcludedFields(detailPkColumn, fkColumn);
     const newRow = initRowData({ id: generateTempId(), [fkColumn]: masterId }, true);
 
-    for (const [key, value] of Object.entries(sourceRow)) {
-      if (!key.startsWith('_') && !detailCopyExcludedFields.has(key)) newRow[key] = value;
-    }
+    copyRowFields(sourceRow, newRow, detailCopyExcludedFields);
     clearCopiedIdentityFields(newRow, detailPkColumn);
 
     cached[tabKey].push(newRow);

@@ -1,6 +1,6 @@
 import type { Ref, ShallowRef } from 'vue';
 import type { GridApi } from 'ag-grid-community';
-import { buildCopyExcludedFields, clearCopiedIdentityFields } from '@/v3/composables/meta-v3/copy-row-fields';
+import { buildCopyExcludedFields, clearCopiedIdentityFields, copyRowFields } from '@/v3/composables/meta-v3/copy-row-fields';
 import { type RowData, ensureRowKey, generateTempId, initRowData } from '@/v3/logic/calc-engine';
 
 export function useMasterRowMutations(params: {
@@ -87,9 +87,7 @@ export function useMasterRowMutations(params: {
     const masterCopyExcludedFields = buildCopyExcludedFields(masterPkColumn.value);
     ensureRowKey(newRow);
 
-    for (const [key, value] of Object.entries(sourceRow)) {
-      if (!key.startsWith('_') && !masterCopyExcludedFields.has(key)) newRow[key] = value;
-    }
+    copyRowFields(sourceRow, newRow, masterCopyExcludedFields);
     clearCopiedIdentityFields(newRow, masterPkColumn.value);
 
     const sourceNode = api?.getRowNode(String(sourceRowKey));
@@ -120,9 +118,7 @@ export function useMasterRowMutations(params: {
             .filter(r => !r._isDeleted)
             .map(r => {
               const newDetailRow = initRowData({ id: generateTempId(), [fkColumn]: newMasterId }, true);
-              for (const [key, value] of Object.entries(r)) {
-                if (!key.startsWith('_') && !detailCopyExcludedFields.has(key)) newDetailRow[key] = value;
-              }
+              copyRowFields(r, newDetailRow, detailCopyExcludedFields);
               clearCopiedIdentityFields(newDetailRow, detailPkColumn);
               return newDetailRow;
             });
