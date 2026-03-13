@@ -1,11 +1,12 @@
 import type { Ref, ShallowRef } from 'vue';
 import type { GridApi } from 'ag-grid-community';
-import { fetchDynamicDataById, searchDynamicData } from '@/service/api';
+import { searchDynamicData } from '@/service/api';
 import { debugLog } from '@/v3/composables/meta-v3/debug';
 import { useDetailGridSync } from '@/v3/composables/meta-v3/useDetailGridSync';
 import { useDetailRowMutations } from '@/v3/composables/meta-v3/useDetailRowMutations';
 import { useMasterRowMutations } from '@/v3/composables/meta-v3/useMasterRowMutations';
 import { useMasterQueryState } from '@/v3/composables/meta-v3/useMasterQueryState';
+import { useMasterRowReload } from '@/v3/composables/meta-v3/useMasterRowReload';
 import { isPersistedRow } from '@/v3/composables/meta-v3/row-persistence';
 import { type ParsedPageConfig, type RowData, ensureRowKey, initRowData } from '@/v3/logic/calc-engine';
 
@@ -138,41 +139,6 @@ export function useMasterDetailData(params: {
     });
   }
 
-  async function reloadMasterRow(masterId: number, masterRowKey?: string) {
-    const tableCode = pageConfig.value?.masterTableCode;
-    const resolvedRowKey = masterRowKey ?? resolveMasterRowKey(masterId);
-    if (!tableCode || !resolvedRowKey) return null;
-
-    const api = masterGridApi.value as any;
-    const currentNode = api?.getRowNode?.(String(resolvedRowKey));
-    const currentRow = currentNode?.data as RowData | undefined;
-    const hasLocalChanges = Boolean(currentRow?._isNew || currentRow?._isDeleted || currentRow?._dirtyFields);
-
-    if (hasLocalChanges) {
-      return currentRow ?? null;
-    }
-
-    const { data, error } = await fetchDynamicDataById(tableCode, masterId);
-    if (error || !data) {
-      notifyError('加载主表数据失败');
-      return currentRow ?? null;
-    }
-
-    const refreshedRow = initRowData(data, false, masterPkColumn.value);
-    refreshedRow._rowKey = resolvedRowKey;
-
-    if (currentNode?.setData) {
-      currentNode.setData(refreshedRow);
-    } else {
-      api?.applyServerSideTransaction?.({
-        route: [],
-        update: [refreshedRow]
-      });
-    }
-
-    return refreshedRow;
-  }
-
   /** 清空所有业务数据缓存 */
   function clearAllCache() {
     detailCache.clear();
@@ -206,6 +172,14 @@ export function useMasterDetailData(params: {
       getMasterPkColumn: () => masterPkColumn.value,
       notifyError
     });
+
+  const { reloadMasterRow } = useMasterRowReload({
+    pageConfig,
+    masterPkColumn,
+    masterGridApi,
+    notifyError,
+    resolveMasterRowKey
+  });
 
   return {
     detailCache,
