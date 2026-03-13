@@ -34,13 +34,17 @@ export function useDetailRowMutations(params: {
     };
   }
 
+  function appendDetailRow(detailRows: { masterRowKey: string; rows: RowData[] }, tabKey: string, row: RowData) {
+    detailRows.rows.push(row);
+    setDetailRows(detailRows.masterRowKey, tabKey, detailRows.rows);
+  }
+
   function addDetailRow(masterId: number, tabKey: string, masterRowKey?: string) {
     const detailRows = resolveDetailRows(masterId, tabKey, masterRowKey);
     if (!detailRows) return null;
     const fkColumn = detailFkColumnByTab.value[tabKey] || 'masterId';
     const newRow = initRowData({ id: generateTempId(), [fkColumn]: masterId }, true);
-    detailRows.rows.push(newRow);
-    setDetailRows(detailRows.masterRowKey, tabKey, detailRows.rows);
+    appendDetailRow(detailRows, tabKey, newRow);
     return newRow;
   }
 
@@ -74,8 +78,7 @@ export function useDetailRowMutations(params: {
     copyRowFields(sourceRow, newRow, detailCopyExcludedFields);
     clearCopiedIdentityFields(newRow, detailPkColumn);
 
-    detailRows.rows.push(newRow);
-    setDetailRows(detailRows.masterRowKey, tabKey, detailRows.rows);
+    appendDetailRow(detailRows, tabKey, newRow);
     return newRow;
   }
 
