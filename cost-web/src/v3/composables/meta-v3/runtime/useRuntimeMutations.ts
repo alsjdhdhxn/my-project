@@ -18,6 +18,8 @@ type RunDetailCalc = (
 type RecalcAggregates = (masterId: number, masterRowKey?: string) => void;
 
 type AddMasterRow = () => RowData | null | undefined;
+type DeleteMasterRow = (row: RowData) => void;
+type CopyMasterRow = (row: RowData) => Promise<RowData | null | undefined> | RowData | null | undefined;
 type AddDetailRow = (masterId: number, tabKey: string, masterRowKey?: string) => RowData | null | undefined;
 type DeleteDetailRow = (masterId: number, tabKey: string, row: RowData, masterRowKey?: string) => boolean;
 type CopyDetailRow = (masterId: number, tabKey: string, sourceRow: RowData, masterRowKey?: string) => RowData | null | undefined;
@@ -26,6 +28,8 @@ export function useRuntimeMutations(params: {
   resolvedFeatures: Ref<Required<RuntimeFeatures>>;
   detailGridApisByTab: Ref<Record<string, any>>;
   addMasterRowRaw: AddMasterRow;
+  deleteMasterRowRaw: DeleteMasterRow;
+  copyMasterRowRaw: CopyMasterRow;
   addDetailRowRaw: AddDetailRow;
   deleteDetailRowRaw: DeleteDetailRow;
   copyDetailRowRaw: CopyDetailRow;
@@ -37,6 +41,8 @@ export function useRuntimeMutations(params: {
     resolvedFeatures,
     detailGridApisByTab,
     addMasterRowRaw,
+    deleteMasterRowRaw,
+    copyMasterRowRaw,
     addDetailRowRaw,
     deleteDetailRowRaw,
     copyDetailRowRaw,
@@ -63,6 +69,18 @@ export function useRuntimeMutations(params: {
     return row;
   }
 
+  function deleteMasterRow(row: RowData) {
+    deleteMasterRowRaw(row);
+  }
+
+  async function copyMasterRow(sourceRow: RowData) {
+    const row = await copyMasterRowRaw(sourceRow);
+    if (row) {
+      runMasterCalc(null, row);
+    }
+    return row;
+  }
+
   function addDetailRow(masterId: number, tabKey: string, masterRowKey?: string) {
     const row = addDetailRowRaw(masterId, tabKey, masterRowKey);
     return finalizeDetailMutation(masterId, tabKey, row, masterRowKey);
@@ -83,6 +101,8 @@ export function useRuntimeMutations(params: {
 
   return {
     addMasterRow,
+    deleteMasterRow,
+    copyMasterRow,
     addDetailRow,
     deleteDetailRow,
     copyDetailRow

@@ -4,6 +4,7 @@ import { searchDynamicData } from '@/service/api';
 import { debugLog } from '@/v3/composables/meta-v3/debug';
 import { forEachDetailGridApi } from '@/v3/composables/meta-v3/detail-grid-apis';
 import { applyCopiedRowFields } from '@/v3/composables/meta-v3/copy-row-fields';
+import { applyRowPatch, type RowFieldChange } from '@/v3/composables/meta-v3/row-patch';
 import { isPersistedRow } from '@/v3/composables/meta-v3/row-persistence';
 import { findRowByIdentity, isSameRowIdentity } from '@/v3/composables/meta-v3/row-identity';
 import { type ParsedPageConfig, type RowData, generateTempId, initRowData } from '@/v3/logic/calc-engine';
@@ -121,6 +122,66 @@ export function useDetailStore(params: {
     return findRowByIdentity(rows, row);
   }
 
+  function findDetailGridNode(api: any, detailRowKey: string) {
+    return (
+      api?.getRowNode?.(String(detailRowKey)) ??
+      (() => {
+        let matchedNode: any = null;
+        api?.forEachNode?.((candidate: any) => {
+          if (!matchedNode && candidate?.data?._rowKey === detailRowKey) {
+            matchedNode = candidate;
+          }
+        });
+        return matchedNode;
+      })()
+    );
+  }
+
+  function applyDetailPatch(
+    tabKey: string,
+    rowId: number | null,
+    rowKey: string | null,
+    patch: Record<string, any>,
+    fallbackChanges?: RowFieldChange[]
+  ) {
+    for (const [masterRowKey, tabData] of detailCache.entries()) {
+      const rows = tabData[tabKey];
+      if (!rows) continue;
+
+      const row =
+        (rowKey ? rows.find(candidate => String(candidate._rowKey || '') === rowKey) : null) ??
+        (rowId != null ? rows.find(candidate => candidate.id === rowId) : null);
+      if (!row) continue;
+
+      const detailRowKey = String(row._rowKey || '');
+      const fkColumn = detailFkColumnByTab.value[tabKey] || 'masterId';
+      const masterIdRaw = row[fkColumn];
+      if (masterIdRaw == null) return null;
+      const masterId = Number(masterIdRaw);
+      if (Number.isNaN(masterId)) return null;
+      const appliedChanges = applyRowPatch(row, patch);
+      const changes =
+        appliedChanges.length > 0
+          ? appliedChanges
+          : (fallbackChanges || []).filter(change => !Object.is(change.oldValue, change.newValue));
+
+      return {
+        row,
+        masterId,
+        masterRowKey,
+        detailRowKey,
+        changes,
+        applyToGrids(callback: (api: any, node: any) => void) {
+          forEachDetailGrid(masterRowKey, tabKey, api => {
+            callback(api, findDetailGridNode(api, detailRowKey));
+          });
+        }
+      };
+    }
+
+    return null;
+  }
+
   function appendDetailRow(detailRows: { masterRowKey: string; rows: RowData[] }, tabKey: string, row: RowData) {
     detailRows.rows.push(row);
     setDetailRows(detailRows.masterRowKey, tabKey, detailRows.rows);
@@ -180,6 +241,7 @@ export function useDetailStore(params: {
     detailCache,
     clearAllCache,
     loadDetailData,
+    applyDetailPatch,
     addDetailRow,
     deleteDetailRow,
     copyDetailRow

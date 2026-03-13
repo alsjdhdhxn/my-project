@@ -1,5 +1,4 @@
-import type { Ref, ShallowRef } from 'vue';
-import type { GridApi } from 'ag-grid-community';
+import type { Ref } from 'vue';
 import { useLookupDialog } from '@/v3/composables/meta-v3/useLookupDialog';
 import { buildCellEditableCallback } from '@/v3/composables/meta-v3/usePageRules';
 import type { RuntimeFeatures } from './types';
@@ -14,10 +13,8 @@ type RuntimeLookupMeta = {
 type RuntimeLookupOptions = {
   resolvedFeatures: Ref<Required<RuntimeFeatures>>;
   meta: RuntimeLookupMeta;
-  getMasterRowById: (masterId: number) => any;
-  getMasterRowByRowKey: (rowKey: string) => any;
-  detailCache: Map<string, Record<string, any[]>>;
-  masterGridApi: ShallowRef<GridApi | null>;
+  applyMasterPatch: (rowId: number | null, rowKey: string | null, patch: Record<string, any>) => any;
+  applyDetailPatch: (tabKey: string, rowId: number | null, rowKey: string | null, patch: Record<string, any>) => any;
   markFieldChange: (row: any, field: string, oldValue: any, newValue: any, type: 'user' | 'calc') => void;
   runMasterCalc: (node: any, row: any, valueOverrides?: Record<string, any>) => string[] | void;
   runDetailCalc: (
@@ -32,7 +29,6 @@ type RuntimeLookupOptions = {
   ) => string[] | void;
   recalcAggregates: (masterId: number, masterRowKey?: string) => void;
   broadcastToDetail?: (masterId: number, row: any, changedFields?: string | string[]) => Promise<void>;
-  detailGridApisByTab?: Ref<Record<string, any>>;
 };
 
 function createMasterRowEditableChecker(meta: RuntimeLookupMeta) {

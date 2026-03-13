@@ -25,6 +25,7 @@ const masterGridApi = runtime.masterGridApi;
 const calc = runtime.calc;
 const lookup = runtime.lookup;
 const actions = runtime.actions;
+const mutations = runtime.mutations;
 const gridConfigApi = runtime.gridConfig;
 
 const {
@@ -54,8 +55,9 @@ const { applyGridConfig, saveGridConfig } = gridConfigApi;
 const { markFieldChange, runDetailCalc, recalcAggregates, broadcastToDetail, runMasterCalc } = calc;
 const { onDetailCellClicked, onMasterCellClicked: handleLookupMasterCellClick } = lookup;
 
-const { detailCache, loadDetailData, addDetailRow, deleteDetailRow, copyDetailRow } = detailStore;
-const { createServerSideDataSource, getMasterRowById, addMasterRow, deleteMasterRow, copyMasterRow } = masterStore;
+const { detailCache, loadDetailData } = detailStore;
+const { createServerSideDataSource, getMasterRowById } = masterStore;
+const { addMasterRow, deleteMasterRow, copyMasterRow, addDetailRow, deleteDetailRow, copyDetailRow } = mutations;
 
 const editingState = ref(false);
 
@@ -351,7 +353,11 @@ const {
     masterRowClassRules,
     masterSumFields: meta.masterSumFields,
     masterStore,
-    detailStore,
+    detailStore: {
+      addDetailRow,
+      deleteDetailRow,
+      copyDetailRow
+    },
     save,
     saveGridConfig,
     customExportConfigs,
@@ -423,23 +429,44 @@ function onDetailCellValueChanged(event: any, masterId: number, tabKey: string, 
   if (!field || !masterId || event.node?.rowPinned) return;
   if (Object.is(event.oldValue, event.newValue)) return;
 
-  // Ensure downstream calc always reads the latest user-entered value.
-  if (!Object.is(row?.[field], event.newValue)) {
-    row[field] = event.newValue;
-  }
-
   const source = String(event?.source || '').toLowerCase();
   const isApiChange = source === 'api' || source === 'rowdatachanged';
   const changeType = isApiChange ? 'calc' : 'user';
-  markFieldChange(row, field, event.oldValue, event.newValue, changeType);
-  event.api?.refreshCells({ rowNodes: [event.node], columns: [field], force: true });
+  const patchResult = detailStore.applyDetailPatch(tabKey, row?.id ?? null, row?._rowKey ?? null, {
+    [field]: event.newValue
+  }, [
+    {
+      field,
+      oldValue: event.oldValue,
+      newValue: event.newValue
+    }
+  ]);
+  if (!patchResult || patchResult.changes.length === 0) return;
+
+  patchResult.changes.forEach(change => {
+    markFieldChange(patchResult.row, change.field, change.oldValue, change.newValue, changeType);
+  });
+
+  patchResult.applyToGrids((api, node) => {
+    api?.refreshCells?.({ rowNodes: node ? [node] : undefined, columns: [field], force: true });
+  });
 
   if (!isApiChange) {
     const resolvedRowKey = masterRowKey ?? activeMasterRowKey.value ?? undefined;
-    runDetailCalc(event.node, event.api, row, masterId, tabKey, resolvedRowKey, field, { [field]: event.newValue });
+    patchResult.applyToGrids((api, node) => {
+      runDetailCalc(
+        node ?? event.node,
+        api ?? event.api,
+        patchResult.row,
+        patchResult.masterId,
+        tabKey,
+        resolvedRowKey,
+        field,
+        { [field]: event.newValue }
+      );
+      api?.refreshClientSideRowModel?.('aggregate');
+    });
     recalcAggregates(masterId, resolvedRowKey);
-    // 刷新从表聚合汇总（grandTotalRow 不会自动重算）
-    event.api?.refreshClientSideRowModel?.('aggregate');
   }
 }
 

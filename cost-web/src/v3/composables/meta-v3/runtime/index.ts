@@ -166,10 +166,12 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     }
   };
 
-  const { addMasterRow, addDetailRow, deleteDetailRow, copyDetailRow } = useRuntimeMutations({
+  const { addMasterRow, deleteMasterRow, copyMasterRow, addDetailRow, deleteDetailRow, copyDetailRow } = useRuntimeMutations({
     resolvedFeatures,
     detailGridApisByTab,
     addMasterRowRaw: masterStore.addMasterRow,
+    deleteMasterRowRaw: masterStore.deleteMasterRow,
+    copyMasterRowRaw: masterStore.copyMasterRow,
     addDetailRowRaw: detailStore.addDetailRow,
     deleteDetailRowRaw: detailStore.deleteDetailRow,
     copyDetailRowRaw: detailStore.copyDetailRow,
@@ -186,16 +188,13 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
       masterLookupRules: meta.masterLookupRules,
       detailLookupRulesByTab: meta.detailLookupRulesByTab
     },
-    getMasterRowById: masterStore.getMasterRowById,
-    getMasterRowByRowKey: masterStore.getMasterRowByRowKey,
-    detailCache: detailStore.detailCache,
-    masterGridApi,
+    applyMasterPatch: masterStore.applyMasterPatch,
+    applyDetailPatch: detailStore.applyDetailPatch,
     markFieldChange: calcApi.markFieldChange,
     runMasterCalc: calcApi.runMasterCalc,
     runDetailCalc: calcApi.runDetailCalc,
     recalcAggregates: calcApi.recalcAggregates,
-    broadcastToDetail: calcApi.broadcastToDetail,
-    detailGridApisByTab
+    broadcastToDetail: calcApi.broadcastToDetail
   });
 
   const advancedSearch = useAdvancedSearch({
@@ -272,6 +271,15 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     executeCustomExport: customExport.executeCustomExport
   };
 
+  const mutations = {
+    addMasterRow,
+    deleteMasterRow,
+    copyMasterRow,
+    addDetailRow,
+    deleteDetailRow,
+    copyDetailRow
+  };
+
   const gridConfigApi = {
     applyGridConfig: gridConfig.applyGridConfig,
     saveGridConfig: gridConfig.saveGridConfig
@@ -293,6 +301,7 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     state: stateApi,
     calc: calcApi,
     lookup: runtimeLookup,
+    mutations,
     actions,
     gridConfig: gridConfigApi
   };

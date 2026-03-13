@@ -4,6 +4,7 @@ import type { DynamicQueryCondition } from '@/service/api';
 import { fetchDynamicDataById } from '@/service/api';
 import { applyCopiedRowFields } from '@/v3/composables/meta-v3/copy-row-fields';
 import { createMasterServerSideDataSource } from '@/v3/composables/meta-v3/master-server-side-data-source';
+import { applyRowPatch, type RowFieldChange } from '@/v3/composables/meta-v3/row-patch';
 import { isPersistedRow } from '@/v3/composables/meta-v3/row-persistence';
 import { type ParsedPageConfig, type RowData, ensureRowKey, generateTempId, initRowData } from '@/v3/logic/calc-engine';
 
@@ -57,6 +58,31 @@ export function useMasterStore(params: {
     if (!row) return null;
     ensureRowKey(row);
     return row._rowKey || null;
+  }
+
+  function applyMasterPatch(
+    rowId: number | null,
+    rowKey: string | null,
+    patch: Record<string, any>,
+    fallbackChanges?: RowFieldChange[]
+  ) {
+    const row = (rowKey ? getMasterRowByRowKey(rowKey) : null) ?? (rowId != null ? getMasterRowById(rowId) : null);
+    if (!row) return null;
+
+    const resolvedRowKey = String(ensureRowKey(row));
+    const node = masterGridApi.value?.getRowNode?.(resolvedRowKey) ?? null;
+    const appliedChanges = applyRowPatch(row, patch);
+    const changes =
+      appliedChanges.length > 0
+        ? appliedChanges
+        : (fallbackChanges || []).filter(change => !Object.is(change.oldValue, change.newValue));
+
+    return {
+      row,
+      rowKey: resolvedRowKey,
+      node,
+      changes
+    };
   }
 
   const advancedConditions = ref<QueryCondition[]>([]);
@@ -236,6 +262,7 @@ export function useMasterStore(params: {
     getMasterRowByRowKey,
     getMasterRowById,
     resolveMasterRowKey,
+    applyMasterPatch,
     reloadMasterRow,
     addMasterRow,
     deleteMasterRow,
