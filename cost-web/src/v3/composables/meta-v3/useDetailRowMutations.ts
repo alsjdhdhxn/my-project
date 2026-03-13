@@ -22,33 +22,41 @@ export function useDetailRowMutations(params: {
     refreshDetailCells
   } = params;
 
-  function addDetailRow(masterId: number, tabKey: string, masterRowKey?: string) {
+  function resolveDetailRows(masterId: number, tabKey: string, masterRowKey?: string) {
     const resolvedRowKey = masterRowKey ?? resolveMasterRowKey(masterId);
     if (!resolvedRowKey) return null;
     const cached = detailCache.get(resolvedRowKey);
-    if (!cached || !cached[tabKey]) return null;
+    const rows = cached?.[tabKey];
+    if (!rows) return null;
+    return {
+      masterRowKey: resolvedRowKey,
+      rows
+    };
+  }
+
+  function addDetailRow(masterId: number, tabKey: string, masterRowKey?: string) {
+    const detailRows = resolveDetailRows(masterId, tabKey, masterRowKey);
+    if (!detailRows) return null;
     const fkColumn = detailFkColumnByTab.value[tabKey] || 'masterId';
     const newRow = initRowData({ id: generateTempId(), [fkColumn]: masterId }, true);
-    cached[tabKey].push(newRow);
-    setDetailRows(resolvedRowKey, tabKey, cached[tabKey]);
+    detailRows.rows.push(newRow);
+    setDetailRows(detailRows.masterRowKey, tabKey, detailRows.rows);
     return newRow;
   }
 
   function deleteDetailRow(masterId: number, tabKey: string, row: RowData, masterRowKey?: string) {
     if (!row) return false;
-    const resolvedRowKey = masterRowKey ?? resolveMasterRowKey(masterId);
-    if (!resolvedRowKey) return false;
-    const cached = detailCache.get(resolvedRowKey);
-    if (!cached || !cached[tabKey]) return false;
-    const currentRow = resolveCurrentDetailRow(cached[tabKey], row);
+    const detailRows = resolveDetailRows(masterId, tabKey, masterRowKey);
+    if (!detailRows) return false;
+    const currentRow = resolveCurrentDetailRow(detailRows.rows, row);
 
     if (!isPersistedRow(currentRow)) {
-      const idx = cached[tabKey].findIndex(r => r === currentRow || r._rowKey === currentRow._rowKey || r.id === currentRow.id);
-      if (idx >= 0) cached[tabKey].splice(idx, 1);
-      setDetailRows(resolvedRowKey, tabKey, cached[tabKey]);
+      const idx = detailRows.rows.findIndex(r => r === currentRow || r._rowKey === currentRow._rowKey || r.id === currentRow.id);
+      if (idx >= 0) detailRows.rows.splice(idx, 1);
+      setDetailRows(detailRows.masterRowKey, tabKey, detailRows.rows);
     } else {
       currentRow._isDeleted = true;
-      refreshDetailCells(resolvedRowKey, tabKey);
+      refreshDetailCells(detailRows.masterRowKey, tabKey);
     }
 
     return true;
@@ -56,10 +64,8 @@ export function useDetailRowMutations(params: {
 
   function copyDetailRow(masterId: number, tabKey: string, sourceRow: RowData, masterRowKey?: string) {
     if (!sourceRow) return null;
-    const resolvedRowKey = masterRowKey ?? resolveMasterRowKey(masterId);
-    if (!resolvedRowKey) return null;
-    const cached = detailCache.get(resolvedRowKey);
-    if (!cached || !cached[tabKey]) return null;
+    const detailRows = resolveDetailRows(masterId, tabKey, masterRowKey);
+    if (!detailRows) return null;
     const fkColumn = detailFkColumnByTab.value[tabKey] || 'masterId';
     const detailPkColumn = detailPkColumnByTab.value[tabKey];
     const detailCopyExcludedFields = buildCopyExcludedFields(detailPkColumn, fkColumn);
@@ -68,8 +74,8 @@ export function useDetailRowMutations(params: {
     copyRowFields(sourceRow, newRow, detailCopyExcludedFields);
     clearCopiedIdentityFields(newRow, detailPkColumn);
 
-    cached[tabKey].push(newRow);
-    setDetailRows(resolvedRowKey, tabKey, cached[tabKey]);
+    detailRows.rows.push(newRow);
+    setDetailRows(detailRows.masterRowKey, tabKey, detailRows.rows);
     return newRow;
   }
 
