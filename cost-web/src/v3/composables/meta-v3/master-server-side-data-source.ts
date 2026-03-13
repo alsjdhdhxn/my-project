@@ -22,12 +22,11 @@ export function createMasterServerSideDataSource(params: CreateMasterServerSideD
     const pageSizeFallback = options?.pageSize || 100;
     if (!tableCode) return null;
 
-    let lastQueryKey = '';
     let pendingRequest: Promise<void> | null = null;
     let lastRequestTime = 0;
     const requestDebounceMs = 50;
     let cachedRowCount: number | undefined;
-    let lastSortFilterKey = '';
+    let lastRequestKey = '';
 
     return {
       getRows: async (params: IServerSideGetRowsParams) => {
@@ -54,19 +53,14 @@ export function createMasterServerSideDataSource(params: CreateMasterServerSideD
         const filterConditions = buildConditionsFromFilterModel(filterModel);
         const conditions = [...filterConditions, ...advancedConditions];
 
-        const sortFilterKey = JSON.stringify({
+        const requestKey = JSON.stringify({
           filterModel,
           sortModel,
           advancedConditions
         });
-        if (sortFilterKey !== lastSortFilterKey) {
-          lastSortFilterKey = sortFilterKey;
+        if (requestKey !== lastRequestKey) {
+          lastRequestKey = requestKey;
           cachedRowCount = undefined;
-        }
-
-        const queryKey = JSON.stringify({ filterModel, sortModel, advancedConditions });
-        if (startRow === 0 && queryKey !== lastQueryKey) {
-          lastQueryKey = queryKey;
         }
 
         debugLog('ssrm request', { page, pageSize, sortField, sortOrder, conditions });
