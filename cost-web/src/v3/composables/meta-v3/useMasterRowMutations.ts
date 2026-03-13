@@ -24,6 +24,17 @@ export function useMasterRowMutations(params: {
     isPersistedRow
   } = params;
 
+  function focusInsertedMasterRow(insertIndex: number, rowKey: string) {
+    const api = masterGridApi.value;
+    setTimeout(() => {
+      api?.ensureIndexVisible(insertIndex, 'middle');
+      const newNode = api?.getRowNode(String(rowKey));
+      if (newNode) {
+        newNode.setSelected(true, true);
+      }
+    }, 100);
+  }
+
   function addMasterRow() {
     const api = masterGridApi.value;
     const newRow = initRowData({ id: generateTempId() }, true);
@@ -41,13 +52,7 @@ export function useMasterRowMutations(params: {
       });
     }
 
-    setTimeout(() => {
-      api?.ensureIndexVisible(insertIndex, 'middle');
-      const newNode = api?.getRowNode(String(newRow._rowKey));
-      if (newNode) {
-        newNode.setSelected(true, true);
-      }
-    }, 100);
+    focusInsertedMasterRow(insertIndex, String(newRow._rowKey));
 
     return newRow;
   }
@@ -126,13 +131,7 @@ export function useMasterRowMutations(params: {
       }
     }
 
-    setTimeout(() => {
-      api?.ensureIndexVisible(insertIndex, 'middle');
-      const newNode = api?.getRowNode(String(newRow._rowKey));
-      if (newNode) {
-        newNode.setSelected(true, true);
-      }
-    }, 100);
+    focusInsertedMasterRow(insertIndex, String(newRow._rowKey));
 
     return newRow;
   }
