@@ -345,33 +345,3 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     ...runtimeApi
   };
 }
-
-/** Single-grid runtime (master-detail features disabled) */
-export function useSingleGridRuntime(options: BaseRuntimeOptions) {
-  return {
-    ...useBaseRuntime(options, {
-      detailTabs: false,
-      broadcast: false,
-      aggregates: false,
-      lookup: true,
-      export: true,
-      contextMenu: true
-    }),
-    mode: 'single' as const
-  };
-}
-
-/** Master-detail runtime (all features enabled) */
-export function useMasterDetailRuntime(options: BaseRuntimeOptions) {
-  return {
-    ...useBaseRuntime(options, {
-      detailTabs: true,
-      broadcast: true,
-      aggregates: true,
-      lookup: true,
-      export: true,
-      contextMenu: true
-    }),
-    mode: 'masterDetail' as const
-  };
-}

@@ -114,8 +114,6 @@ export function useRuntimeInitialization(options: RuntimeInitializationOptions) 
   });
 
   return {
-    buildStates,
-    applyExtensions,
     init,
     loadComponents,
     parseConfig,

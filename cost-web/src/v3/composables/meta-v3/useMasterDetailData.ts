@@ -1,12 +1,8 @@
 import type { Ref, ShallowRef } from 'vue';
 import type { GridApi } from 'ag-grid-community';
 import { useDetailStore } from '@/v3/composables/meta-v3/useDetailStore';
-import { useMasterRowMutations } from '@/v3/composables/meta-v3/useMasterRowMutations';
-import { useMasterQueryState } from '@/v3/composables/meta-v3/useMasterQueryState';
-import { useMasterRowReload } from '@/v3/composables/meta-v3/useMasterRowReload';
+import { useMasterStore } from '@/v3/composables/meta-v3/useMasterStore';
 import { useMasterRowAccess } from '@/v3/composables/meta-v3/useMasterRowAccess';
-import { isPersistedRow } from '@/v3/composables/meta-v3/row-persistence';
-import { resolveCurrentMasterRow } from '@/v3/composables/meta-v3/row-resolution';
 import { type ParsedPageConfig } from '@/v3/logic/calc-engine';
 
 export function useMasterDetailData(params: {
@@ -30,9 +26,10 @@ export function useMasterDetailData(params: {
     notifyError
   } = params;
 
-  const { getMasterRowByRowKey, getMasterRowById, resolveMasterRowKey } = useMasterRowAccess({
+  const access = useMasterRowAccess({
     masterGridApi
   });
+
   const detailStore = useDetailStore({
     pageCode,
     pageConfig,
@@ -40,64 +37,33 @@ export function useMasterDetailData(params: {
     detailPkColumnByTab,
     masterGridApi,
     detailGridApisByTab,
-    resolveMasterRowKey,
+    resolveMasterRowKey: access.resolveMasterRowKey,
     notifyError
   });
   const { cache: cacheApi, loader: detailLoaderApi, detail: detailApi } = detailStore;
 
-  const { addMasterRow, deleteMasterRow, copyMasterRow } = useMasterRowMutations({
-    masterGridApi,
-    masterPkColumn,
-    detailCache: cacheApi.detailCache,
-    detailFkColumnByTab,
-    detailPkColumnByTab,
-    loadDetailData: detailLoaderApi.loadDetailData,
-    resolveCurrentMasterRow: row => resolveCurrentMasterRow(row, { getMasterRowByRowKey, getMasterRowById }),
-    isPersistedRow
-  });
-
-  const { advancedConditions, setAdvancedConditions, clearAdvancedConditions, createServerSideDataSource } =
-    useMasterQueryState({
-      pageCode,
-      getTableCode: () => pageConfig.value?.masterTableCode,
-      getMasterPkColumn: () => masterPkColumn.value,
-      notifyError
-    });
-
-  const { reloadMasterRow } = useMasterRowReload({
+  const masterStore = useMasterStore({
+    pageCode,
     pageConfig,
+    detailFkColumnByTab,
     masterPkColumn,
+    detailPkColumnByTab,
     masterGridApi,
-    notifyError,
-    resolveMasterRowKey
+    access,
+    detailCache: cacheApi.detailCache,
+    loadDetailData: detailLoaderApi.loadDetailData,
+    notifyError
   });
 
   return {
-    cache: {
-      ...cacheApi
-    },
-    query: {
-      advancedConditions,
-      setAdvancedConditions,
-      clearAdvancedConditions,
-      createServerSideDataSource
-    },
-    access: {
-      getMasterRowByRowKey,
-      getMasterRowById,
-      resolveMasterRowKey
-    },
+    cache: cacheApi,
+    query: masterStore.query,
+    access: masterStore.access,
     loader: {
       ...detailLoaderApi,
-      reloadMasterRow
+      ...masterStore.loader
     },
-    master: {
-      addMasterRow,
-      deleteMasterRow,
-      copyMasterRow
-    },
-    detail: {
-      ...detailApi
-    }
+    master: masterStore.master,
+    detail: detailApi
   };
 }

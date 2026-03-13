@@ -4,12 +4,12 @@ import { NEmpty, NSpin, useMessage } from 'naive-ui';
 import { useWebSocket } from '@/v3/composables/meta-v3/useWebSocket';
 import MetaPageRendererV3 from '@/v3/components/meta-v3/renderers/MetaPageRendererV3.vue';
 import LookupDialog from '@/v3/components/LookupDialog.vue';
-import { useMetaRuntime } from '@/v3/composables/meta-v3/useMetaRuntime';
+import { useBaseRuntime } from '@/v3/composables/meta-v3/runtime';
 
 const props = defineProps<{ pageCode: string }>();
 const message = useMessage();
 
-const runtime = useMetaRuntime({
+const runtime = useBaseRuntime({
   pageCode: props.pageCode,
   notifyInfo: msg => message.info(msg),
   notifyError: msg => message.error(msg),
