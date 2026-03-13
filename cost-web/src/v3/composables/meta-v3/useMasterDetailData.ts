@@ -1,11 +1,12 @@
 import type { Ref, ShallowRef } from 'vue';
-import { ref } from 'vue';
-import type { GridApi, IServerSideGetRowsParams } from 'ag-grid-community';
-import { type DynamicQueryCondition, fetchDynamicDataById, searchDynamicData } from '@/service/api';
+import type { GridApi } from 'ag-grid-community';
+import { fetchDynamicDataById, searchDynamicData } from '@/service/api';
+import { buildCopyExcludedFields, clearCopiedIdentityFields } from '@/v3/composables/meta-v3/copy-row-fields';
 import { debugLog } from '@/v3/composables/meta-v3/debug';
-import { buildConditionsFromFilterModel } from '@/v3/composables/meta-v3/grid-filter-conditions';
+import { useDetailGridSync } from '@/v3/composables/meta-v3/useDetailGridSync';
+import { useDetailRowMutations } from '@/v3/composables/meta-v3/useDetailRowMutations';
+import { useMasterQueryState } from '@/v3/composables/meta-v3/useMasterQueryState';
 import { type ParsedPageConfig, type RowData, ensureRowKey, generateTempId, initRowData } from '@/v3/logic/calc-engine';
-type QueryCondition = DynamicQueryCondition;
 
 export function useMasterDetailData(params: {
   pageCode: string;
@@ -29,7 +30,10 @@ export function useMasterDetailData(params: {
   } = params;
 
   const detailCache = new Map<string, Record<string, RowData[]>>();
-  const advancedConditions = ref<QueryCondition[]>([]);
+  const { setDetailRows, refreshDetailCells, replaceDetailRows } = useDetailGridSync({
+    masterGridApi,
+    detailGridApisByTab
+  });
 
   function getMasterRowByRowKey(rowKey: string): RowData | null {
     if (!rowKey) return null;
@@ -128,11 +132,7 @@ export function useMasterDetailData(params: {
     }
 
     detailCache.set(resolvedRowKey, grouped);
-    if (detailGridApisByTab?.value) {
-      for (const [tabKey, rows] of Object.entries(grouped)) {
-        detailGridApisByTab.value[tabKey]?.setGridOption?.('rowData', rows);
-      }
-    }
+    replaceDetailRows(resolvedRowKey, grouped);
     debugLog('detail loaded', {
       masterId,
       rowKey: resolvedRowKey,
@@ -234,82 +234,6 @@ export function useMasterDetailData(params: {
     }
   }
 
-  function addDetailRow(masterId: number, tabKey: string, masterRowKey?: string) {
-    const resolvedRowKey = masterRowKey ?? resolveMasterRowKey(masterId);
-    if (!resolvedRowKey) return null;
-    const cached = detailCache.get(resolvedRowKey);
-    if (!cached || !cached[tabKey]) return null;
-    const fkColumn = detailFkColumnByTab.value[tabKey] || 'masterId';
-    const newRow = initRowData({ id: generateTempId(), [fkColumn]: masterId }, true);
-    cached[tabKey].push(newRow);
-
-    const secondLevelInfo = masterGridApi.value?.getDetailGridInfo(`detail_${resolvedRowKey}`);
-    if (secondLevelInfo?.api) {
-      secondLevelInfo.api.forEachDetailGridInfo((detailInfo: any) => {
-        if (detailInfo.id?.includes(tabKey)) detailInfo.api.setGridOption('rowData', cached[tabKey]);
-      });
-    }
-    detailGridApisByTab?.value?.[tabKey]?.setGridOption?.('rowData', cached[tabKey]);
-    return newRow;
-  }
-
-  function deleteDetailRow(masterId: number, tabKey: string, row: RowData, masterRowKey?: string) {
-    if (!row) return false;
-    const resolvedRowKey = masterRowKey ?? resolveMasterRowKey(masterId);
-    if (!resolvedRowKey) return false;
-    const cached = detailCache.get(resolvedRowKey);
-    if (!cached || !cached[tabKey]) return false;
-    const currentRow = resolveCurrentDetailRow(cached[tabKey], row);
-
-    if (!isPersistedRow(currentRow)) {
-      // 新增行直接从数组中移除
-      const idx = cached[tabKey].findIndex(r => r === currentRow || r._rowKey === currentRow._rowKey || r.id === currentRow.id);
-      if (idx >= 0) cached[tabKey].splice(idx, 1);
-
-      // 刷新 Grid 的 rowData，让行从视觉上消失
-      const secondLevelInfo = masterGridApi.value?.getDetailGridInfo(`detail_${resolvedRowKey}`);
-      if (secondLevelInfo?.api) {
-        secondLevelInfo.api.forEachDetailGridInfo((detailInfo: any) => {
-          if (detailInfo.id?.includes(tabKey)) {
-            detailInfo.api.setGridOption('rowData', cached[tabKey]);
-          }
-        });
-      }
-      detailGridApisByTab?.value?.[tabKey]?.setGridOption?.('rowData', cached[tabKey]);
-    } else {
-      // 已有行标记删除，刷新样式
-      currentRow._isDeleted = true;
-      const secondLevelInfo = masterGridApi.value?.getDetailGridInfo(`detail_${resolvedRowKey}`);
-      if (secondLevelInfo?.api) {
-        secondLevelInfo.api.forEachDetailGridInfo((detailInfo: any) => {
-          if (detailInfo.id?.includes(tabKey)) detailInfo.api.refreshCells();
-        });
-      }
-      detailGridApisByTab?.value?.[tabKey]?.refreshCells?.({ force: true });
-    }
-
-    return true;
-  }
-
-  function buildCopyExcludedFields(...fields: Array<string | null | undefined>) {
-    const excluded = new Set<string>(['id', 'ID']);
-    for (const field of fields) {
-      if (!field) continue;
-      excluded.add(field);
-      excluded.add(field.toUpperCase());
-      excluded.add(field.toLowerCase());
-    }
-    return excluded;
-  }
-
-  function clearCopiedIdentityFields(row: RowData, ...fields: Array<string | null | undefined>) {
-    const excluded = buildCopyExcludedFields(...fields);
-    excluded.delete('id');
-    for (const field of excluded) {
-      delete row[field];
-    }
-  }
-
   async function copyMasterRow(sourceRow: RowData) {
     if (!sourceRow) return;
     const api = masterGridApi.value;
@@ -380,47 +304,28 @@ export function useMasterDetailData(params: {
     return newRow;
   }
 
-  function copyDetailRow(masterId: number, tabKey: string, sourceRow: RowData, masterRowKey?: string) {
-    if (!sourceRow) return;
-    const resolvedRowKey = masterRowKey ?? resolveMasterRowKey(masterId);
-    if (!resolvedRowKey) return null;
-    const cached = detailCache.get(resolvedRowKey);
-    if (!cached || !cached[tabKey]) return null;
-    const fkColumn = detailFkColumnByTab.value[tabKey] || 'masterId';
-    const detailPkColumn = detailPkColumnByTab.value[tabKey];
-    const detailCopyExcludedFields = buildCopyExcludedFields(detailPkColumn, fkColumn);
-    const newRow = initRowData({ id: generateTempId(), [fkColumn]: masterId }, true);
-
-    for (const [key, value] of Object.entries(sourceRow)) {
-      if (!key.startsWith('_') && !detailCopyExcludedFields.has(key)) newRow[key] = value;
-    }
-    clearCopiedIdentityFields(newRow, detailPkColumn);
-
-    cached[tabKey].push(newRow);
-    const secondLevelInfo = masterGridApi.value?.getDetailGridInfo(`detail_${resolvedRowKey}`);
-    if (secondLevelInfo?.api) {
-      secondLevelInfo.api.forEachDetailGridInfo((detailInfo: any) => {
-        if (detailInfo.id?.includes(tabKey)) detailInfo.api.setGridOption('rowData', cached[tabKey]);
-      });
-    }
-    detailGridApisByTab?.value?.[tabKey]?.setGridOption?.('rowData', cached[tabKey]);
-    return newRow;
-  }
-
   /** 清空所有业务数据缓存 */
   function clearAllCache() {
     detailCache.clear();
   }
 
-  function setAdvancedConditions(conditions: QueryCondition[]) {
-    advancedConditions.value = Array.isArray(conditions)
-      ? conditions.filter(condition => Boolean(condition?.field) && Boolean(condition?.operator))
-      : [];
-  }
+  const { addDetailRow, deleteDetailRow, copyDetailRow } = useDetailRowMutations({
+    detailCache,
+    detailFkColumnByTab,
+    detailPkColumnByTab,
+    resolveMasterRowKey,
+    resolveCurrentDetailRow,
+    setDetailRows,
+    refreshDetailCells
+  });
 
-  function clearAdvancedConditions() {
-    advancedConditions.value = [];
-  }
+  const { advancedConditions, setAdvancedConditions, clearAdvancedConditions, createServerSideDataSource } =
+    useMasterQueryState({
+      pageCode,
+      getTableCode: () => pageConfig.value?.masterTableCode,
+      getMasterPkColumn: () => masterPkColumn.value,
+      notifyError
+    });
 
   return {
     detailCache,
@@ -439,109 +344,6 @@ export function useMasterDetailData(params: {
     deleteDetailRow,
     copyMasterRow,
     copyDetailRow,
-    /** Server-Side Row Model 数据源（V3 强制使用 SSRM） */
-    createServerSideDataSource: (options?: { tableCode?: string; pageSize?: number }) => {
-      const tableCode = options?.tableCode || pageConfig.value?.masterTableCode;
-      const pageSizeFallback = options?.pageSize || 100;
-      if (!tableCode) return null;
-      let lastQueryKey = '';
-      // 防抖：避免短时间内重复请求
-      let pendingRequest: Promise<void> | null = null;
-      let lastRequestTime = 0;
-      const REQUEST_DEBOUNCE_MS = 50;
-      // 缓存总行数，避免每次都传导致 Grid 重置
-      let cachedRowCount: number | undefined;
-      let lastSortFilterKey = '';
-
-      return {
-        getRows: async (params: IServerSideGetRowsParams) => {
-          const now = Date.now();
-          // 如果距离上次请求时间太短，跳过（AG Grid 内部可能触发多次）
-          if (now - lastRequestTime < REQUEST_DEBOUNCE_MS && pendingRequest) {
-            debugLog('ssrm debounce skip', { timeSinceLastRequest: now - lastRequestTime });
-            return;
-          }
-          lastRequestTime = now;
-          const request = params.request;
-          const startRow = request.startRow ?? 0;
-          const endRow = request.endRow ?? startRow + pageSizeFallback;
-          const pageSize = Math.max(endRow - startRow, 1);
-          const page = Math.floor(startRow / pageSize) + 1;
-
-          // 排序
-          const sortModel = request.sortModel ?? [];
-          const sortField = sortModel[0]?.colId;
-          const sortOrder = sortModel[0]?.sort;
-
-          // 过滤
-          const filterModel = request.filterModel;
-          const filterConditions = buildConditionsFromFilterModel(filterModel);
-          const conditions = [...filterConditions, ...advancedConditions.value];
-
-          // 检查排序/过滤是否变化，如果变化则清除缓存的 rowCount
-          const sortFilterKey = JSON.stringify({
-            filterModel,
-            sortModel,
-            advancedConditions: advancedConditions.value
-          });
-          if (sortFilterKey !== lastSortFilterKey) {
-            lastSortFilterKey = sortFilterKey;
-            cachedRowCount = undefined; // 排序/过滤变化时重置
-          }
-
-          // 查询键变化时更新标记
-          const queryKey = JSON.stringify({ filterModel, sortModel, advancedConditions: advancedConditions.value });
-          if (startRow === 0 && queryKey !== lastQueryKey) {
-            lastQueryKey = queryKey;
-          }
-
-          debugLog('ssrm request', { page, pageSize, sortField, sortOrder, conditions });
-
-          try {
-            const requestPromise = searchDynamicData(tableCode, {
-              pageCode,
-              page,
-              pageSize,
-              sortField,
-              sortOrder,
-              conditions: conditions.length > 0 ? conditions : undefined
-            });
-            pendingRequest = requestPromise.then(() => {
-              pendingRequest = null;
-            });
-
-            const { data, error } = await requestPromise;
-
-            if (error) {
-              params.fail();
-              notifyError('加载主表数据失败');
-              return;
-            }
-
-            const rows = (data?.list || []).map((row: any) => initRowData(row, false, masterPkColumn.value));
-            const total = data?.total;
-
-            // 缓存 rowCount，只在第一次请求或排序/过滤变化时更新
-            if (total != null && cachedRowCount === undefined) {
-              cachedRowCount = total;
-            }
-
-            debugLog('ssrm response', { rowCount: rows.length, total });
-
-            // SSRM 成功回调
-            // 只在第一次请求时传 rowCount，后续请求不传（避免 Grid 重置）
-            const successParams: any = { rowData: rows };
-            if (startRow === 0 && cachedRowCount != null) {
-              successParams.rowCount = cachedRowCount;
-            }
-
-            params.success(successParams);
-          } catch (e) {
-            params.fail();
-            notifyError('加载主表数据失败');
-          }
-        }
-      };
-    }
+    createServerSideDataSource
   };
 }
