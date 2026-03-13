@@ -166,18 +166,35 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     }
   };
 
-  const { addMasterRow, deleteMasterRow, copyMasterRow, addDetailRow, deleteDetailRow, copyDetailRow } = useRuntimeMutations({
+  const {
+    addMasterRow,
+    deleteMasterRow,
+    copyMasterRow,
+    addDetailRow,
+    deleteDetailRow,
+    copyDetailRow,
+    commitMasterPatch,
+    commitDetailPatch,
+    onMasterCellValueChanged,
+    onDetailCellValueChanged
+  } = useRuntimeMutations({
     resolvedFeatures,
+    masterGridApi,
     detailGridApisByTab,
+    activeMasterRowKey,
     addMasterRowRaw: masterStore.addMasterRow,
     deleteMasterRowRaw: masterStore.deleteMasterRow,
     copyMasterRowRaw: masterStore.copyMasterRow,
     addDetailRowRaw: detailStore.addDetailRow,
     deleteDetailRowRaw: detailStore.deleteDetailRow,
     copyDetailRowRaw: detailStore.copyDetailRow,
+    applyMasterPatchRaw: masterStore.applyMasterPatch,
+    applyDetailPatchRaw: detailStore.applyDetailPatch,
+    markFieldChange: calcApi.markFieldChange,
     runMasterCalc: calcApi.runMasterCalc,
     runDetailCalc: calcApi.runDetailCalc,
-    recalcAggregates: calcApi.recalcAggregates
+    recalcAggregates: calcApi.recalcAggregates,
+    broadcastToDetail: calcApi.broadcastToDetail
   });
 
   const runtimeLookup = useRuntimeLookup({
@@ -188,13 +205,8 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
       masterLookupRules: meta.masterLookupRules,
       detailLookupRulesByTab: meta.detailLookupRulesByTab
     },
-    applyMasterPatch: masterStore.applyMasterPatch,
-    applyDetailPatch: detailStore.applyDetailPatch,
-    markFieldChange: calcApi.markFieldChange,
-    runMasterCalc: calcApi.runMasterCalc,
-    runDetailCalc: calcApi.runDetailCalc,
-    recalcAggregates: calcApi.recalcAggregates,
-    broadcastToDetail: calcApi.broadcastToDetail
+    commitMasterPatch,
+    commitDetailPatch
   });
 
   const advancedSearch = useAdvancedSearch({
@@ -277,7 +289,9 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     copyMasterRow,
     addDetailRow,
     deleteDetailRow,
-    copyDetailRow
+    copyDetailRow,
+    onMasterCellValueChanged,
+    onDetailCellValueChanged
   };
 
   const gridConfigApi = {

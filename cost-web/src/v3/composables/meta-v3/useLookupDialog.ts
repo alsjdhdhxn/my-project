@@ -1,70 +1,34 @@
 import { type Ref, nextTick, ref } from 'vue';
 import type { LookupRule } from '@/v3/composables/meta-v3/useMetaColumns';
 import { type RowData, ensureRowKey } from '@/v3/logic/calc-engine';
-import type { RowFieldChange } from '@/v3/composables/meta-v3/row-patch';
-
-type MarkFieldChange = (row: RowData, field: string, oldValue: any, newValue: any, type: 'user' | 'calc') => void;
-
-type RunMasterCalc = (node: any, row: RowData, valueOverrides?: Record<string, any>) => string[] | void;
-
-type RunDetailCalc = (
-  node: any,
-  api: any,
-  row: RowData,
-  masterId: number,
-  tabKey: string,
-  masterRowKey?: string,
-  changedFields?: string | string[],
-  valueOverrides?: Record<string, any>
-) => string[] | void;
-
-type RecalcAggregates = (masterId: number, masterRowKey?: string) => void;
-
-type BroadcastToDetail = (masterId: number, row: RowData, changedFields?: string | string[]) => Promise<void>;
 
 type LookupDialogExpose = { open: () => void };
 
 export function useLookupDialog(params: {
-  applyMasterPatch: (rowId: number | null, rowKey: string | null, patch: Record<string, any>) => {
-    row: RowData;
-    rowKey: string;
-    node: any;
-    changes: RowFieldChange[];
-  } | null;
-  applyDetailPatch: (
-    tabKey: string,
+  commitMasterPatch: (params: {
     rowId: number | null,
     rowKey: string | null,
-    patch: Record<string, any>
-  ) => {
-    row: RowData;
-    masterId: number;
-    masterRowKey: string;
-    detailRowKey: string;
-    changes: RowFieldChange[];
-    applyToGrids: (callback: (api: any, node: any) => void) => void;
-  } | null;
+    patch: Record<string, any>;
+    changeType?: 'user' | 'calc';
+  }) => Promise<any>;
+  commitDetailPatch: (params: {
+    masterId?: number | null;
+    tabKey: string;
+    rowId: number | null;
+    rowKey: string | null;
+    patch: Record<string, any>;
+    changeType?: 'user' | 'calc';
+  }) => any;
   masterLookupRules: Ref<LookupRule[]>;
   detailLookupRulesByTab: Ref<Record<string, LookupRule[]>>;
-  markFieldChange: MarkFieldChange;
-  runMasterCalc: RunMasterCalc;
-  runDetailCalc: RunDetailCalc;
-  recalcAggregates: RecalcAggregates;
-  broadcastToDetail?: BroadcastToDetail;
-  detailGridApisByTab?: Ref<Record<string, any>>;
   isRowEditable?: (row: RowData) => boolean;
   isDetailRowEditable?: (row: RowData, tabKey: string) => boolean;
 }) {
   const {
-    applyMasterPatch,
-    applyDetailPatch,
+    commitMasterPatch,
+    commitDetailPatch,
     masterLookupRules,
     detailLookupRulesByTab,
-    markFieldChange,
-    runMasterCalc,
-    runDetailCalc,
-    recalcAggregates,
-    broadcastToDetail,
     isRowEditable,
     isDetailRowEditable
   } = params;
@@ -84,41 +48,6 @@ export function useLookupDialog(params: {
     currentLookupRowKey.value = null;
     currentLookupRowData.value = null;
     currentLookupCellValue.value = null;
-  }
-
-  function applyMarkedChanges(row: RowData, changes: RowFieldChange[]) {
-    changes.forEach(change => {
-      markFieldChange(row, change.field, change.oldValue, change.newValue, 'user');
-    });
-    return changes.map(change => change.field);
-  }
-
-  function applyLookupToDetailGrid(params: {
-    api: any;
-    row: RowData;
-    detailRowKey: string;
-    masterId: number;
-    tabKey: string;
-    masterRowKey: string;
-    changedFields: string[];
-  }) {
-    const { api, row, detailRowKey, masterId, tabKey, masterRowKey, changedFields } = params;
-    const node =
-      api?.getRowNode?.(String(detailRowKey)) ??
-      (() => {
-        let matchedNode: any = null;
-        api?.forEachNode?.((candidate: any) => {
-          if (!matchedNode && candidate?.data?._rowKey === detailRowKey) {
-            matchedNode = candidate;
-          }
-        });
-        return matchedNode;
-      })();
-
-    if (node && changedFields.length > 0) {
-      runDetailCalc(node, api, row, masterId, tabKey, masterRowKey, changedFields);
-    }
-    api?.refreshCells?.({ force: true });
   }
 
   async function onMasterCellClicked(event: any) {
@@ -165,7 +94,7 @@ export function useLookupDialog(params: {
     lookupDialogRef.value?.open();
   }
 
-  function onLookupSelect(fillData: Record<string, any>) {
+  async function onLookupSelect(fillData: Record<string, any>) {
     if (currentLookupRule.value?.noFillback) {
       resetLookupState();
       return;
@@ -176,37 +105,21 @@ export function useLookupDialog(params: {
     if (rowId == null && !rowKey) return;
 
     if (currentLookupIsMaster.value) {
-      const result = applyMasterPatch(rowId, rowKey, fillData);
-      if (result) {
-        const changedFields = applyMarkedChanges(result.row, result.changes);
-        if (changedFields.length > 0 && result.node) {
-          const calcChanged = runMasterCalc(result.node, result.row) || [];
-          if (broadcastToDetail && result.row.id != null) {
-            const triggerFields = [...changedFields, ...calcChanged].filter(Boolean);
-            broadcastToDetail(result.row.id, result.row, triggerFields);
-          }
-        }
-      }
+      await commitMasterPatch({
+        rowId,
+        rowKey,
+        patch: fillData,
+        changeType: 'user'
+      });
     } else {
       const tabKey = currentLookupTabKey.value;
-      const result = applyDetailPatch(tabKey, rowId, rowKey, fillData);
-      if (result) {
-        const changedFields = applyMarkedChanges(result.row, result.changes);
-        result.applyToGrids((api, node) =>
-          applyLookupToDetailGrid({
-            api,
-            row: result.row,
-            detailRowKey: result.detailRowKey,
-            masterId: result.masterId,
-            tabKey,
-            masterRowKey: result.masterRowKey,
-            changedFields
-          })
-        );
-        if (changedFields.length > 0) {
-          recalcAggregates(result.masterId, result.masterRowKey);
-        }
-      }
+      commitDetailPatch({
+        tabKey,
+        rowId,
+        rowKey,
+        patch: fillData,
+        changeType: 'user'
+      });
     }
 
     resetLookupState();

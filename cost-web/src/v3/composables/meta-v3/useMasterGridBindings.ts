@@ -32,17 +32,6 @@ type MasterGridBindingDeps = {
     addMasterRow: () => void;
     deleteMasterRow: (row: any) => void;
     copyMasterRow: (row: any) => void;
-    applyMasterPatch: (
-      rowId: number | null,
-      rowKey: string | null,
-      patch: Record<string, any>,
-      fallbackChanges?: Array<{ field: string; oldValue: any; newValue: any }>
-    ) => {
-      row: any;
-      rowKey: string;
-      node: any;
-      changes: Array<{ field: string; oldValue: any; newValue: any }>;
-    } | null;
   };
   detailStore: {
     addDetailRow: (masterId: number, tabKey: string, masterRowKey?: string) => void;
@@ -57,9 +46,7 @@ type MasterGridBindingDeps = {
     actionCode: string,
     options?: { data?: Record<string, any>; selectedRow?: Record<string, any> | null }
   ) => Promise<void>;
-  markFieldChange?: (row: any, field: string, oldValue: any, newValue: any, type: 'user' | 'calc') => void;
-  runMasterCalc?: (node: any, row: any, valueOverrides?: Record<string, any>) => string[] | void;
-  broadcastToDetail?: (masterId: number, row: any, changedFields?: string | string[]) => Promise<void> | void;
+  onMasterCellValueChanged?: (event: any) => Promise<boolean> | boolean;
   onMasterCellClicked?: (event: any) => void;
 };
 
@@ -299,38 +286,7 @@ export function useMasterGridBindings(params: {
   }
 
   async function onCellValueChanged(event: CellValueChangedEvent) {
-    const field = event.colDef?.field;
-    const row = event.data;
-    const masterId = row?.id;
-    if (!field || masterId == null || event.node?.rowPinned) return;
-    if (Object.is(event.oldValue, event.newValue)) return;
-
-    const source = String((event as any)?.source || '').toLowerCase();
-    const isApiChange = source === 'api' || source === 'rowdatachanged';
-      const changeType = isApiChange ? 'calc' : 'user';
-      const patchResult = deps.masterStore.applyMasterPatch(row?.id ?? null, row?._rowKey ?? null, {
-        [field]: event.newValue
-      }, [
-        {
-          field,
-          oldValue: event.oldValue,
-          newValue: event.newValue
-        }
-      ]);
-      if (!patchResult || patchResult.changes.length === 0) return;
-
-    patchResult.changes.forEach(change => {
-      deps.markFieldChange?.(patchResult.row, change.field, change.oldValue, change.newValue, changeType);
-    });
-
-    const targetNode = patchResult.node ?? event.node;
-    deps.masterGridApi.value?.refreshCells({ rowNodes: [targetNode], columns: [field], force: true });
-
-    if (!isApiChange) {
-      const calcChanged = deps.runMasterCalc?.(targetNode, patchResult.row, { [field]: event.newValue }) || [];
-      const changedFields = [field, ...calcChanged].filter(Boolean);
-      await deps.broadcastToDetail?.(masterId, patchResult.row, changedFields);
-    }
+    await deps.onMasterCellValueChanged?.(event);
 
     // 任何单元格变化后都重算汇总（calc 联动可能改了求和字段）
     if (sumFields.length) {

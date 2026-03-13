@@ -22,7 +22,6 @@ const meta = runtime.meta;
 const masterStore = runtime.masterStore;
 const detailStore = runtime.detailStore;
 const masterGridApi = runtime.masterGridApi;
-const calc = runtime.calc;
 const lookup = runtime.lookup;
 const actions = runtime.actions;
 const mutations = runtime.mutations;
@@ -52,12 +51,20 @@ const activeMasterRowKey = runtime.activeMasterRowKey;
 
 const { save, executeAction, customExportConfigs, executeCustomExport } = actions;
 const { applyGridConfig, saveGridConfig } = gridConfigApi;
-const { markFieldChange, runDetailCalc, recalcAggregates, broadcastToDetail, runMasterCalc } = calc;
 const { onDetailCellClicked, onMasterCellClicked: handleLookupMasterCellClick } = lookup;
 
 const { detailCache, loadDetailData } = detailStore;
 const { createServerSideDataSource, getMasterRowById } = masterStore;
-const { addMasterRow, deleteMasterRow, copyMasterRow, addDetailRow, deleteDetailRow, copyDetailRow } = mutations;
+const {
+  addMasterRow,
+  deleteMasterRow,
+  copyMasterRow,
+  addDetailRow,
+  deleteDetailRow,
+  copyDetailRow,
+  onMasterCellValueChanged: applyMasterCellValueChanged,
+  onDetailCellValueChanged: applyDetailCellValueChanged
+} = mutations;
 
 const editingState = ref(false);
 
@@ -363,9 +370,7 @@ const {
     customExportConfigs,
     executeCustomExport,
     executeAction,
-    markFieldChange,
-    runMasterCalc,
-    broadcastToDetail,
+    onMasterCellValueChanged: applyMasterCellValueChanged,
     onMasterCellClicked: handleLookupMasterCellClick
   },
   isUserEditing: editingState,
@@ -423,53 +428,6 @@ watch(detailViewMode, () => {
   nextTick(() => masterGridApi.value?.resetRowHeights());
 });
 
-function onDetailCellValueChanged(event: any, masterId: number, tabKey: string, masterRowKey?: string) {
-  const field = event.colDef?.field;
-  const row = event.data;
-  if (!field || !masterId || event.node?.rowPinned) return;
-  if (Object.is(event.oldValue, event.newValue)) return;
-
-  const source = String(event?.source || '').toLowerCase();
-  const isApiChange = source === 'api' || source === 'rowdatachanged';
-  const changeType = isApiChange ? 'calc' : 'user';
-  const patchResult = detailStore.applyDetailPatch(tabKey, row?.id ?? null, row?._rowKey ?? null, {
-    [field]: event.newValue
-  }, [
-    {
-      field,
-      oldValue: event.oldValue,
-      newValue: event.newValue
-    }
-  ]);
-  if (!patchResult || patchResult.changes.length === 0) return;
-
-  patchResult.changes.forEach(change => {
-    markFieldChange(patchResult.row, change.field, change.oldValue, change.newValue, changeType);
-  });
-
-  patchResult.applyToGrids((api, node) => {
-    api?.refreshCells?.({ rowNodes: node ? [node] : undefined, columns: [field], force: true });
-  });
-
-  if (!isApiChange) {
-    const resolvedRowKey = masterRowKey ?? activeMasterRowKey.value ?? undefined;
-    patchResult.applyToGrids((api, node) => {
-      runDetailCalc(
-        node ?? event.node,
-        api ?? event.api,
-        patchResult.row,
-        patchResult.masterId,
-        tabKey,
-        resolvedRowKey,
-        field,
-        { [field]: event.newValue }
-      );
-      api?.refreshClientSideRowModel?.('aggregate');
-    });
-    recalcAggregates(masterId, resolvedRowKey);
-  }
-}
-
 function registerDetailGridApi(tabKey: string, api: any) {
   detailGridApisByTab.value[tabKey] = api;
 }
@@ -492,7 +450,7 @@ const gridContext = {
     detailSumFieldsByTab,
     cellClassRules,
     applyGridConfig,
-    onDetailCellValueChanged,
+    onDetailCellValueChanged: applyDetailCellValueChanged,
     onDetailCellClicked,
     onCellEditingStarted,
     onCellEditingStopped,
@@ -753,7 +711,7 @@ function onDetailRowOpened(event: any) {
           :detail-sum-fields-by-tab="detailSumFieldsByTab"
           :cell-class-rules="cellClassRules"
           :apply-grid-config="applyGridConfig"
-          :on-detail-cell-value-changed="onDetailCellValueChanged"
+          :on-detail-cell-value-changed="applyDetailCellValueChanged"
           :on-detail-cell-clicked="onDetailCellClicked"
           :on-cell-editing-started="onCellEditingStarted"
           :on-cell-editing-stopped="onCellEditingStopped"

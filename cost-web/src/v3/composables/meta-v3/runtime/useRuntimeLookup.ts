@@ -13,22 +13,20 @@ type RuntimeLookupMeta = {
 type RuntimeLookupOptions = {
   resolvedFeatures: Ref<Required<RuntimeFeatures>>;
   meta: RuntimeLookupMeta;
-  applyMasterPatch: (rowId: number | null, rowKey: string | null, patch: Record<string, any>) => any;
-  applyDetailPatch: (tabKey: string, rowId: number | null, rowKey: string | null, patch: Record<string, any>) => any;
-  markFieldChange: (row: any, field: string, oldValue: any, newValue: any, type: 'user' | 'calc') => void;
-  runMasterCalc: (node: any, row: any, valueOverrides?: Record<string, any>) => string[] | void;
-  runDetailCalc: (
-    node: any,
-    api: any,
-    row: any,
-    masterId: number,
-    tabKey: string,
-    masterRowKey?: string,
-    changedFields?: string | string[],
-    valueOverrides?: Record<string, any>
-  ) => string[] | void;
-  recalcAggregates: (masterId: number, masterRowKey?: string) => void;
-  broadcastToDetail?: (masterId: number, row: any, changedFields?: string | string[]) => Promise<void>;
+  commitMasterPatch: (params: {
+    rowId: number | null;
+    rowKey: string | null;
+    patch: Record<string, any>;
+    changeType?: 'user' | 'calc';
+  }) => Promise<any>;
+  commitDetailPatch: (params: {
+    masterId?: number | null;
+    tabKey: string;
+    rowId: number | null;
+    rowKey: string | null;
+    patch: Record<string, any>;
+    changeType?: 'user' | 'calc';
+  }) => any;
 };
 
 function createMasterRowEditableChecker(meta: RuntimeLookupMeta) {

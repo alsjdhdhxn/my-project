@@ -16,6 +16,23 @@ type RunDetailCalc = (
 ) => string[] | void;
 
 type RecalcAggregates = (masterId: number, masterRowKey?: string) => void;
+type BroadcastToDetail = (masterId: number, row: RowData, changedFields?: string | string[]) => Promise<void> | void;
+type MarkFieldChange = (row: RowData, field: string, oldValue: any, newValue: any, type: 'user' | 'calc') => void;
+type RowChange = { field: string; oldValue: any; newValue: any };
+type MasterPatchResult = {
+  row: RowData;
+  rowKey: string;
+  node: any;
+  changes: RowChange[];
+} | null;
+type DetailPatchResult = {
+  row: RowData;
+  masterId: number;
+  masterRowKey: string;
+  detailRowKey: string;
+  changes: RowChange[];
+  applyToGrids: (callback: (api: any, node: any) => void) => void;
+} | null;
 
 type AddMasterRow = () => RowData | null | undefined;
 type DeleteMasterRow = (row: RowData) => void;
@@ -26,30 +43,91 @@ type CopyDetailRow = (masterId: number, tabKey: string, sourceRow: RowData, mast
 
 export function useRuntimeMutations(params: {
   resolvedFeatures: Ref<Required<RuntimeFeatures>>;
+  masterGridApi: Ref<any>;
   detailGridApisByTab: Ref<Record<string, any>>;
+  activeMasterRowKey?: Ref<string | null>;
   addMasterRowRaw: AddMasterRow;
   deleteMasterRowRaw: DeleteMasterRow;
   copyMasterRowRaw: CopyMasterRow;
   addDetailRowRaw: AddDetailRow;
   deleteDetailRowRaw: DeleteDetailRow;
   copyDetailRowRaw: CopyDetailRow;
+  applyMasterPatchRaw: (
+    rowId: number | null,
+    rowKey: string | null,
+    patch: Record<string, any>,
+    fallbackChanges?: RowChange[]
+  ) => MasterPatchResult;
+  applyDetailPatchRaw: (
+    tabKey: string,
+    rowId: number | null,
+    rowKey: string | null,
+    patch: Record<string, any>,
+    fallbackChanges?: RowChange[]
+  ) => DetailPatchResult;
+  markFieldChange: MarkFieldChange;
   runMasterCalc: RunMasterCalc;
   runDetailCalc: RunDetailCalc;
   recalcAggregates: RecalcAggregates;
+  broadcastToDetail?: BroadcastToDetail;
 }) {
   const {
     resolvedFeatures,
+    masterGridApi,
     detailGridApisByTab,
+    activeMasterRowKey,
     addMasterRowRaw,
     deleteMasterRowRaw,
     copyMasterRowRaw,
     addDetailRowRaw,
     deleteDetailRowRaw,
     copyDetailRowRaw,
+    applyMasterPatchRaw,
+    applyDetailPatchRaw,
+    markFieldChange,
     runMasterCalc,
     runDetailCalc,
-    recalcAggregates
+    recalcAggregates,
+    broadcastToDetail
   } = params;
+
+  function resolveChangeMeta(event: any) {
+    const source = String(event?.source || '').toLowerCase();
+    const isApiChange = source === 'api' || source === 'rowdatachanged';
+    return {
+      isApiChange,
+      changeType: isApiChange ? 'calc' : 'user'
+    } as const;
+  }
+
+  function applyChangeMarks(row: RowData, changes: RowChange[], changeType: 'user' | 'calc') {
+    changes.forEach(change => {
+      markFieldChange(row, change.field, change.oldValue, change.newValue, changeType);
+    });
+  }
+
+  function refreshMasterRow(node: any, apiOverride?: any) {
+    const api = apiOverride ?? masterGridApi.value;
+    api?.refreshCells?.({
+      rowNodes: node ? [node] : undefined,
+      force: true
+    });
+    api?.redrawRows?.({
+      rowNodes: node ? [node] : undefined
+    });
+  }
+
+  function refreshDetailRows(patchResult: Exclude<DetailPatchResult, null>) {
+    patchResult.applyToGrids((api, node) => {
+      api?.refreshCells?.({
+        rowNodes: node ? [node] : undefined,
+        force: true
+      });
+      api?.redrawRows?.({
+        rowNodes: node ? [node] : undefined
+      });
+    });
+  }
 
   function finalizeDetailMutation(masterId: number, tabKey: string, row: RowData | null | undefined, masterRowKey?: string) {
     if (!row) return row;
@@ -99,12 +177,166 @@ export function useRuntimeMutations(params: {
     return finalizeDetailMutation(masterId, tabKey, row, masterRowKey);
   }
 
+  async function commitMasterPatch(params: {
+    rowId: number | null;
+    rowKey: string | null;
+    patch: Record<string, any>;
+    fallbackChanges?: RowChange[];
+    changeType?: 'user' | 'calc';
+    node?: any;
+    api?: any;
+    valueOverrides?: Record<string, any>;
+    runCalc?: boolean;
+    broadcast?: boolean;
+  }) {
+    const patchResult = applyMasterPatchRaw(params.rowId, params.rowKey, params.patch, params.fallbackChanges);
+    if (!patchResult || patchResult.changes.length === 0) return null;
+
+    const changeType = params.changeType ?? 'user';
+    applyChangeMarks(patchResult.row, patchResult.changes, changeType);
+
+    const changedFields = patchResult.changes.map(change => change.field).filter(Boolean);
+    const targetNode = patchResult.node ?? params.node ?? null;
+    refreshMasterRow(targetNode, params.api);
+
+    const shouldRunCalc = params.runCalc ?? changeType === 'user';
+    const calcChanged = shouldRunCalc ? runMasterCalc(targetNode, patchResult.row, params.valueOverrides) || [] : [];
+
+    if ((params.broadcast ?? shouldRunCalc) && broadcastToDetail && patchResult.row.id != null) {
+      const triggerFields = [...changedFields, ...calcChanged].filter(Boolean);
+      if (triggerFields.length > 0) {
+        await broadcastToDetail(patchResult.row.id, patchResult.row, triggerFields);
+      }
+    }
+
+    return {
+      ...patchResult,
+      changedFields,
+      calcChanged
+    };
+  }
+
+  function commitDetailPatch(params: {
+    masterId?: number | null;
+    tabKey: string;
+    rowId: number | null;
+    rowKey: string | null;
+    patch: Record<string, any>;
+    fallbackChanges?: RowChange[];
+    changeType?: 'user' | 'calc';
+    masterRowKey?: string;
+    node?: any;
+    api?: any;
+    valueOverrides?: Record<string, any>;
+    runCalc?: boolean;
+    recalc?: boolean;
+  }) {
+    const patchResult = applyDetailPatchRaw(params.tabKey, params.rowId, params.rowKey, params.patch, params.fallbackChanges);
+    if (!patchResult || patchResult.changes.length === 0) return null;
+
+    const changeType = params.changeType ?? 'user';
+    applyChangeMarks(patchResult.row, patchResult.changes, changeType);
+
+    const resolvedRowKey = params.masterRowKey ?? patchResult.masterRowKey ?? activeMasterRowKey?.value ?? undefined;
+    const changedFields = patchResult.changes.map(change => change.field).filter(Boolean);
+    const shouldRunCalc = params.runCalc ?? changeType === 'user';
+
+    if (shouldRunCalc) {
+      let calcApi = params.api;
+      let calcNode = params.node;
+      patchResult.applyToGrids((api, node) => {
+        if (!calcApi && api) calcApi = api;
+        if (!calcNode && node) calcNode = node;
+      });
+      runDetailCalc(
+        calcNode ?? null,
+        calcApi,
+        patchResult.row,
+        patchResult.masterId,
+        params.tabKey,
+        resolvedRowKey,
+        changedFields,
+        params.valueOverrides
+      );
+    }
+
+    refreshDetailRows(patchResult);
+    patchResult.applyToGrids(api => {
+      api?.refreshClientSideRowModel?.('aggregate');
+    });
+
+    const resolvedMasterId = params.masterId ?? patchResult.masterId;
+    if ((params.recalc ?? shouldRunCalc) && resolvedMasterId != null) {
+      recalcAggregates(resolvedMasterId, resolvedRowKey);
+    }
+
+    return {
+      ...patchResult,
+      changedFields,
+      masterRowKey: resolvedRowKey ?? patchResult.masterRowKey
+    };
+  }
+
+  async function onMasterCellValueChanged(event: any) {
+    const field = event.colDef?.field;
+    const row = event.data as RowData | undefined;
+    const masterId = row?.id;
+    if (!field || masterId == null || event.node?.rowPinned) return false;
+    if (Object.is(event.oldValue, event.newValue)) return false;
+
+    const { isApiChange, changeType } = resolveChangeMeta(event);
+    const patchResult = await commitMasterPatch({
+      rowId: row?.id ?? null,
+      rowKey: row?._rowKey ?? null,
+      patch: { [field]: event.newValue },
+      fallbackChanges: [{ field, oldValue: event.oldValue, newValue: event.newValue }],
+      changeType,
+      node: event.node,
+      api: event.api,
+      valueOverrides: !isApiChange ? { [field]: event.newValue } : undefined,
+      runCalc: !isApiChange,
+      broadcast: !isApiChange
+    });
+
+    return Boolean(patchResult);
+  }
+
+  function onDetailCellValueChanged(event: any, masterId: number, tabKey: string, masterRowKey?: string) {
+    const field = event.colDef?.field;
+    const row = event.data as RowData | undefined;
+    if (!field || !masterId || event.node?.rowPinned) return false;
+    if (Object.is(event.oldValue, event.newValue)) return false;
+
+    const { isApiChange, changeType } = resolveChangeMeta(event);
+    const patchResult = commitDetailPatch({
+      masterId,
+      tabKey,
+      rowId: row?.id ?? null,
+      rowKey: row?._rowKey ?? null,
+      patch: { [field]: event.newValue },
+      fallbackChanges: [{ field, oldValue: event.oldValue, newValue: event.newValue }],
+      changeType,
+      masterRowKey,
+      node: event.node,
+      api: event.api,
+      valueOverrides: !isApiChange ? { [field]: event.newValue } : undefined,
+      runCalc: !isApiChange,
+      recalc: !isApiChange
+    });
+
+    return Boolean(patchResult);
+  }
+
   return {
     addMasterRow,
     deleteMasterRow,
     copyMasterRow,
     addDetailRow,
     deleteDetailRow,
-    copyDetailRow
+    copyDetailRow,
+    commitMasterPatch,
+    commitDetailPatch,
+    onMasterCellValueChanged,
+    onDetailCellValueChanged
   };
 }
