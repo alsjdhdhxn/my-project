@@ -195,9 +195,18 @@ export function useMasterStore(params: {
       return;
     }
 
-    currentRow._isDeleted = true;
-    const node = api?.getRowNode(String(ensureRowKey(currentRow)));
-    if (node) api?.refreshCells({ rowNodes: [node] });
+    const patchResult = applyMasterPatch(currentRow.id ?? null, currentRow._rowKey ? String(currentRow._rowKey) : null, {
+      _isDeleted: true
+    });
+    if (patchResult) {
+      api?.refreshCells({
+        rowNodes: patchResult.node ? [patchResult.node] : undefined,
+        force: true
+      });
+      api?.redrawRows?.({
+        rowNodes: patchResult.node ? [patchResult.node] : undefined
+      });
+    }
   }
 
   async function copyMasterRow(sourceRow: RowData) {

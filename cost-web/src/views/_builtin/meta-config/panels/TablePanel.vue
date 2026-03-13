@@ -1,686 +1,49 @@
 <script setup lang="ts">
-import { inject, onMounted, ref, watch } from 'vue';
-import type { Ref } from 'vue';
-import { NButton, NDataTable, NModal, NPopconfirm, NSpace, useMessage } from 'naive-ui';
-import type { DataTableColumns, DataTableRowKey } from 'naive-ui';
+import { onBeforeUnmount, ref } from 'vue';
+import { NButton, NDataTable, NModal, NPopconfirm, NSpace } from 'naive-ui';
 import { AgGridVue } from 'ag-grid-vue3';
-import type { CellValueChangedEvent, ColDef, GridApi, GridReadyEvent } from 'ag-grid-community';
-import {
-  deleteColumnMeta,
-  deleteTableMeta,
-  fetchAllTableMeta,
-  fetchColumnsByTableId,
-  fetchTablesByPageCode,
-  fetchViewColumns,
-  saveColumnMeta,
-  saveTableMeta
-} from '@/service/api/meta-config';
-
-const message = useMessage();
-const filterState = inject<Ref<{ tab: string; pageCode: string } | null>>('filterState');
-
-// 表元数据
-const tableGridApi = ref<GridApi | null>(null);
-const tableRows = ref<any[]>([]);
-const selectedTable = ref<any>(null);
-
-const tableColDefs: ColDef[] = [
-  { field: 'id', headerName: 'ID', width: 70, editable: false },
-  { field: 'tableCode', headerName: 'tableCode', width: 140, editable: true },
-  { field: 'tableName', headerName: '表名称', width: 140, editable: true },
-  { field: 'queryView', headerName: 'queryView', width: 180, editable: true },
-  { field: 'targetTable', headerName: 'targetTable', width: 180, editable: true },
-  { field: 'sequenceName', headerName: '序列名', width: 160, editable: true },
-  { field: 'pkColumn', headerName: '主键列', width: 100, editable: true },
-  { field: 'parentTableCode', headerName: '父表Code', width: 130, editable: true },
-  { field: 'parentFkColumn', headerName: '外键列', width: 120, editable: true }
-];
-
-// 列元数据
-const colGridApi = ref<GridApi | null>(null);
-const colRows = ref<any[]>([]);
-const selectedCol = ref<any>(null);
-const queryViewColumnOptions = ref<Array<{ label: string; value: string }>>([]);
-const queryViewColumnSet = ref<Set<string>>(new Set());
-const targetTableColumnSet = ref<Set<string>>(new Set());
-let tableContextRequestSeq = 0;
-
-function normalizeDbColumnName(value: unknown): string {
-  return typeof value === 'string' ? value.trim().toUpperCase() : '';
-}
-
-function getColumnNameState(row: any): 'normal' | 'invalid' | 'virtual' {
-  if (!row) return 'normal';
-
-  const columnName = normalizeDbColumnName(row.columnName);
-  if (columnName && queryViewColumnSet.value.size > 0 && !queryViewColumnSet.value.has(columnName)) {
-    return 'invalid';
-  }
-  if (Number(row.isVirtual) === 1) {
-    return 'virtual';
-  }
-  return 'normal';
-}
-
-function getColumnNameCellStyle(params: any) {
-  const state = getColumnNameState(params.data);
-  if (state === 'invalid') {
-    return {
-      backgroundColor: '#fff1f0',
-      color: '#cf1322',
-      fontWeight: '600'
-    };
-  }
-  if (state === 'virtual') {
-    return {
-      backgroundColor: '#fffbe6',
-      color: '#ad6800',
-      fontWeight: '600'
-    };
-  }
-  return undefined;
-}
-
-function getColumnNameTooltip(params: any): string {
-  const state = getColumnNameState(params.data);
-  if (state === 'invalid') {
-    return Number(params.data?.isVirtual) === 1 ? '物理列不存在，当前仍标记为虚拟列' : '物理列不存在，且未标记为虚拟列';
-  }
-  if (state === 'virtual') {
-    return '虚拟列';
-  }
-  return params.value || '';
-}
-
-function getAvailableColumnNameValues(row: any): string[] {
-  const currentValue = typeof row?.columnName === 'string' ? row.columnName.trim() : '';
-  const usedByOthers = new Set(
-    colRows.value
-      .filter(item => item !== row)
-      .map(item => normalizeDbColumnName(item?.columnName))
-      .filter(Boolean)
-  );
-
-  const values = queryViewColumnOptions.value
-    .map(option => option.value)
-    .filter(value => !usedByOthers.has(normalizeDbColumnName(value)));
-
-  if (currentValue && !values.some(value => normalizeDbColumnName(value) === normalizeDbColumnName(currentValue))) {
-    values.unshift(currentValue);
-  }
-
-  return values;
-}
-
-function shouldAutoSyncByOldColumn(currentValue: unknown, oldColumnName: unknown): boolean {
-  const current = typeof currentValue === 'string' ? currentValue.trim() : '';
-  if (!current) return true;
-
-  const oldColumn = typeof oldColumnName === 'string' ? oldColumnName.trim() : '';
-  if (!oldColumn) return false;
-
-  return normalizeDbColumnName(current) === normalizeDbColumnName(oldColumn);
-}
-
-function syncQueryColumnFromColumnName(row: any, oldColumnName: unknown, newColumnName: unknown) {
-  if (!row) return;
-
-  const nextColumnName = typeof newColumnName === 'string' ? newColumnName.trim() : '';
-  if (!nextColumnName) return;
-  if (!shouldAutoSyncByOldColumn(row.queryColumn, oldColumnName)) return;
-
-  row.queryColumn = nextColumnName;
-}
-
-function syncTargetColumnFromColumnName(row: any, oldColumnName: unknown, newColumnName: unknown) {
-  if (!row) return;
-  if (!shouldAutoSyncByOldColumn(row.targetColumn, oldColumnName)) return;
-
-  const nextColumnName = typeof newColumnName === 'string' ? newColumnName.trim() : '';
-  if (!nextColumnName) {
-    row.targetColumn = '';
-    return;
-  }
-
-  const normalized = normalizeDbColumnName(nextColumnName);
-  row.targetColumn = targetTableColumnSet.value.has(normalized) ? nextColumnName : '';
-}
-
-function syncLinkedFieldsFromColumnName(row: any, oldColumnName: unknown, newColumnName: unknown) {
-  syncQueryColumnFromColumnName(row, oldColumnName, newColumnName);
-  syncTargetColumnFromColumnName(row, oldColumnName, newColumnName);
-}
-
-function setColumnNameValue(params: any): boolean {
-  const row = params.data;
-  if (!row) return false;
-
-  const oldColumnName = typeof row.columnName === 'string' ? row.columnName.trim() : '';
-  const nextColumnName = typeof params.newValue === 'string' ? params.newValue.trim() : '';
-
-  if (oldColumnName === nextColumnName) return false;
-
-  row.columnName = nextColumnName;
-  syncLinkedFieldsFromColumnName(row, oldColumnName, nextColumnName);
-  row._dirty = true;
-
-  params.api.refreshCells({
-    rowNodes: params.node ? [params.node] : undefined,
-    columns: ['columnName', 'queryColumn', 'targetColumn'],
-    force: true
-  });
-
-  return true;
-}
-
-const colColDefs: ColDef[] = [
-  { field: 'id', headerName: 'ID', width: 70, editable: false },
-  {
-    field: 'columnName',
-    headerName: 'columnName',
-    width: 140,
-    editable: true,
-    cellEditor: 'agSelectCellEditor',
-    cellEditorParams: (params: any) => ({
-      values: getAvailableColumnNameValues(params.data)
-    }),
-    valueSetter: setColumnNameValue,
-    cellStyle: getColumnNameCellStyle,
-    tooltipValueGetter: getColumnNameTooltip
-  },
-  { field: 'queryColumn', headerName: 'queryColumn', width: 140, editable: true },
-  { field: 'targetColumn', headerName: 'targetColumn', width: 130, editable: true },
-  { field: 'headerText', headerName: '列标题', width: 120, editable: true },
-  {
-    field: 'dataType',
-    headerName: '数据类型',
-    width: 100,
-    editable: true,
-    cellEditor: 'agSelectCellEditor',
-    cellEditorParams: { values: ['text', 'number', 'date', 'select', 'checkbox'] }
-  },
-  { field: 'displayOrder', headerName: '排序', width: 70, editable: true, cellDataType: 'number' },
-  {
-    field: 'sortable',
-    headerName: '可排序',
-    width: 80,
-    editable: true,
-    cellRenderer: 'agCheckboxCellRenderer',
-    cellEditor: 'agCheckboxCellEditor',
-    valueGetter: (p: any) => p.data?.sortable === 1,
-    valueSetter: (p: any) => {
-      p.data.sortable = p.newValue ? 1 : 0;
-      return true;
-    }
-  },
-  {
-    field: 'filterable',
-    headerName: '可筛选',
-    width: 80,
-    editable: true,
-    cellRenderer: 'agCheckboxCellRenderer',
-    cellEditor: 'agCheckboxCellEditor',
-    valueGetter: (p: any) => p.data?.filterable === 1,
-    valueSetter: (p: any) => {
-      p.data.filterable = p.newValue ? 1 : 0;
-      return true;
-    }
-  },
-  {
-    field: 'isVirtual',
-    headerName: '虚拟列',
-    width: 80,
-    editable: true,
-    cellRenderer: 'agCheckboxCellRenderer',
-    cellEditor: 'agCheckboxCellEditor',
-    valueGetter: (p: any) => p.data?.isVirtual === 1,
-    valueSetter: (p: any) => {
-      p.data.isVirtual = p.newValue ? 1 : 0;
-      return true;
-    }
-  },
-  { field: 'dictType', headerName: '字典类型', width: 120, editable: true }
-];
-
-const defaultColDef: ColDef = {
-  sortable: true,
-  resizable: true,
-  flex: 0,
-  suppressHeaderMenuButton: true
-};
-
-async function loadTables() {
-  try {
-    const res = await fetchAllTableMeta();
-    tableRows.value = res || [];
-    setTimeout(() => tableGridApi.value?.autoSizeAllColumns(), 100);
-  } catch {
-    message.error('加载表元数据失败');
-  }
-}
-
-async function fetchColumnsData(tableMetadataId: number) {
-  return await fetchColumnsByTableId(tableMetadataId);
-}
-
-async function fetchQueryViewPhysicalColumns(viewName?: string) {
-  if (!viewName) {
-    return {
-      options: [] as Array<{ label: string; value: string }>,
-      set: new Set<string>()
-    };
-  }
-
-  const res = await fetchViewColumns(viewName);
-  const values = (res || []).map((row: any) => String(row.COLUMN_NAME || '').trim()).filter(Boolean);
-
-  return {
-    options: values.map(value => ({ label: value, value })),
-    set: new Set(values.map(value => value.toUpperCase()))
-  };
-}
-
-async function fetchTargetTablePhysicalColumns(tableName?: string) {
-  if (!tableName) {
-    return new Set<string>();
-  }
-
-  const res = await fetchViewColumns(tableName);
-  return new Set((res || []).map((row: any) => normalizeDbColumnName(row.COLUMN_NAME)).filter(Boolean));
-}
-
-async function loadSelectedTableContext(tableRow: any) {
-  const requestSeq = ++tableContextRequestSeq;
-  if (!tableRow?.id) {
-    colRows.value = [];
-    queryViewColumnOptions.value = [];
-    queryViewColumnSet.value = new Set();
-    targetTableColumnSet.value = new Set();
-    return;
-  }
-
-  try {
-    const [columns, queryViewColumns, targetTableColumns] = await Promise.all([
-      fetchColumnsData(tableRow.id),
-      fetchQueryViewPhysicalColumns(tableRow.queryView),
-      fetchTargetTablePhysicalColumns(tableRow.targetTable)
-    ]);
-
-    if (requestSeq !== tableContextRequestSeq || selectedTable.value?.id !== tableRow.id) return;
-
-    colRows.value = columns || [];
-    queryViewColumnOptions.value = queryViewColumns.options;
-    queryViewColumnSet.value = queryViewColumns.set;
-    targetTableColumnSet.value = targetTableColumns;
-
-    colGridApi.value?.refreshCells({ columns: ['columnName'], force: true });
-    setTimeout(() => colGridApi.value?.autoSizeAllColumns(), 100);
-  } catch {
-    if (requestSeq !== tableContextRequestSeq) return;
-    colRows.value = [];
-    queryViewColumnOptions.value = [];
-    queryViewColumnSet.value = new Set();
-    targetTableColumnSet.value = new Set();
-    colGridApi.value?.refreshCells({ columns: ['columnName'], force: true });
-    message.error('加载列元数据失败');
-  }
-}
-
-async function refreshPhysicalColumnsForSelectedTable(tableRow: any) {
-  const requestSeq = ++tableContextRequestSeq;
-  if (!tableRow?.id) {
-    queryViewColumnOptions.value = [];
-    queryViewColumnSet.value = new Set();
-    targetTableColumnSet.value = new Set();
-    colGridApi.value?.refreshCells({ columns: ['columnName'], force: true });
-    return;
-  }
-
-  try {
-    const [queryViewColumns, targetTableColumns] = await Promise.all([
-      fetchQueryViewPhysicalColumns(tableRow.queryView),
-      fetchTargetTablePhysicalColumns(tableRow.targetTable)
-    ]);
-
-    if (requestSeq !== tableContextRequestSeq || selectedTable.value?.id !== tableRow.id) return;
-
-    queryViewColumnOptions.value = queryViewColumns.options;
-    queryViewColumnSet.value = queryViewColumns.set;
-    targetTableColumnSet.value = targetTableColumns;
-    colGridApi.value?.refreshCells({ columns: ['columnName'], force: true });
-  } catch {
-    if (requestSeq !== tableContextRequestSeq) return;
-    queryViewColumnOptions.value = [];
-    queryViewColumnSet.value = new Set();
-    targetTableColumnSet.value = new Set();
-    colGridApi.value?.refreshCells({ columns: ['columnName'], force: true });
-    message.error('加载物理列失败');
-  }
-}
-
-function onTableGridReady(params: GridReadyEvent) {
-  tableGridApi.value = params.api;
-  params.api.autoSizeAllColumns();
-}
-
-function onColGridReady(params: GridReadyEvent) {
-  colGridApi.value = params.api;
-  params.api.autoSizeAllColumns();
-}
-
-function onTableSelectionChanged() {
-  const rows = tableGridApi.value?.getSelectedRows() || [];
-  selectedTable.value = rows[0] || null;
-  void loadSelectedTableContext(selectedTable.value);
-}
-
-function onTableRowClicked(event: any) {
-  if (event.node?.data) {
-    event.node.setSelected(true, true);
-  }
-}
-
-function onColSelectionChanged() {
-  const rows = colGridApi.value?.getSelectedRows() || [];
-  selectedCol.value = rows[0] || null;
-}
-
-function onColRowClicked(event: any) {
-  if (event.node?.data) {
-    event.node.setSelected(true, true);
-  }
-}
-
-function addTable() {
-  const newRow = {
-    _isNew: true,
-    id: null,
-    tableCode: '',
-    tableName: '',
-    queryView: '',
-    targetTable: '',
-    sequenceName: '',
-    pkColumn: 'ID',
-    parentTableCode: '',
-    parentFkColumn: ''
-  };
-  tableRows.value = [...tableRows.value, newRow];
-
-  setTimeout(() => {
-    const idx = tableRows.value.length - 1;
-    tableGridApi.value?.ensureIndexVisible(idx);
-    tableGridApi.value?.startEditingCell({ rowIndex: idx, colKey: 'tableCode' });
-  }, 100);
-}
-
-async function saveTable() {
-  tableGridApi.value?.stopEditing();
-
-  const dirtyRows = tableRows.value.filter(r => r._dirty || r._isNew);
-  if (dirtyRows.length === 0) {
-    message.info('没有需要保存的修改');
-    return;
-  }
-
-  for (const row of dirtyRows) {
-    if (!row.tableCode || !row.tableName) {
-      message.warning('tableCode和表名称不能为空');
-      return;
-    }
-  }
-
-  try {
-    await Promise.all(dirtyRows.map(r => saveTableMeta(r)));
-    message.success(`已保存 ${dirtyRows.length} 条表记录`);
-    await loadTables();
-  } catch {
-    message.error('保存失败');
-  }
-}
-
-async function removeTable() {
-  if (!selectedTable.value) return;
-
-  if (selectedTable.value._isNew) {
-    tableRows.value = tableRows.value.filter(r => r !== selectedTable.value);
-    return;
-  }
-
-  try {
-    await deleteTableMeta(selectedTable.value.id);
-    message.success('删除成功');
-    await loadTables();
-    colRows.value = [];
-    queryViewColumnOptions.value = [];
-    queryViewColumnSet.value = new Set();
-    targetTableColumnSet.value = new Set();
-    tableContextRequestSeq++;
-  } catch {
-    message.error('删除失败');
-  }
-}
-
-function addColumn() {
-  if (!selectedTable.value?.id) {
-    message.warning('请先选中一个表');
-    return;
-  }
-
-  const newRow = {
-    _isNew: true,
-    id: null,
-    tableMetadataId: selectedTable.value.id,
-    columnName: '',
-    queryColumn: '',
-    targetColumn: '',
-    headerText: '',
-    dataType: 'text',
-    displayOrder: 0,
-    sortable: 1,
-    filterable: 1,
-    isVirtual: 0,
-    dictType: ''
-  };
-  colRows.value = [...colRows.value, newRow];
-
-  setTimeout(() => {
-    const idx = colRows.value.length - 1;
-    colGridApi.value?.ensureIndexVisible(idx);
-    colGridApi.value?.startEditingCell({ rowIndex: idx, colKey: 'columnName' });
-  }, 100);
-}
-
-async function saveColumn() {
-  colGridApi.value?.stopEditing();
-
-  const dirtyRows = colRows.value.filter(r => r._dirty || r._isNew);
-  if (dirtyRows.length === 0) {
-    message.info('没有需要保存的修改');
-    return;
-  }
-
-  for (const row of dirtyRows) {
-    if (!row.columnName) {
-      message.warning('columnName不能为空');
-      return;
-    }
-  }
-
-  try {
-    await Promise.all(dirtyRows.map(r => saveColumnMeta(r)));
-    message.success(`已保存 ${dirtyRows.length} 条列记录`);
-    if (selectedTable.value?.id) {
-      await loadSelectedTableContext(selectedTable.value);
-    }
-  } catch {
-    message.error('保存失败');
-  }
-}
-
-async function removeColumn() {
-  if (!selectedCol.value) return;
-
-  if (selectedCol.value._isNew) {
-    colRows.value = colRows.value.filter(r => r !== selectedCol.value);
-    return;
-  }
-
-  try {
-    await deleteColumnMeta(selectedCol.value.id);
-    message.success('删除成功');
-    if (selectedTable.value?.id) {
-      await loadSelectedTableContext(selectedTable.value);
-    }
-  } catch {
-    message.error('删除失败');
-  }
-}
-
-function markDirty(event: CellValueChangedEvent) {
-  if (event.data) {
-    event.data._dirty = true;
-  }
-
-  const field = event.colDef?.field;
-  if (event.api === colGridApi.value && (field === 'columnName' || field === 'isVirtual')) {
-    if (field === 'columnName') {
-      syncLinkedFieldsFromColumnName(event.data, event.oldValue, event.newValue);
-    }
-    event.api.refreshCells({
-      rowNodes: event.node ? [event.node] : undefined,
-      columns: ['columnName', 'queryColumn', 'targetColumn'],
-      force: true
-    });
-  }
-
-  if (
-    event.api === tableGridApi.value &&
-    (field === 'queryView' || field === 'targetTable') &&
-    selectedTable.value === event.data
-  ) {
-    void refreshPhysicalColumnsForSelectedTable(event.data);
-  }
-}
-
-const showViewColModal = ref(false);
-const viewColLoading = ref(false);
-const viewColRows = ref<any[]>([]);
-const viewColCheckedKeys = ref<DataTableRowKey[]>([]);
-const targetTableCols = new Set<string>();
-
-const viewColTableColumns: DataTableColumns = [
-  { type: 'selection' },
-  { title: 'COLUMN_NAME', key: 'COLUMN_NAME', width: 200 },
-  { title: 'DATA_TYPE', key: 'DATA_TYPE', width: 120 },
-  { title: 'DATA_LENGTH', key: 'DATA_LENGTH', width: 100 },
-  { title: 'DATA_PRECISION', key: 'DATA_PRECISION', width: 120 },
-  { title: 'DATA_SCALE', key: 'DATA_SCALE', width: 100 },
-  { title: 'COLUMN_ID', key: 'COLUMN_ID', width: 100 }
-];
-
-function mapOracleType(oracleType: string): string {
-  if (!oracleType) return 'text';
-  const t = oracleType.toUpperCase();
-  if (t.includes('NUMBER') || t.includes('FLOAT') || t.includes('DECIMAL') || t.includes('INTEGER')) {
-    return 'number';
-  }
-  if (t.includes('DATE') || t.includes('TIMESTAMP')) {
-    return 'date';
-  }
-  return 'text';
-}
-
-async function openViewColModal() {
-  if (!selectedTable.value?.id) {
-    message.warning('请先选中一个表');
-    return;
-  }
-
-  const viewName = selectedTable.value.queryView;
-  if (!viewName) {
-    message.warning('当前表未配置 queryView');
-    return;
-  }
-
-  showViewColModal.value = true;
-  viewColLoading.value = true;
-  viewColCheckedKeys.value = [];
-  targetTableCols.clear();
-
-  try {
-    const [viewRes, targetRes] = await Promise.all([
-      fetchViewColumns(viewName),
-      selectedTable.value.targetTable ? fetchViewColumns(selectedTable.value.targetTable) : Promise.resolve([])
-    ]);
-
-    (targetRes || []).forEach((r: any) => targetTableCols.add((r.COLUMN_NAME || '').toUpperCase()));
-
-    const existingCols = new Set(colRows.value.map((c: any) => (c.columnName || '').toUpperCase()));
-    const auditCols = new Set(['CREATE_TIME', 'UPDATE_TIME', 'CREATE_BY', 'UPDATE_BY', 'DELETED']);
-    viewColRows.value = (viewRes || [])
-      .filter((r: any) => {
-        const col = (r.COLUMN_NAME || '').toUpperCase();
-        return !existingCols.has(col) && !auditCols.has(col);
-      })
-      .map((r: any) => ({ ...r, _key: r.COLUMN_NAME }));
-  } catch {
-    message.error('查询视图列失败');
-    viewColRows.value = [];
-  } finally {
-    viewColLoading.value = false;
-  }
-}
-
-function confirmAddViewCols() {
-  if (!viewColCheckedKeys.value.length) {
-    message.warning('请至少选择一列');
-    return;
-  }
-
-  const existingOrder = colRows.value.length;
-  const selected = viewColRows.value.filter(r => viewColCheckedKeys.value.includes(r._key));
-  const newRows = selected.map((r, i) => {
-    const colName = r.COLUMN_NAME;
-    const inTarget = targetTableCols.has((colName || '').toUpperCase());
-
-    return {
-      _isNew: true,
-      id: null,
-      tableMetadataId: selectedTable.value.id,
-      columnName: colName,
-      queryColumn: colName,
-      targetColumn: inTarget ? colName : '',
-      headerText: colName,
-      dataType: mapOracleType(r.DATA_TYPE),
-      displayOrder: existingOrder + i + 1,
-      sortable: 1,
-      filterable: 1,
-      isVirtual: inTarget ? 0 : 1,
-      dictType: ''
-    };
-  });
-
-  colRows.value = [...colRows.value, ...newRows];
-  showViewColModal.value = false;
-  message.success(`已添加 ${newRows.length} 列，请编辑后保存`);
-}
+import { useTablePanelState } from './table-panel/useTablePanelState';
+
+const {
+  tableRows,
+  selectedTable,
+  tableColDefs,
+  colRows,
+  colColDefs,
+  defaultColDef,
+  canImportColumns,
+  hasSelectedTable,
+  hasSelectedColumn,
+  loadTables,
+  addTable,
+  removeTable,
+  saveTable,
+  addColumn,
+  removeColumn,
+  saveColumn,
+  markDirty,
+  onTableGridReady,
+  onTableSelectionChanged,
+  onTableRowClicked,
+  onColGridReady,
+  onColSelectionChanged,
+  onColRowClicked,
+  showViewColModal,
+  viewColLoading,
+  viewColRows,
+  viewColCheckedKeys,
+  viewColTableColumns,
+  openViewColModal,
+  closeViewColModal,
+  confirmAddViewCols
+} = useTablePanelState();
 
 const topHeight = ref(300);
 let startY = 0;
 let startHeight = 0;
 
-function onResizeStart(e: MouseEvent) {
-  startY = e.clientY;
-  startHeight = topHeight.value;
-  document.addEventListener('mousemove', onResizeMove);
-  document.addEventListener('mouseup', onResizeEnd);
-  document.body.style.cursor = 'row-resize';
-  document.body.style.userSelect = 'none';
-}
-
-function onResizeMove(e: MouseEvent) {
-  const delta = e.clientY - startY;
-  topHeight.value = Math.max(80, startHeight + delta);
+function onResizeMove(event: MouseEvent) {
+  topHeight.value = Math.max(80, startHeight + event.clientY - startY);
 }
 
 function onResizeEnd() {
@@ -690,38 +53,16 @@ function onResizeEnd() {
   document.body.style.userSelect = '';
 }
 
-onMounted(() => {
-  if (filterState?.value?.tab === 'table') return;
-  void loadTables();
-});
+function onResizeStart(event: MouseEvent) {
+  startY = event.clientY;
+  startHeight = topHeight.value;
+  document.addEventListener('mousemove', onResizeMove);
+  document.addEventListener('mouseup', onResizeEnd);
+  document.body.style.cursor = 'row-resize';
+  document.body.style.userSelect = 'none';
+}
 
-watch(
-  () => filterState?.value,
-  async state => {
-    if (!state || state.tab !== 'table') return;
-
-    const pageCode = state.pageCode;
-    try {
-      const tables = await fetchTablesByPageCode(pageCode);
-      if (!tables.length) {
-        message.warning(`pageCode="${pageCode}" 未关联任何表`);
-        return;
-      }
-
-      tableRows.value = tables;
-      setTimeout(() => {
-        tableGridApi.value?.autoSizeAllColumns();
-        const firstNode = tableGridApi.value?.getDisplayedRowAtIndex(0);
-        if (firstNode) {
-          firstNode.setSelected(true);
-        }
-      }, 150);
-    } catch {
-      message.error('查询关联表失败');
-    }
-  },
-  { immediate: true }
-);
+onBeforeUnmount(onResizeEnd);
 </script>
 
 <template>
@@ -732,7 +73,7 @@ watch(
           <NButton size="small" type="primary" @click="addTable">新增</NButton>
           <NPopconfirm @positive-click="removeTable">
             <template #trigger>
-              <NButton size="small" type="error" :disabled="!selectedTable">删除</NButton>
+              <NButton size="small" type="error" :disabled="!hasSelectedTable">删除</NButton>
             </template>
             确定删除？
           </NPopconfirm>
@@ -764,17 +105,13 @@ watch(
     <div class="section" style="flex: 1">
       <div class="section-toolbar">
         <NSpace size="small">
-          <NButton
-            size="small"
-            type="primary"
-            :disabled="!selectedTable?.id || !selectedTable?.queryView"
-            @click="openViewColModal"
-          >
-            新增列
+          <NButton size="small" type="primary" :disabled="!canImportColumns" @click="openViewColModal">
+            从视图导入列
           </NButton>
+          <NButton size="small" :disabled="!selectedTable?.id" @click="addColumn">新增手工列</NButton>
           <NPopconfirm @positive-click="removeColumn">
             <template #trigger>
-              <NButton size="small" type="error" :disabled="!selectedCol">删除列</NButton>
+              <NButton size="small" type="error" :disabled="!hasSelectedColumn">删除列</NButton>
             </template>
             确定删除？
           </NPopconfirm>
@@ -813,7 +150,7 @@ watch(
         v-model:checked-row-keys="viewColCheckedKeys"
         :columns="viewColTableColumns"
         :data="viewColRows"
-        :row-key="(r: any) => r._key"
+        :row-key="(row: any) => row._key"
         :loading="viewColLoading"
         :max-height="400"
         size="small"
@@ -821,7 +158,7 @@ watch(
 
       <template #footer>
         <NSpace justify="end">
-          <NButton size="small" @click="showViewColModal = false">取消</NButton>
+          <NButton size="small" @click="closeViewColModal">取消</NButton>
           <NButton size="small" type="primary" :disabled="!viewColCheckedKeys.length" @click="confirmAddViewCols">
             确定添加 ({{ viewColCheckedKeys.length }})
           </NButton>

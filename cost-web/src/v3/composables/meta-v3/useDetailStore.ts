@@ -42,12 +42,6 @@ export function useDetailStore(params: {
     });
   }
 
-  function refreshDetailCells(masterRowKey: string, tabKey: string) {
-    forEachDetailGrid(masterRowKey, tabKey, api => {
-      api?.refreshCells?.({ force: true });
-    });
-  }
-
   function replaceDetailRows(masterRowKey: string, groupedRows: Record<string, RowData[]>) {
     for (const [tabKey, rows] of Object.entries(groupedRows)) {
       setDetailRows(masterRowKey, tabKey, rows);
@@ -116,10 +110,6 @@ export function useDetailStore(params: {
       masterRowKey: resolvedRowKey,
       rows
     };
-  }
-
-  function resolveCurrentDetailRow(rows: RowData[], row: RowData) {
-    return findRowByIdentity(rows, row);
   }
 
   function findDetailGridNode(api: any, detailRowKey: string) {
@@ -200,15 +190,26 @@ export function useDetailStore(params: {
     if (!row) return false;
     const detailRows = resolveDetailRows(masterId, tabKey, masterRowKey);
     if (!detailRows) return false;
-    const currentRow = resolveCurrentDetailRow(detailRows.rows, row);
+    const currentRow = findRowByIdentity(detailRows.rows, row);
+    if (!currentRow) return false;
 
     if (!isPersistedRow(currentRow)) {
       const idx = detailRows.rows.findIndex(r => isSameRowIdentity(r, currentRow));
       if (idx >= 0) detailRows.rows.splice(idx, 1);
       setDetailRows(detailRows.masterRowKey, tabKey, detailRows.rows);
     } else {
-      currentRow._isDeleted = true;
-      refreshDetailCells(detailRows.masterRowKey, tabKey);
+      const patchResult = applyDetailPatch(tabKey, currentRow.id ?? null, currentRow._rowKey ? String(currentRow._rowKey) : null, {
+        _isDeleted: true
+      });
+      patchResult?.applyToGrids((api, node) => {
+        api?.refreshCells?.({
+          rowNodes: node ? [node] : undefined,
+          force: true
+        });
+        api?.redrawRows?.({
+          rowNodes: node ? [node] : undefined
+        });
+      });
     }
 
     return true;
