@@ -109,15 +109,7 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     recalcAggregatesRef.current(masterId, masterRowKey);
   };
 
-  const {
-    addMasterRow: addMasterRowRaw,
-    deleteMasterRow: deleteMasterRowRaw,
-    addDetailRow: addDetailRowRaw,
-    deleteDetailRow: deleteDetailRowRaw,
-    copyMasterRow: copyMasterRowRaw,
-    copyDetailRow: copyDetailRowRaw,
-    ...dataApi
-  } = useMasterDetailData({
+  const dataApi = useMasterDetailData({
     pageCode,
     pageConfig: meta.pageConfig,
     detailFkColumnByTab: meta.detailFkColumnByTab,
@@ -127,18 +119,19 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     detailGridApisByTab,
     notifyError
   });
+  const { cache: cacheApi, query: queryApi, access: accessApi, loader: loaderApi, master: masterApi, detail: detailApi } = dataApi;
 
   const calc = useCalcBroadcast({
     masterGridApi,
-    getMasterRowById: dataApi.getMasterRowById,
-    getMasterRowByRowKey: dataApi.getMasterRowByRowKey,
-    resolveMasterRowKey: dataApi.resolveMasterRowKey,
-    detailCache: dataApi.detailCache,
+    getMasterRowById: accessApi.getMasterRowById,
+    getMasterRowByRowKey: accessApi.getMasterRowByRowKey,
+    resolveMasterRowKey: accessApi.resolveMasterRowKey,
+    detailCache: cacheApi.detailCache,
     detailCalcRulesByTab: meta.detailCalcRulesByTab,
     compiledAggRules: meta.compiledAggRules,
     compiledMasterCalcRules: meta.compiledMasterCalcRules,
     pageConfig: meta.pageConfig,
-    loadDetailData: dataApi.loadDetailData,
+    loadDetailData: loaderApi.loadDetailData,
     detailGridApisByTab
   });
 
@@ -147,10 +140,10 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
   const { addMasterRow, addDetailRow, deleteDetailRow, copyDetailRow } = useRuntimeMutations({
     resolvedFeatures,
     detailGridApisByTab,
-    addMasterRowRaw,
-    addDetailRowRaw,
-    deleteDetailRowRaw,
-    copyDetailRowRaw,
+    addMasterRowRaw: masterApi.addMasterRow,
+    addDetailRowRaw: detailApi.addDetailRow,
+    deleteDetailRowRaw: detailApi.deleteDetailRow,
+    copyDetailRowRaw: detailApi.copyDetailRow,
     runMasterCalc: calc.runMasterCalc,
     runDetailCalc: calc.runDetailCalc,
     recalcAggregates: recalcAggregatesProxy
@@ -164,9 +157,9 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
       masterLookupRules: meta.masterLookupRules,
       detailLookupRulesByTab: meta.detailLookupRulesByTab
     },
-    getMasterRowById: dataApi.getMasterRowById,
-    getMasterRowByRowKey: dataApi.getMasterRowByRowKey,
-    detailCache: dataApi.detailCache,
+    getMasterRowById: accessApi.getMasterRowById,
+    getMasterRowByRowKey: accessApi.getMasterRowByRowKey,
+    detailCache: cacheApi.detailCache,
     masterGridApi,
     markFieldChange: calc.markFieldChange,
     runMasterCalc: calc.runMasterCalc,
@@ -187,19 +180,19 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     masterLookupRules: meta.masterLookupRules,
     detailLookupRulesByTab: meta.detailLookupRulesByTab,
     masterGridApi,
-    setAdvancedConditions: dataApi.setAdvancedConditions,
-    clearAdvancedConditions: dataApi.clearAdvancedConditions,
-    clearAllCache: dataApi.clearAllCache,
+    setAdvancedConditions: queryApi.setAdvancedConditions,
+    clearAdvancedConditions: queryApi.clearAdvancedConditions,
+    clearAllCache: cacheApi.clearAllCache,
     notifyInfo
   });
 
   const { save, isSaving } = useSave({
     pageCode,
     pageConfig: meta.pageConfig,
-    detailCache: dataApi.detailCache,
-    getMasterRowById: dataApi.getMasterRowById,
-    getMasterRowByRowKey: dataApi.getMasterRowByRowKey,
-    resolveMasterRowKey: dataApi.resolveMasterRowKey,
+    detailCache: cacheApi.detailCache,
+    getMasterRowById: accessApi.getMasterRowById,
+    getMasterRowByRowKey: accessApi.getMasterRowByRowKey,
+    resolveMasterRowKey: accessApi.resolveMasterRowKey,
     masterValidationRules: meta.masterValidationRules,
     detailValidationRulesByTab: meta.detailValidationRulesByTab,
     masterColumnMeta: meta.masterColumnMeta,
@@ -207,7 +200,7 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     masterPkColumn: meta.masterPkColumn,
     detailPkColumnByTab: meta.detailPkColumnByTab,
     detailFkColumnByTab: meta.detailFkColumnByTab,
-    loadDetailData: dataApi.loadDetailData,
+    loadDetailData: loaderApi.loadDetailData,
     masterGridApi,
     detailGridApisByTab,
     activeMasterRowKey,
@@ -233,7 +226,13 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     masterGridApi,
     activeMasterRowKey,
     pageConfig: meta.pageConfig,
-    data: dataApi
+    data: {
+      detailCache: cacheApi.detailCache,
+      getMasterRowByRowKey: accessApi.getMasterRowByRowKey,
+      reloadMasterRow: loaderApi.reloadMasterRow,
+      loadDetailData: loaderApi.loadDetailData,
+      clearAllCache: cacheApi.clearAllCache
+    }
   });
 
   runtimeApi = {
@@ -242,15 +241,15 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     activeMasterRowKey,
     ...metaApi,
     componentStateByKey,
-    detailCache: dataApi.detailCache,
-    createServerSideDataSource: dataApi.createServerSideDataSource,
-    getMasterRowById: dataApi.getMasterRowById,
-    loadDetailData: dataApi.loadDetailData,
+    detailCache: cacheApi.detailCache,
+    createServerSideDataSource: queryApi.createServerSideDataSource,
+    getMasterRowById: accessApi.getMasterRowById,
+    loadDetailData: loaderApi.loadDetailData,
     addMasterRow,
-    deleteMasterRow: deleteMasterRowRaw,
+    deleteMasterRow: masterApi.deleteMasterRow,
     addDetailRow,
     deleteDetailRow,
-    copyMasterRow: copyMasterRowRaw,
+    copyMasterRow: masterApi.copyMasterRow,
     copyDetailRow,
     markFieldChange: calc.markFieldChange,
     runMasterCalc: calc.runMasterCalc,
@@ -348,8 +347,8 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     componentStateByKey,
     masterGridApi,
     detailGridApisByTab,
-    detailCache: dataApi.detailCache,
-    resolveMasterRowKey: dataApi.resolveMasterRowKey,
+    detailCache: cacheApi.detailCache,
+    resolveMasterRowKey: accessApi.resolveMasterRowKey,
     applyGridConfig: gridConfig.applyGridConfig,
     loadComponents: loadComponentsRaw,
     parseConfig: parseConfigRaw,

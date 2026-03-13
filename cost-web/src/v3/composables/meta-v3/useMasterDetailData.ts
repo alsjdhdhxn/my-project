@@ -94,22 +94,34 @@ export function useMasterDetailData(params: {
   });
 
   return {
-    detailCache,
-    clearAllCache,
-    advancedConditions,
-    setAdvancedConditions,
-    clearAdvancedConditions,
-    getMasterRowByRowKey,
-    getMasterRowById,
-    resolveMasterRowKey,
-    loadDetailData,
-    reloadMasterRow,
-    addMasterRow,
-    deleteMasterRow,
-    addDetailRow,
-    deleteDetailRow,
-    copyMasterRow,
-    copyDetailRow,
-    createServerSideDataSource
+    cache: {
+      detailCache,
+      clearAllCache
+    },
+    query: {
+      advancedConditions,
+      setAdvancedConditions,
+      clearAdvancedConditions,
+      createServerSideDataSource
+    },
+    access: {
+      getMasterRowByRowKey,
+      getMasterRowById,
+      resolveMasterRowKey
+    },
+    loader: {
+      loadDetailData,
+      reloadMasterRow
+    },
+    master: {
+      addMasterRow,
+      deleteMasterRow,
+      copyMasterRow
+    },
+    detail: {
+      addDetailRow,
+      deleteDetailRow,
+      copyDetailRow
+    }
   };
 }
