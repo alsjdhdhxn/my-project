@@ -38,19 +38,23 @@ export const useAuthStore = defineStore(SetupStoreId.Auth, () => {
   const isLogin = computed(() => Boolean(token.value));
 
   /** Reset auth store */
-  async function resetStore() {
+  async function resetStore(options?: { preserveRedirect?: boolean }) {
+    const { preserveRedirect = true } = options || {};
+    const shouldRedirectToLogin = !route.meta.constant;
+
     recordUserId();
 
     clearAuthStorage();
 
     authStore.$reset();
 
-    if (!route.meta.constant) {
-      await toLogin();
-    }
-
     tabStore.cacheTabs();
-    routeStore.resetStore();
+    tabStore.$reset();
+    await routeStore.resetStore();
+
+    if (shouldRedirectToLogin) {
+      await toLogin(undefined, preserveRedirect ? undefined : null);
+    }
   }
 
   /** Record the user ID of the previous login session Used to compare with the current user ID on next login */

@@ -51,7 +51,7 @@ function resolveComponentState(): Record<string, any> {
 
 const state = computed(() => resolveComponentState());
 const gridConfig = computed(() => parseGridConfig(props.component.componentConfig));
-const masterGridKey = computed(() => meta?.masterGridKey?.value ?? meta?.masterGridKey ?? null);
+const masterGridKey = computed(() => unwrap(meta?.masterGridKey) ?? null);
 const isMasterGrid = computed(
   () => props.component.componentType === 'GRID' && props.component.componentKey === masterGridKey.value
 );
@@ -59,7 +59,7 @@ const isMasterGrid = computed(
 let cachedDataSource: any = null;
 function getMasterDataSource() {
   if (!cachedDataSource) {
-    const masterGridOptions = meta?.masterGridOptions?.value ?? meta?.masterGridOptions;
+    const masterGridOptions = unwrap(meta?.masterGridOptions);
     cachedDataSource = runtime?.masterStore?.createServerSideDataSource({
       pageSize: masterGridOptions?.cacheBlockSize || 100
     });
@@ -87,17 +87,17 @@ const masterBindings = useMasterGridBindings({
     broadcastToDetail: calc?.broadcastToDetail,
     onMasterCellClicked: lookup?.onMasterCellClicked
   },
-  metaRowClassGetter: meta?.masterRowClassGetter?.value ?? meta?.masterRowClassGetter,
-  gridOptions: meta?.masterGridOptions?.value ?? meta?.masterGridOptions ?? null,
+  metaRowClassGetter: unwrap(meta?.masterRowClassGetter),
+  gridOptions: unwrap(meta?.masterGridOptions) ?? null,
   columnDefs: meta?.masterColumnDefs,
-  contextMenuConfig: meta?.masterContextMenu?.value ?? meta?.masterContextMenu ?? null,
+  contextMenuConfig: unwrap(meta?.masterContextMenu) ?? null,
   dataSource: getMasterDataSource()
 });
 
 // 工具栏
 const masterToolbar = computed<ToolbarRule | null>(() => {
   const source = meta?.masterToolbar;
-  return source?.value ?? source ?? null;
+  return unwrap(source) ?? null;
 });
 
 const toolbarItems = computed(() => {

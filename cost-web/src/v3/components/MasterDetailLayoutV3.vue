@@ -160,8 +160,7 @@ function handleDropdownSelect(key: string, parentItem: MergedToolbarItem) {
   if (!match) return;
   const [, tabKey, action] = match;
   // 找到对应的 tab 和 action，执行操作
-  const masterId = activeMasterId.value;
-  const masterRowKey = activeMasterRowKey.value;
+  const { masterId, masterRowKey } = resolveActiveMasterContext();
   if (masterId == null) {
     window.$message?.warning('请先选择主表记录');
     return;
@@ -321,6 +320,48 @@ function normalizeMasterId(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function setActiveMasterContext(row: any | null) {
+  const nextId = normalizeMasterId(row?.id);
+  const nextRowKey = row ? ensureRowKey(row) : null;
+  activeMasterId.value = nextId;
+  activeMasterRowKey.value = nextRowKey ? String(nextRowKey) : null;
+}
+
+function getExpandedMasterNode(api: any): any | null {
+  let expandedNode: any = null;
+  api?.forEachNode?.((node: any) => {
+    if (node?.master && node.expanded) {
+      expandedNode = node;
+    }
+  });
+  return expandedNode;
+}
+
+function resolveActiveMasterContext() {
+  if (activeMasterId.value != null) {
+    return {
+      masterId: activeMasterId.value,
+      masterRowKey: activeMasterRowKey.value
+    };
+  }
+
+  if (!isSplitMode.value) {
+    const expandedNode = getExpandedMasterNode(masterGridApi.value);
+    if (expandedNode?.data) {
+      setActiveMasterContext(expandedNode.data);
+      return {
+        masterId: activeMasterId.value,
+        masterRowKey: activeMasterRowKey.value
+      };
+    }
+  }
+
+  return {
+    masterId: null,
+    masterRowKey: null
+  };
+}
+
 // 确保 dataSource 只创建一次，避免因响应式重新计算导致 AG Grid 重置
 let cachedDataSource: any = null;
 function getDataSource() {
@@ -380,12 +421,14 @@ const {
   contextMenuConfig: masterContextMenu,
   dataSource: getDataSource(),
   onSelectionChanged: async rows => {
-    if (!isSplitMode.value || !hasDetailTabs.value) return;
     const selected = rows?.[0];
-    const nextId = normalizeMasterId(selected?.id);
-    const nextRowKey = selected ? ensureRowKey(selected) : null;
-    activeMasterId.value = nextId;
-    activeMasterRowKey.value = nextRowKey ? String(nextRowKey) : null;
+    if (selected) {
+      setActiveMasterContext(selected);
+      return;
+    }
+    if (isSplitMode.value) {
+      setActiveMasterContext(null);
+    }
     // loadDetailData 由 DetailPanelV3 的 watch(activeMasterId) 统一触发，此处不再重复调用
   }
 });
@@ -460,7 +503,14 @@ const gridContext = {
     getDetailContextMenuItems,
     refreshDetailRowHeight,
     defaultViewMode: 'stack',
-    detailViewMode
+    detailViewMode,
+    onActiveTabChange: (tabKey: string, masterId?: number | null, masterRowKey?: string | null) => {
+      activeDetailTab.value = tabKey;
+      if (masterId != null) {
+        activeMasterId.value = masterId;
+        activeMasterRowKey.value = masterRowKey ?? null;
+      }
+    }
   }
 };
 
@@ -537,17 +587,6 @@ function hasUnsavedChanges(masterId: number): boolean {
   return false;
 }
 
-// 获取当前展开行的masterId
-function getExpandedMasterId(api: any): number | null {
-  let expandedMasterId: number | null = null;
-  api?.forEachNode?.((node: any) => {
-    if (node?.master && node.expanded) {
-      expandedMasterId = node.data?.id;
-    }
-  });
-  return expandedMasterId;
-}
-
 function onDetailRowOpened(event: any) {
   if (isSplitMode.value) return;
   if (!event?.node?.master) return;
@@ -556,8 +595,13 @@ function onDetailRowOpened(event: any) {
   const api = event.api;
   const currentNode = event.node;
 
-  // 如果是收起操作，不做处理
-  if (!currentNode.expanded) return;
+  // 如果是收起操作，同步清理/回写当前主表上下文
+  if (!currentNode.expanded) {
+    if (activeMasterId.value === masterId) {
+      setActiveMasterContext(getExpandedMasterNode(api)?.data ?? null);
+    }
+    return;
+  }
 
   // 检查是否有其他展开的行
   let expandedNode: any = null;
@@ -586,6 +630,7 @@ function onDetailRowOpened(event: any) {
           expandedNode.setExpanded(false);
           setTimeout(() => {
             currentNode.setExpanded(true);
+            setActiveMasterContext(currentNode.data);
           }, 50);
         },
         onNegativeClick: () => {
@@ -593,6 +638,7 @@ function onDetailRowOpened(event: any) {
           expandedNode.setExpanded(false);
           setTimeout(() => {
             currentNode.setExpanded(true);
+            setActiveMasterContext(currentNode.data);
           }, 50);
         }
       });
@@ -603,9 +649,12 @@ function onDetailRowOpened(event: any) {
     expandedNode.setExpanded(false);
     setTimeout(() => {
       currentNode.setExpanded(true);
+      setActiveMasterContext(currentNode.data);
     }, 50);
     return;
   }
+
+  setActiveMasterContext(currentNode.data);
 
   // 将当前行滚动到顶部
   const rowIndex = currentNode.rowIndex;
@@ -751,6 +800,7 @@ function onDetailRowOpened(event: any) {
         :undo-redo-cell-editing-limit="20"
         v-bind="masterGridRuntimeOptions"
         @grid-ready="handleMasterGridReady"
+        @selection-changed="onSelectionChanged"
         @row-group-opened="onDetailRowOpened"
         @cell-editing-started="onCellEditingStarted"
         @cell-editing-stopped="onCellEditingStopped"

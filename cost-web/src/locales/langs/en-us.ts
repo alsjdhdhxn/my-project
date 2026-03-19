@@ -17,6 +17,7 @@ const local: App.I18n.Schema = {
     check: 'Check',
     expandColumn: 'Expand Column',
     columnSetting: 'Column Setting',
+    changePassword: 'Change Password',
     config: 'Config',
     confirm: 'Confirm',
     delete: 'Delete',

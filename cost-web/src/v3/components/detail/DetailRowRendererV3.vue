@@ -42,6 +42,7 @@ const getDetailContextMenuItems = computed(() => panelContext.value.getDetailCon
 const refreshDetailRowHeight = computed(() => panelContext.value.refreshDetailRowHeight || noop);
 const defaultViewMode = computed(() => panelContext.value.defaultViewMode || 'stack');
 const detailViewMode = computed(() => unref(panelContext.value.detailViewMode));
+const onActiveTabChange = computed(() => panelContext.value.onActiveTabChange || noop);
 
 // 鼠标进入子表区域时，禁用主表滚动
 function onMouseEnter() {
@@ -63,6 +64,10 @@ function onMouseLeave() {
       viewport.style.overflowY = '';
     }
   }
+}
+
+function handleActiveTabChange(tabKey: string) {
+  onActiveTabChange.value?.(tabKey, masterId.value, masterRowKey.value);
 }
 </script>
 
@@ -92,6 +97,7 @@ function onMouseLeave() {
       :refresh-detail-row-height="refreshDetailRowHeight"
       :default-view-mode="defaultViewMode"
       :view-mode="detailViewMode"
+      @update:active-tab="handleActiveTabChange"
     />
   </div>
 </template>

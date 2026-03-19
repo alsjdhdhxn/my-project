@@ -22,8 +22,13 @@ function getWsUrl() {
   const token = getToken();
   if (!token) return null;
 
-  const base = import.meta.env.VITE_SERVICE_BASE_URL || `${window.location.protocol}//${window.location.host}`;
-  const wsBase = base.replace(/^http/, 'ws');
+  const rawBase = import.meta.env.VITE_SERVICE_BASE_URL?.trim();
+  const normalizedBase = rawBase
+    ? /^(https?:)?\/\//.test(rawBase)
+      ? rawBase
+      : `${window.location.origin}${rawBase.startsWith('/') ? '' : '/'}${rawBase}`
+    : `${window.location.protocol}//${window.location.host}`;
+  const wsBase = normalizedBase.replace(/^http/, 'ws').replace(/\/$/, '');
   return `${wsBase}/ws?token=${token}`;
 }
 

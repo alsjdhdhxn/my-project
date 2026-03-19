@@ -17,6 +17,7 @@ const local: App.I18n.Schema = {
     check: '勾选',
     expandColumn: '展开列',
     columnSetting: '列设置',
+    changePassword: '修改密码',
     config: '配置',
     confirm: '确认',
     delete: '删除',

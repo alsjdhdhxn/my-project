@@ -334,6 +334,7 @@ declare namespace App {
         check: string;
         expandColumn: string;
         columnSetting: string;
+        changePassword: string;
         config: string;
         confirm: string;
         delete: string;

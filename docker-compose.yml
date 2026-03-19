@@ -1,0 +1,25 @@
+services:
+  server:
+    build:
+      context: ./cost-server
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_FLYWAY_ENABLED: "false"
+      TZ: Asia/Shanghai
+      JAVA_OPTS: -Duser.timezone=Asia/Shanghai -Doracle.jdbc.timezoneAsRegion=false
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./cost-web
+      args:
+        VITE_BASE_URL: /
+        VITE_SERVICE_BASE_URL: /api
+        VITE_OTHER_SERVICE_BASE_URL: "{}"
+    depends_on:
+      - server
+    ports:
+      - "9527:80"
+    restart: unless-stopped

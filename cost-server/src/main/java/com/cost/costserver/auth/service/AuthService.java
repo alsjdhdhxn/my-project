@@ -1,15 +1,12 @@
 package com.cost.costserver.auth.service;
 
-import cn.hutool.json.JSONArray;
-import cn.hutool.json.JSONUtil;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.cost.costserver.auth.dto.LoginToken;
 import com.cost.costserver.auth.dto.UserInfo;
 import com.cost.costserver.auth.entity.Role;
-import com.cost.costserver.auth.entity.RolePage;
 import com.cost.costserver.auth.entity.User;
 import com.cost.costserver.auth.mapper.RoleMapper;
-import com.cost.costserver.auth.mapper.RolePageMapper;
 import com.cost.costserver.auth.mapper.UserMapper;
 import com.cost.costserver.common.BusinessException;
 import com.cost.costserver.common.JwtUtil;
@@ -17,6 +14,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Service
@@ -25,7 +23,6 @@ public class AuthService {
 
     private final UserMapper userMapper;
     private final RoleMapper roleMapper;
-    private final RolePageMapper rolePageMapper;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
 
@@ -93,5 +90,36 @@ public class AuthService {
         String newRefreshToken = jwtUtil.generateRefreshToken(userId, username);
 
         return new LoginToken(newAccessToken, newRefreshToken);
+    }
+
+    /**
+     * 修改当前登录用户密码
+     */
+    public void changePassword(String token, String newPassword) {
+        if (!jwtUtil.validateToken(token)) {
+            throw new BusinessException(401, "Token无效");
+        }
+
+        Long userId = jwtUtil.getUserId(token);
+        String username = jwtUtil.getUsername(token);
+
+        User user = userMapper.selectById(userId);
+        if (user == null) {
+            throw new BusinessException(404, "用户不存在");
+        }
+
+        int updated = userMapper.update(
+                null,
+                new LambdaUpdateWrapper<User>()
+                    .set(User::getPassword, passwordEncoder.encode(newPassword))
+                    .set(User::getUpdateBy, username)
+                    .set(User::getUpdateTime, LocalDateTime.now())
+                    .eq(User::getId, userId)
+                    .eq(User::getDeleted, 0)
+            );
+
+        if (updated == 0) {
+            throw new BusinessException(400, "密码修改失败");
+        }
     }
 }

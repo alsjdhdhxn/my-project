@@ -37,6 +37,17 @@ export function fetchRefreshToken(refreshToken: string) {
   });
 }
 
+/** Change current user password */
+export function fetchChangePassword(newPassword: string) {
+  return request<void>({
+    url: '/auth/changePassword',
+    method: 'post',
+    data: {
+      newPassword
+    }
+  });
+}
+
 /**
  * return custom backend error
  *

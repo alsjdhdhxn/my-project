@@ -4,6 +4,7 @@ import com.cost.costserver.auth.dto.LoginRequest;
 import com.cost.costserver.auth.dto.LoginToken;
 import com.cost.costserver.auth.dto.RefreshTokenRequest;
 import com.cost.costserver.auth.dto.UserInfo;
+import com.cost.costserver.auth.dto.ChangePasswordRequest;
 import com.cost.costserver.auth.service.AuthService;
 import com.cost.costserver.common.BusinessException;
 import com.cost.costserver.common.Result;
@@ -42,5 +43,20 @@ public class AuthController {
     @PostMapping("/refreshToken")
     public Result<LoginToken> refreshToken(@Valid @RequestBody RefreshTokenRequest request) {
         return Result.ok(authService.refreshToken(request.getRefreshToken()));
+    }
+
+    @Operation(summary = "修改当前用户密码")
+    @PostMapping("/changePassword")
+    public Result<Void> changePassword(
+        @RequestHeader(value = "Authorization", required = false) String authorization,
+        @Valid @RequestBody ChangePasswordRequest request
+    ) {
+        if (!StringUtils.hasText(authorization) || !authorization.startsWith("Bearer ")) {
+            throw new BusinessException(401, "未提供有效的Token");
+        }
+
+        String token = authorization.substring(7);
+        authService.changePassword(token, request.getNewPassword());
+        return Result.ok();
     }
 }

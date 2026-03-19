@@ -56,23 +56,25 @@ export function useRouterPush(inSetup = true) {
   /**
    * Navigate to login page
    *
-   * @param loginModule The login module
-   * @param redirectUrl The redirect url, if not specified, it will be the current route fullPath
+   * @param loginModule The login module. When omitted, navigate to `/login`.
+   * @param redirectUrl The redirect url. When undefined, it uses the current route fullPath; when null, no redirect is added.
    */
-  async function toLogin(loginModule?: UnionKey.LoginModule, redirectUrl?: string) {
-    const module = loginModule || 'pwd-login';
+  async function toLogin(loginModule?: UnionKey.LoginModule, redirectUrl?: string | null) {
+    const options: App.Global.RouterPushOptions = {};
 
-    const options: App.Global.RouterPushOptions = {
-      params: {
-        module
-      }
-    };
+    if (loginModule) {
+      options.params = {
+        module: loginModule
+      };
+    }
 
-    const redirect = redirectUrl || route.value.fullPath;
+    const redirect = redirectUrl === undefined ? route.value.fullPath : redirectUrl;
 
-    options.query = {
-      redirect
-    };
+    if (redirect) {
+      options.query = {
+        redirect
+      };
+    }
 
     return routerPushByKey('login', options);
   }
