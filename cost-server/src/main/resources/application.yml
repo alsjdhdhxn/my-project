@@ -70,3 +70,7 @@ knife4j:
 jwt:
   access-token-expire: 7200000
   refresh-token-expire: 604800000
+
+app:
+  sql-log:
+    enabled: ${APP_SQL_LOG_ENABLED:false}

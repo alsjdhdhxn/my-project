@@ -24,8 +24,18 @@ import java.util.*;
 })
 public class SqlLogInterceptor implements Interceptor {
 
+    private final boolean enabled;
+
+    public SqlLogInterceptor(boolean enabled) {
+        this.enabled = enabled;
+    }
+
     @Override
     public Object intercept(Invocation invocation) throws Throwable {
+        if (!enabled) {
+            return invocation.proceed();
+        }
+
         StatementHandler handler = (StatementHandler) invocation.getTarget();
         BoundSql boundSql = handler.getBoundSql();
         String sql = boundSql.getSql().replaceAll("\\s+", " ").trim();

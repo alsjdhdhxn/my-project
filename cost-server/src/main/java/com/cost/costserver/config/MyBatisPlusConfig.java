@@ -5,9 +5,11 @@ import com.baomidou.mybatisplus.autoconfigure.ConfigurationCustomizer;
 import com.baomidou.mybatisplus.autoconfigure.MybatisPlusProperties;
 import com.baomidou.mybatisplus.extension.plugins.MybatisPlusInterceptor;
 import com.baomidou.mybatisplus.extension.plugins.inner.PaginationInnerInterceptor;
+import org.springframework.core.env.Environment;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.Profile;
+
+import java.util.Arrays;
 
 @Configuration
 public class MyBatisPlusConfig {
@@ -24,21 +26,16 @@ public class MyBatisPlusConfig {
      * 解决 MyBatis-Plus 自动配置时序问题
      */
     @Bean
-    public ConfigurationCustomizer mybatisConfigurationCustomizer(MybatisPlusProperties properties) {
+    public ConfigurationCustomizer mybatisConfigurationCustomizer(MybatisPlusProperties properties, Environment environment) {
         return configuration -> {
             if (properties.getConfiguration() != null 
                 && properties.getConfiguration().getLogImpl() != null) {
                 configuration.setLogImpl(properties.getConfiguration().getLogImpl());
             }
-        };
-    }
 
-    /**
-     * SQL 日志拦截器 - 仅开发环境启用
-     */
-    @Bean
-    @Profile("dev")
-    public SqlLogInterceptor sqlLogInterceptor() {
-        return new SqlLogInterceptor();
+            boolean enabledByProfile = Arrays.asList(environment.getActiveProfiles()).contains("dev");
+            boolean enabledByProperty = environment.getProperty("app.sql-log.enabled", Boolean.class, false);
+            configuration.addInterceptor(new SqlLogInterceptor(enabledByProfile || enabledByProperty));
+        };
     }
 }

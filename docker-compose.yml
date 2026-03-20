@@ -5,6 +5,7 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: docker
       SPRING_FLYWAY_ENABLED: "false"
+      APP_SQL_LOG_ENABLED: "true"
       TZ: Asia/Shanghai
       JAVA_OPTS: -Duser.timezone=Asia/Shanghai -Doracle.jdbc.timezoneAsRegion=false
     ports:
