@@ -11,9 +11,7 @@ public record LookupConfigDTO(
     String lookupCode,
     String lookupName,
     String dataSource,
-    List<DisplayColumn> displayColumns,
-    String valueField,
-    String labelField
+    List<DisplayColumn> displayColumns
 ) {
     public record DisplayColumn(String field, String header, Integer width) {}
 
@@ -39,9 +37,7 @@ public record LookupConfigDTO(
             entity.getLookupCode(),
             entity.getLookupName(),
             entity.getDataSource(),
-            columns,
-            entity.getValueField(),
-            entity.getLabelField()
+            columns
         );
     }
 }

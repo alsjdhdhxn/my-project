@@ -48,17 +48,9 @@ export {
 // 构建器
 export {
   type RowData,
-  type MasterRowData,
-  type ChangeRecord,
-  type RecordItem,
-  type SaveParams,
-  buildSaveParams,
-  buildRecordItem,
-  isRowChanged,
   generateTempId,
   ensureRowKey,
-  initRowData,
-  clearRowChanges
+  initRowData
 } from './builder';
 
 // 验证器

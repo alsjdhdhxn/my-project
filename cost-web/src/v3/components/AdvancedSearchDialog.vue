@@ -35,7 +35,6 @@ type SearchCondition = {
   dataType: 'string' | 'number' | 'date' | 'datetime';
   inputMode: 'text' | 'number' | 'date' | 'datetime' | 'select' | 'lookup';
   lookupCode?: string;
-  lookupValueField?: string;
   options?: Array<{ label: string; value: string | number }>;
   loadingOptions?: boolean;
 };
@@ -74,10 +73,10 @@ const modalStyle = {
   maxWidth: 'calc(100vw - 48px)'
 };
 const currentLookupMapping = computed(() => {
-  const valueField = currentLookupCondition.value?.lookupValueField || currentLookupCondition.value?.field;
+  const selectedField = currentLookupCondition.value?.field;
   const mapping: Record<string, string> = {};
-  if (valueField) {
-    mapping.selectedValue = valueField;
+  if (selectedField) {
+    mapping.selectedValue = selectedField;
   }
   return mapping;
 });

@@ -85,8 +85,6 @@ declare namespace Api {
       dataSource: string;
       displayColumns: LookupDisplayColumn[];
       searchColumns: string[];
-      valueField: string;
-      labelField: string;
     }
 
     /** 弹窗选择器显示列 */

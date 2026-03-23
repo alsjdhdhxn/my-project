@@ -15,8 +15,6 @@ public class LookupConfig {
     private String lookupName;
     private String dataSource;
     private String displayColumns;
-    private String valueField;
-    private String labelField;
 
     @TableLogic
     private Integer deleted;

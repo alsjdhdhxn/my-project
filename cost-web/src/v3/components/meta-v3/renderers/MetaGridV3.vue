@@ -22,7 +22,6 @@ const props = defineProps<{
 const dialog = useDialog();
 const runtime = props.runtime as any;
 const meta = runtime?.meta;
-const calc = runtime?.calc;
 const lookup = runtime?.lookup;
 const actions = runtime?.actions;
 const gridConfigApi = runtime?.gridConfig;
@@ -82,9 +81,7 @@ const masterBindings = useMasterGridBindings({
     customExportConfigs,
     executeCustomExport,
     executeAction,
-    markFieldChange: calc?.markFieldChange,
-    runMasterCalc: calc?.runMasterCalc,
-    broadcastToDetail: calc?.broadcastToDetail,
+    onMasterCellValueChanged: runtime?.mutations?.onMasterCellValueChanged,
     onMasterCellClicked: lookup?.onMasterCellClicked
   },
   metaRowClassGetter: unwrap(meta?.masterRowClassGetter),

@@ -89,20 +89,9 @@ public class DynamicDataService {
         int pageSize = (pSize != null && pSize > 0) ? pSize : 20;
         int offset = (page - 1) * pageSize;
 
-        // 构建 ref join（下拉关联查询）
-        RefJoinResult refJoin = buildRefJoins(
-            param != null ? param.getPageCode() : null, tableCode);
-
-        String dataSql;
-        if (refJoin.isEmpty()) {
-            dataSql = String.format(
-                "SELECT * FROM (SELECT t.*, ROWNUM rn FROM (SELECT a.* FROM %s a WHERE a.DELETED = 0 %s %s) t WHERE ROWNUM <= %d) WHERE rn > %d",
-                queryView, whereClause, orderClause, offset + pageSize, offset);
-        } else {
-            dataSql = String.format(
-                "SELECT * FROM (SELECT t.*, ROWNUM rn FROM (SELECT a.*%s FROM %s a%s WHERE a.DELETED = 0 %s %s) t WHERE ROWNUM <= %d) WHERE rn > %d",
-                refJoin.selectClause(), queryView, refJoin.joinClause(), whereClause, orderClause, offset + pageSize, offset);
-        }
+        String dataSql = String.format(
+            "SELECT * FROM (SELECT t.*, ROWNUM rn FROM (SELECT a.* FROM %s a WHERE a.DELETED = 0 %s %s) t WHERE ROWNUM <= %d) WHERE rn > %d",
+            queryView, whereClause, orderClause, offset + pageSize, offset);
 
         List<Map<String, Object>> list = dynamicMapper.selectList(dataSql);
         list = list.stream().map(this::normalizeResultRow).collect(Collectors.toList());
@@ -153,17 +142,7 @@ public class DynamicDataService {
                 columnMap,
                 metadata.pkColumn());
 
-        // 构建 ref join（下拉关联查询）
-        RefJoinResult refJoin = buildRefJoins(
-            param != null ? param.getPageCode() : null, tableCode);
-
-        String sql;
-        if (refJoin.isEmpty()) {
-            sql = String.format("SELECT a.* FROM %s a WHERE a.DELETED = 0 %s %s", metadata.queryView(), whereClause, orderClause);
-        } else {
-            sql = String.format("SELECT a.*%s FROM %s a%s WHERE a.DELETED = 0 %s %s",
-                refJoin.selectClause(), metadata.queryView(), refJoin.joinClause(), whereClause, orderClause);
-        }
+        String sql = String.format("SELECT a.* FROM %s a WHERE a.DELETED = 0 %s %s", metadata.queryView(), whereClause, orderClause);
         List<Map<String, Object>> list = dynamicMapper.selectList(sql);
         return list.stream().map(this::normalizeResultRow).collect(Collectors.toList());
     }
@@ -260,16 +239,7 @@ public class DynamicDataService {
                 columns.add(field);
             }
         }
-        addLookupSearchColumn(columns, config.valueField());
-        addLookupSearchColumn(columns, config.labelField());
         return new ArrayList<>(columns);
-    }
-
-    private void addLookupSearchColumn(LinkedHashSet<String> columns, String field) {
-        String normalized = StrUtil.trimToNull(field);
-        if (normalized == null) return;
-        validateIdentifier(normalized, "lookupSearchColumn");
-        columns.add(normalized);
     }
 
     public Map<String, Object> getById(String tableCode, Long id) {
@@ -1424,117 +1394,4 @@ public class DynamicDataService {
     private record JoinCondition(String currentField, String compareField) {
     }
 
-    // ==================== 下拉关联查询（ref join）====================
-
-    /** 下拉关联配置 */
-    private record RefJoinConfig(String field, String columnName, String localField, String localColumnName,
-                                  String refTable, String refField, String labelField, String valueField, String filter) {
-    }
-
-    /** ref join 构建结果 */
-    private record RefJoinResult(String selectClause, String joinClause, List<RefJoinConfig> configs) {
-        static final RefJoinResult EMPTY = new RefJoinResult("", "", List.of());
-        boolean isEmpty() { return configs.isEmpty(); }
-    }
-
-    /**
-     * 根据 pageCode + tableCode 查 COLUMN_OVERRIDE 中的 ref 下拉配置，构建 LEFT JOIN 子句
-     */
-    private RefJoinResult buildRefJoins(String pageCode, String tableCode) {
-        if (StrUtil.isBlank(pageCode) || StrUtil.isBlank(tableCode)) return RefJoinResult.EMPTY;
-
-        try {
-            // 根据 pageCode + tableCode 反查 componentKey
-            String compSql = String.format(
-                "SELECT c.COMPONENT_KEY FROM T_COST_PAGE_COMPONENT c " +
-                "WHERE c.PAGE_CODE = '%s' AND c.REF_TABLE_CODE = '%s' AND c.DELETED = 0",
-                pageCode.replace("'", "''"), tableCode.replace("'", "''"));
-            List<Map<String, Object>> compRows = dynamicMapper.selectList(compSql);
-            if (compRows.isEmpty()) return RefJoinResult.EMPTY;
-
-            String componentKey = (String) compRows.get(0).get("COMPONENT_KEY");
-            if (StrUtil.isBlank(componentKey)) return RefJoinResult.EMPTY;
-
-            // 查 COLUMN_OVERRIDE 规则
-            String ruleSql = String.format(
-                "SELECT RULES FROM T_COST_PAGE_RULE WHERE PAGE_CODE = '%s' AND COMPONENT_KEY = '%s' " +
-                "AND RULE_TYPE = 'COLUMN_OVERRIDE' AND DELETED = 0",
-                pageCode.replace("'", "''"), componentKey.replace("'", "''"));
-            List<Map<String, Object>> ruleRows = dynamicMapper.selectList(ruleSql);
-            if (ruleRows.isEmpty()) return RefJoinResult.EMPTY;
-
-            Object rulesObj = ruleRows.get(0).get("RULES");
-            String rulesJson = null;
-            if (rulesObj instanceof String s) {
-                rulesJson = s;
-            } else if (rulesObj instanceof java.sql.Clob clob) {
-                try { rulesJson = clob.getSubString(1, (int) clob.length()); } catch (Exception ignored) {}
-            }
-            if (StrUtil.isBlank(rulesJson)) return RefJoinResult.EMPTY;
-
-            // 解析 ref 配置
-            cn.hutool.json.JSONArray rules = cn.hutool.json.JSONUtil.parseArray(rulesJson);
-            List<RefJoinConfig> configs = new ArrayList<>();
-            for (int i = 0; i < rules.size(); i++) {
-                cn.hutool.json.JSONObject rule = rules.getJSONObject(i);
-                String cellEditor = rule.getStr("cellEditor");
-                if (!"agSelectCellEditor".equals(cellEditor) && !"agRichSelectCellEditor".equals(cellEditor)) continue;
-
-                cn.hutool.json.JSONObject params = rule.getJSONObject("cellEditorParams");
-                if (params == null || !"ref".equals(params.getStr("mode"))) continue;
-
-                String field = rule.getStr("columnName");
-                if (StrUtil.isBlank(field)) {
-                    field = rule.getStr("field");
-                }
-                String refTable = params.getStr("refTable");
-                String refField = params.getStr("refField");
-                String labelField = params.getStr("labelField");
-                String valueField = params.getStr("valueField");
-                String localField = params.getStr("localField");
-                String filter = params.getStr("filter");
-
-                if (StrUtil.isBlank(field) || StrUtil.isBlank(refTable) || StrUtil.isBlank(refField) || StrUtil.isBlank(labelField)) continue;
-                // localField 默认等于 field 本身
-                if (StrUtil.isBlank(localField)) localField = field;
-                // valueField 默认等于 refField（回填关联字段的值）
-                if (StrUtil.isBlank(valueField)) valueField = refField;
-
-                // 安全校验
-                validateIdentifier(refTable, "refTable");
-                validateIdentifier(refField, "refField");
-                validateIdentifier(labelField, "labelField");
-                validateIdentifier(valueField, "valueField");
-
-                String columnName = normalizeRuntimeColumnName(field);
-                String localColumnName = normalizeRuntimeColumnName(localField);
-                configs.add(new RefJoinConfig(field, columnName, localField, localColumnName, refTable, refField, labelField, valueField, filter));
-            }
-
-            if (configs.isEmpty()) return RefJoinResult.EMPTY;
-
-            // 构建 SELECT 和 JOIN 子句
-            StringBuilder selectSb = new StringBuilder();
-            StringBuilder joinSb = new StringBuilder();
-            for (int i = 0; i < configs.size(); i++) {
-                RefJoinConfig cfg = configs.get(i);
-                String alias = "r" + i;
-                selectSb.append(String.format(", %s.%s AS %s_LABEL", alias, cfg.labelField(), cfg.columnName()));
-                // 如果回填字段和关联字段不同，也查出来
-                if (!cfg.valueField().equalsIgnoreCase(cfg.refField())) {
-                    selectSb.append(String.format(", %s.%s AS %s_VALUE", alias, cfg.valueField(), cfg.columnName()));
-                }
-                joinSb.append(String.format(" LEFT JOIN %s %s ON a.%s = %s.%s",
-                    cfg.refTable(), alias, cfg.localColumnName(), alias, cfg.refField()));
-                if (StrUtil.isNotBlank(cfg.filter())) {
-                    joinSb.append(String.format(" AND %s.%s", alias, cfg.filter()));
-                }
-            }
-
-            return new RefJoinResult(selectSb.toString(), joinSb.toString(), configs);
-        } catch (Exception e) {
-            log.warn("构建 ref join 失败: pageCode={}, tableCode={}, error={}", pageCode, tableCode, e.getMessage());
-            return RefJoinResult.EMPTY;
-        }
-    }
 }

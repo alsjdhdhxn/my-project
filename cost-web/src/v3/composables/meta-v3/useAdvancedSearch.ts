@@ -2,7 +2,7 @@ import { computed, ref, watch } from 'vue';
 import type { Ref, ShallowRef } from 'vue';
 import type { ColDef, GridApi } from 'ag-grid-community';
 import type { DynamicQueryCondition } from '@/service/api';
-import { fetchDictItems, fetchLookupConfig } from '@/service/api';
+import { fetchDictItems } from '@/service/api';
 import type { ParsedPageConfig } from '@/v3/logic/calc-engine';
 import type { LookupRuleConfig } from '@/v3/composables/meta-v3/types';
 import {
@@ -43,7 +43,6 @@ export type AdvancedSearchField = {
   inputMode: SearchInputMode;
   dictType?: string;
   lookupCode?: string;
-  lookupValueField?: string;
   options: SearchOption[];
 };
 
@@ -359,7 +358,6 @@ export function useAdvancedSearch(params: {
   const showDialog = ref(false);
   const searchConditions = ref<AdvancedSearchCondition[]>([]);
   const dictOptionsCache = new Map<string, SearchOption[]>();
-  const lookupValueFieldCache = new Map<string, string>();
 
   function getFieldDefinitions() {
     return buildFieldDefinitions({
@@ -398,23 +396,7 @@ export function useAdvancedSearch(params: {
     }
   }
 
-  async function ensureLookupConditionReady(condition: AdvancedSearchCondition) {
-    if (condition.inputMode !== 'lookup' || !condition.lookupCode || condition.lookupValueField) {
-      return;
-    }
-    const cached = lookupValueFieldCache.get(condition.lookupCode);
-    if (cached) {
-      condition.lookupValueField = cached;
-      return;
-    }
-
-    const { data } = await fetchLookupConfig(condition.lookupCode);
-    const valueField = String(data?.valueField || '').trim();
-    if (valueField) {
-      lookupValueFieldCache.set(condition.lookupCode, valueField);
-      condition.lookupValueField = valueField;
-    }
-  }
+  async function ensureLookupConditionReady(_condition: AdvancedSearchCondition) {}
 
   async function hydrateVisibleConditions() {
     await Promise.all(
@@ -437,7 +419,6 @@ export function useAdvancedSearch(params: {
       return {
         ...definition,
         options: definition.options.length > 0 ? definition.options : existing?.options || [],
-        lookupValueField: definition.lookupValueField || existing?.lookupValueField,
         operator,
         value: normalizeAdvancedSearchValue({
           inputMode: definition.inputMode,

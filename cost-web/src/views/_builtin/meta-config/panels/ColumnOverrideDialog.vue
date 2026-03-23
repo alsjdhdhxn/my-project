@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue';
 import {
   NAutoComplete,
@@ -399,8 +399,6 @@ function buildLookupFieldOptions(config: any): LookupFieldOption[] {
   for (const column of config?.displayColumns || []) {
     addField(column?.field, column?.header);
   }
-  addField(config?.valueField, '值字段');
-  addField(config?.labelField, '显示字段');
 
   return result;
 }
@@ -592,10 +590,14 @@ function normalizeCellEditorParams(params: any): Record<string, any> | undefined
   if (Array.isArray(result.values)) {
     result.values = result.values.join(',');
   }
-  if (!result.mode && !result.lookupCode) {
-    result.mode = result.refTable ? 'ref' : 'static';
+  if (!result.lookupCode) {
+    const selectParams: Record<string, any> = {};
+    if (result.values) {
+      selectParams.values = result.values;
+    }
+    return Object.keys(selectParams).length > 0 ? selectParams : undefined;
   }
-  return result;
+  return Object.keys(result).length > 0 ? result : undefined;
 }
 
 function inferCellEditorFromParams(params?: Record<string, any>): string {
@@ -603,16 +605,7 @@ function inferCellEditorFromParams(params?: Record<string, any>): string {
   if (params.lookupCode || params.mapping) {
     return 'lookup';
   }
-  if (
-    params.mode ||
-    params.values ||
-    params.localField ||
-    params.refTable ||
-    params.refField ||
-    params.labelField ||
-    params.valueField ||
-    params.filter
-  ) {
+  if (params.values) {
     return 'agSelectCellEditor';
   }
   return '';
@@ -665,13 +658,8 @@ function hasParams(item: OverrideItem): boolean {
   return isSelectEditor(item.cellEditor) || isLookupEditor(item.cellEditor);
 }
 
-function setParamMode(item: OverrideItem, mode: string) {
-  if (!item.cellEditorParams) item.cellEditorParams = {};
-  item.cellEditorParams = { mode };
-}
-
 function setParam(item: OverrideItem, key: string, value: any) {
-  if (!item.cellEditorParams) item.cellEditorParams = { mode: 'static' };
+  if (!item.cellEditorParams) item.cellEditorParams = {};
   if (key === 'noFillback') {
     // boolean 特殊处理
     if (value) {
@@ -699,7 +687,7 @@ function getStaticValuesStr(item: OverrideItem): string {
 }
 
 function setStaticValuesStr(item: OverrideItem, value: string) {
-  if (!item.cellEditorParams) item.cellEditorParams = { mode: 'static' };
+  if (!item.cellEditorParams) item.cellEditorParams = {};
   item.cellEditorParams = { ...item.cellEditorParams, values: value };
 }
 
@@ -993,83 +981,13 @@ async function handleSave() {
         <!-- 下拉参数配置区（可折叠） -->
         <div v-if="isSelectEditor(item.cellEditor) && expandedRows.has(index)" class="editor-params">
           <div class="params-row">
-            <span class="params-label">模式</span>
-            <NSelect
-              :value="item.cellEditorParams?.mode || 'static'"
-              :options="[
-                { label: '纯值', value: 'static' },
-                { label: '关联查询', value: 'ref' }
-              ]"
-              size="small"
-              style="width: 120px"
-              @update:value="setParamMode(item, $event)"
-            />
-            <template v-if="(item.cellEditorParams?.mode || 'static') === 'static'">
-              <span class="params-label">值(逗号分隔)</span>
-              <NInput
-                :value="getStaticValuesStr(item)"
-                size="small"
-                placeholder="值1,值2,值3"
-                style="flex: 1"
-                @update:value="setStaticValuesStr(item, $event)"
-              />
-            </template>
-            <template v-else>
-              <span class="params-label">当前关联字段</span>
-              <NSelect
-                :value="item.cellEditorParams?.localField || null"
-                :options="availableFields"
-                size="small"
-                filterable
-                clearable
-                placeholder="选择字段"
-                style="width: 140px"
-                @update:value="setParam(item, 'localField', $event)"
-              />
-              <span class="params-label">关联表</span>
-              <NInput
-                :value="item.cellEditorParams?.refTable || ''"
-                size="small"
-                placeholder="T_COST_USER"
-                style="width: 150px"
-                @update:value="setParam(item, 'refTable', $event)"
-              />
-              <span class="params-label">关联字段(唯一)</span>
-              <NInput
-                :value="item.cellEditorParams?.refField || ''"
-                size="small"
-                placeholder="ID"
-                style="width: 100px"
-                @update:value="setParam(item, 'refField', $event)"
-              />
-            </template>
-          </div>
-          <div v-if="item.cellEditorParams?.mode === 'ref'" class="params-row">
-            <span class="params-label">显示字段</span>
+            <span class="params-label">值(逗号分隔)</span>
             <NInput
-              :value="item.cellEditorParams?.labelField || ''"
+              :value="getStaticValuesStr(item)"
               size="small"
-              placeholder="USER_NAME"
-              style="width: 140px"
-              @update:value="setParam(item, 'labelField', $event)"
-            />
-            <span class="params-label">回填字段</span>
-            <NInput
-              :value="item.cellEditorParams?.valueField || ''"
-              size="small"
-              placeholder="ID (写入当前字段的值)"
-              style="width: 160px"
-              @update:value="setParam(item, 'valueField', $event)"
-            />
-          </div>
-          <div v-if="item.cellEditorParams?.mode === 'ref'" class="params-row">
-            <span class="params-label">过滤条件</span>
-            <NInput
-              :value="item.cellEditorParams?.filter || ''"
-              size="small"
-              placeholder="DELETED = 0 (可选)"
+              placeholder="值1,值2,值3"
               style="flex: 1"
-              @update:value="setParam(item, 'filter', $event)"
+              @update:value="setStaticValuesStr(item, $event)"
             />
           </div>
         </div>

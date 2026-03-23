@@ -307,9 +307,7 @@ const columnDefs: ColDef[] = [
       cursor: 'pointer',
       color: '#5b5bd6'
     }
-  },
-  { field: 'valueField', headerName: 'valueField', width: 120, editable: true },
-  { field: 'labelField', headerName: 'labelField', width: 120, editable: true }
+  }
 ];
 
 const defaultColDef: ColDef = { sortable: true, resizable: true, flex: 0, suppressHeaderMenuButton: true };
@@ -496,9 +494,7 @@ function handleAdd() {
     lookupCode: '',
     lookupName: '',
     dataSource: '',
-    displayColumns: '[]',
-    valueField: '',
-    labelField: ''
+    displayColumns: '[]'
   };
   rowData.value = [...rowData.value, newRow];
   setTimeout(() => {

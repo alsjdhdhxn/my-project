@@ -210,9 +210,6 @@ public class MenuService {
             if (resource.getIsHardcoded() != null && resource.getIsHardcoded() == 1) {
                 return "layout.base$view." + resource.getPageCode();
             }
-            if (isV3Page(resource)) {
-                return "layout.base$view.dynamic-v3";
-            }
             return "layout.base$view.dynamic";
         }
         // 子级页面只返回视图组件
@@ -220,18 +217,6 @@ public class MenuService {
         if (resource.getIsHardcoded() != null && resource.getIsHardcoded() == 1) {
             return "view." + resource.getPageCode();
         }
-        if (isV3Page(resource)) {
-            return "view.dynamic-v3";
-        }
         return "view.dynamic";
-    }
-
-    private boolean isV3Page(Resource resource) {
-        if (resource == null) {
-            return false;
-        }
-        String code = resource.getPageCode();
-        return "cost-pinggu-v3".equalsIgnoreCase(code) 
-            || "wms-con-doc".equalsIgnoreCase(code);
     }
 }
