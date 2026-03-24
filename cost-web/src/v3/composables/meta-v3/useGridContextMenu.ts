@@ -203,7 +203,8 @@ export function useGridContextMenu(params: {
             const checkEditable = (row: any, tabKey?: string): boolean => {
               if (!row) return false;
               // 新增行始终可以删除
-              if (row._isNew) return true;
+              const rowStateApi = ctx.params?.context?.rowStateApi as { isRowNew?: (row: any) => boolean } | undefined;
+              if (rowStateApi?.isRowNew?.(row)) return true;
               // 主表检查
               if (ctx.type === 'master') {
                 if (isRowEditable && !isRowEditable(row)) {

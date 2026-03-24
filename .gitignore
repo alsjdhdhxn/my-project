@@ -1,3 +1,14 @@
 .gitnexus
 .claude/memory_bank/
 deploy-package.tar.gz
+lookupsql.sql
+.codex-tmp/cmxjob.tar
+.codex-tmp/connector-datasource-mapper.yaml
+.codex-tmp/cmxjob/cdc-examples/mysqltooracle.conf
+.codex-tmp/cmxjob/cdc-examples/oracletooracle.conf
+.codex-tmp/cmxjob/cdc-examples/sqlservertooracle.conf
+.codex-tmp/cmxjob/scripts/monitor_cdc.sh
+.codex-tmp/cmxjob/scripts/monitor_cost_web_logs.sh
+.codex-tmp/cmxjob/scripts/monitor_db_stack.sh
+.codex-tmp/cmxjob/基本工具使用.md
+.codex-tmp/cmxjob/数据库账号密码.md

@@ -19,9 +19,9 @@ const dialog = useDialog();
 const themeStore = useThemeStore();
 const runtime = props.runtime;
 const meta = runtime.meta;
-const masterStore = runtime.masterStore;
-const detailStore = runtime.detailStore;
+const workingSet = runtime.workingSet;
 const masterGridApi = runtime.masterGridApi;
+const rowStateApi = runtime.rowStateApi;
 const lookup = runtime.lookup;
 const actions = runtime.actions;
 const mutations = runtime.mutations;
@@ -53,8 +53,7 @@ const { save, executeAction, customExportConfigs, executeCustomExport } = action
 const { applyGridConfig, saveGridConfig } = gridConfigApi;
 const { onDetailCellClicked, onMasterCellClicked: handleLookupMasterCellClick } = lookup;
 
-const { detailCache, loadDetailData } = detailStore;
-const { createServerSideDataSource, getMasterRowById } = masterStore;
+const { detailCache, loadDetailData, createServerSideDataSource, getMasterRowById } = workingSet;
 const {
   addMasterRow,
   deleteMasterRow,
@@ -305,7 +304,7 @@ const detailRowEditableByTab = computed(() => {
   for (const tab of tabs) {
     const rules = detailRowEditableRulesByTab?.value?.[tab.key] || [];
     const callback = buildRowEditableCallback(rules);
-    result[tab.key] = callback ? (row: any) => callback({ data: row }) : undefined;
+    result[tab.key] = callback ? (row: any) => callback({ data: row, context: { rowStateApi } }) : undefined;
   }
   return result;
 });
@@ -400,12 +399,13 @@ const {
     masterRowEditableRules,
     masterRowClassRules,
     masterSumFields: meta.masterSumFields,
-    masterStore,
-    detailStore: {
-      addDetailRow,
-      deleteDetailRow,
-      copyDetailRow
-    },
+    addMasterRow,
+    deleteMasterRow,
+    copyMasterRow,
+    addDetailRow,
+    deleteDetailRow,
+    copyDetailRow,
+    rowStateApi,
     save,
     saveGridConfig,
     customExportConfigs,
@@ -482,6 +482,7 @@ function unregisterDetailGridApi(tabKey: string, api: any) {
 }
 
 const gridContext = {
+  rowStateApi,
   detailPanelContext: {
     tabs: detailTabs,
     detailCache,
@@ -491,6 +492,7 @@ const gridContext = {
     detailRowClassByTab: mergedDetailRowClassByTab,
     detailGridOptionsByTab,
     detailSumFieldsByTab,
+    rowStateApi,
     cellClassRules,
     applyGridConfig,
     onDetailCellValueChanged: applyDetailCellValueChanged,
@@ -567,7 +569,7 @@ function getRowHeight(params: any): number | undefined {
 function hasUnsavedChanges(masterId: number): boolean {
   // 检查主表行
   const masterRow = getMasterRowById(masterId);
-  if (masterRow && (masterRow._isNew || masterRow._isDeleted || masterRow._dirtyFields)) {
+  if (rowStateApi?.hasRowChanges?.(masterRow)) {
     return true;
   }
 
@@ -577,7 +579,7 @@ function hasUnsavedChanges(masterId: number): boolean {
   if (cached) {
     for (const rows of Object.values(cached)) {
       for (const row of rows as any[]) {
-        if (row._isNew || row._isDeleted || row._dirtyFields) {
+        if (rowStateApi?.hasRowChanges?.(row)) {
           return true;
         }
       }
@@ -758,6 +760,7 @@ function onDetailRowOpened(event: any) {
           :detail-row-class-by-tab="mergedDetailRowClassByTab"
           :detail-grid-options-by-tab="detailGridOptionsByTab"
           :detail-sum-fields-by-tab="detailSumFieldsByTab"
+          :row-state-api="rowStateApi"
           :cell-class-rules="cellClassRules"
           :apply-grid-config="applyGridConfig"
           :on-detail-cell-value-changed="applyDetailCellValueChanged"

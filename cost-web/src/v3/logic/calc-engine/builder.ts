@@ -2,9 +2,6 @@
 export interface RowData {
   id: number | null;
   _rowKey?: string;
-  _isNew?: boolean;
-  _isDeleted?: boolean;
-  _dirtyFields?: Record<string, { originalValue: any; type: 'user' | 'calc' }>;
   [key: string]: any;
 }
 
@@ -45,9 +42,7 @@ function resolveInternalRowId(row: Record<string, any>, runtimePkColumn?: string
 export function initRowData(row: Record<string, any>, isNew = false, runtimePkColumn?: string | null): RowData {
   const nextRow: RowData = {
     ...row,
-    id: resolveInternalRowId(row, runtimePkColumn),
-    _isNew: isNew,
-    _isDeleted: false
+    id: resolveInternalRowId(row, runtimePkColumn)
   };
   ensureRowKey(nextRow);
   return nextRow;

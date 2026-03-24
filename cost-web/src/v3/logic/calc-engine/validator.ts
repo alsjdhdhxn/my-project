@@ -177,7 +177,6 @@ export function validateRows(
 
   for (const row of rows) {
     // 跳过已删除的行
-    if (row._isDeleted) continue;
 
     const rowErrors = validateRow(row, rules, columns);
     errors.push(...rowErrors);

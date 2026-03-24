@@ -19,6 +19,7 @@ import {
   getSummaryRowId,
   resolveSummaryConfig
 } from '@/v3/composables/meta-v3/summary-config';
+import type { RowStateApi } from '@/v3/composables/meta-v3/useWorkingSetStore';
 
 type CompiledCalcRules = ReturnType<typeof compileCalcRules>;
 
@@ -61,6 +62,7 @@ export function useCalcBroadcast(params: {
   pageConfig: Ref<ParsedPageConfig | null>;
   loadDetailData?: (masterId: number, masterRowKey?: string) => Promise<void>;
   detailGridApisByTab?: Ref<Record<string, any>>;
+  rowStateApi: RowStateApi;
 }) {
   const {
     masterGridApi,
@@ -73,7 +75,8 @@ export function useCalcBroadcast(params: {
     compiledMasterCalcRules,
     pageConfig,
     loadDetailData,
-    detailGridApisByTab
+    detailGridApisByTab,
+    rowStateApi
   } = params;
 
   const detailDependencyCache = new Map<
@@ -174,7 +177,7 @@ export function useCalcBroadcast(params: {
       const seen = seenByTable.get(tableCode)!;
 
       rows.forEach((row, idx) => {
-        if (row?._isDeleted) return;
+        if (rowStateApi.isRowDeleted(row)) return;
         const identity = getRowIdentity(row, idx);
         if (seen.has(identity)) return;
         seen.add(identity);
@@ -198,17 +201,7 @@ export function useCalcBroadcast(params: {
   }
 
   function markFieldChange(row: RowData, field: string, oldValue: any, newValue: any, type: 'user' | 'calc') {
-    if (!row._dirtyFields) row._dirtyFields = {};
-    if (!row._dirtyFields[field]) {
-      row._dirtyFields[field] = { originalValue: oldValue, type };
-    } else {
-      if (newValue === row._dirtyFields[field].originalValue) {
-        delete row._dirtyFields[field];
-        if (Object.keys(row._dirtyFields).length === 0) delete row._dirtyFields;
-        return;
-      }
-      if (type === 'user') row._dirtyFields[field].type = 'user';
-    }
+    rowStateApi.markFieldChange(row, field, oldValue, newValue, type);
   }
 
   function formatValue(value: any) {
@@ -463,7 +456,7 @@ export function useCalcBroadcast(params: {
       const changes: CalcChange[] = [];
 
       for (const row of rows) {
-        if (row._isDeleted) continue;
+        if (rowStateApi.isRowDeleted(row)) continue;
         const context = buildDetailCalcContext(masterRow, row, tabKey);
         const results = calcRowFields(row, context, effectiveRules);
         for (const [field, value] of Object.entries(results)) {
@@ -534,7 +527,7 @@ export function useCalcBroadcast(params: {
 
     const allRows: RowData[] = [];
     for (const rows of Object.values(cached)) {
-      allRows.push(...rows.filter(r => !r._isDeleted));
+      allRows.push(...rows.filter(row => !rowStateApi.isRowDeleted(row)));
     }
 
     const results = calcAggregates(
@@ -608,7 +601,8 @@ export function useCalcBroadcast(params: {
       masterRowKey: resolvedRowKey,
       pageConfig: pageConfig.value,
       detailCache,
-      summaryConfig
+      summaryConfig,
+      isRowDeleted: rowStateApi.isRowDeleted
     });
 
     for (const summaryRow of summaryRows) {

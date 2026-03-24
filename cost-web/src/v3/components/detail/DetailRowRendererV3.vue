@@ -25,6 +25,7 @@ const detailCellEditableRulesByTab = computed(() => unref(panelContext.value.det
 const detailRowClassByTab = computed(() => unref(panelContext.value.detailRowClassByTab) || {});
 const detailGridOptionsByTab = computed(() => unref(panelContext.value.detailGridOptionsByTab) || {});
 const detailSumFieldsByTab = computed(() => unref(panelContext.value.detailSumFieldsByTab) || {});
+const rowStateApi = computed(() => panelContext.value.rowStateApi);
 const cellClassRules = computed(() => panelContext.value.cellClassRules);
 const noop = () => {};
 const noopLoad = async () => {};
@@ -84,6 +85,7 @@ function handleActiveTabChange(tabKey: string) {
       :detail-row-class-by-tab="detailRowClassByTab"
       :detail-grid-options-by-tab="detailGridOptionsByTab"
       :detail-sum-fields-by-tab="detailSumFieldsByTab"
+      :row-state-api="rowStateApi"
       :cell-class-rules="cellClassRules"
       :apply-grid-config="applyGridConfig"
       :on-detail-cell-value-changed="onDetailCellValueChanged"

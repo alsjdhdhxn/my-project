@@ -1,13 +1,11 @@
 import { ref, shallowRef } from 'vue';
 import type { GridApi } from 'ag-grid-community';
 import { useMetaConfig } from '@/v3/composables/meta-v3/useMetaConfig';
-import { useDetailStore } from '@/v3/composables/meta-v3/useDetailStore';
-import { useMasterStore } from '@/v3/composables/meta-v3/useMasterStore';
 import { useCalcBroadcast } from '@/v3/composables/meta-v3/useCalcBroadcast';
 import { useAdvancedSearch } from '@/v3/composables/meta-v3/useAdvancedSearch';
-import { useSave } from '@/v3/composables/meta-v3/useSave';
 import { useUserGridConfig } from '@/v3/composables/meta-v3/useUserGridConfig';
 import { useCustomExport } from '@/v3/composables/meta-v3/useCustomExport';
+import { useWorkingSetStore } from '@/v3/composables/meta-v3/useWorkingSetStore';
 import { createRuntimeLogger } from './logger';
 import { useRuntimeLookup } from './useRuntimeLookup';
 import { useRuntimeMetadataReload } from './useRuntimeMetadataReload';
@@ -103,41 +101,37 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     makeError
   });
 
-  let masterStore: ReturnType<typeof useMasterStore>;
-  const detailStore = useDetailStore({
-    pageCode,
-    pageConfig: meta.pageConfig,
-    detailFkColumnByTab: meta.detailFkColumnByTab,
-    detailPkColumnByTab: meta.detailPkColumnByTab,
-    masterGridApi,
-    detailGridApisByTab,
-    resolveMasterRowKey: masterId => masterStore.resolveMasterRowKey(masterId),
-    notifyError
-  });
-  masterStore = useMasterStore({
+  const workingSet = useWorkingSetStore({
     pageCode,
     pageConfig: meta.pageConfig,
     detailFkColumnByTab: meta.detailFkColumnByTab,
     masterPkColumn: meta.masterPkColumn,
     detailPkColumnByTab: meta.detailPkColumnByTab,
+    masterValidationRules: meta.masterValidationRules,
+    detailValidationRulesByTab: meta.detailValidationRulesByTab,
+    masterColumnMeta: meta.masterColumnMeta,
+    detailColumnMetaByTab: meta.detailColumnMetaByTab,
     masterGridApi,
-    detailCache: detailStore.detailCache,
-    loadDetailData: detailStore.loadDetailData,
-    notifyError
+    detailGridApisByTab,
+    activeMasterRowKey,
+    notifyInfo,
+    notifyError,
+    notifySuccess
   });
 
   const calc = useCalcBroadcast({
     masterGridApi,
-    getMasterRowById: masterStore.getMasterRowById,
-    getMasterRowByRowKey: masterStore.getMasterRowByRowKey,
-    resolveMasterRowKey: masterStore.resolveMasterRowKey,
-    detailCache: detailStore.detailCache,
+    getMasterRowById: workingSet.getMasterRowById,
+    getMasterRowByRowKey: workingSet.getMasterRowByRowKey,
+    resolveMasterRowKey: workingSet.resolveMasterRowKey,
+    detailCache: workingSet.detailCache,
     detailCalcRulesByTab: meta.detailCalcRulesByTab,
     compiledAggRules: meta.compiledAggRules,
     compiledMasterCalcRules: meta.compiledMasterCalcRules,
     pageConfig: meta.pageConfig,
-    loadDetailData: detailStore.loadDetailData,
-    detailGridApisByTab
+    loadDetailData: workingSet.loadDetailData,
+    detailGridApisByTab,
+    rowStateApi: workingSet.rowStateApi
   });
 
   const calcApi = {
@@ -182,14 +176,14 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     masterGridApi,
     detailGridApisByTab,
     activeMasterRowKey,
-    addMasterRowRaw: masterStore.addMasterRow,
-    deleteMasterRowRaw: masterStore.deleteMasterRow,
-    copyMasterRowRaw: masterStore.copyMasterRow,
-    addDetailRowRaw: detailStore.addDetailRow,
-    deleteDetailRowRaw: detailStore.deleteDetailRow,
-    copyDetailRowRaw: detailStore.copyDetailRow,
-    applyMasterPatchRaw: masterStore.applyMasterPatch,
-    applyDetailPatchRaw: detailStore.applyDetailPatch,
+    addMasterRowRaw: workingSet.addMasterRow,
+    deleteMasterRowRaw: workingSet.deleteMasterRow,
+    copyMasterRowRaw: workingSet.copyMasterRow,
+    addDetailRowRaw: workingSet.addDetailRow,
+    deleteDetailRowRaw: workingSet.deleteDetailRow,
+    copyDetailRowRaw: workingSet.copyDetailRow,
+    applyMasterPatchRaw: workingSet.applyMasterPatch,
+    applyDetailPatchRaw: workingSet.applyDetailPatch,
     markFieldChange: calcApi.markFieldChange,
     runMasterCalc: calcApi.runMasterCalc,
     runDetailCalc: calcApi.runDetailCalc,
@@ -205,6 +199,7 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
       masterLookupRules: meta.masterLookupRules,
       detailLookupRulesByTab: meta.detailLookupRulesByTab
     },
+    rowStateApi: workingSet.rowStateApi,
     commitMasterPatch,
     commitDetailPatch
   });
@@ -220,34 +215,13 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     masterLookupRules: meta.masterLookupRules,
     detailLookupRulesByTab: meta.detailLookupRulesByTab,
     masterGridApi,
-    setAdvancedConditions: masterStore.setAdvancedConditions,
-    clearAdvancedConditions: masterStore.clearAdvancedConditions,
-    clearAllCache: detailStore.clearAllCache,
+    setAdvancedConditions: workingSet.setAdvancedConditions,
+    clearAdvancedConditions: workingSet.clearAdvancedConditions,
+    clearAllCache: workingSet.clearAllCache,
     notifyInfo
   });
 
-  const { save } = useSave({
-    pageCode,
-    pageConfig: meta.pageConfig,
-    detailCache: detailStore.detailCache,
-    getMasterRowById: masterStore.getMasterRowById,
-    getMasterRowByRowKey: masterStore.getMasterRowByRowKey,
-    resolveMasterRowKey: masterStore.resolveMasterRowKey,
-    masterValidationRules: meta.masterValidationRules,
-    detailValidationRulesByTab: meta.detailValidationRulesByTab,
-    masterColumnMeta: meta.masterColumnMeta,
-    detailColumnMetaByTab: meta.detailColumnMetaByTab,
-    masterPkColumn: meta.masterPkColumn,
-    detailPkColumnByTab: meta.detailPkColumnByTab,
-    detailFkColumnByTab: meta.detailFkColumnByTab,
-    loadDetailData: detailStore.loadDetailData,
-    masterGridApi,
-    detailGridApisByTab,
-    activeMasterRowKey,
-    notifyInfo,
-    notifyError,
-    notifySuccess
-  });
+  const { save } = workingSet;
 
   const customExport = useCustomExport({
     pageCode,
@@ -267,11 +241,11 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     activeMasterRowKey,
     pageConfig: meta.pageConfig,
     data: {
-      detailCache: detailStore.detailCache,
-      getMasterRowByRowKey: masterStore.getMasterRowByRowKey,
-      reloadMasterRow: masterStore.reloadMasterRow,
-      loadDetailData: detailStore.loadDetailData,
-      clearAllCache: detailStore.clearAllCache
+      detailCache: workingSet.detailCache,
+      getMasterRowByRowKey: workingSet.getMasterRowByRowKey,
+      reloadMasterRow: workingSet.reloadMasterRow,
+      loadDetailData: workingSet.loadDetailData,
+      clearAllCache: workingSet.clearAllCache
     }
   });
 
@@ -309,8 +283,8 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     masterGridApi,
     detailGridApisByTab,
     activeMasterRowKey,
-    masterStore,
-    detailStore,
+    rowStateApi: workingSet.rowStateApi,
+    workingSet,
     meta: metaApi,
     state: stateApi,
     calc: calcApi,
@@ -366,8 +340,9 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     componentStateByKey,
     masterGridApi,
     detailGridApisByTab,
-    detailCache: detailStore.detailCache,
-    resolveMasterRowKey: masterStore.resolveMasterRowKey,
+    detailCache: workingSet.detailCache,
+    resolveMasterRowKey: workingSet.resolveMasterRowKey,
+    rowStateApi: workingSet.rowStateApi,
     applyGridConfig: gridConfig.applyGridConfig,
     loadComponents: loadComponentsRaw,
     parseConfig: parseConfigRaw,

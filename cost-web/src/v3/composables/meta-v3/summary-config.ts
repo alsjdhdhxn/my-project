@@ -72,6 +72,7 @@ export function buildSummaryRows(params: {
   pageConfig: ParsedPageConfig | null;
   detailCache: Map<string, Record<string, RowData[]>>;
   summaryConfig?: SummaryConfig;
+  isRowDeleted?: (row: RowData) => boolean;
 }): RowData[] {
   const { masterId, masterRowKey, pageConfig, detailCache } = params;
   const summaryConfig = params.summaryConfig || resolveSummaryConfig(pageConfig);
@@ -84,7 +85,8 @@ export function buildSummaryRows(params: {
       masterRowKey,
       tab,
       rows: cached[tab.key] || [],
-      summaryConfig
+      summaryConfig,
+      isRowDeleted: params.isRowDeleted
     })
   );
 }
@@ -95,9 +97,10 @@ export function buildSummaryRow(params: {
   tab: TabConfig;
   rows: RowData[];
   summaryConfig: SummaryConfig;
+  isRowDeleted?: (row: RowData) => boolean;
 }): RowData {
-  const { masterId, masterRowKey, tab, rows, summaryConfig } = params;
-  const activeRows = rows.filter(row => !row._isDeleted);
+  const { masterId, masterRowKey, tab, rows, summaryConfig, isRowDeleted } = params;
+  const activeRows = rows.filter(row => !(isRowDeleted ? isRowDeleted(row) : false));
   const aggregates: Record<string, number> = {};
   for (const agg of summaryConfig.summaryAggregates) {
     aggregates[agg.targetField] = calcAggregateValue(agg, activeRows);

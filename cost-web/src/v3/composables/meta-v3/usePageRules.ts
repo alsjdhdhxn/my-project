@@ -757,7 +757,8 @@ export function buildCellEditableCallback(
     if (!data) return true;
 
     // 新增行始终可编辑
-    if (data._isNew) return true;
+    const rowStateApi = params?.context?.rowStateApi as { isRowNew?: (row: any) => boolean } | undefined;
+    if (rowStateApi?.isRowNew?.(data)) return true;
 
     // 检查 CELL_EDITABLE 规则
     if (cellRules && cellRules.length > 0) {

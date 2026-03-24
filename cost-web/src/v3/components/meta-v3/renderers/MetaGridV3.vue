@@ -22,6 +22,7 @@ const props = defineProps<{
 const dialog = useDialog();
 const runtime = props.runtime as any;
 const meta = runtime?.meta;
+const rowStateApi = runtime?.rowStateApi;
 const lookup = runtime?.lookup;
 const actions = runtime?.actions;
 const gridConfigApi = runtime?.gridConfig;
@@ -59,7 +60,7 @@ let cachedDataSource: any = null;
 function getMasterDataSource() {
   if (!cachedDataSource) {
     const masterGridOptions = unwrap(meta?.masterGridOptions);
-    cachedDataSource = runtime?.masterStore?.createServerSideDataSource({
+    cachedDataSource = runtime?.workingSet?.createServerSideDataSource({
       pageSize: masterGridOptions?.cacheBlockSize || 100
     });
   }
@@ -74,8 +75,13 @@ const masterBindings = useMasterGridBindings({
     masterRowEditableRules: meta?.masterRowEditableRules,
     masterRowClassRules: meta?.masterRowClassRules,
     masterSumFields: meta?.masterSumFields,
-    masterStore: runtime.masterStore,
-    detailStore: runtime.detailStore,
+    addMasterRow: runtime?.mutations?.addMasterRow,
+    deleteMasterRow: runtime?.mutations?.deleteMasterRow,
+    copyMasterRow: runtime?.mutations?.copyMasterRow,
+    addDetailRow: runtime?.mutations?.addDetailRow,
+    deleteDetailRow: runtime?.mutations?.deleteDetailRow,
+    copyDetailRow: runtime?.mutations?.copyDetailRow,
+    rowStateApi,
     save,
     saveGridConfig,
     customExportConfigs,
@@ -270,6 +276,7 @@ function handleFilterChanged() {
       :row-selection="rowSelection"
       :auto-size-strategy="autoSizeStrategy"
       :get-context-menu-items="getContextMenuItems"
+      :context="{ rowStateApi }"
       :row-height="rowHeight"
       :header-height="headerHeight"
       v-bind="gridOptions"

@@ -5,12 +5,12 @@ import type { ColDef, GridReadyEvent } from 'ag-grid-community';
 import { ensureRowKey } from '@/v3/logic/calc-engine';
 import type { RowData, TabConfig } from '@/v3/logic/calc-engine';
 import type { CellEditableRule, RowEditableRule } from '@/v3/composables/meta-v3/types';
+import type { RowStateApi } from '@/v3/composables/meta-v3/useWorkingSetStore';
 import {
   type ResolvedGridOptions,
   autoSizeColumnsOnReady,
   buildGridRuntimeOptions
 } from '@/v3/composables/meta-v3/grid-options';
-import { isFlagTrue } from '@/v3/composables/meta-v3/cell-style';
 import { buildCellEditableCallback, buildRowEditableCallback } from '@/v3/composables/meta-v3/usePageRules';
 
 const props = defineProps<{
@@ -29,6 +29,7 @@ const props = defineProps<{
   registerDetailGridApi: (tabKey: string, api: any) => void;
   unregisterDetailGridApi?: (tabKey: string, api: any) => void;
   applyGridConfig?: (gridKey: string, api: any, columnApi: any, sourceColumnDefs?: ColDef[]) => void;
+  rowStateApi: RowStateApi;
   onCellValueChanged: (event: any) => void;
   onCellClicked: (event: any) => void;
   onCellEditingStarted: () => void;
@@ -177,8 +178,8 @@ function getRowId(params: any) {
 
 function getRowClass(params: any): string | undefined {
   const classes: string[] = [];
-  if (isFlagTrue(params.data?._isDeleted)) classes.push('row-deleted');
-  if (isFlagTrue(params.data?._isNew)) classes.push('row-new');
+  if (props.rowStateApi.isRowDeleted(params.data)) classes.push('row-deleted');
+  if (props.rowStateApi.isRowNew(params.data)) classes.push('row-new');
   const metaClass = props.rowClassGetter?.(params);
   if (metaClass) classes.push(metaClass);
   return classes.length > 0 ? classes.join(' ') : undefined;
@@ -280,6 +281,7 @@ watch(
       class="ag-theme-quartz"
       style="width: 100%; height: 100%"
       :row-data="rows"
+      :context="{ rowStateApi }"
       :column-defs="columns"
       :default-col-def="defaultColDef"
       :get-row-id="getRowId"

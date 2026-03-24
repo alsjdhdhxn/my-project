@@ -15,8 +15,9 @@ import {
   autoSizeColumnsOnReady,
   buildGridRuntimeOptions
 } from '@/v3/composables/meta-v3/grid-options';
-import { DIRTY_CELL_CLASS_RULES, isFlagTrue } from '@/v3/composables/meta-v3/cell-style';
+import { DIRTY_CELL_CLASS_RULES } from '@/v3/composables/meta-v3/cell-style';
 import { ensureRowKey } from '@/v3/logic/calc-engine';
+import type { RowStateApi } from '@/v3/composables/meta-v3/useWorkingSetStore';
 
 // 用于追踪已包装 editable 的列定义
 const wrappedEditableColumns = new WeakSet<ColDef>();
@@ -28,16 +29,12 @@ type MasterGridBindingDeps = {
   masterRowEditableRules?: Ref<RowEditableRule[]> | RowEditableRule[];
   masterRowClassRules?: Ref<RowClassRule[]> | RowClassRule[];
   masterSumFields?: Ref<string[]> | string[];
-  masterStore: {
-    addMasterRow: () => void;
-    deleteMasterRow: (row: any) => void;
-    copyMasterRow: (row: any) => void;
-  };
-  detailStore: {
-    addDetailRow: (masterId: number, tabKey: string, masterRowKey?: string) => void;
-    deleteDetailRow: (masterId: number, tabKey: string, row: any, masterRowKey?: string) => void;
-    copyDetailRow: (masterId: number, tabKey: string, row: any, masterRowKey?: string) => void;
-  };
+  addMasterRow: () => void;
+  deleteMasterRow: (row: any) => void;
+  copyMasterRow: (row: any) => void;
+  addDetailRow: (masterId: number, tabKey: string, masterRowKey?: string) => void;
+  deleteDetailRow: (masterId: number, tabKey: string, row: any, masterRowKey?: string) => void;
+  copyDetailRow: (masterId: number, tabKey: string, row: any, masterRowKey?: string) => void;
   save: () => void;
   saveGridConfig?: (gridKey: string, api: any, columnApi: any) => void;
   customExportConfigs?: Ref<CustomExportConfig[]> | CustomExportConfig[];
@@ -46,6 +43,7 @@ type MasterGridBindingDeps = {
     actionCode: string,
     options?: { data?: Record<string, any>; selectedRow?: Record<string, any> | null }
   ) => Promise<void>;
+  rowStateApi?: RowStateApi;
   onMasterCellValueChanged?: (event: any) => Promise<boolean> | boolean;
   onMasterCellClicked?: (event: any) => void;
 };
@@ -199,9 +197,12 @@ export function useMasterGridBindings(params: {
   }
 
   function getRowClass(params: any): string | undefined {
+    const rowStateApi = params?.context?.rowStateApi as
+      | { isRowDeleted?: (row: any) => boolean; isRowNew?: (row: any) => boolean }
+      | undefined;
     const classes: string[] = [];
-    if (isFlagTrue(params.data?._isDeleted)) classes.push('row-deleted');
-    if (isFlagTrue(params.data?._isNew)) classes.push('row-new');
+    if (rowStateApi?.isRowDeleted?.(params.data)) classes.push('row-deleted');
+    if (rowStateApi?.isRowNew?.(params.data)) classes.push('row-new');
     // 应用 ROW_CLASS 规则（动态获取最新回调）
     const ruleClass = getLatestRowClassCallback()?.(params);
     if (ruleClass) classes.push(ruleClass);
@@ -219,12 +220,12 @@ export function useMasterGridBindings(params: {
   const masterGridKey = resolveGridKey(deps.masterGridKey?.value ?? deps.masterGridKey);
 
   const { getMasterContextMenuItems } = useGridContextMenu({
-    addMasterRow: deps.masterStore.addMasterRow,
-    deleteMasterRow: deps.masterStore.deleteMasterRow,
-    copyMasterRow: deps.masterStore.copyMasterRow,
-    addDetailRow: deps.detailStore.addDetailRow,
-    deleteDetailRow: deps.detailStore.deleteDetailRow,
-    copyDetailRow: deps.detailStore.copyDetailRow,
+    addMasterRow: deps.addMasterRow,
+    deleteMasterRow: deps.deleteMasterRow,
+    copyMasterRow: deps.copyMasterRow,
+    addDetailRow: deps.addDetailRow,
+    deleteDetailRow: deps.deleteDetailRow,
+    copyDetailRow: deps.copyDetailRow,
     save: deps.save,
     saveGridConfig: deps.saveGridConfig,
     customExportConfigs: deps.customExportConfigs,
@@ -232,7 +233,9 @@ export function useMasterGridBindings(params: {
     executeAction: deps.executeAction,
     masterGridKey,
     masterMenuConfig: params.contextMenuConfig,
-    isRowEditable: editableCallback ? (row: any) => editableCallback({ data: row, colDef: {} }) : undefined,
+    isRowEditable: editableCallback
+      ? (row: any) => editableCallback({ data: row, colDef: {}, context: { rowStateApi: deps.rowStateApi } })
+      : undefined,
     notifyError: params.notifyError
   });
 

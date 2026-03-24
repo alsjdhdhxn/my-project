@@ -1,5 +1,6 @@
 import { nextTick, type Ref } from 'vue';
 import { clearCalcCache } from '@/v3/logic/calc-engine';
+import type { RowStateApi } from '@/v3/composables/meta-v3/useWorkingSetStore';
 import {
   columnDefsEquivalent,
   detailColumnDefsMapEquivalent,
@@ -29,6 +30,7 @@ type RuntimeMetadataReloadOptions = {
   detailGridApisByTab: Ref<Record<string, any>>;
   detailCache: Map<string, any>;
   resolveMasterRowKey: (masterId: number) => string;
+  rowStateApi: RowStateApi;
   applyGridConfig: (gridKey: string, api: any, columnApi: any, sourceColumnDefs: any[]) => Promise<void>;
   loadComponents: () => Promise<boolean>;
   parseConfig: () => boolean;
@@ -48,6 +50,7 @@ export function useRuntimeMetadataReload(options: RuntimeMetadataReloadOptions) 
     detailGridApisByTab,
     detailCache,
     resolveMasterRowKey,
+    rowStateApi,
     applyGridConfig,
     loadComponents,
     parseConfig,
@@ -60,10 +63,8 @@ export function useRuntimeMetadataReload(options: RuntimeMetadataReloadOptions) 
 
   function isMasterRowDirty(row: any): boolean {
     if (!row) return false;
-    if (row._isDeleted) return false;
-    if (row._isNew) return true;
-    const dirtyFields = row._dirtyFields as Record<string, unknown> | undefined;
-    return Boolean(dirtyFields && Object.keys(dirtyFields).length > 0);
+    if (rowStateApi.isRowDeleted(row)) return false;
+    return rowStateApi.hasRowChanges(row);
   }
 
   function collectDirtyMasterTargets(): HotReloadMasterTarget[] {

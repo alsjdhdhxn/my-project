@@ -5,6 +5,7 @@ import type { RowData, TabConfig } from '@/v3/logic/calc-engine';
 import DetailGridV3 from '@/v3/components/detail/DetailGridV3.vue';
 import type { ResolvedGridOptions } from '@/v3/composables/meta-v3/grid-options';
 import type { CellEditableRule, RowEditableRule } from '@/v3/composables/meta-v3/types';
+import type { RowStateApi } from '@/v3/composables/meta-v3/useWorkingSetStore';
 
 const props = defineProps<{
   tabs: TabConfig[];
@@ -18,6 +19,7 @@ const props = defineProps<{
   detailGridOptionsByTab?: Record<string, ResolvedGridOptions>;
   detailSumFieldsByTab?: Record<string, string[]>;
   cellClassRules: ColDef['cellClassRules'];
+  rowStateApi: RowStateApi;
   defaultViewMode?: 'tab' | 'stack';
   viewMode?: 'tab' | 'stack';
   applyGridConfig?: (gridKey: string, api: any, columnApi: any, sourceColumnDefs?: ColDef[]) => void;
@@ -170,6 +172,7 @@ function refreshLayout() {
           :row-class-getter="detailRowClassByTab?.[activeTabConfig.key]"
           :grid-options="detailGridOptionsByTab?.[activeTabConfig.key]"
           :cell-class-rules="cellClassRules"
+          :row-state-api="rowStateApi"
           :context-menu-items="getDetailContextMenuItemsFor(activeTabConfig.key)"
           :register-detail-grid-api="handleRegister"
           :unregister-detail-grid-api="handleUnregister"
@@ -196,6 +199,7 @@ function refreshLayout() {
             :row-class-getter="detailRowClassByTab?.[tab.key]"
             :grid-options="detailGridOptionsByTab?.[tab.key]"
             :cell-class-rules="cellClassRules"
+            :row-state-api="rowStateApi"
             :context-menu-items="getDetailContextMenuItemsFor(tab.key)"
             :show-title="true"
             :tab-count="tabs.length"
