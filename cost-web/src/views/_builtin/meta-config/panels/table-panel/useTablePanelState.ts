@@ -35,6 +35,7 @@ const tableColDefs: ColDef[] = [
 const viewColTableColumns: DataTableColumns = [
   { type: 'selection' },
   { title: 'COLUMN_NAME', key: 'COLUMN_NAME', width: 200 },
+  { title: 'COLUMN_COMMENT', key: 'COLUMN_COMMENT', width: 180 },
   { title: 'DATA_TYPE', key: 'DATA_TYPE', width: 120 },
   { title: 'DATA_LENGTH', key: 'DATA_LENGTH', width: 100 },
   { title: 'DATA_PRECISION', key: 'DATA_PRECISION', width: 120 },
@@ -440,6 +441,7 @@ export function useTablePanelState() {
       .filter(row => viewColCheckedKeys.value.includes(row._key))
       .map((row, index) => {
         const columnName = row.COLUMN_NAME;
+        const columnComment = typeof row.COLUMN_COMMENT === 'string' ? row.COLUMN_COMMENT.trim() : '';
         const inTargetTable = viewImportTargetTableCols.has(String(columnName || '').toUpperCase());
         return {
           _isNew: true,
@@ -448,7 +450,7 @@ export function useTablePanelState() {
           columnName,
           queryColumn: columnName,
           targetColumn: inTargetTable ? columnName : '',
-          headerText: columnName,
+          headerText: columnComment || columnName,
           dataType: mapOracleType(row.DATA_TYPE),
           displayOrder: existingOrder + index + 1,
           sortable: 1,

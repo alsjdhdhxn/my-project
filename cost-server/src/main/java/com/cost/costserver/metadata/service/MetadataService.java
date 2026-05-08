@@ -26,6 +26,10 @@ import java.util.stream.Collectors;
 @Slf4j
 public class MetadataService {
 
+    private static final String DEFAULT_ROOT_COMPONENT_KEY = "root";
+    private static final String DEFAULT_ROOT_COMPONENT_TYPE = "LAYOUT";
+    private static final String DEFAULT_ROOT_COMPONENT_CONFIG = "{\"direction\":\"vertical\",\"gap\":8}";
+
     private final TableMetadataMapper tableMetadataMapper;
     private final ColumnMetadataMapper columnMetadataMapper;
     private final PageComponentMapper pageComponentMapper;
@@ -719,12 +723,18 @@ public class MetadataService {
                 .map(dto -> filterButtonsInComponent(dto, allowedButtons, tableNameMap))
                 .collect(Collectors.groupingBy(PageComponentDTO::parentKey));
 
-        return components.stream()
+        List<PageComponentDTO> roots = components.stream()
                 .filter(c -> StrUtil.isBlank(c.getParentKey()))
                 .map(component -> toDTOWithRules(component, rulesByComponent))
                 .map(dto -> filterButtonsInComponent(dto, allowedButtons, tableNameMap))
                 .map(dto -> buildTree(dto, childrenMap))
                 .toList();
+
+        if (!roots.isEmpty()) {
+            return roots;
+        }
+
+        return buildImplicitRootTree(pageCode, childrenMap);
     }
     
     /**
@@ -870,6 +880,34 @@ public class MetadataService {
                 .map(child -> buildTree(child, childrenMap))
                 .toList();
         return node.withChildren(builtChildren);
+    }
+
+    private List<PageComponentDTO> buildImplicitRootTree(
+            String pageCode,
+            Map<String, List<PageComponentDTO>> childrenMap) {
+        List<PageComponentDTO> rootChildren = childrenMap.get(DEFAULT_ROOT_COMPONENT_KEY);
+        if (rootChildren == null || rootChildren.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        List<PageComponentDTO> builtChildren = rootChildren.stream()
+                .map(child -> buildTree(child, childrenMap))
+                .toList();
+        PageComponentDTO root = new PageComponentDTO(
+                -1L,
+                pageCode,
+                DEFAULT_ROOT_COMPONENT_KEY,
+                DEFAULT_ROOT_COMPONENT_TYPE,
+                null,
+                DEFAULT_ROOT_COMPONENT_CONFIG,
+                null,
+                null,
+                0,
+                "Implicit page root",
+                null,
+                builtChildren
+        );
+        return List.of(root);
     }
 
     public List<PageRuleDTO> getPageRules(String pageCode) {

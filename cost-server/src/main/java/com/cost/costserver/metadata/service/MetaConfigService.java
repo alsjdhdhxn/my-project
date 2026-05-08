@@ -620,9 +620,13 @@ public class MetaConfigService {
     public List<Map<String, Object>> listViewColumns(String owner, String viewName) {
         String safeOwner = owner.toUpperCase().replace("'", "''");
         String safeName = viewName.toUpperCase().replace("'", "''");
-        String sql = "SELECT COLUMN_NAME, DATA_TYPE, DATA_LENGTH, DATA_PRECISION, DATA_SCALE, COLUMN_ID " +
-                     "FROM DBA_TAB_COLUMNS WHERE OWNER = '" + safeOwner + "' AND TABLE_NAME = '" + safeName + "' " +
-                     "ORDER BY COLUMN_ID";
+        String sql = "SELECT c.COLUMN_NAME, c.DATA_TYPE, c.DATA_LENGTH, c.DATA_PRECISION, c.DATA_SCALE, c.COLUMN_ID, " +
+                     "cc.COMMENTS AS COLUMN_COMMENT " +
+                     "FROM DBA_TAB_COLUMNS c " +
+                     "LEFT JOIN DBA_COL_COMMENTS cc ON cc.OWNER = c.OWNER " +
+                     "AND cc.TABLE_NAME = c.TABLE_NAME AND cc.COLUMN_NAME = c.COLUMN_NAME " +
+                     "WHERE c.OWNER = '" + safeOwner + "' AND c.TABLE_NAME = '" + safeName + "' " +
+                     "ORDER BY c.COLUMN_ID";
         return dynamicMapper.selectList(sql);
     }
 

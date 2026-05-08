@@ -115,12 +115,41 @@ async function handleToolbarClick(item: any) {
     return;
   }
 
+  const api = runtime?.masterGridApi?.value;
+  const selectedRows = api?.getSelectedRows?.() || [];
+  const selectedRow = selectedRows[0] || null;
+  const action = item?.action;
+
+  switch (action) {
+    case 'addRow':
+      runtime?.mutations?.addMasterRow?.();
+      return;
+    case 'copyRow':
+      if (!selectedRow) {
+        window.$message?.warning('请先选择一行');
+        return;
+      }
+      runtime?.mutations?.copyMasterRow?.(selectedRow);
+      return;
+    case 'deleteRow':
+      if (selectedRows.length === 0) {
+        window.$message?.warning('请选择要删除的行');
+        return;
+      }
+      selectedRows.forEach((row: any) => runtime?.mutations?.deleteMasterRow?.(row));
+      return;
+    case 'save':
+      await save?.();
+      return;
+    case 'saveGridConfig':
+      if (api) await saveGridConfig?.(masterGridKey.value || props.component.componentKey, api, null);
+      return;
+    default:
+      break;
+  }
+
   await handleToolbarAction(item, {
-    getSelectedRow: () => {
-      const api = runtime?.masterGridApi?.value;
-      const selectedRows = api?.getSelectedRows?.() || [];
-      return selectedRows[0] || null;
-    },
+    getSelectedRow: () => selectedRow,
     executeAction,
     dialog
   });
