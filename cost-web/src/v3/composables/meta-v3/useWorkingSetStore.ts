@@ -482,7 +482,11 @@ export function useWorkingSetStore(params: {
       case 'currentUserId':
         return userInfo.userId ?? '';
       case 'currentDeptId':
-        return userInfo.deptId ?? userInfo.departmentId ?? userInfo.currentDeptId ?? '';
+        return userInfo.departmentId ?? userInfo.deptId ?? userInfo.currentDeptId ?? '';
+      case 'currentUserName':
+        return userInfo.realName ?? userInfo.userName ?? '';
+      case 'currentDeptName':
+        return userInfo.departmentName ?? userInfo.deptName ?? '';
       case 'currentRoleId':
         return userInfo.roleId ?? userInfo.currentRoleId ?? userInfo.roles?.[0] ?? '';
       case 'currentTime':

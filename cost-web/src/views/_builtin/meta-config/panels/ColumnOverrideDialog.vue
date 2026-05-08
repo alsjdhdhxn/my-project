@@ -120,6 +120,8 @@ const defaultValueTypeOptions = [
 const builtinDefaultOptions = [
   { label: '当前人员ID', value: 'currentUserId' },
   { label: '当前人员部门ID', value: 'currentDeptId' },
+  { label: '当前人员名称', value: 'currentUserName' },
+  { label: '当前部门名称', value: 'currentDeptName' },
   { label: '当前时间', value: 'currentTime' },
   { label: '当前角色ID', value: 'currentRoleId' }
 ];

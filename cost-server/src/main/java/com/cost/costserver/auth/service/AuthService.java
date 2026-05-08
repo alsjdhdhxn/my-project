@@ -4,8 +4,10 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.cost.costserver.auth.dto.LoginToken;
 import com.cost.costserver.auth.dto.UserInfo;
+import com.cost.costserver.auth.entity.Department;
 import com.cost.costserver.auth.entity.Role;
 import com.cost.costserver.auth.entity.User;
+import com.cost.costserver.auth.mapper.DepartmentMapper;
 import com.cost.costserver.auth.mapper.RoleMapper;
 import com.cost.costserver.auth.mapper.UserMapper;
 import com.cost.costserver.common.BusinessException;
@@ -23,6 +25,7 @@ public class AuthService {
 
     private final UserMapper userMapper;
     private final RoleMapper roleMapper;
+    private final DepartmentMapper departmentMapper;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
 
@@ -63,12 +66,22 @@ public class AuthService {
 
         Long userId = jwtUtil.getUserId(token);
         String username = jwtUtil.getUsername(token);
+        User user = userMapper.selectById(userId);
 
         // 查询用户角色
         List<Role> roles = roleMapper.selectByUserId(userId);
         List<String> roleCodes = roles.stream().map(Role::getRoleCode).toList();
+        Department department = user != null && user.getDepartmentId() != null
+                ? departmentMapper.selectById(user.getDepartmentId())
+                : null;
 
-        return new UserInfo(userId.toString(), username, roleCodes);
+        return new UserInfo(
+                userId.toString(),
+                username,
+                user != null ? user.getRealName() : null,
+                user != null && user.getDepartmentId() != null ? user.getDepartmentId().toString() : null,
+                department != null ? department.getDeptName() : null,
+                roleCodes);
     }
 
     /**
