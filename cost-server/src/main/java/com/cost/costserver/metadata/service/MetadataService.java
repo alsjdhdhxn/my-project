@@ -130,7 +130,7 @@ public class MetadataService {
             }
             String rulesConfig = applyVisibilityLock(col.rulesConfig(), !visible);
             result.add(copyColumn(col, col.displayOrder(), col.width(), visible, editable,
-                    col.required(), col.searchable(), col.sortable(), col.pinned(), rulesConfig));
+                    col.required(), col.searchable(), col.sortable(), col.pinned(), col.defaultValue(), rulesConfig));
         }
         return result;
     }
@@ -189,7 +189,7 @@ public class MetadataService {
             }
 
             result.add(copyColumn(col, displayOrder, width, visible, editable,
-                    col.required(), col.searchable(), col.sortable(), pinned, col.rulesConfig()));
+                    col.required(), col.searchable(), col.sortable(), pinned, col.defaultValue(), col.rulesConfig()));
             index++;
         }
         return result;
@@ -235,6 +235,7 @@ public class MetadataService {
                     searchable,
                     sortable,
                     pinned,
+                    override.defaultValue() != null ? stringifyJsonValue(override.defaultValue()) : col.defaultValue(),
                     mergedRulesConfig));
         }
         return result;
@@ -321,6 +322,7 @@ public class MetadataService {
                         text(node, "cellEditor"),
                         parseOverrideConfig(node.get("cellEditorParams"), "cellEditorParams"),
                         text(node, "aggFunc"),
+                        parseOverrideConfig(node.get("defaultValue"), "defaultValue"),
                         parseOverrideConfig(node.get("rulesConfig"), "rulesConfig"));
                 if (columnId != null) {
                     byId.put(columnId, override);
@@ -434,6 +436,21 @@ public class MetadataService {
             }
         }
         return null;
+    }
+
+    private String stringifyJsonValue(JsonNode node) {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        if (node.isTextual()) {
+            return node.asText();
+        }
+        try {
+            return objectMapper.writeValueAsString(node);
+        } catch (Exception e) {
+            log.warn("Failed to serialize override JSON value: {}", e.getMessage());
+            return node.asText();
+        }
     }
 
     private String mergeRulesConfig(String baseRulesConfig, ColumnOverride override) {
@@ -608,6 +625,7 @@ public class MetadataService {
             Boolean searchable,
             Boolean sortable,
             String pinned,
+            String defaultValue,
             String rulesConfig) {
         return new ColumnMetadataDTO(
                 col.id(),
@@ -626,7 +644,7 @@ public class MetadataService {
                 pinned,
                 col.dictType(),
                 col.lookupConfigId(),
-                col.defaultValue(),
+                defaultValue,
                 rulesConfig,
                 col.isVirtual());
     }
@@ -647,6 +665,7 @@ public class MetadataService {
             String cellEditor,
             JsonNode cellEditorParams,
             String aggFunc,
+            JsonNode defaultValue,
             JsonNode rulesConfig) {
     }
 

@@ -11,6 +11,8 @@ import {
   NInputNumber,
   NModal,
   NPopconfirm,
+  NRadioButton,
+  NRadioGroup,
   NSelect,
   NSpace,
   NSwitch,
@@ -53,7 +55,16 @@ type OverrideItem = {
   aggFunc?: string;
   precision?: number | null;
   roundMode?: string;
+  defaultValue?: DefaultValueConfig;
   lookupMappingPairs?: LookupMappingPair[];
+};
+
+type DefaultValueType = 'builtin' | 'static' | 'multi';
+
+type DefaultValueConfig = {
+  type: DefaultValueType;
+  value: string | string[];
+  join?: string;
 };
 
 type LookupOption = {
@@ -100,6 +111,19 @@ const cellEditorOptions = [
   { label: '弹窗选择', value: 'lookup' }
 ];
 
+const defaultValueTypeOptions = [
+  { label: '固有对象', value: 'builtin' },
+  { label: '固定值', value: 'static' },
+  { label: '多选值', value: 'multi' }
+];
+
+const builtinDefaultOptions = [
+  { label: '当前人员ID', value: 'currentUserId' },
+  { label: '当前人员部门ID', value: 'currentDeptId' },
+  { label: '当前时间', value: 'currentTime' },
+  { label: '当前角色ID', value: 'currentRoleId' }
+];
+
 // 已配置的字段集合
 const configuredFields = computed(
   () =>
@@ -140,6 +164,7 @@ watch(
           aggFunc: r.aggFunc || undefined,
           precision: r.precision ?? null,
           roundMode: r.roundMode || 'round',
+          defaultValue: normalizeDefaultValueConfig(r.defaultValue),
           lookupMappingPairs: toLookupMappingPairs(cellEditorParams?.mapping)
         };
       });
@@ -519,7 +544,8 @@ function addField() {
       cellEditor: '',
       aggFunc: undefined,
       precision: null,
-      roundMode: 'round'
+      roundMode: 'round',
+      defaultValue: undefined
     });
   }
 
@@ -536,7 +562,8 @@ function addCustomField() {
     cellEditor: '',
     aggFunc: undefined,
     precision: null,
-    roundMode: 'round'
+    roundMode: 'round',
+    defaultValue: undefined
   });
 }
 
@@ -616,6 +643,83 @@ function resolveCellEditor(editor?: string, params?: Record<string, any>): strin
   return inferCellEditorFromParams(params);
 }
 
+function normalizeDefaultValueConfig(raw: any): DefaultValueConfig | undefined {
+  if (!raw) return undefined;
+  if (typeof raw === 'string') {
+    try {
+      return normalizeDefaultValueConfig(JSON.parse(raw));
+    } catch {
+      return { type: 'static', value: raw };
+    }
+  }
+  if (typeof raw !== 'object') return { type: 'static', value: String(raw) };
+  const type = raw.type === 'builtin' || raw.type === 'multi' || raw.type === 'static' ? raw.type : 'static';
+  if (type === 'multi') {
+    const value = Array.isArray(raw.value)
+      ? raw.value.map(String)
+      : String(raw.value || '')
+          .split(',')
+          .map(item => item.trim())
+          .filter(Boolean);
+    return { type, value, join: raw.join || ',' };
+  }
+  return { type, value: Array.isArray(raw.value) ? raw.value.join(',') : String(raw.value || '') };
+}
+
+function ensureDefaultValue(item: OverrideItem) {
+  if (!item.defaultValue) {
+    item.defaultValue = { type: 'builtin', value: 'currentUserId' };
+  }
+  return item.defaultValue;
+}
+
+function clearDefaultValue(item: OverrideItem) {
+  item.defaultValue = undefined;
+}
+
+function onDefaultTypeChange(item: OverrideItem, type: DefaultValueType) {
+  if (type === 'builtin') {
+    item.defaultValue = { type, value: 'currentUserId' };
+    return;
+  }
+  if (type === 'multi') {
+    item.defaultValue = { type, value: [], join: ',' };
+    return;
+  }
+  item.defaultValue = { type, value: '' };
+}
+
+function getDefaultValueSummary(item: OverrideItem) {
+  const config = item.defaultValue;
+  if (!config) return '未设置';
+  if (config.type === 'builtin') {
+    return builtinDefaultOptions.find(option => option.value === config.value)?.label || String(config.value || '固有对象');
+  }
+  if (config.type === 'multi') {
+    const values = Array.isArray(config.value) ? config.value : [];
+    return values.length > 0 ? values.join(',') : '多选值';
+  }
+  return String(config.value || '固定值');
+}
+
+function getMultiDefaultValue(item: OverrideItem): string[] {
+  const config = ensureDefaultValue(item);
+  if (config.type !== 'multi') return [];
+  return Array.isArray(config.value) ? config.value : [];
+}
+
+function setMultiDefaultValue(item: OverrideItem, value: string[]) {
+  item.defaultValue = { type: 'multi', value: value.map(String).filter(Boolean), join: ',' };
+}
+
+function setStaticDefaultValue(item: OverrideItem, value: string) {
+  item.defaultValue = { type: 'static', value };
+}
+
+function setBuiltinDefaultValue(item: OverrideItem, value: string) {
+  item.defaultValue = { type: 'builtin', value };
+}
+
 function isSelectEditor(editor?: string) {
   return editor === 'agSelectCellEditor' || editor === 'agRichSelectCellEditor';
 }
@@ -655,7 +759,7 @@ function toggleExpand(index: number) {
 }
 
 function hasParams(item: OverrideItem): boolean {
-  return isSelectEditor(item.cellEditor) || isLookupEditor(item.cellEditor);
+  return isSelectEditor(item.cellEditor) || isLookupEditor(item.cellEditor) || Boolean(item.defaultValue);
 }
 
 function setParam(item: OverrideItem, key: string, value: any) {
@@ -775,6 +879,12 @@ async function handleSave() {
         obj.precision = i.precision ?? null;
         obj.roundMode = i.precision !== null && i.precision !== undefined ? i.roundMode || 'round' : null;
       }
+      if (i.defaultValue) {
+        const defaultValue = normalizeDefaultValueConfig(i.defaultValue);
+        if (defaultValue) {
+          obj.defaultValue = defaultValue;
+        }
+      }
       if (resolvedCellEditor && i.cellEditorParams && Object.keys(i.cellEditorParams).length > 0) {
         const params = { ...i.cellEditorParams };
         if (params.lookupCode) {
@@ -830,7 +940,7 @@ async function handleSave() {
     :show="show"
     preset="card"
     :title="`列覆盖配置 - ${componentKey}`"
-    style="width: 1100px; max-height: 90vh"
+    style="width: 1280px; max-height: 90vh"
     :mask-closable="true"
     :segmented="{ content: true, footer: true }"
     @update:show="v => emit('update:show', v)"
@@ -870,6 +980,7 @@ async function handleSave() {
         <span class="col-roundmode">取整</span>
         <span class="col-width">宽度</span>
         <span class="col-editor">编辑器</span>
+        <span class="col-default">默认值</span>
         <span class="col-ops">操作</span>
       </div>
 
@@ -960,6 +1071,19 @@ async function handleSave() {
               @update:value="onEditorChange(item, $event, index)"
             />
           </div>
+          <div class="col-default">
+            <NButton
+              size="tiny"
+              :type="item.defaultValue ? 'primary' : 'default'"
+              ghost
+              @click="
+                ensureDefaultValue(item);
+                expandedRows.add(index);
+              "
+            >
+              {{ getDefaultValueSummary(item) }}
+            </NButton>
+          </div>
           <div class="col-ops">
             <NButton
               v-if="hasParams(item)"
@@ -976,6 +1100,63 @@ async function handleSave() {
               </template>
               确定移除？
             </NPopconfirm>
+          </div>
+        </div>
+        <!-- 默认值配置区（可折叠） -->
+        <div v-if="item.defaultValue && expandedRows.has(index)" class="editor-params default-params">
+          <div class="params-row">
+            <span class="params-label">默认值</span>
+            <NRadioGroup
+              :value="item.defaultValue.type"
+              size="small"
+              @update:value="onDefaultTypeChange(item, $event as DefaultValueType)"
+            >
+              <NRadioButton
+                v-for="option in defaultValueTypeOptions"
+                :key="option.value"
+                :value="option.value"
+                :label="option.label"
+              />
+            </NRadioGroup>
+            <NButton size="tiny" quaternary type="error" @click="clearDefaultValue(item)">清除</NButton>
+          </div>
+          <div class="params-row">
+            <template v-if="item.defaultValue.type === 'builtin'">
+              <span class="params-label">固有对象</span>
+              <NSelect
+                :value="String(item.defaultValue.value || '')"
+                :options="builtinDefaultOptions"
+                size="small"
+                style="width: 180px"
+                @update:value="setBuiltinDefaultValue(item, $event || '')"
+              />
+            </template>
+            <template v-else-if="item.defaultValue.type === 'multi'">
+              <span class="params-label">多选值</span>
+              <NSelect
+                :value="getMultiDefaultValue(item)"
+                multiple
+                filterable
+                tag
+                clearable
+                :options="[]"
+                placeholder="输入后回车，可多个"
+                size="small"
+                style="min-width: 320px"
+                @update:value="setMultiDefaultValue(item, $event as string[])"
+              />
+              <span class="params-label">保存：{{ getMultiDefaultValue(item).join(',') }}</span>
+            </template>
+            <template v-else>
+              <span class="params-label">固定值</span>
+              <NInput
+                :value="String(item.defaultValue.value || '')"
+                size="small"
+                placeholder="请输入默认值"
+                style="width: 260px"
+                @update:value="setStaticDefaultValue(item, $event)"
+              />
+            </template>
           </div>
         </div>
         <!-- 下拉参数配置区（可折叠） -->
@@ -1184,6 +1365,21 @@ async function handleSave() {
   flex: 0 0 120px;
 }
 
+.col-default {
+  flex: 0 0 145px;
+  min-width: 0;
+}
+
+.col-default :deep(.n-button) {
+  max-width: 140px;
+}
+
+.col-default :deep(.n-button__content) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .col-ops {
   flex: 0 0 50px;
   display: flex;
@@ -1237,6 +1433,11 @@ async function handleSave() {
   border-left: 2px solid #d6e4ff;
   margin: 0 8px 4px 8px;
   border-radius: 0 4px 4px 0;
+}
+
+.default-params {
+  border-left-color: #c8f0d2;
+  background: #fbfffc;
 }
 
 .params-row {

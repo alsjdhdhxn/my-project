@@ -1,6 +1,7 @@
 import { ref, type Ref, type ShallowRef } from 'vue';
 import type { GridApi } from 'ag-grid-community';
 import { fetchDynamicDataById, saveDynamicData, searchDynamicData, type DynamicQueryCondition } from '@/service/api';
+import { useAuthStore } from '@/store/modules/auth';
 import { forEachNestedDetailGridApi } from '@/v3/composables/meta-v3/detail-grid-apis';
 import { applyCopiedRowFields } from '@/v3/composables/meta-v3/copy-row-fields';
 import { createMasterServerSideDataSource } from '@/v3/composables/meta-v3/master-server-side-data-source';
@@ -85,6 +86,7 @@ export function useWorkingSetStore(params: {
     notifyError,
     notifySuccess
   } = params;
+  const authStore = useAuthStore();
 
   const detailCache: DetailCache = new Map();
   const advancedConditions = ref<QueryCondition[]>([]);
@@ -448,9 +450,78 @@ export function useWorkingSetStore(params: {
     focusInsertedMasterRow(insertIndex, String(row._rowKey));
   }
 
+  function formatDateTime(date: Date, mode: 'date' | 'datetime') {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    if (mode === 'date') {
+      return `${year}-${month}-${day}`;
+    }
+    const hour = String(date.getHours()).padStart(2, '0');
+    const minute = String(date.getMinutes()).padStart(2, '0');
+    const second = String(date.getSeconds()).padStart(2, '0');
+    return `${year}-${month}-${day} ${hour}:${minute}:${second}`;
+  }
+
+  function parseDefaultConfig(raw: any) {
+    if (raw == null || raw === '') return null;
+    if (typeof raw === 'string') {
+      try {
+        const parsed = JSON.parse(raw);
+        return parsed && typeof parsed === 'object' ? parsed : { type: 'static', value: raw };
+      } catch {
+        return { type: 'static', value: raw };
+      }
+    }
+    return typeof raw === 'object' ? raw : { type: 'static', value: raw };
+  }
+
+  function resolveBuiltinDefaultValue(code: string, dataType?: string) {
+    const userInfo = authStore.userInfo as any;
+    switch (code) {
+      case 'currentUserId':
+        return userInfo.userId ?? '';
+      case 'currentDeptId':
+        return userInfo.deptId ?? userInfo.departmentId ?? userInfo.currentDeptId ?? '';
+      case 'currentRoleId':
+        return userInfo.roleId ?? userInfo.currentRoleId ?? userInfo.roles?.[0] ?? '';
+      case 'currentTime':
+        return formatDateTime(new Date(), dataType === 'date' ? 'date' : 'datetime');
+      default:
+        return '';
+    }
+  }
+
+  function resolveColumnDefaultValue(column: any) {
+    const config = parseDefaultConfig(column?.defaultValue);
+    if (!config) {
+      return column?.dataType === 'number' ? 0 : '';
+    }
+    if (config.type === 'builtin') {
+      return resolveBuiltinDefaultValue(String(config.value || ''), column?.dataType);
+    }
+    if (config.type === 'multi') {
+      const values = Array.isArray(config.value) ? config.value : String(config.value || '').split(',');
+      return values
+        .map((item: any) => String(item).trim())
+        .filter(Boolean)
+        .join(config.join || ',');
+    }
+    return config.value ?? '';
+  }
+
+  function buildDefaultRow(columns: any[] | undefined, base: Record<string, any>) {
+    const row: Record<string, any> = {};
+    for (const column of columns || []) {
+      if (!column?.columnName) continue;
+      row[column.columnName] = resolveColumnDefaultValue(column);
+    }
+    return { ...row, ...base };
+  }
+
   function addMasterRow() {
     const api = masterGridApi.value;
-    const newRow = initRowData({ id: generateTempId() }, true);
+    const newRow = initRowData(buildDefaultRow(masterColumnMeta.value, { id: generateTempId() }), true);
     ensureRowKey(newRow);
     markRowNew(newRow);
 
@@ -568,7 +639,10 @@ export function useWorkingSetStore(params: {
     const detailRows = resolveDetailRows(masterId, tabKey, masterRowKey);
     if (!detailRows) return null;
     const fkColumn = detailFkColumnByTab.value[tabKey] || 'masterId';
-    const newRow = initRowData({ id: generateTempId(), [fkColumn]: masterId }, true);
+    const newRow = initRowData(
+      buildDefaultRow(detailColumnMetaByTab.value[tabKey], { id: generateTempId(), [fkColumn]: masterId }),
+      true
+    );
     ensureRowKey(newRow);
     markRowNew(newRow);
     appendDetailRow(detailRows, tabKey, newRow);
