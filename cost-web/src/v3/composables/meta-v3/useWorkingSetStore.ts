@@ -506,10 +506,7 @@ export function useWorkingSetStore(params: {
     }
     if (config.type === 'multi') {
       const values = Array.isArray(config.value) ? config.value : String(config.value || '').split(',');
-      return values
-        .map((item: any) => String(item).trim())
-        .filter(Boolean)
-        .join(config.join || ',');
+      return values.map((item: any) => String(item).trim()).filter(Boolean)[0] ?? '';
     }
     return config.value ?? '';
   }

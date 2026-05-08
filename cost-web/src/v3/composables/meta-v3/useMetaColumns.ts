@@ -67,6 +67,8 @@ export function metaToColDef(col: ColumnMetadata): ColDef {
     colDef.pinned = col.pinned;
   }
 
+  applyDefaultValueEditor(colDef, col);
+
   switch (col.dataType) {
     case 'number':
       colDef.type = 'numericColumn';
@@ -159,6 +161,35 @@ export function metaToColDef(col: ColumnMetadata): ColDef {
   }
 
   return colDef;
+}
+
+function parseDefaultValueConfig(raw: any) {
+  if (raw == null || raw === '') return null;
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' ? parsed : { type: 'static', value: raw };
+    } catch {
+      return { type: 'static', value: raw };
+    }
+  }
+  return typeof raw === 'object' ? raw : { type: 'static', value: raw };
+}
+
+function getMultiDefaultOptions(raw: any): string[] {
+  const config = parseDefaultValueConfig(raw);
+  if (!config || config.type !== 'multi') return [];
+  const values = Array.isArray(config.value) ? config.value : String(config.value || '').split(',');
+  return values.map((item: any) => String(item).trim()).filter(Boolean);
+}
+
+function applyDefaultValueEditor(colDef: ColDef, col: ColumnMetadata) {
+  if (!col.editable) return;
+  const values = getMultiDefaultOptions(col.defaultValue);
+  if (values.length === 0) return;
+  colDef.cellEditor = 'agSelectCellEditor';
+  colDef.cellEditorParams = { values };
+  colDef.valueFormatter = params => (params.value == null ? '' : String(params.value));
 }
 
 function normalizeDateValue(value: any): string | null {
