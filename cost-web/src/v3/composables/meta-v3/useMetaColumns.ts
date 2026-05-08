@@ -4,6 +4,7 @@
  */
 import type { ColDef } from 'ag-grid-community';
 import { fetchTableMetadata, fetchTableMetadataWithPermission } from '@/service/api';
+import DateCellEditor from '@/v3/components/meta-v3/editors/DateCellEditor.vue';
 import type { CalcRule } from '@/v3/logic/calc-engine';
 
 type ColumnMetadata = Api.Metadata.ColumnMetadata;
@@ -79,10 +80,15 @@ export function metaToColDef(col: ColumnMetadata): ColDef {
       colDef.valueFormatter = params => formatNumberValue(params.value);
       break;
     case 'date':
+      if (col.editable) {
+        colDef.cellEditor = DateCellEditor;
+        colDef.cellEditorPopup = true;
+        colDef.cellEditorPopupPosition = 'under';
+      }
+      colDef.valueParser = params => normalizeDateValue(params.newValue);
       colDef.valueFormatter = params => {
         if (!params.value) return '';
-        const date = new Date(params.value);
-        return isNaN(date.getTime()) ? params.value : date.toLocaleDateString('zh-CN');
+        return normalizeDateValue(params.value) || '';
       };
       break;
     case 'datetime':
@@ -153,6 +159,30 @@ export function metaToColDef(col: ColumnMetadata): ColDef {
   }
 
   return colDef;
+}
+
+function normalizeDateValue(value: any): string | null {
+  if (value === null || value === undefined || value === '') return null;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    const match = trimmed.match(/^(\d{4}-\d{2}-\d{2})/);
+    return match ? match[1] : trimmed;
+  }
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return formatLocalDate(value);
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : formatLocalDate(date);
+  }
+  return String(value);
+}
+
+function formatLocalDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 function resolveNumberFormat(config: any): NumberFormatConfig | null {
