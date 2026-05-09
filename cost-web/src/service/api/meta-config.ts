@@ -159,3 +159,74 @@ export async function deleteExportConfigDetail(id: number) {
   const { error } = await request<any>({ url: `/meta-config/export-config-detail/${id}`, method: 'DELETE' });
   if (error) throw error;
 }
+
+// ==================== 审批流配置 ====================
+
+export async function fetchApprovalFlows() {
+  const { data } = await request<any[]>({ url: '/meta-config/approval/flows' });
+  return data || [];
+}
+
+export async function saveApprovalFlow(data: Record<string, any>) {
+  const { data: res, error } = await request<any>({ url: '/meta-config/approval/flow', method: 'POST', data });
+  if (error) throw error;
+  return res;
+}
+
+export async function deleteApprovalFlow(flowId: number) {
+  const { error } = await request<any>({ url: `/meta-config/approval/flow/${flowId}`, method: 'DELETE' });
+  if (error) throw error;
+}
+
+export async function fetchApprovalConditions(flowId: number) {
+  const { data } = await request<any[]>({ url: `/meta-config/approval/flow/${flowId}/conditions` });
+  return data || [];
+}
+
+export async function saveApprovalCondition(data: Record<string, any>) {
+  const { data: res, error } = await request<any>({ url: '/meta-config/approval/condition', method: 'POST', data });
+  if (error) throw error;
+  return res;
+}
+
+export async function deleteApprovalCondition(conditionId: number) {
+  const { error } = await request<any>({ url: `/meta-config/approval/condition/${conditionId}`, method: 'DELETE' });
+  if (error) throw error;
+}
+
+export async function fetchApprovalNodes(flowId: number) {
+  const { data } = await request<any[]>({ url: `/meta-config/approval/flow/${flowId}/nodes` });
+  return data || [];
+}
+
+export async function saveApprovalNode(data: Record<string, any>) {
+  const { data: res, error } = await request<any>({ url: '/meta-config/approval/node', method: 'POST', data });
+  if (error) throw error;
+  return res;
+}
+
+export async function deleteApprovalNode(nodeId: number) {
+  const { error } = await request<any>({ url: `/meta-config/approval/node/${nodeId}`, method: 'DELETE' });
+  if (error) throw error;
+}
+
+export async function fetchApprovalApprovers(nodeId: number) {
+  const { data } = await request<any[]>({ url: `/meta-config/approval/node/${nodeId}/approvers` });
+  return data || [];
+}
+
+export async function saveApprovalApprover(data: Record<string, any>) {
+  const { data: res, error } = await request<any>({ url: '/meta-config/approval/approver', method: 'POST', data });
+  if (error) throw error;
+  return res;
+}
+
+export async function deleteApprovalApprover(id: number) {
+  const { error } = await request<any>({ url: `/meta-config/approval/approver/${id}`, method: 'DELETE' });
+  if (error) throw error;
+}
+
+export async function fetchApprovalReferenceData() {
+  const { data } = await request<Record<string, any[]>>({ url: '/meta-config/approval/reference-data' });
+  return data || {};
+}

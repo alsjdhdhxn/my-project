@@ -1,13 +1,16 @@
 <script setup lang="ts">
-import { provide, ref } from 'vue';
+import { provide, ref, watch } from 'vue';
+import { useRoute } from 'vue-router';
 import { NTabPane, NTabs } from 'naive-ui';
 import DirectoryPanel from './panels/DirectoryPanel.vue';
 import TablePanel from './panels/TablePanel.vue';
 import PagePanel from './panels/PagePanel.vue';
 import LookupPanel from './panels/LookupPanel.vue';
 import ExportConfigPanel from './panels/ExportConfigPanel.vue';
+import ApprovalFlowPanel from './panels/ApprovalFlowPanel.vue';
 
-const activeTab = ref('directory');
+const route = useRoute();
+const activeTab = ref(typeof route.query.tab === 'string' ? route.query.tab : 'directory');
 
 /** 跳转到指定 tab 并携带过滤条件 */
 const filterState = ref<{ tab: string; pageCode: string } | null>(null);
@@ -19,6 +22,15 @@ function navigateTo(tab: string, pageCode: string) {
 
 provide('navigateTo', navigateTo);
 provide('filterState', filterState);
+
+watch(
+  () => route.query.tab,
+  tab => {
+    if (typeof tab === 'string' && tab) {
+      activeTab.value = tab;
+    }
+  }
+);
 </script>
 
 <template>
@@ -38,6 +50,9 @@ provide('filterState', filterState);
       </NTabPane>
       <NTabPane name="export" tab="导出配置">
         <ExportConfigPanel />
+      </NTabPane>
+      <NTabPane name="approval" tab="审批流配置">
+        <ApprovalFlowPanel />
       </NTabPane>
     </NTabs>
   </div>

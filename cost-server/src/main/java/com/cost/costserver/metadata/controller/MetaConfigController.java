@@ -227,6 +227,77 @@ public class MetaConfigController {
         return Result.ok();
     }
 
+    // ==================== 审批流配置 ====================
+
+    @GetMapping("/approval/flows")
+    public Result<List<Map<String, Object>>> listApprovalFlows() {
+        return Result.ok(metaConfigService.listApprovalFlows());
+    }
+
+    @PostMapping("/approval/flow")
+    public Result<Map<String, Object>> saveApprovalFlow(@RequestBody Map<String, Object> flow) {
+        return Result.ok(metaConfigService.saveApprovalFlow(flow));
+    }
+
+    @DeleteMapping("/approval/flow/{flowId}")
+    public Result<Void> deleteApprovalFlow(@PathVariable Long flowId) {
+        metaConfigService.deleteApprovalFlow(flowId);
+        return Result.ok();
+    }
+
+    @GetMapping("/approval/flow/{flowId}/conditions")
+    public Result<List<Map<String, Object>>> listApprovalConditions(@PathVariable Long flowId) {
+        return Result.ok(metaConfigService.listApprovalConditions(flowId));
+    }
+
+    @PostMapping("/approval/condition")
+    public Result<Map<String, Object>> saveApprovalCondition(@RequestBody Map<String, Object> condition) {
+        return Result.ok(metaConfigService.saveApprovalCondition(condition));
+    }
+
+    @DeleteMapping("/approval/condition/{conditionId}")
+    public Result<Void> deleteApprovalCondition(@PathVariable Long conditionId) {
+        metaConfigService.deleteApprovalCondition(conditionId);
+        return Result.ok();
+    }
+
+    @GetMapping("/approval/flow/{flowId}/nodes")
+    public Result<List<Map<String, Object>>> listApprovalNodes(@PathVariable Long flowId) {
+        return Result.ok(metaConfigService.listApprovalNodes(flowId));
+    }
+
+    @PostMapping("/approval/node")
+    public Result<Map<String, Object>> saveApprovalNode(@RequestBody Map<String, Object> node) {
+        return Result.ok(metaConfigService.saveApprovalNode(node));
+    }
+
+    @DeleteMapping("/approval/node/{nodeId}")
+    public Result<Void> deleteApprovalNode(@PathVariable Long nodeId) {
+        metaConfigService.deleteApprovalNode(nodeId);
+        return Result.ok();
+    }
+
+    @GetMapping("/approval/node/{nodeId}/approvers")
+    public Result<List<Map<String, Object>>> listApprovalApprovers(@PathVariable Long nodeId) {
+        return Result.ok(metaConfigService.listApprovalApprovers(nodeId));
+    }
+
+    @PostMapping("/approval/approver")
+    public Result<Map<String, Object>> saveApprovalApprover(@RequestBody Map<String, Object> approver) {
+        return Result.ok(metaConfigService.saveApprovalApprover(approver));
+    }
+
+    @DeleteMapping("/approval/approver/{id}")
+    public Result<Void> deleteApprovalApprover(@PathVariable Long id) {
+        metaConfigService.deleteApprovalApprover(id);
+        return Result.ok();
+    }
+
+    @GetMapping("/approval/reference-data")
+    public Result<Map<String, Object>> getApprovalReferenceData() {
+        return Result.ok(metaConfigService.getApprovalReferenceData());
+    }
+
     @Operation(summary = "查询视图/表的物理列")
     @GetMapping("/view-columns")
     public Result<List<Map<String, Object>>> listViewColumns(

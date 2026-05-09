@@ -222,6 +222,7 @@ function getContextMenuItems(params: GetContextMenuItemsParams) {
   const pageCode = row?.pageCode;
   if (!pageCode) return [];
   return [
+    { name: '跳转到 审批流配置', action: () => navigateTo('approval', pageCode) },
     { name: '跳转到 页面管理', action: () => navigateTo('page', pageCode) },
     { name: '跳转到 表管理', action: () => navigateTo('table', pageCode) },
     { name: '跳转到 Lookup管理', action: () => navigateTo('lookup', pageCode) }

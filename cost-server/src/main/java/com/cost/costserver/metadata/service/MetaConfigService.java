@@ -769,6 +769,260 @@ public class MetaConfigService {
         exportConfigDetailMapper.deleteById(id);
     }
 
+    // ==================== 审批流配置 ====================
+
+    public List<Map<String, Object>> listApprovalFlows() {
+        String sql = "SELECT f.FLOW_ID as \"flowId\", f.PAGE_CODE as \"pageCode\", r.RESOURCE_NAME as \"pageName\", " +
+                     "f.FLOW_NAME as \"flowName\", f.FLOW_VERSION as \"flowVersion\", f.FLOW_PRIORITY as \"flowPriority\", " +
+                     "f.IS_ENABLED as \"isEnabled\", f.REMARK as \"remark\", f.CREATE_BY as \"createBy\", " +
+                     "f.CREATE_TIME as \"createTime\", f.UPDATE_BY as \"updateBy\", f.UPDATE_TIME as \"updateTime\" " +
+                     "FROM WF_FLOW_DEF f " +
+                     "LEFT JOIN T_COST_RESOURCE r ON r.PAGE_CODE = f.PAGE_CODE " +
+                     "ORDER BY f.PAGE_CODE, f.FLOW_PRIORITY, f.FLOW_VERSION DESC, f.FLOW_ID";
+        return dynamicMapper.selectList(sql);
+    }
+
+    @Transactional
+    public Map<String, Object> saveApprovalFlow(Map<String, Object> flow) {
+        Long id = longValue(flow.get("flowId"));
+        if (id == null) {
+            id = nextId("SEQ_WF_FLOW_DEF");
+            String sql = "INSERT INTO WF_FLOW_DEF (FLOW_ID, PAGE_CODE, FLOW_NAME, FLOW_VERSION, FLOW_PRIORITY, IS_ENABLED, REMARK, CREATE_BY, CREATE_TIME) VALUES (" +
+                    id + ", " + sqlString(str(flow.get("pageCode"))) + ", " + sqlString(str(flow.get("flowName"))) + ", " +
+                    intValue(flow.get("flowVersion"), 1) + ", " + intValue(flow.get("flowPriority"), 100) + ", " +
+                    intValue(flow.get("isEnabled"), 1) + ", " + sqlString(str(flow.get("remark"))) + ", 'admin', SYSTIMESTAMP)";
+            dynamicMapper.insert(sql);
+        } else {
+            String sql = "UPDATE WF_FLOW_DEF SET PAGE_CODE=" + sqlString(str(flow.get("pageCode"))) +
+                    ", FLOW_NAME=" + sqlString(str(flow.get("flowName"))) +
+                    ", FLOW_VERSION=" + intValue(flow.get("flowVersion"), 1) +
+                    ", FLOW_PRIORITY=" + intValue(flow.get("flowPriority"), 100) +
+                    ", IS_ENABLED=" + intValue(flow.get("isEnabled"), 1) +
+                    ", REMARK=" + sqlString(str(flow.get("remark"))) +
+                    ", UPDATE_BY='admin', UPDATE_TIME=SYSTIMESTAMP WHERE FLOW_ID=" + id;
+            dynamicMapper.update(sql);
+        }
+        return one("SELECT f.FLOW_ID as \"flowId\", f.PAGE_CODE as \"pageCode\", f.FLOW_NAME as \"flowName\", f.FLOW_VERSION as \"flowVersion\", f.FLOW_PRIORITY as \"flowPriority\", f.IS_ENABLED as \"isEnabled\", f.REMARK as \"remark\" FROM WF_FLOW_DEF f WHERE f.FLOW_ID=" + id);
+    }
+
+    @Transactional
+    public void deleteApprovalFlow(Long flowId) {
+        dynamicMapper.delete("DELETE FROM WF_FLOW_APPROVER WHERE NODE_ID IN (SELECT NODE_ID FROM WF_FLOW_NODE WHERE FLOW_ID=" + flowId + ")");
+        dynamicMapper.delete("DELETE FROM WF_FLOW_NODE WHERE FLOW_ID=" + flowId);
+        dynamicMapper.delete("DELETE FROM WF_FLOW_CONDITION WHERE FLOW_ID=" + flowId);
+        dynamicMapper.delete("DELETE FROM WF_FLOW_DEF WHERE FLOW_ID=" + flowId);
+    }
+
+    public List<Map<String, Object>> listApprovalConditions(Long flowId) {
+        String sql = "SELECT CONDITION_ID as \"conditionId\", FLOW_ID as \"flowId\", CONDITION_NAME as \"conditionName\", " +
+                     "CONDITION_MODE as \"conditionMode\", LOGIC_TREE as \"logicTree\", SQL_EXPR as \"sqlExpr\", " +
+                     "ON_ERROR as \"onError\", IS_ENABLED as \"isEnabled\", CREATE_BY as \"createBy\", CREATE_TIME as \"createTime\", " +
+                     "UPDATE_BY as \"updateBy\", UPDATE_TIME as \"updateTime\" FROM WF_FLOW_CONDITION " +
+                     "WHERE FLOW_ID=" + flowId + " ORDER BY CONDITION_ID";
+        return clobToString(dynamicMapper.selectList(sql));
+    }
+
+    @Transactional
+    public Map<String, Object> saveApprovalCondition(Map<String, Object> condition) {
+        Long id = longValue(condition.get("conditionId"));
+        Long flowId = longValue(condition.get("flowId"));
+        if (id == null) {
+            id = nextId("SEQ_WF_FLOW_CONDITION");
+            String sql = "INSERT INTO WF_FLOW_CONDITION (CONDITION_ID, FLOW_ID, CONDITION_NAME, CONDITION_MODE, LOGIC_TREE, SQL_EXPR, ON_ERROR, IS_ENABLED, CREATE_BY, CREATE_TIME) VALUES (" +
+                    id + ", " + flowId + ", " + sqlString(str(condition.get("conditionName"))) + ", " +
+                    sqlString(defaultStr(condition.get("conditionMode"), "ALWAYS")) + ", " + sqlClob(str(condition.get("logicTree"))) + ", " +
+                    sqlClob(str(condition.get("sqlExpr"))) + ", " + sqlString(defaultStr(condition.get("onError"), "REQUIRE_APPROVAL")) + ", " +
+                    intValue(condition.get("isEnabled"), 1) + ", 'admin', SYSTIMESTAMP)";
+            dynamicMapper.insert(sql);
+        } else {
+            String sql = "UPDATE WF_FLOW_CONDITION SET CONDITION_NAME=" + sqlString(str(condition.get("conditionName"))) +
+                    ", CONDITION_MODE=" + sqlString(defaultStr(condition.get("conditionMode"), "ALWAYS")) +
+                    ", LOGIC_TREE=" + sqlClob(str(condition.get("logicTree"))) +
+                    ", SQL_EXPR=" + sqlClob(str(condition.get("sqlExpr"))) +
+                    ", ON_ERROR=" + sqlString(defaultStr(condition.get("onError"), "REQUIRE_APPROVAL")) +
+                    ", IS_ENABLED=" + intValue(condition.get("isEnabled"), 1) +
+                    ", UPDATE_BY='admin', UPDATE_TIME=SYSTIMESTAMP WHERE CONDITION_ID=" + id;
+            dynamicMapper.update(sql);
+        }
+        return one("SELECT CONDITION_ID as \"conditionId\", FLOW_ID as \"flowId\", CONDITION_NAME as \"conditionName\", CONDITION_MODE as \"conditionMode\", LOGIC_TREE as \"logicTree\", SQL_EXPR as \"sqlExpr\", ON_ERROR as \"onError\", IS_ENABLED as \"isEnabled\" FROM WF_FLOW_CONDITION WHERE CONDITION_ID=" + id);
+    }
+
+    @Transactional
+    public void deleteApprovalCondition(Long conditionId) {
+        dynamicMapper.delete("DELETE FROM WF_FLOW_CONDITION WHERE CONDITION_ID=" + conditionId);
+    }
+
+    public List<Map<String, Object>> listApprovalNodes(Long flowId) {
+        String sql = "SELECT NODE_ID as \"nodeId\", FLOW_ID as \"flowId\", APPROVAL_LEVEL as \"approvalLevel\", NODE_NAME as \"nodeName\", " +
+                     "APPROVAL_MODE as \"approvalMode\", CONDITION_MODE as \"conditionMode\", LOGIC_TREE as \"logicTree\", SQL_EXPR as \"sqlExpr\", " +
+                     "ON_ERROR as \"onError\", IS_ENABLED as \"isEnabled\", CREATE_BY as \"createBy\", CREATE_TIME as \"createTime\", " +
+                     "UPDATE_BY as \"updateBy\", UPDATE_TIME as \"updateTime\" FROM WF_FLOW_NODE " +
+                     "WHERE FLOW_ID=" + flowId + " ORDER BY APPROVAL_LEVEL, NODE_ID";
+        return clobToString(dynamicMapper.selectList(sql));
+    }
+
+    @Transactional
+    public Map<String, Object> saveApprovalNode(Map<String, Object> node) {
+        Long id = longValue(node.get("nodeId"));
+        Long flowId = longValue(node.get("flowId"));
+        if (id == null) {
+            id = nextId("SEQ_WF_FLOW_NODE");
+            String sql = "INSERT INTO WF_FLOW_NODE (NODE_ID, FLOW_ID, APPROVAL_LEVEL, NODE_NAME, APPROVAL_MODE, CONDITION_MODE, LOGIC_TREE, SQL_EXPR, ON_ERROR, IS_ENABLED, CREATE_BY, CREATE_TIME) VALUES (" +
+                    id + ", " + flowId + ", " + intValue(node.get("approvalLevel"), 1) + ", " + sqlString(str(node.get("nodeName"))) + ", " +
+                    sqlString(defaultStr(node.get("approvalMode"), "OR")) + ", " + sqlString(defaultStr(node.get("conditionMode"), "ALWAYS")) + ", " +
+                    sqlClob(str(node.get("logicTree"))) + ", " + sqlClob(str(node.get("sqlExpr"))) + ", " +
+                    sqlString(defaultStr(node.get("onError"), "REQUIRE_APPROVAL")) + ", " + intValue(node.get("isEnabled"), 1) + ", 'admin', SYSTIMESTAMP)";
+            dynamicMapper.insert(sql);
+        } else {
+            String sql = "UPDATE WF_FLOW_NODE SET APPROVAL_LEVEL=" + intValue(node.get("approvalLevel"), 1) +
+                    ", NODE_NAME=" + sqlString(str(node.get("nodeName"))) +
+                    ", APPROVAL_MODE=" + sqlString(defaultStr(node.get("approvalMode"), "OR")) +
+                    ", CONDITION_MODE=" + sqlString(defaultStr(node.get("conditionMode"), "ALWAYS")) +
+                    ", LOGIC_TREE=" + sqlClob(str(node.get("logicTree"))) +
+                    ", SQL_EXPR=" + sqlClob(str(node.get("sqlExpr"))) +
+                    ", ON_ERROR=" + sqlString(defaultStr(node.get("onError"), "REQUIRE_APPROVAL")) +
+                    ", IS_ENABLED=" + intValue(node.get("isEnabled"), 1) +
+                    ", UPDATE_BY='admin', UPDATE_TIME=SYSTIMESTAMP WHERE NODE_ID=" + id;
+            dynamicMapper.update(sql);
+        }
+        return one("SELECT NODE_ID as \"nodeId\", FLOW_ID as \"flowId\", APPROVAL_LEVEL as \"approvalLevel\", NODE_NAME as \"nodeName\", APPROVAL_MODE as \"approvalMode\", CONDITION_MODE as \"conditionMode\", LOGIC_TREE as \"logicTree\", SQL_EXPR as \"sqlExpr\", ON_ERROR as \"onError\", IS_ENABLED as \"isEnabled\" FROM WF_FLOW_NODE WHERE NODE_ID=" + id);
+    }
+
+    @Transactional
+    public void deleteApprovalNode(Long nodeId) {
+        dynamicMapper.delete("DELETE FROM WF_FLOW_APPROVER WHERE NODE_ID=" + nodeId);
+        dynamicMapper.delete("DELETE FROM WF_FLOW_NODE WHERE NODE_ID=" + nodeId);
+    }
+
+    public List<Map<String, Object>> listApprovalApprovers(Long nodeId) {
+        String sql = "SELECT ID as \"id\", NODE_ID as \"nodeId\", APPLY_DEPT_ID as \"applyDeptId\", APPLY_DEPT_NAME as \"applyDeptName\", " +
+                     "TARGET_TYPE as \"targetType\", TARGET_USER_ID as \"targetUserId\", TARGET_USER_NAME as \"targetUserName\", " +
+                     "TARGET_ROLE_ID as \"targetRoleId\", TARGET_ROLE_CODE as \"targetRoleCode\", TARGET_ROLE_NAME as \"targetRoleName\", " +
+                     "CONDITION_MODE as \"conditionMode\", LOGIC_TREE as \"logicTree\", SQL_EXPR as \"sqlExpr\", ON_ERROR as \"onError\", " +
+                     "SORT_ORDER as \"sortOrder\", IS_ENABLED as \"isEnabled\", CREATE_BY as \"createBy\", CREATE_TIME as \"createTime\", " +
+                     "UPDATE_BY as \"updateBy\", UPDATE_TIME as \"updateTime\" FROM WF_FLOW_APPROVER " +
+                     "WHERE NODE_ID=" + nodeId + " ORDER BY SORT_ORDER, ID";
+        return clobToString(dynamicMapper.selectList(sql));
+    }
+
+    @Transactional
+    public Map<String, Object> saveApprovalApprover(Map<String, Object> approver) {
+        Long id = longValue(approver.get("id"));
+        Long nodeId = longValue(approver.get("nodeId"));
+        Long applyDeptId = longValue(approver.get("applyDeptId"));
+        Long targetUserId = longValue(approver.get("targetUserId"));
+        Long targetRoleId = longValue(approver.get("targetRoleId"));
+        if (id == null) {
+            id = nextId("SEQ_WF_FLOW_APPROVER");
+            String sql = "INSERT INTO WF_FLOW_APPROVER (ID, NODE_ID, APPLY_DEPT_ID, APPLY_DEPT_NAME, TARGET_TYPE, TARGET_USER_ID, TARGET_USER_NAME, TARGET_ROLE_ID, TARGET_ROLE_CODE, TARGET_ROLE_NAME, CONDITION_MODE, LOGIC_TREE, SQL_EXPR, ON_ERROR, SORT_ORDER, IS_ENABLED, CREATE_BY, CREATE_TIME) VALUES (" +
+                    id + ", " + nodeId + ", " + sqlNumber(applyDeptId) + ", " + sqlString(str(approver.get("applyDeptName"))) + ", " +
+                    sqlString(defaultStr(approver.get("targetType"), "USER")) + ", " + sqlNumber(targetUserId) + ", " + sqlString(str(approver.get("targetUserName"))) + ", " +
+                    sqlNumber(targetRoleId) + ", " + sqlString(str(approver.get("targetRoleCode"))) + ", " + sqlString(str(approver.get("targetRoleName"))) + ", " +
+                    sqlString(defaultStr(approver.get("conditionMode"), "ALWAYS")) + ", " + sqlClob(str(approver.get("logicTree"))) + ", " + sqlClob(str(approver.get("sqlExpr"))) + ", " +
+                    sqlString(defaultStr(approver.get("onError"), "REQUIRE_APPROVAL")) + ", " + intValue(approver.get("sortOrder"), 1) + ", " + intValue(approver.get("isEnabled"), 1) + ", 'admin', SYSTIMESTAMP)";
+            dynamicMapper.insert(sql);
+        } else {
+            String sql = "UPDATE WF_FLOW_APPROVER SET APPLY_DEPT_ID=" + sqlNumber(applyDeptId) +
+                    ", APPLY_DEPT_NAME=" + sqlString(str(approver.get("applyDeptName"))) +
+                    ", TARGET_TYPE=" + sqlString(defaultStr(approver.get("targetType"), "USER")) +
+                    ", TARGET_USER_ID=" + sqlNumber(targetUserId) +
+                    ", TARGET_USER_NAME=" + sqlString(str(approver.get("targetUserName"))) +
+                    ", TARGET_ROLE_ID=" + sqlNumber(targetRoleId) +
+                    ", TARGET_ROLE_CODE=" + sqlString(str(approver.get("targetRoleCode"))) +
+                    ", TARGET_ROLE_NAME=" + sqlString(str(approver.get("targetRoleName"))) +
+                    ", CONDITION_MODE=" + sqlString(defaultStr(approver.get("conditionMode"), "ALWAYS")) +
+                    ", LOGIC_TREE=" + sqlClob(str(approver.get("logicTree"))) +
+                    ", SQL_EXPR=" + sqlClob(str(approver.get("sqlExpr"))) +
+                    ", ON_ERROR=" + sqlString(defaultStr(approver.get("onError"), "REQUIRE_APPROVAL")) +
+                    ", SORT_ORDER=" + intValue(approver.get("sortOrder"), 1) +
+                    ", IS_ENABLED=" + intValue(approver.get("isEnabled"), 1) +
+                    ", UPDATE_BY='admin', UPDATE_TIME=SYSTIMESTAMP WHERE ID=" + id;
+            dynamicMapper.update(sql);
+        }
+        return one("SELECT ID as \"id\", NODE_ID as \"nodeId\", APPLY_DEPT_ID as \"applyDeptId\", APPLY_DEPT_NAME as \"applyDeptName\", TARGET_TYPE as \"targetType\", TARGET_USER_ID as \"targetUserId\", TARGET_USER_NAME as \"targetUserName\", TARGET_ROLE_ID as \"targetRoleId\", TARGET_ROLE_CODE as \"targetRoleCode\", TARGET_ROLE_NAME as \"targetRoleName\", CONDITION_MODE as \"conditionMode\", LOGIC_TREE as \"logicTree\", SQL_EXPR as \"sqlExpr\", ON_ERROR as \"onError\", SORT_ORDER as \"sortOrder\", IS_ENABLED as \"isEnabled\" FROM WF_FLOW_APPROVER WHERE ID=" + id);
+    }
+
+    @Transactional
+    public void deleteApprovalApprover(Long id) {
+        dynamicMapper.delete("DELETE FROM WF_FLOW_APPROVER WHERE ID=" + id);
+    }
+
+    public Map<String, Object> getApprovalReferenceData() {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("pages", dynamicMapper.selectList("SELECT ID as \"id\", RESOURCE_NAME as \"resourceName\", PAGE_CODE as \"pageCode\", ROUTE as \"route\" FROM T_COST_RESOURCE WHERE RESOURCE_TYPE='PAGE' AND PAGE_CODE IS NOT NULL ORDER BY SORT_ORDER, ID"));
+        result.put("users", dynamicMapper.selectList("SELECT ID as \"id\", USERNAME as \"username\", REAL_NAME as \"realName\", DEPARTMENT_ID as \"departmentId\" FROM T_COST_USER WHERE DELETED=0 AND STATUS='ACTIVE' ORDER BY ID"));
+        result.put("roles", dynamicMapper.selectList("SELECT ID as \"id\", ROLE_CODE as \"roleCode\", ROLE_NAME as \"roleName\" FROM T_COST_ROLE ORDER BY ID"));
+        result.put("departments", dynamicMapper.selectList("SELECT ID as \"id\", DEPT_CODE as \"deptCode\", DEPT_NAME as \"deptName\" FROM T_COST_DEPARTMENT WHERE DELETED=0 ORDER BY SORT_ORDER, ID"));
+        return result;
+    }
+
+    private Map<String, Object> one(String sql) {
+        List<Map<String, Object>> rows = clobToString(dynamicMapper.selectList(sql));
+        return rows.isEmpty() ? Collections.emptyMap() : rows.get(0);
+    }
+
+    private List<Map<String, Object>> clobToString(List<Map<String, Object>> rows) {
+        for (Map<String, Object> row : rows) {
+            for (Map.Entry<String, Object> entry : row.entrySet()) {
+                if (entry.getValue() instanceof java.sql.Clob clob) {
+                    try {
+                        entry.setValue(clob.getSubString(1, (int) clob.length()));
+                    } catch (Exception ignored) {
+                        entry.setValue(null);
+                    }
+                }
+            }
+        }
+        return rows;
+    }
+
+    private String str(Object value) {
+        return value == null ? null : String.valueOf(value);
+    }
+
+    private String defaultStr(Object value, String defaultValue) {
+        String text = str(value);
+        return StrUtil.isBlank(text) ? defaultValue : text;
+    }
+
+    private Long longValue(Object value) {
+        if (value instanceof Number number) {
+            return number.longValue();
+        }
+        if (value instanceof String text && StrUtil.isNotBlank(text)) {
+            return Long.parseLong(text);
+        }
+        return null;
+    }
+
+    private int intValue(Object value, int defaultValue) {
+        Long parsed = longValue(value);
+        return parsed == null ? defaultValue : parsed.intValue();
+    }
+
+    private String sqlNumber(Long value) {
+        return value == null ? "NULL" : String.valueOf(value);
+    }
+
+    private String sqlString(String value) {
+        if (StrUtil.isBlank(value)) {
+            return "NULL";
+        }
+        return "'" + value.replace("'", "''") + "'";
+    }
+
+    private String sqlClob(String value) {
+        if (StrUtil.isBlank(value)) {
+            return "NULL";
+        }
+        String escaped = value.replace("'", "''");
+        List<String> chunks = new ArrayList<>();
+        for (int i = 0; i < escaped.length(); i += 3000) {
+            chunks.add("TO_CLOB('" + escaped.substring(i, Math.min(i + 3000, escaped.length())) + "')");
+        }
+        return String.join(" || ", chunks);
+    }
+
     private TableMetadata mapToTableMetadata(Map<String, Object> row) {
         TableMetadata t = new TableMetadata();
         t.setId(row.get("ID") != null ? ((Number) row.get("ID")).longValue() : null);
