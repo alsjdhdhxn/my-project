@@ -1,0 +1,1199 @@
+审批流设计（现有系统对接版）
+
+本版设计按当前项目已有表结构和运行方式重新整理，目标是可以直接对接现有的用户、角色、部门、动态页面、按钮 Action 和通用保存流程。
+
+一、现有系统约束
+
+1. 用户、角色、部门表已经存在，不再新增 WF_USER_ROLE。
+
+现有表：
+
+T_COST_USER
+- ID NUMBER(19)
+- USERNAME VARCHAR2(64)
+- REAL_NAME VARCHAR2(128)
+- DEPARTMENT_ID NUMBER(19)
+- STATUS VARCHAR2(32)
+- DELETED NUMBER(1)
+
+T_COST_DEPARTMENT
+- ID NUMBER(19)
+- DEPT_CODE VARCHAR2(64)
+- DEPT_NAME VARCHAR2(128)
+- PARENT_ID NUMBER(19)
+- DELETED NUMBER(1)
+
+T_COST_ROLE
+- ID NUMBER(19)
+- ROLE_CODE VARCHAR2(64)
+- ROLE_NAME VARCHAR2(128)
+
+T_COST_USER_ROLE
+- USER_ID NUMBER(19)
+- ROLE_ID NUMBER(19)
+
+2. 登录态里用户 ID、部门 ID 是字符串返回给前端，但数据库真实主键是 NUMBER(19)。
+
+因此审批表中所有用户、角色、部门关联字段都使用 NUMBER(19)，名称、编码只作为快照字段保存。
+
+3. 当前前端角色权限使用 ROLE_CODE，数据库角色关系使用 ROLE_ID。
+
+审批配置应保存 TARGET_ROLE_ID，同时保存 TARGET_ROLE_CODE、TARGET_ROLE_NAME 快照，审批校验用 TARGET_ROLE_ID 关联 T_COST_USER_ROLE。
+
+4. 当前保存接口在 Java 层有事务。
+
+DynamicDataService.save、PageRuleActionService.execute 都由 Spring 管理事务。审批流程不能在存储过程里自行 COMMIT/ROLLBACK，否则业务保存和审批记录无法保持原子一致。
+
+5. 当前动态页面以 PAGE_CODE 标识页面，以 TABLE_CODE 标识元数据表，以业务主键 ID/DOCID 等 NUMBER 字段标识业务单据。
+
+审批实例统一用 PAGE_CODE + TABLE_CODE + BILL_ID 定位。
+
+二、已修正的问题
+
+1. 删除独立 WF_USER_ROLE，统一使用 T_COST_USER_ROLE。
+2. 所有用户、角色、部门 ID 改为 NUMBER(19)。
+3. 角色审批不再要求前端传 P_ROLE_ID，由后端根据当前登录用户查询角色。
+4. 审批存储逻辑不允许自提交，由 Java 事务统一提交。
+5. 增加 TABLE_CODE，避免同一 PAGE_CODE 下多表或主从表审批定位不清。
+6. 增加业务表审批状态字段方案，防止审批中或已通过数据被普通保存绕过。
+7. 增加进度查询和待办查询标准接口，各页面可以用同一入口查看审批流。
+8. 条件解析失败默认走审批或阻断，不允许因格式错误自动变成无需审批。
+9. 审批配置保存 ID + 名称快照，既能关联现有表，也能保留历史显示。
+
+三、状态设计
+
+1. 审批主表状态
+
+DRAFT       草稿，未提交审批
+APPROVING   审批中
+APPROVED    审批通过
+REJECTED    已驳回
+CANCELED    已撤销
+
+2. 审批明细状态
+
+WAITING     等待中，还未到该节点
+PENDING     当前待审批
+APPROVED    已同意
+REJECTED    已驳回
+SKIPPED     或签场景下，同级其他待办被跳过
+CANCELED    审批被撤销或流程终止
+
+3. 操作日志类型
+
+APPLY        发起申请
+APPROVE      审批同意
+REJECT       审批驳回
+CANCEL       撤销审批
+NO_APPROVAL  条件不满足，无需人工审批
+CREATE_TASK  生成待办
+SKIP         或签跳过
+FINISH       审批完成
+SYSTEM       系统处理
+
+四、审批配置表
+
+1. 审批流定义表
+
+CREATE TABLE WF_FLOW_DEF (
+  FLOW_ID       NUMBER(19) NOT NULL,
+  PAGE_CODE     VARCHAR2(64) NOT NULL,
+  PAGE_NAME     VARCHAR2(128),
+  FLOW_NAME     VARCHAR2(200) NOT NULL,
+  FLOW_VERSION  NUMBER(10) DEFAULT 1 NOT NULL,
+  IS_ENABLED    NUMBER(1) DEFAULT 1 NOT NULL,
+  REMARK        VARCHAR2(1000),
+  CREATE_BY     VARCHAR2(64),
+  CREATE_TIME   TIMESTAMP(6) DEFAULT SYSTIMESTAMP,
+  UPDATE_BY     VARCHAR2(64),
+  UPDATE_TIME   TIMESTAMP(6) DEFAULT SYSTIMESTAMP,
+  CONSTRAINT PK_WF_FLOW_DEF PRIMARY KEY (FLOW_ID),
+  CONSTRAINT CK_WF_FLOW_DEF_ENABLED CHECK (IS_ENABLED IN (0, 1))
+);
+
+COMMENT ON TABLE WF_FLOW_DEF IS '审批流定义表，按动态页面 PAGE_CODE 配置审批流';
+COMMENT ON COLUMN WF_FLOW_DEF.PAGE_CODE IS '页面编码，对应 T_COST_RESOURCE.PAGE_CODE / 页面元数据 pageCode';
+COMMENT ON COLUMN WF_FLOW_DEF.FLOW_VERSION IS '流程版本，运行中的审批实例保留发起时的 FLOW_ID';
+
+同一页面同一时间只允许启用一条流程：
+
+CREATE UNIQUE INDEX UK_WF_FLOW_PAGE_ENABLED
+ON WF_FLOW_DEF (
+  CASE WHEN IS_ENABLED = 1 THEN PAGE_CODE END
+);
+
+2. 审批条件表
+
+页面或后端传入 CONDITION_JSON，例如：
+
+{
+  "amount": 15000,
+  "urgent": "Y",
+  "billType": "PAYMENT",
+  "a": 1,
+  "b": 2,
+  "c": 3
+}
+
+审批条件不能只做简单 AND。实际需要支持：
+
+a = 1 AND (b = 2 OR c = 3)
+
+也可能需要写更复杂的 SQL：
+
+EXISTS (
+  SELECT 1
+    FROM T_COST_PINGGU_DTL D
+   WHERE D.DOCID = :BILL_ID
+     AND D.COST_BATCH > 10000
+)
+
+因此审批条件按“条件方案”存储，而不是每一行存一个简单条件。
+
+CREATE TABLE WF_FLOW_CONDITION (
+  CONDITION_ID    NUMBER(19) NOT NULL,
+  FLOW_ID         NUMBER(19) NOT NULL,
+  CONDITION_NAME  VARCHAR2(200) DEFAULT '默认条件' NOT NULL,
+  CONDITION_MODE  VARCHAR2(20) DEFAULT 'VISUAL' NOT NULL,
+  LOGIC_TREE      CLOB,
+  SQL_EXPR        CLOB,
+  ON_ERROR        VARCHAR2(30) DEFAULT 'REQUIRE_APPROVAL' NOT NULL,
+  IS_ENABLED      NUMBER(1) DEFAULT 1 NOT NULL,
+  CREATE_BY       VARCHAR2(64),
+  CREATE_TIME     TIMESTAMP(6) DEFAULT SYSTIMESTAMP,
+  UPDATE_BY       VARCHAR2(64),
+  UPDATE_TIME     TIMESTAMP(6) DEFAULT SYSTIMESTAMP,
+  CONSTRAINT PK_WF_FLOW_CONDITION PRIMARY KEY (CONDITION_ID),
+  CONSTRAINT FK_WF_COND_FLOW FOREIGN KEY (FLOW_ID) REFERENCES WF_FLOW_DEF(FLOW_ID),
+  CONSTRAINT CK_WF_COND_MODE CHECK (CONDITION_MODE IN ('VISUAL', 'SQL', 'ALWAYS')),
+  CONSTRAINT CK_WF_COND_ON_ERROR CHECK (ON_ERROR IN ('REQUIRE_APPROVAL', 'BLOCK')),
+  CONSTRAINT CK_WF_COND_ENABLED CHECK (IS_ENABLED IN (0, 1))
+);
+
+COMMENT ON TABLE WF_FLOW_CONDITION IS '审批条件配置表，支持可视化条件树和自定义 SQL';
+COMMENT ON COLUMN WF_FLOW_CONDITION.CONDITION_MODE IS 'VISUAL=条件树；SQL=自定义 SQL；ALWAYS=总是审批';
+COMMENT ON COLUMN WF_FLOW_CONDITION.LOGIC_TREE IS '可视化条件树 JSON';
+COMMENT ON COLUMN WF_FLOW_CONDITION.SQL_EXPR IS '自定义 SQL 条件表达式，返回 true/false 语义';
+COMMENT ON COLUMN WF_FLOW_CONDITION.ON_ERROR IS '条件解析失败时的处理：REQUIRE_APPROVAL=走审批，BLOCK=阻断提交';
+
+同一流程同一时间只启用一个条件方案：
+
+CREATE UNIQUE INDEX UK_WF_COND_FLOW_ENABLED
+ON WF_FLOW_CONDITION (
+  CASE WHEN IS_ENABLED = 1 THEN FLOW_ID END
+);
+
+VISUAL 条件树示例：
+
+{
+  "logic": "AND",
+  "children": [
+    {
+      "field": "a",
+      "dataType": "NUMBER",
+      "operator": "=",
+      "value": 1
+    },
+    {
+      "logic": "OR",
+      "children": [
+        {
+          "field": "b",
+          "dataType": "NUMBER",
+          "operator": "=",
+          "value": 2
+        },
+        {
+          "field": "c",
+          "dataType": "NUMBER",
+          "operator": "=",
+          "value": 3
+        }
+      ]
+    }
+  ]
+}
+
+等价于：
+
+a = 1 AND (b = 2 OR c = 3)
+
+VISUAL 支持的操作符：
+- =、!=、>、>=、<、<=
+- IN、NOT IN
+- CONTAINS、STARTS_WITH、ENDS_WITH
+- IS NULL、IS NOT NULL
+
+SQL 条件示例：
+
+EXISTS (
+  SELECT 1
+    FROM T_COST_PINGGU_DTL D
+   WHERE D.DOCID = :BILL_ID
+     AND D.COST_BATCH > 10000
+)
+
+SQL 模式约束：
+- SQL_EXPR 只能是 WHERE 后面的条件表达式，不能写完整 SELECT、INSERT、UPDATE、DELETE。
+- 允许使用绑定变量：:PAGE_CODE、:TABLE_CODE、:BILL_ID、:CURRENT_USER_ID。
+- 如果要引用业务主表，统一使用别名 M，例如 M.TOTAL_COST > 10000。
+- 执行时由后端根据 TABLE_CODE 从 T_COST_TABLE_METADATA 查 TARGET_TABLE、PK_COLUMN，然后拼成：
+
+SELECT COUNT(1)
+  FROM 目标业务表 M
+ WHERE M.主键 = :BILL_ID
+   AND M.DELETED = 0
+   AND (SQL_EXPR)
+
+- SQL_EXPR 必须做白名单校验，禁止出现分号、注释、DDL/DML 关键字、存储过程调用、动态执行关键字。
+- SQL_EXPR 不允许直接拼前端值，所有动态值必须使用绑定变量。
+
+规则说明：
+- 没有启用条件：默认需要审批。
+- CONDITION_MODE = ALWAYS：默认需要审批。
+- VISUAL 条件树返回 true：需要审批。
+- SQL 条件表达式返回 true：需要审批。
+- 条件不满足：无需人工审批，主表直接 APPROVED，并写 NO_APPROVAL 和 FINISH 日志。
+- 条件字段缺失、数字/日期转换失败：不能自动通过，按 ON_ERROR 处理。
+
+审批条件配置页面建议：
+
+┌─────────────────────────────────────────────────────────────┐
+│ 审批条件                                      模式：[可视化] │
+├─────────────────────────────────────────────────────────────┤
+│ 条件名称：金额或紧急单据                                    │
+│ 异常策略：条件异常时走审批                                  │
+│                                                             │
+│ AND                                                         │
+│ ├─ a NUMBER = 1                                             │
+│ └─ OR                                                       │
+│    ├─ b NUMBER = 2                                          │
+│    └─ c NUMBER = 3                                          │
+│                                                             │
+│ [新增条件] [新增分组] [删除] [切换 AND/OR]                  │
+└─────────────────────────────────────────────────────────────┘
+
+切换到 SQL 模式：
+
+┌─────────────────────────────────────────────────────────────┐
+│ 审批条件                                          模式：[SQL] │
+├─────────────────────────────────────────────────────────────┤
+│ 条件名称：明细成本超过阈值                                  │
+│ 异常策略：条件异常时阻断提交                                │
+│                                                             │
+│ SQL 条件表达式：                                             │
+│ EXISTS (                                                    │
+│   SELECT 1                                                  │
+│     FROM T_COST_PINGGU_DTL D                                │
+│    WHERE D.DOCID = :BILL_ID                                 │
+│      AND D.COST_BATCH > 10000                               │
+│ )                                                           │
+│                                                             │
+│ [校验 SQL] [保存]                                           │
+└─────────────────────────────────────────────────────────────┘
+
+3. 审批节点表
+
+CREATE TABLE WF_FLOW_NODE (
+  NODE_ID        NUMBER(19) NOT NULL,
+  FLOW_ID        NUMBER(19) NOT NULL,
+  APPROVAL_LEVEL NUMBER(10) NOT NULL,
+  NODE_NAME      VARCHAR2(200) NOT NULL,
+  APPROVAL_MODE  VARCHAR2(20) DEFAULT 'OR' NOT NULL,
+  IS_ENABLED     NUMBER(1) DEFAULT 1 NOT NULL,
+  CREATE_BY      VARCHAR2(64),
+  CREATE_TIME    TIMESTAMP(6) DEFAULT SYSTIMESTAMP,
+  UPDATE_BY      VARCHAR2(64),
+  UPDATE_TIME    TIMESTAMP(6) DEFAULT SYSTIMESTAMP,
+  CONSTRAINT PK_WF_FLOW_NODE PRIMARY KEY (NODE_ID),
+  CONSTRAINT FK_WF_NODE_FLOW FOREIGN KEY (FLOW_ID) REFERENCES WF_FLOW_DEF(FLOW_ID),
+  CONSTRAINT CK_WF_NODE_MODE CHECK (APPROVAL_MODE IN ('OR', 'AND')),
+  CONSTRAINT CK_WF_NODE_ENABLED CHECK (IS_ENABLED IN (0, 1))
+);
+
+CREATE UNIQUE INDEX UK_WF_NODE_FLOW_LEVEL
+ON WF_FLOW_NODE(FLOW_ID, APPROVAL_LEVEL);
+
+COMMENT ON TABLE WF_FLOW_NODE IS '审批节点表';
+COMMENT ON COLUMN WF_FLOW_NODE.APPROVAL_LEVEL IS '审批级别，从 1 开始';
+COMMENT ON COLUMN WF_FLOW_NODE.APPROVAL_MODE IS 'OR=同级任一人通过即可；AND=同级全部通过才进入下一级';
+
+第一阶段如果只实现或签，配置页面应只允许选择 OR；表结构预留 AND。
+
+4. 审批人配置表
+
+CREATE TABLE WF_FLOW_APPROVER (
+  ID                 NUMBER(19) NOT NULL,
+  NODE_ID            NUMBER(19) NOT NULL,
+
+  APPLY_DEPT_ID      NUMBER(19),
+  APPLY_DEPT_NAME    VARCHAR2(128),
+
+  TARGET_TYPE        VARCHAR2(20) NOT NULL,
+  TARGET_USER_ID     NUMBER(19),
+  TARGET_USER_NAME   VARCHAR2(128),
+  TARGET_ROLE_ID     NUMBER(19),
+  TARGET_ROLE_CODE   VARCHAR2(64),
+  TARGET_ROLE_NAME   VARCHAR2(128),
+
+  SORT_ORDER         NUMBER(5) DEFAULT 0,
+  IS_ENABLED         NUMBER(1) DEFAULT 1 NOT NULL,
+  CREATE_BY          VARCHAR2(64),
+  CREATE_TIME        TIMESTAMP(6) DEFAULT SYSTIMESTAMP,
+  UPDATE_BY          VARCHAR2(64),
+  UPDATE_TIME        TIMESTAMP(6) DEFAULT SYSTIMESTAMP,
+
+  CONSTRAINT PK_WF_FLOW_APPROVER PRIMARY KEY (ID),
+  CONSTRAINT FK_WF_APPROVER_NODE FOREIGN KEY (NODE_ID) REFERENCES WF_FLOW_NODE(NODE_ID),
+  CONSTRAINT FK_WF_APPROVER_DEPT FOREIGN KEY (APPLY_DEPT_ID) REFERENCES T_COST_DEPARTMENT(ID),
+  CONSTRAINT FK_WF_APPROVER_USER FOREIGN KEY (TARGET_USER_ID) REFERENCES T_COST_USER(ID),
+  CONSTRAINT FK_WF_APPROVER_ROLE FOREIGN KEY (TARGET_ROLE_ID) REFERENCES T_COST_ROLE(ID),
+  CONSTRAINT CK_WF_APPROVER_TYPE CHECK (TARGET_TYPE IN ('USER', 'ROLE')),
+  CONSTRAINT CK_WF_APPROVER_ENABLED CHECK (IS_ENABLED IN (0, 1)),
+  CONSTRAINT CK_WF_APPROVER_TARGET CHECK (
+    (TARGET_TYPE = 'USER' AND TARGET_USER_ID IS NOT NULL AND TARGET_ROLE_ID IS NULL)
+    OR
+    (TARGET_TYPE = 'ROLE' AND TARGET_ROLE_ID IS NOT NULL AND TARGET_USER_ID IS NULL)
+  )
+);
+
+CREATE INDEX IDX_WF_APPROVER_NODE_DEPT
+ON WF_FLOW_APPROVER(NODE_ID, APPLY_DEPT_ID, IS_ENABLED);
+
+COMMENT ON TABLE WF_FLOW_APPROVER IS '审批人或审批角色配置表';
+COMMENT ON COLUMN WF_FLOW_APPROVER.APPLY_DEPT_ID IS '发起人部门 ID；为空表示默认审批人';
+COMMENT ON COLUMN WF_FLOW_APPROVER.TARGET_TYPE IS 'USER=指定用户；ROLE=指定角色';
+
+部门匹配规则：
+- 优先使用 APPLY_DEPT_ID = 发起人部门 ID 的配置。
+- 如果当前节点没有该部门配置，才使用 APPLY_DEPT_ID IS NULL 的默认配置。
+- 当前部门和默认配置都不存在时，发起审批失败并回滚。
+
+五、审批运行表
+
+1. 审批主表
+
+CREATE TABLE WF_APPROVAL_MAIN (
+  APPROVAL_ID       NUMBER(19) NOT NULL,
+  FLOW_ID           NUMBER(19) NOT NULL,
+
+  PAGE_CODE         VARCHAR2(64) NOT NULL,
+  PAGE_NAME         VARCHAR2(128),
+  TABLE_CODE        VARCHAR2(64) NOT NULL,
+
+  BILL_ID           NUMBER(19) NOT NULL,
+  BILL_NO           VARCHAR2(100),
+  BILL_TITLE        VARCHAR2(500),
+
+  START_USER_ID     NUMBER(19) NOT NULL,
+  START_USERNAME    VARCHAR2(64),
+  START_REAL_NAME   VARCHAR2(128),
+  START_DEPT_ID     NUMBER(19),
+  START_DEPT_NAME   VARCHAR2(128),
+
+  START_TIME        TIMESTAMP(6) DEFAULT SYSTIMESTAMP NOT NULL,
+  STATUS            VARCHAR2(30) NOT NULL,
+  CURRENT_LEVEL     NUMBER(10),
+
+  APPROVED_TIME     TIMESTAMP(6),
+  REJECTED_TIME     TIMESTAMP(6),
+  CANCELED_TIME     TIMESTAMP(6),
+  FINISHED_TIME     TIMESTAMP(6),
+
+  CONDITION_JSON    CLOB,
+  BUSINESS_SNAPSHOT CLOB,
+  REMARK            VARCHAR2(1000),
+
+  CREATE_BY         VARCHAR2(64),
+  CREATE_TIME       TIMESTAMP(6) DEFAULT SYSTIMESTAMP,
+  UPDATE_BY         VARCHAR2(64),
+  UPDATE_TIME       TIMESTAMP(6) DEFAULT SYSTIMESTAMP,
+
+  CONSTRAINT PK_WF_APPROVAL_MAIN PRIMARY KEY (APPROVAL_ID),
+  CONSTRAINT FK_WF_MAIN_FLOW FOREIGN KEY (FLOW_ID) REFERENCES WF_FLOW_DEF(FLOW_ID),
+  CONSTRAINT FK_WF_MAIN_USER FOREIGN KEY (START_USER_ID) REFERENCES T_COST_USER(ID),
+  CONSTRAINT FK_WF_MAIN_DEPT FOREIGN KEY (START_DEPT_ID) REFERENCES T_COST_DEPARTMENT(ID),
+  CONSTRAINT CK_WF_MAIN_STATUS CHECK (STATUS IN ('DRAFT', 'APPROVING', 'APPROVED', 'REJECTED', 'CANCELED'))
+);
+
+CREATE UNIQUE INDEX UK_WF_MAIN_ACTIVE
+ON WF_APPROVAL_MAIN (
+  CASE WHEN STATUS IN ('DRAFT', 'APPROVING') THEN PAGE_CODE END,
+  CASE WHEN STATUS IN ('DRAFT', 'APPROVING') THEN TABLE_CODE END,
+  CASE WHEN STATUS IN ('DRAFT', 'APPROVING') THEN BILL_ID END
+);
+
+CREATE INDEX IDX_WF_MAIN_PAGE_BILL
+ON WF_APPROVAL_MAIN(PAGE_CODE, TABLE_CODE, BILL_ID);
+
+CREATE INDEX IDX_WF_MAIN_START_USER
+ON WF_APPROVAL_MAIN(START_USER_ID, STATUS);
+
+CREATE INDEX IDX_WF_MAIN_STATUS
+ON WF_APPROVAL_MAIN(STATUS);
+
+COMMENT ON TABLE WF_APPROVAL_MAIN IS '审批主表，记录页面、业务表、业务单据、发起人和主状态';
+COMMENT ON COLUMN WF_APPROVAL_MAIN.TABLE_CODE IS '当前动态元数据表编码，例如 CostPinggu';
+COMMENT ON COLUMN WF_APPROVAL_MAIN.BILL_ID IS '业务单据主键值，当前系统动态接口主键类型为 Long，因此使用 NUMBER(19)';
+
+2. 审批明细表
+
+CREATE TABLE WF_APPROVAL_DETAIL (
+  DETAIL_ID          NUMBER(19) NOT NULL,
+  APPROVAL_ID        NUMBER(19) NOT NULL,
+  NODE_ID            NUMBER(19) NOT NULL,
+
+  APPROVAL_LEVEL     NUMBER(10) NOT NULL,
+  NODE_NAME          VARCHAR2(200),
+  APPROVAL_MODE      VARCHAR2(20) DEFAULT 'OR' NOT NULL,
+
+  TARGET_TYPE        VARCHAR2(20) NOT NULL,
+  TARGET_USER_ID     NUMBER(19),
+  TARGET_USER_NAME   VARCHAR2(128),
+  TARGET_ROLE_ID     NUMBER(19),
+  TARGET_ROLE_CODE   VARCHAR2(64),
+  TARGET_ROLE_NAME   VARCHAR2(128),
+
+  STATUS             VARCHAR2(30) NOT NULL,
+
+  OPERATE_USER_ID    NUMBER(19),
+  OPERATE_USERNAME   VARCHAR2(64),
+  OPERATE_REAL_NAME  VARCHAR2(128),
+  APPROVE_COMMENT    VARCHAR2(1000),
+  APPROVE_TIME       TIMESTAMP(6),
+  OPERATE_TIME       TIMESTAMP(6),
+
+  CREATE_BY          VARCHAR2(64),
+  CREATE_TIME        TIMESTAMP(6) DEFAULT SYSTIMESTAMP,
+  UPDATE_BY          VARCHAR2(64),
+  UPDATE_TIME        TIMESTAMP(6) DEFAULT SYSTIMESTAMP,
+
+  CONSTRAINT PK_WF_APPROVAL_DETAIL PRIMARY KEY (DETAIL_ID),
+  CONSTRAINT FK_WF_DETAIL_MAIN FOREIGN KEY (APPROVAL_ID) REFERENCES WF_APPROVAL_MAIN(APPROVAL_ID),
+  CONSTRAINT FK_WF_DETAIL_NODE FOREIGN KEY (NODE_ID) REFERENCES WF_FLOW_NODE(NODE_ID),
+  CONSTRAINT FK_WF_DETAIL_USER FOREIGN KEY (TARGET_USER_ID) REFERENCES T_COST_USER(ID),
+  CONSTRAINT FK_WF_DETAIL_ROLE FOREIGN KEY (TARGET_ROLE_ID) REFERENCES T_COST_ROLE(ID),
+  CONSTRAINT FK_WF_DETAIL_OPER_USER FOREIGN KEY (OPERATE_USER_ID) REFERENCES T_COST_USER(ID),
+  CONSTRAINT CK_WF_DETAIL_TARGET_TYPE CHECK (TARGET_TYPE IN ('USER', 'ROLE')),
+  CONSTRAINT CK_WF_DETAIL_MODE CHECK (APPROVAL_MODE IN ('OR', 'AND')),
+  CONSTRAINT CK_WF_DETAIL_STATUS CHECK (STATUS IN ('WAITING', 'PENDING', 'APPROVED', 'REJECTED', 'SKIPPED', 'CANCELED'))
+);
+
+CREATE INDEX IDX_WF_DETAIL_MAIN
+ON WF_APPROVAL_DETAIL(APPROVAL_ID, APPROVAL_LEVEL, STATUS);
+
+CREATE INDEX IDX_WF_DETAIL_USER
+ON WF_APPROVAL_DETAIL(TARGET_USER_ID, STATUS);
+
+CREATE INDEX IDX_WF_DETAIL_ROLE
+ON WF_APPROVAL_DETAIL(TARGET_ROLE_ID, STATUS);
+
+COMMENT ON TABLE WF_APPROVAL_DETAIL IS '审批明细表，记录每一级审批人/角色、状态和实际操作人';
+
+3. 审批日志表
+
+CREATE TABLE WF_APPROVAL_LOG (
+  LOG_ID             NUMBER(19) NOT NULL,
+  APPROVAL_ID        NUMBER(19) NOT NULL,
+  DETAIL_ID          NUMBER(19),
+
+  ACTION_TYPE        VARCHAR2(50) NOT NULL,
+  ACTION_USER_ID     NUMBER(19),
+  ACTION_USERNAME    VARCHAR2(64),
+  ACTION_REAL_NAME   VARCHAR2(128),
+  ACTION_TIME        TIMESTAMP(6) DEFAULT SYSTIMESTAMP NOT NULL,
+
+  FROM_STATUS        VARCHAR2(30),
+  TO_STATUS          VARCHAR2(30),
+  ACTION_COMMENT     VARCHAR2(1000),
+  DETAIL_MESSAGE     VARCHAR2(2000),
+
+  CONSTRAINT PK_WF_APPROVAL_LOG PRIMARY KEY (LOG_ID),
+  CONSTRAINT FK_WF_LOG_MAIN FOREIGN KEY (APPROVAL_ID) REFERENCES WF_APPROVAL_MAIN(APPROVAL_ID),
+  CONSTRAINT FK_WF_LOG_DETAIL FOREIGN KEY (DETAIL_ID) REFERENCES WF_APPROVAL_DETAIL(DETAIL_ID),
+  CONSTRAINT FK_WF_LOG_USER FOREIGN KEY (ACTION_USER_ID) REFERENCES T_COST_USER(ID)
+);
+
+CREATE INDEX IDX_WF_LOG_MAIN
+ON WF_APPROVAL_LOG(APPROVAL_ID, ACTION_TIME);
+
+COMMENT ON TABLE WF_APPROVAL_LOG IS '审批日志表，记录申请、同意、驳回、撤销、自动完成等所有动作';
+
+六、序列
+
+CREATE SEQUENCE SEQ_WF_FLOW_DEF START WITH 1 INCREMENT BY 1 CACHE 20;
+CREATE SEQUENCE SEQ_WF_FLOW_CONDITION START WITH 1 INCREMENT BY 1 CACHE 20;
+CREATE SEQUENCE SEQ_WF_FLOW_NODE START WITH 1 INCREMENT BY 1 CACHE 20;
+CREATE SEQUENCE SEQ_WF_FLOW_APPROVER START WITH 1 INCREMENT BY 1 CACHE 20;
+CREATE SEQUENCE SEQ_WF_APPROVAL_MAIN START WITH 1 INCREMENT BY 1 CACHE 20;
+CREATE SEQUENCE SEQ_WF_APPROVAL_DETAIL START WITH 1 INCREMENT BY 1 CACHE 20;
+CREATE SEQUENCE SEQ_WF_APPROVAL_LOG START WITH 1 INCREMENT BY 1 CACHE 20;
+
+七、业务表审批状态扩展
+
+每个需要审批的业务主表建议增加两个字段：
+
+ALTER TABLE 业务主表 ADD (
+  APPROVAL_ID     NUMBER(19),
+  APPROVAL_STATUS VARCHAR2(30) DEFAULT 'DRAFT'
+);
+
+CREATE INDEX IDX_业务主表_APPROVAL
+ON 业务主表(APPROVAL_ID, APPROVAL_STATUS);
+
+字段含义：
+- APPROVAL_ID：关联 WF_APPROVAL_MAIN.APPROVAL_ID。
+- APPROVAL_STATUS：冗余主状态，便于列表页快速显示和保存时拦截。
+
+如果短期不想改所有业务表，也可以只用 WF_APPROVAL_MAIN 的 PAGE_CODE + TABLE_CODE + BILL_ID 查询进度。但要完整防止绕过审批，最终应给审批启用的业务表增加这两个字段。
+
+保存拦截规则：
+- DRAFT、REJECTED、CANCELED：允许发起人继续修改。
+- APPROVING：禁止普通保存、删除。
+- APPROVED：禁止普通保存、删除；如需变更，必须走重新发起或变更审批。
+- 管理员是否允许强制修改，应单独做后台功能并写审计日志，不走普通保存。
+
+八、后端执行方式
+
+当前系统已经支持在元数据按钮中配置 procedure，并通过 PageRuleActionService -> ProcedureActionExecutor 调用存储过程。因此审批发起、同意、驳回、撤销可以优先沿用现有按钮 Action 机制，不强制新增专用 ApprovalController。
+
+推荐边界：
+- 元数据按钮负责触发审批动作。
+- 存储过程负责写 WF_APPROVAL_MAIN、WF_APPROVAL_DETAIL、WF_APPROVAL_LOG，并更新业务表 APPROVAL_STATUS。
+- PageRuleActionService 的 Spring 事务负责统一提交或回滚。
+- 存储过程内部不写 COMMIT/ROLLBACK。
+
+存储过程包建议：
+
+PKG_WF_APPROVAL.APPLY_APPROVAL
+- 发起审批。
+
+PKG_WF_APPROVAL.APPROVE_DETAIL
+- 审批同意。
+
+PKG_WF_APPROVAL.REJECT_DETAIL
+- 审批驳回。
+
+PKG_WF_APPROVAL.CANCEL_APPROVAL
+- 发起人撤销。
+
+如果后续需要更复杂的权限、消息、跨表逻辑，也可以把过程封装到 ApprovalService 中；但第一阶段可以直接走现有元数据按钮调过程。
+
+核心逻辑要求：
+
+applyApproval(ApplyApprovalRequest request)
+- 当前用户 ID、username 由后端 Action 上下文注入，不能信任前端手工传值。
+- 查询 T_COST_USER、T_COST_DEPARTMENT 获取真实姓名和部门。
+- 根据 PAGE_CODE 查启用的 WF_FLOW_DEF。
+- 根据 CONDITION_JSON 判断是否需要审批。
+- 插入 WF_APPROVAL_MAIN。
+- 不需要人工审批时：主表 APPROVED，写 APPLY、NO_APPROVAL、FINISH 日志，同步业务表 APPROVAL_STATUS。
+- 需要人工审批时：按 FLOW_NODE 和 FLOW_APPROVER 生成 WF_APPROVAL_DETAIL，第一级置 PENDING，其他级 WAITING，同步业务表 APPROVING。
+- 全过程不在存储过程中提交，由按钮 Action 的 Java 事务提交。
+
+approveDetail(Long detailId, String comment)
+- 从 SecurityUtils 获取当前用户。
+- SELECT ... FOR UPDATE 锁定 WF_APPROVAL_MAIN 和当前 WF_APPROVAL_DETAIL。
+- 校验主表 APPROVING、明细 PENDING、CURRENT_LEVEL 匹配。
+- USER 审批：TARGET_USER_ID 必须等于当前用户 ID。
+- ROLE 审批：当前用户必须存在 T_COST_USER_ROLE.USER_ID = 当前用户 ID 且 ROLE_ID = TARGET_ROLE_ID。
+- OR 模式：当前明细 APPROVED，同级其他 PENDING 明细 SKIPPED，进入下一层。
+- AND 模式：当前明细 APPROVED；如果同级仍有 PENDING，不进入下一层；同级全部 APPROVED 后进入下一层。
+- 最后一层完成后，主表 APPROVED，同步业务表 APPROVED。
+
+rejectDetail(Long detailId, String comment)
+- 权限校验同 approveDetail。
+- 当前明细 REJECTED。
+- 其他 WAITING / PENDING 明细 CANCELED。
+- 主表 REJECTED，同步业务表 REJECTED。
+
+cancelApproval(Long approvalId, String comment)
+- 只有发起人可撤销。
+- APPROVED 不允许撤销。
+- APPROVING 且已有 APPROVED / REJECTED 明细时不允许撤销。
+- REJECTED 状态允许发起人撤销。
+- 主表 CANCELED，同步业务表 CANCELED。
+
+查询接口：
+- getProgress(String pageCode, String tableCode, Long billId)：当前页面查看当前单据审批流。
+- getMyTodos()：查询当前用户直接待办和角色待办。
+
+九、元数据按钮与可选查询接口
+
+1. 发起审批
+
+推荐用元数据按钮直接调存储过程：
+
+{
+  "action": "submitApproval",
+  "label": "提交审批",
+  "procedure": "PKG_WF_APPROVAL.APPLY_APPROVAL",
+  "params": [
+    {"source": "data.PAGE_CODE", "mode": "IN", "jdbcType": "VARCHAR"},
+    {"source": "data.TABLE_CODE", "mode": "IN", "jdbcType": "VARCHAR"},
+    {"source": "data.BILL_ID", "mode": "IN", "jdbcType": "NUMERIC"},
+    {"source": "data.BILL_NO", "mode": "IN", "jdbcType": "VARCHAR"},
+    {"source": "data.BILL_TITLE", "mode": "IN", "jdbcType": "VARCHAR"},
+    {"source": "data.CONDITION_JSON", "mode": "IN", "jdbcType": "CLOB"},
+    {"target": "vars.approvalId", "mode": "OUT", "jdbcType": "NUMERIC"},
+    {"target": "vars.status", "mode": "OUT", "jdbcType": "VARCHAR"},
+    {"target": "vars.message", "mode": "OUT", "jdbcType": "VARCHAR"}
+  ]
+}
+
+说明：
+- PAGE_CODE、TABLE_CODE、BILL_ID、BILL_NO、BILL_TITLE、CONDITION_JSON 可以来自当前行或按钮 actionData。
+- 当前用户 ID、username、部门、角色不能由前端作为可信参数传入。
+- 如果 ProcedureActionExecutor 目前不能自动注入当前用户 ID，建议扩展 ActionContext vars，或者由存储过程根据数据库会话上下文读取；不要让页面配置传可伪造的 userId。
+
+可选 REST 方式：
+
+POST /api/approval/apply
+
+请求示例：
+
+{
+  "pageCode": "cost-pinggu",
+  "pageName": "物料成本核算表",
+  "tableCode": "CostPinggu",
+  "billId": 100001,
+  "billNo": "PG-100001",
+  "billTitle": "产品 A 成本核算",
+  "condition": {
+    "amount": 15000,
+    "urgent": "Y"
+  }
+}
+
+REST 方式说明：
+- userId、username、departmentId 不允许前端传入作为可信值。
+- 后端统一从登录态获取。
+
+响应：
+
+{
+  "approvalId": 1,
+  "status": "APPROVING",
+  "message": "审批已发起"
+}
+
+2. 审批同意
+
+元数据按钮方式：
+
+{
+  "action": "approveDetail",
+  "label": "同意",
+  "procedure": "PKG_WF_APPROVAL.APPROVE_DETAIL",
+  "params": [
+    {"source": "data.DETAIL_ID", "mode": "IN", "jdbcType": "NUMERIC"},
+    {"source": "data.APPROVE_COMMENT", "mode": "IN", "jdbcType": "VARCHAR"},
+    {"target": "vars.status", "mode": "OUT", "jdbcType": "VARCHAR"},
+    {"target": "vars.message", "mode": "OUT", "jdbcType": "VARCHAR"}
+  ]
+}
+
+可选 REST 方式：
+
+POST /api/approval/details/{detailId}/approve
+
+请求：
+
+{
+  "comment": "同意"
+}
+
+3. 审批驳回
+
+元数据按钮方式：
+
+{
+  "action": "rejectDetail",
+  "label": "驳回",
+  "procedure": "PKG_WF_APPROVAL.REJECT_DETAIL",
+  "params": [
+    {"source": "data.DETAIL_ID", "mode": "IN", "jdbcType": "NUMERIC"},
+    {"source": "data.APPROVE_COMMENT", "mode": "IN", "jdbcType": "VARCHAR"},
+    {"target": "vars.status", "mode": "OUT", "jdbcType": "VARCHAR"},
+    {"target": "vars.message", "mode": "OUT", "jdbcType": "VARCHAR"}
+  ]
+}
+
+可选 REST 方式：
+
+POST /api/approval/details/{detailId}/reject
+
+请求：
+
+{
+  "comment": "资料不完整，驳回"
+}
+
+4. 撤销审批
+
+元数据按钮方式：
+
+{
+  "action": "cancelApproval",
+  "label": "撤销审批",
+  "procedure": "PKG_WF_APPROVAL.CANCEL_APPROVAL",
+  "params": [
+    {"source": "data.APPROVAL_ID", "mode": "IN", "jdbcType": "NUMERIC"},
+    {"source": "data.CANCEL_COMMENT", "mode": "IN", "jdbcType": "VARCHAR"},
+    {"target": "vars.status", "mode": "OUT", "jdbcType": "VARCHAR"},
+    {"target": "vars.message", "mode": "OUT", "jdbcType": "VARCHAR"}
+  ]
+}
+
+可选 REST 方式：
+
+POST /api/approval/{approvalId}/cancel
+
+请求：
+
+{
+  "comment": "发起人撤销"
+}
+
+5. 查看当前单据审批进度
+
+GET /api/approval/progress?pageCode=cost-pinggu&tableCode=CostPinggu&billId=100001
+
+响应结构：
+
+{
+  "approvalId": 1,
+  "pageCode": "cost-pinggu",
+  "tableCode": "CostPinggu",
+  "billId": 100001,
+  "status": "APPROVING",
+  "currentLevel": 2,
+  "nodes": [
+    {
+      "detailId": 10,
+      "level": 1,
+      "nodeName": "部门经理审批",
+      "targetType": "USER",
+      "targetUserName": "张经理",
+      "status": "APPROVED",
+      "operateRealName": "张经理",
+      "approveComment": "同意",
+      "approveTime": "2026-05-09 10:30:00"
+    },
+    {
+      "detailId": 11,
+      "level": 2,
+      "nodeName": "财务审批",
+      "targetType": "ROLE",
+      "targetRoleCode": "FINANCE",
+      "targetRoleName": "财务审批",
+      "status": "PENDING"
+    }
+  ],
+  "logs": []
+}
+
+6. 我的待办
+
+GET /api/approval/todos
+
+查询逻辑：
+
+SELECT M.APPROVAL_ID,
+       M.PAGE_CODE,
+       M.PAGE_NAME,
+       M.TABLE_CODE,
+       M.BILL_ID,
+       M.BILL_NO,
+       M.BILL_TITLE,
+       M.START_REAL_NAME,
+       M.START_TIME,
+       D.DETAIL_ID,
+       D.APPROVAL_LEVEL,
+       D.NODE_NAME,
+       D.TARGET_TYPE,
+       D.TARGET_USER_ID,
+       D.TARGET_ROLE_ID,
+       D.TARGET_ROLE_CODE,
+       D.TARGET_ROLE_NAME
+  FROM WF_APPROVAL_MAIN M
+  JOIN WF_APPROVAL_DETAIL D
+    ON D.APPROVAL_ID = M.APPROVAL_ID
+ WHERE M.STATUS = 'APPROVING'
+   AND D.STATUS = 'PENDING'
+   AND (
+        (D.TARGET_TYPE = 'USER' AND D.TARGET_USER_ID = :CURRENT_USER_ID)
+        OR
+        (
+          D.TARGET_TYPE = 'ROLE'
+          AND EXISTS (
+            SELECT 1
+              FROM T_COST_USER_ROLE UR
+             WHERE UR.USER_ID = :CURRENT_USER_ID
+               AND UR.ROLE_ID = D.TARGET_ROLE_ID
+          )
+        )
+   )
+ ORDER BY M.START_TIME DESC, D.APPROVAL_LEVEL;
+
+十、各页面如何查看审批流
+
+每个页面都使用同一套入口：
+
+1. 列表页显示审批状态：
+- 优先读业务表冗余字段 APPROVAL_STATUS。
+- 如果业务表还没加字段，则通过 PAGE_CODE + TABLE_CODE + BILL_ID 查 WF_APPROVAL_MAIN 最新记录。
+
+2. 当前行点击“审批进度”：
+- 前端传 pageCode、tableCode、billId。
+- 后端调用 GET /api/approval/progress。
+- 弹窗按 nodes 展示节点，按 logs 展示操作轨迹。
+
+3. 待办入口跳回原页面：
+- 待办记录带 PAGE_CODE、TABLE_CODE、BILL_ID。
+- 前端根据 PAGE_CODE 打开页面，再按 BILL_ID 定位当前行或打开详情。
+
+因此多个页面同时发起审批不会冲突，因为每个审批实例都有 PAGE_CODE + TABLE_CODE + BILL_ID。
+
+十一、动态页面按钮配置
+
+推荐在需要审批的页面增加按钮，优先使用现有 procedure 按钮能力：
+
+{
+  "action": "submitApproval",
+  "label": "提交审批",
+  "procedure": "PKG_WF_APPROVAL.APPLY_APPROVAL",
+  "params": [
+    {"source": "data.PAGE_CODE", "mode": "IN", "jdbcType": "VARCHAR"},
+    {"source": "data.TABLE_CODE", "mode": "IN", "jdbcType": "VARCHAR"},
+    {"source": "data.BILL_ID", "mode": "IN", "jdbcType": "NUMERIC"},
+    {"source": "data.CONDITION_JSON", "mode": "IN", "jdbcType": "CLOB"},
+    {"target": "vars.approvalId", "mode": "OUT", "jdbcType": "NUMERIC"},
+    {"target": "vars.status", "mode": "OUT", "jdbcType": "VARCHAR"},
+    {"target": "vars.message", "mode": "OUT", "jdbcType": "VARCHAR"}
+  ]
+}
+
+如果审批需要更复杂的 Java 逻辑，也可以使用 method：
+
+{
+  "action": "submitApproval",
+  "label": "提交审批",
+  "method": "approvalActionHandler.submitApproval"
+}
+
+Java Handler 内部从 ActionContext.data 获取当前行，组装 ApplyApprovalRequest。两种方式都可以，第一阶段建议先沿用 procedure，改动最小。
+
+不建议使用配置项让前端传 userId、roleId：
+- 当前登录用户必须以后端 SecurityUtils 为准。
+- 当前用户角色必须以后端 T_COST_USER_ROLE 查询为准。
+- 如果 procedure 必须接收当前用户 ID，应由后端执行器注入，而不是由页面配置从 data 里传入。
+
+十二、和 DynamicDataService 的对接点
+
+1. 保存后发起审批
+
+推荐流程：
+
+用户保存草稿
+  ->
+业务表 APPROVAL_STATUS = DRAFT
+  ->
+点击提交审批
+  ->
+元数据按钮调用 PKG_WF_APPROVAL.APPLY_APPROVAL
+  ->
+业务表 APPROVAL_STATUS = APPROVING 或 APPROVED
+
+2. 审批中禁止普通修改
+
+DynamicDataService.update / delete / save 在更新审批启用表时，应先检查当前业务行：
+
+SELECT APPROVAL_STATUS
+  FROM 目标业务表
+ WHERE 主键 = :id
+   AND DELETED = 0
+ FOR UPDATE;
+
+如果 APPROVAL_STATUS IN ('APPROVING', 'APPROVED')，普通保存直接报错。
+
+3. 审批通过后更新业务表
+
+PKG_WF_APPROVAL 或 Java Handler 在审批通过时执行：
+
+UPDATE 目标业务表
+   SET APPROVAL_ID = :approvalId,
+       APPROVAL_STATUS = 'APPROVED',
+       UPDATE_BY = :username,
+       UPDATE_TIME = SYSTIMESTAMP
+ WHERE 主键 = :billId
+   AND DELETED = 0;
+
+驳回、撤销同理更新为 REJECTED、CANCELED。
+
+目标业务表名和主键列不能由前端直接传 SQL，必须从 T_COST_TABLE_METADATA 根据 TABLE_CODE 获取 TARGET_TABLE 和 PK_COLUMN。
+
+十三、权限校验
+
+1. 发起审批
+- 当前用户必须登录。
+- 当前用户必须对 PAGE_CODE 有页面访问权限。
+- 当前业务行必须存在且未删除。
+- 当前业务行不能已有 DRAFT / APPROVING 审批实例。
+
+2. 用户审批
+- TARGET_TYPE = USER。
+- TARGET_USER_ID = 当前用户 ID。
+- 当前用户 STATUS = ACTIVE 且 DELETED = 0。
+
+3. 角色审批
+- TARGET_TYPE = ROLE。
+- 当前用户存在：
+
+SELECT 1
+  FROM T_COST_USER_ROLE UR
+  JOIN T_COST_USER U ON U.ID = UR.USER_ID
+ WHERE UR.USER_ID = :CURRENT_USER_ID
+   AND UR.ROLE_ID = :TARGET_ROLE_ID
+   AND U.STATUS = 'ACTIVE'
+   AND U.DELETED = 0;
+
+4. 撤销
+- 只有 START_USER_ID = 当前用户 ID 可以撤销。
+
+十四、审批配置示例
+
+假设页面：
+
+PAGE_CODE = cost-pinggu
+PAGE_NAME = 物料成本核算表
+TABLE_CODE = CostPinggu
+
+流程：
+- 第 1 级：发起人所在部门经理审批，或签。
+- 第 2 级：财务角色审批，或签。
+
+示例数据：
+
+DECLARE
+  V_FLOW_ID NUMBER;
+  V_NODE1   NUMBER;
+  V_NODE2   NUMBER;
+BEGIN
+  V_FLOW_ID := SEQ_WF_FLOW_DEF.NEXTVAL;
+
+  INSERT INTO WF_FLOW_DEF (
+    FLOW_ID, PAGE_CODE, PAGE_NAME, FLOW_NAME, FLOW_VERSION, IS_ENABLED, CREATE_BY
+  ) VALUES (
+    V_FLOW_ID, 'cost-pinggu', '物料成本核算表', '物料成本核算审批流', 1, 1, 'system'
+  );
+
+  INSERT INTO WF_FLOW_CONDITION (
+    CONDITION_ID,
+    FLOW_ID,
+    CONDITION_NAME,
+    CONDITION_MODE,
+    LOGIC_TREE,
+    SQL_EXPR,
+    ON_ERROR,
+    IS_ENABLED,
+    CREATE_BY
+  ) VALUES (
+    SEQ_WF_FLOW_CONDITION.NEXTVAL,
+    V_FLOW_ID,
+    '金额大于 10000 或紧急单据',
+    'VISUAL',
+    '{
+      "logic":"OR",
+      "children":[
+        {"field":"amount","dataType":"NUMBER","operator":">","value":10000},
+        {"field":"urgent","dataType":"STRING","operator":"=","value":"Y"}
+      ]
+    }',
+    NULL,
+    'REQUIRE_APPROVAL',
+    1,
+    'system'
+  );
+
+  V_NODE1 := SEQ_WF_FLOW_NODE.NEXTVAL;
+
+  INSERT INTO WF_FLOW_NODE (
+    NODE_ID, FLOW_ID, APPROVAL_LEVEL, NODE_NAME, APPROVAL_MODE, IS_ENABLED, CREATE_BY
+  ) VALUES (
+    V_NODE1, V_FLOW_ID, 1, '部门经理审批', 'OR', 1, 'system'
+  );
+
+  V_NODE2 := SEQ_WF_FLOW_NODE.NEXTVAL;
+
+  INSERT INTO WF_FLOW_NODE (
+    NODE_ID, FLOW_ID, APPROVAL_LEVEL, NODE_NAME, APPROVAL_MODE, IS_ENABLED, CREATE_BY
+  ) VALUES (
+    V_NODE2, V_FLOW_ID, 2, '财务审批', 'OR', 1, 'system'
+  );
+
+  -- 部门 ID = 10 的第 1 级审批人，用户 ID = 201
+  INSERT INTO WF_FLOW_APPROVER (
+    ID, NODE_ID, APPLY_DEPT_ID, APPLY_DEPT_NAME,
+    TARGET_TYPE, TARGET_USER_ID, TARGET_USER_NAME,
+    SORT_ORDER, IS_ENABLED, CREATE_BY
+  ) VALUES (
+    SEQ_WF_FLOW_APPROVER.NEXTVAL, V_NODE1, 10, '销售部',
+    'USER', 201, '张经理',
+    1, 1, 'system'
+  );
+
+  -- 第 2 级财务角色，角色 ID = 301，ROLE_CODE = FINANCE
+  INSERT INTO WF_FLOW_APPROVER (
+    ID, NODE_ID, APPLY_DEPT_ID, APPLY_DEPT_NAME,
+    TARGET_TYPE, TARGET_ROLE_ID, TARGET_ROLE_CODE, TARGET_ROLE_NAME,
+    SORT_ORDER, IS_ENABLED, CREATE_BY
+  ) VALUES (
+    SEQ_WF_FLOW_APPROVER.NEXTVAL, V_NODE2, NULL, NULL,
+    'ROLE', 301, 'FINANCE', '财务审批',
+    1, 1, 'system'
+  );
+END;
+/
+
+注意：
+- 上面的 10、201、301 必须来自 T_COST_DEPARTMENT.ID、T_COST_USER.ID、T_COST_ROLE.ID。
+- 不使用 'D001'、'manager_001'、'FINANCE' 作为主关联 ID。
+- ROLE_CODE 仅作为快照和前端显示。
+
+十五、核心查询
+
+1. 当前单据审批进度
+
+SELECT M.APPROVAL_ID,
+       M.PAGE_CODE,
+       M.PAGE_NAME,
+       M.TABLE_CODE,
+       M.BILL_ID,
+       M.BILL_NO,
+       M.BILL_TITLE,
+       M.STATUS AS MAIN_STATUS,
+       M.CURRENT_LEVEL,
+       M.START_REAL_NAME,
+       M.START_TIME,
+       D.DETAIL_ID,
+       D.APPROVAL_LEVEL,
+       D.NODE_NAME,
+       D.TARGET_TYPE,
+       D.TARGET_USER_ID,
+       D.TARGET_USER_NAME,
+       D.TARGET_ROLE_ID,
+       D.TARGET_ROLE_CODE,
+       D.TARGET_ROLE_NAME,
+       D.STATUS AS DETAIL_STATUS,
+       D.OPERATE_REAL_NAME,
+       D.APPROVE_COMMENT,
+       D.APPROVE_TIME,
+       D.OPERATE_TIME
+  FROM WF_APPROVAL_MAIN M
+  LEFT JOIN WF_APPROVAL_DETAIL D
+    ON D.APPROVAL_ID = M.APPROVAL_ID
+ WHERE M.PAGE_CODE = :PAGE_CODE
+   AND M.TABLE_CODE = :TABLE_CODE
+   AND M.BILL_ID = :BILL_ID
+ ORDER BY D.APPROVAL_LEVEL, D.DETAIL_ID;
+
+2. 审批日志
+
+SELECT L.LOG_ID,
+       L.ACTION_TYPE,
+       L.ACTION_USER_ID,
+       L.ACTION_USERNAME,
+       L.ACTION_REAL_NAME,
+       L.ACTION_TIME,
+       L.FROM_STATUS,
+       L.TO_STATUS,
+       L.ACTION_COMMENT,
+       L.DETAIL_MESSAGE
+  FROM WF_APPROVAL_LOG L
+ WHERE L.APPROVAL_ID = :APPROVAL_ID
+ ORDER BY L.ACTION_TIME, L.LOG_ID;
+
+十六、最终流程
+
+保存草稿
+  ->
+提交审批
+  ->
+后端读取当前用户、部门、角色
+  ->
+根据 PAGE_CODE 找启用审批流
+  ->
+判断条件
+  ->
+不需要审批
+  ->
+WF_APPROVAL_MAIN = APPROVED
+业务表 APPROVAL_STATUS = APPROVED
+日志 APPLY / NO_APPROVAL / FINISH
+  ->
+结束
+
+提交审批
+  ->
+需要审批
+  ->
+生成 WF_APPROVAL_MAIN = APPROVING
+生成 WF_APPROVAL_DETAIL
+第 1 级 PENDING，其他级 WAITING
+业务表 APPROVAL_STATUS = APPROVING
+  ->
+审批人同意
+  ->
+OR：同级其他人 SKIPPED
+AND：等待同级全部 APPROVED
+  ->
+进入下一级
+  ->
+最后一级完成
+  ->
+WF_APPROVAL_MAIN = APPROVED
+业务表 APPROVAL_STATUS = APPROVED
+日志 FINISH
+
+审批中
+  ->
+审批人驳回
+  ->
+当前明细 REJECTED
+其他 WAITING / PENDING 明细 CANCELED
+WF_APPROVAL_MAIN = REJECTED
+业务表 APPROVAL_STATUS = REJECTED
+日志 REJECT
+
+审批中且无人处理
+  ->
+发起人撤销
+  ->
+WF_APPROVAL_MAIN = CANCELED
+业务表 APPROVAL_STATUS = CANCELED
+明细 CANCELED
+日志 CANCEL
+
+十七、落地顺序
+
+1. 新增 WF_* 表和序列。
+2. 给需要审批的业务表增加 APPROVAL_ID、APPROVAL_STATUS。
+3. 实现 PKG_WF_APPROVAL 存储过程包，过程内部只做 DML，不 COMMIT/ROLLBACK。
+4. 在 DynamicDataService 保存、修改、删除时增加审批状态拦截。
+5. 在页面按钮配置中增加 submitApproval、approveDetail、rejectDetail、cancelApproval 等 procedure 按钮。
+6. 增加审批进度弹窗，所有页面共用 GET /api/approval/progress。
+7. 增加我的待办页面或菜单，使用 GET /api/approval/todos。
+8. 配置审批流、节点、审批人。
+9. 用真实 T_COST_USER.ID、T_COST_ROLE.ID、T_COST_DEPARTMENT.ID 做联调。
+10. 如后续 procedure 难以承载复杂逻辑，再补 ApprovalService / Java Handler，不作为第一阶段强制项。
+
+十八、关键原则
+
+1. 不新增独立用户角色表，审批角色永远使用 T_COST_USER_ROLE。
+2. 前端不传可信 userId、roleId，后端从登录态和数据库判断。
+3. 审批和业务状态更新必须在同一 Java 事务中完成。
+4. 业务页面查看审批流统一用 PAGE_CODE + TABLE_CODE + BILL_ID。
+5. 列表页显示状态优先读业务表 APPROVAL_STATUS，详情页再查完整审批明细和日志。
+6. 配置表保存 ID 做关联，名称和编码只做历史快照。
+7. 条件解析失败不能自动跳过审批。
