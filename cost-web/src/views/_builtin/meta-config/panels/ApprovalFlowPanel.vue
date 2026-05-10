@@ -63,8 +63,7 @@ const loading = ref(false);
 
 const conditionModeOptions = [
   { label: '总是满足', value: 'ALWAYS' },
-  { label: 'SQL 条件', value: 'SQL' },
-  { label: '可视化条件', value: 'VISUAL' }
+  { label: 'SQL 条件', value: 'SQL' }
 ];
 
 const approvalModeOptions = [
@@ -713,9 +712,6 @@ watch(
                 placeholder="例如：M.URGENCY_LEVEL = '紧急'"
                 :autosize="{ minRows: 4, maxRows: 10 }"
               />
-            </NFormItem>
-            <NFormItem label="可视化条件 JSON">
-              <NInput v-model:value="draft.logicTree" type="textarea" :autosize="{ minRows: 3, maxRows: 8 }" />
             </NFormItem>
             <NFormItem label="异常策略">
               <NSelect v-model:value="draft.onError" :options="onErrorOptions" />
