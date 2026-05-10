@@ -245,6 +245,12 @@ public class MetaConfigController {
         return Result.ok();
     }
 
+    @DeleteMapping("/approval/page/{pageCode}")
+    public Result<Void> deleteApprovalPage(@PathVariable String pageCode) {
+        metaConfigService.deleteApprovalPage(pageCode);
+        return Result.ok();
+    }
+
     @GetMapping("/approval/flow/{flowId}/conditions")
     public Result<List<Map<String, Object>>> listApprovalConditions(@PathVariable Long flowId) {
         return Result.ok(metaConfigService.listApprovalConditions(flowId));

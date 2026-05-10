@@ -20,9 +20,9 @@ import {
 import type { TreeOption } from 'naive-ui';
 import {
   deleteApprovalApprover,
-  deleteApprovalCondition,
   deleteApprovalFlow,
   deleteApprovalNode,
+  deleteApprovalPage,
   fetchApprovalApprovers,
   fetchApprovalConditions,
   fetchApprovalFlows,
@@ -34,24 +34,30 @@ import {
   saveApprovalNode
 } from '@/service/api/meta-config';
 
-type SelectedKind = 'flow' | 'condition' | 'node' | 'approver' | '';
+type SelectedKind = 'page' | 'flow' | 'node' | 'approver' | '';
 
 type ApprovalTreeNode = TreeOption & {
   kind: SelectedKind;
   payload?: any;
+  flowId?: number;
   nodeId?: number;
   meta?: string;
+};
+
+type FlowDetail = {
+  conditions: any[];
+  nodes: any[];
+  approversByNode: Record<number, any[]>;
 };
 
 const message = useMessage();
 const filterState = inject<Ref<{ tab: string; pageCode: string } | null>>('filterState');
 
 const flows = ref<any[]>([]);
-const conditions = ref<any[]>([]);
-const nodes = ref<any[]>([]);
-const approversByNode = ref<Record<number, any[]>>({});
 const referenceData = ref<Record<string, any[]>>({ pages: [], users: [], roles: [], departments: [] });
+const flowDetails = ref<Record<number, FlowDetail>>({});
 
+const selectedPageCode = ref('');
 const selectedFlow = ref<any>(null);
 const selectedKey = ref<string | null>(null);
 const selectedKind = ref<SelectedKind>('');
@@ -81,9 +87,23 @@ const onErrorOptions = [
   { label: '失败时阻断流程', value: 'BLOCK' }
 ];
 
-const visibleFlows = computed(() => {
-  if (!activePageCodeFilter.value) return flows.value;
-  return flows.value.filter(flow => flow.pageCode === activePageCodeFilter.value);
+const visiblePages = computed(() => {
+  const pages = referenceData.value.pages || [];
+  if (activePageCodeFilter.value) {
+    return pages.filter(page => page.pageCode === activePageCodeFilter.value);
+  }
+  return pages;
+});
+
+const pageFlows = computed(() => {
+  if (!selectedPageCode.value) return [];
+  return flows.value
+    .filter(flow => flow.pageCode === selectedPageCode.value)
+    .sort((a, b) => Number(a.flowPriority || 0) - Number(b.flowPriority || 0) || Number(a.flowId || 0) - Number(b.flowId || 0));
+});
+
+const selectedPage = computed(() => {
+  return (referenceData.value.pages || []).find(page => page.pageCode === selectedPageCode.value) || null;
 });
 
 const userOptions = computed(() =>
@@ -108,58 +128,44 @@ const deptOptions = computed(() =>
 );
 
 const treeData = computed<ApprovalTreeNode[]>(() => {
-  if (!selectedFlow.value) return [];
+  return pageFlows.value.map(flow => {
+    const detail = getFlowDetail(flow.flowId);
+    const nodes = [...detail.nodes].sort(
+      (a, b) => Number(a.approvalLevel || 0) - Number(b.approvalLevel || 0) || Number(a.nodeId || 0) - Number(b.nodeId || 0)
+    );
 
-  const conditionChildren = conditions.value.map(condition => ({
-    key: `condition:${condition.conditionId || condition._tempKey}`,
-    label: condition.conditionName || '入口条件',
-    kind: 'condition' as const,
-    payload: condition,
-    meta: condition.conditionMode || 'ALWAYS'
-  }));
-
-  const nodeChildren = [...nodes.value]
-    .sort((a, b) => Number(a.approvalLevel || 0) - Number(b.approvalLevel || 0))
-    .map(node => {
-      const nodeId = Number(node.nodeId);
-      const approvers = approversByNode.value[nodeId] || [];
-
-      return {
-        key: `node:${node.nodeId || node._tempKey}`,
-        label: `${node.approvalLevel || '-'}级审批：${node.nodeName || '未命名节点'}`,
-        kind: 'node' as const,
-        payload: node,
-        nodeId,
-        meta: `${node.approvalMode || 'OR'} / ${node.conditionMode || 'ALWAYS'}`,
-        children: approvers.map((approver, index) => ({
-          key: `approver:${approver.id || approver._tempKey}`,
-          label: `审批人分支 ${index + 1}：${approverLabel(approver)}`,
-          kind: 'approver' as const,
-          payload: approver,
-          nodeId,
-          meta: approver.conditionMode || 'ALWAYS'
-        }))
-      };
-    });
-
-  return [
-    {
-      key: `flow:${selectedFlow.value.flowId || selectedFlow.value._tempKey || 'new'}`,
-      label: selectedFlow.value.flowName || '审批流',
+    return {
+      key: `flow:${flow.flowId || flow._tempKey}`,
+      label: flow.flowName || '未命名审批项目',
       kind: 'flow',
-      payload: selectedFlow.value,
-      meta: selectedFlow.value.pageCode,
-      children: [
-        {
-          key: 'entrance',
-          label: '总入口条件',
-          kind: '',
-          children: conditionChildren
-        },
-        ...nodeChildren
-      ]
-    }
-  ];
+      payload: flow,
+      flowId: Number(flow.flowId || 0),
+      meta: flowMeta(flow),
+      children: nodes.map(node => {
+        const nodeId = Number(node.nodeId);
+        const approvers = detail.approversByNode[nodeId] || [];
+
+        return {
+          key: `node:${node.nodeId || node._tempKey}`,
+          label: `${node.approvalLevel || '-'}级审批：${node.nodeName || '未命名节点'}`,
+          kind: 'node' as const,
+          payload: node,
+          flowId: Number(flow.flowId || 0),
+          nodeId,
+          meta: `${node.approvalMode || 'OR'} / ${node.conditionMode || 'ALWAYS'}`,
+          children: approvers.map((approver, index) => ({
+            key: `approver:${approver.id || approver._tempKey}`,
+            label: `分支 ${index + 1}：${approverLabel(approver)}`,
+            kind: 'approver' as const,
+            payload: approver,
+            flowId: Number(flow.flowId || 0),
+            nodeId,
+            meta: approver.conditionMode || 'ALWAYS'
+          }))
+        };
+      })
+    };
+  });
 });
 
 function text(value: unknown) {
@@ -181,6 +187,25 @@ function clone<T>(value: T): T {
 
 function tempKey(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function getFlowDetail(flowId: unknown): FlowDetail {
+  const id = Number(flowId || 0);
+  return flowDetails.value[id] || { conditions: [], nodes: [], approversByNode: {} };
+}
+
+function firstEntranceCondition(flow: any) {
+  return getFlowDetail(flow?.flowId).conditions[0] || null;
+}
+
+function flowMeta(flow: any) {
+  const condition = firstEntranceCondition(flow);
+  const mode = condition?.conditionMode || 'ALWAYS';
+  return `优先级 ${flow.flowPriority ?? '-'} / ${mode}`;
+}
+
+function pageLabel(page: any) {
+  return page.resourceName || page.pageName || page.pageCode || '未命名页面';
 }
 
 function approverLabel(approver: any) {
@@ -216,65 +241,83 @@ function fillNamesForApprover(row: any) {
   row.targetRoleName = '';
 }
 
+function flowEditorDraft(flow: any) {
+  const row = clone(flow || {});
+  const condition = firstEntranceCondition(flow);
+  row.entranceConditionId = condition?.conditionId || null;
+  row.conditionName = condition?.conditionName || '入口条件';
+  row.conditionMode = condition?.conditionMode || 'ALWAYS';
+  row.sqlExpr = condition?.sqlExpr || '';
+  row.onError = condition?.onError || 'REQUIRE_APPROVAL';
+  row.conditionEnabled = condition?.isEnabled ?? 1;
+  return row;
+}
+
 function setEditor(kind: SelectedKind, payload?: any, key?: string | number | null) {
   selectedKind.value = kind;
   selectedPayload.value = payload || null;
   selectedKey.value = key ? String(key) : null;
-  draft.value = clone(payload || {});
+  draft.value = kind === 'flow' ? flowEditorDraft(payload || {}) : clone(payload || {});
 }
 
 async function loadReferenceData() {
   referenceData.value = await fetchApprovalReferenceData();
 }
 
-async function loadFlows(targetFlowId?: number | null) {
+async function loadFlows() {
   loading.value = true;
   try {
     flows.value = await fetchApprovalFlows();
-    const target =
-      flows.value.find(flow => Number(flow.flowId) === Number(targetFlowId)) ||
-      (activePageCodeFilter.value ? flows.value.find(flow => flow.pageCode === activePageCodeFilter.value) : null) ||
-      visibleFlows.value[0] ||
-      null;
-    await selectFlow(target);
+    if (!selectedPageCode.value) {
+      const firstPage = activePageCodeFilter.value
+        ? visiblePages.value.find(page => page.pageCode === activePageCodeFilter.value)
+        : visiblePages.value[0];
+      if (firstPage) await selectPage(firstPage.pageCode);
+    } else {
+      await loadPageFlowDetails(selectedPageCode.value);
+    }
   } finally {
     loading.value = false;
   }
 }
 
-async function selectFlow(flow: any) {
-  selectedFlow.value = flow;
-  conditions.value = [];
-  nodes.value = [];
-  approversByNode.value = {};
+async function loadPageFlowDetails(pageCode: string) {
+  const targetFlows = flows.value.filter(flow => flow.pageCode === pageCode && flow.flowId);
+  const nextDetails: Record<number, FlowDetail> = { ...flowDetails.value };
 
-  if (!flow) {
-    setEditor('', null, null);
-    return;
-  }
-
-  if (!flow.flowId) {
-    setEditor('flow', flow, flow._tempKey || null);
-    return;
-  }
-
-  const [nextConditions, nextNodes] = await Promise.all([
-    fetchApprovalConditions(flow.flowId),
-    fetchApprovalNodes(flow.flowId)
-  ]);
-  conditions.value = nextConditions;
-  nodes.value = nextNodes;
-
-  const entries = await Promise.all(
-    nextNodes
-      .filter(node => node.nodeId)
-      .map(async node => [Number(node.nodeId), await fetchApprovalApprovers(node.nodeId)] as const)
+  await Promise.all(
+    targetFlows.map(async flow => {
+      const flowId = Number(flow.flowId);
+      const [conditions, nodes] = await Promise.all([fetchApprovalConditions(flowId), fetchApprovalNodes(flowId)]);
+      const entries = await Promise.all(
+        nodes
+          .filter(node => node.nodeId)
+          .map(async node => [Number(node.nodeId), await fetchApprovalApprovers(Number(node.nodeId))] as const)
+      );
+      nextDetails[flowId] = {
+        conditions,
+        nodes,
+        approversByNode: Object.fromEntries(entries)
+      };
+    })
   );
-  approversByNode.value = Object.fromEntries(entries);
 
+  flowDetails.value = nextDetails;
   await nextTick();
   expandedKeys.value = collectDefaultExpandedKeys();
-  setEditor('flow', selectedFlow.value, `flow:${flow.flowId}`);
+}
+
+async function selectPage(pageCode: string) {
+  selectedPageCode.value = pageCode;
+  selectedFlow.value = null;
+  setEditor('page', selectedPage.value || { pageCode }, `page:${pageCode}`);
+  await loadPageFlowDetails(pageCode);
+}
+
+async function selectFlow(flow: any) {
+  selectedFlow.value = flow;
+  if (flow?.flowId) await loadPageFlowDetails(flow.pageCode);
+  setEditor('flow', flow, `flow:${flow.flowId || flow._tempKey}`);
 }
 
 function collectDefaultExpandedKeys() {
@@ -303,21 +346,16 @@ function handleTreeSelect(keys: Array<string | number>) {
   if (!key) return;
   const node = findNodeByKey(treeData.value, key);
   if (!node || !node.kind) return;
+  if (node.kind === 'flow') selectedFlow.value = node.payload;
+  if (node.flowId) selectedFlow.value = flows.value.find(flow => Number(flow.flowId) === Number(node.flowId)) || selectedFlow.value;
   setEditor(node.kind, node.payload, node.key);
 }
 
 function renderLabel({ option }: { option: TreeOption }) {
   const item = option as ApprovalTreeNode;
-  const tagType =
-    item.kind === 'flow'
-      ? 'info'
-      : item.kind === 'node'
-        ? 'success'
-        : item.kind === 'approver'
-          ? 'warning'
-          : 'default';
+  const tagType = item.kind === 'flow' ? 'info' : item.kind === 'node' ? 'success' : 'warning';
 
-  return h('div', { class: ['tree-line', item.kind ? `tree-line-${item.kind}` : 'tree-line-folder'] }, [
+  return h('div', { class: ['tree-line', `tree-line-${item.kind}`] }, [
     h('span', { class: 'tree-label' }, String(item.label || '')),
     item.meta
       ? h(
@@ -335,51 +373,35 @@ function renderLabel({ option }: { option: TreeOption }) {
 }
 
 function addFlow() {
-  const pageCode = activePageCodeFilter.value || '';
+  if (!selectedPageCode.value) {
+    message.warning('请先选择页面');
+    return;
+  }
+  const page = selectedPage.value;
   const row = {
     _isNew: true,
     _tempKey: tempKey('flow'),
     flowId: null,
-    pageCode,
-    pageName: '',
-    flowName: '新审批流',
+    pageCode: selectedPageCode.value,
+    pageName: pageLabel(page),
+    flowName: '新审批项目',
     flowVersion: 1,
     flowPriority: 100,
     isEnabled: 1,
     remark: ''
   };
   flows.value = [row, ...flows.value];
-  selectFlow(row);
-}
-
-function addCondition() {
-  if (!selectedFlow.value?.flowId) {
-    message.warning('请先保存审批流，再新增入口条件');
-    return;
-  }
-  const row = {
-    _isNew: true,
-    _tempKey: tempKey('condition'),
-    conditionId: null,
-    flowId: selectedFlow.value.flowId,
-    conditionName: '总入口条件',
-    conditionMode: 'ALWAYS',
-    sqlExpr: '',
-    logicTree: '',
-    onError: 'REQUIRE_APPROVAL',
-    isEnabled: 1
-  };
-  conditions.value = [...conditions.value, row];
-  expandedKeys.value = [...new Set([...expandedKeys.value, 'entrance'])];
-  setEditor('condition', row, `condition:${row._tempKey}`);
+  selectedFlow.value = row;
+  setEditor('flow', row, `flow:${row._tempKey}`);
 }
 
 function addNode() {
   if (!selectedFlow.value?.flowId) {
-    message.warning('请先保存审批流，再新增审批级别');
+    message.warning('请先保存并选中一个审批项目');
     return;
   }
-  const maxLevel = Math.max(0, ...nodes.value.map(node => Number(node.approvalLevel) || 0));
+  const detail = getFlowDetail(selectedFlow.value.flowId);
+  const maxLevel = Math.max(0, ...detail.nodes.map(node => Number(node.approvalLevel) || 0));
   const row = {
     _isNew: true,
     _tempKey: tempKey('node'),
@@ -394,7 +416,13 @@ function addNode() {
     onError: 'REQUIRE_APPROVAL',
     isEnabled: 1
   };
-  nodes.value = [...nodes.value, row];
+  flowDetails.value = {
+    ...flowDetails.value,
+    [selectedFlow.value.flowId]: {
+      ...detail,
+      nodes: [...detail.nodes, row]
+    }
+  };
   setEditor('node', row, `node:${row._tempKey}`);
 }
 
@@ -403,7 +431,7 @@ function addApprover() {
     selectedKind.value === 'node'
       ? selectedPayload.value
       : selectedKind.value === 'approver'
-        ? nodes.value.find(node => Number(node.nodeId) === Number(selectedPayload.value?.nodeId))
+        ? getFlowDetail(selectedFlow.value?.flowId).nodes.find(node => Number(node.nodeId) === Number(selectedPayload.value?.nodeId))
         : null;
 
   if (!currentNode?.nodeId) {
@@ -411,6 +439,7 @@ function addApprover() {
     return;
   }
 
+  const detail = getFlowDetail(selectedFlow.value.flowId);
   const row = {
     _isNew: true,
     _tempKey: tempKey('approver'),
@@ -428,12 +457,18 @@ function addApprover() {
     sqlExpr: '',
     logicTree: '',
     onError: 'REQUIRE_APPROVAL',
-    sortOrder: (approversByNode.value[currentNode.nodeId] || []).length + 1,
+    sortOrder: (detail.approversByNode[currentNode.nodeId] || []).length + 1,
     isEnabled: 1
   };
-  approversByNode.value = {
-    ...approversByNode.value,
-    [currentNode.nodeId]: [...(approversByNode.value[currentNode.nodeId] || []), row]
+  flowDetails.value = {
+    ...flowDetails.value,
+    [selectedFlow.value.flowId]: {
+      ...detail,
+      approversByNode: {
+        ...detail.approversByNode,
+        [currentNode.nodeId]: [...(detail.approversByNode[currentNode.nodeId] || []), row]
+      }
+    }
   };
   expandedKeys.value = [...new Set([...expandedKeys.value, `node:${currentNode.nodeId}`])];
   setEditor('approver', row, `approver:${row._tempKey}`);
@@ -451,20 +486,36 @@ async function saveCurrent() {
 
   if (selectedKind.value === 'flow') {
     if (!text(draft.value.pageCode) || !text(draft.value.flowName)) {
-      message.warning('页面编码和流程名称不能为空');
+      message.warning('页面编码和审批项目名称不能为空');
       return;
     }
-    const saved = await saveApprovalFlow(prepareSavePayload());
-    message.success('审批流已保存');
-    await loadFlows(saved.flowId);
-    return;
-  }
 
-  if (selectedKind.value === 'condition') {
-    const saved = await saveApprovalCondition(prepareSavePayload());
-    message.success('入口条件已保存');
-    await selectFlow(selectedFlow.value);
-    setEditor('condition', saved, `condition:${saved.conditionId}`);
+    const flowPayload = prepareSavePayload();
+    const conditionPayload = {
+      conditionId: flowPayload.entranceConditionId || null,
+      flowId: flowPayload.flowId || null,
+      conditionName: flowPayload.conditionName || '入口条件',
+      conditionMode: flowPayload.conditionMode || 'ALWAYS',
+      logicTree: '',
+      sqlExpr: flowPayload.sqlExpr || '',
+      onError: flowPayload.onError || 'REQUIRE_APPROVAL',
+      isEnabled: flowPayload.conditionEnabled ?? 1
+    };
+
+    delete flowPayload.entranceConditionId;
+    delete flowPayload.conditionName;
+    delete flowPayload.conditionMode;
+    delete flowPayload.sqlExpr;
+    delete flowPayload.onError;
+    delete flowPayload.conditionEnabled;
+
+    const saved = await saveApprovalFlow(flowPayload);
+    conditionPayload.flowId = saved.flowId;
+    await saveApprovalCondition(conditionPayload);
+    message.success('审批项目已保存');
+    await loadFlows();
+    const next = flows.value.find(flow => Number(flow.flowId) === Number(saved.flowId));
+    if (next) await selectFlow(next);
     return;
   }
 
@@ -475,7 +526,9 @@ async function saveCurrent() {
     }
     const saved = await saveApprovalNode(prepareSavePayload());
     message.success('审批节点已保存');
-    await selectFlow(selectedFlow.value);
+    await loadPageFlowDetails(selectedPageCode.value);
+    const flow = flows.value.find(item => Number(item.flowId) === Number(saved.flowId));
+    if (flow) selectedFlow.value = flow;
     setEditor('node', saved, `node:${saved.nodeId}`);
     return;
   }
@@ -491,79 +544,88 @@ async function saveCurrent() {
       return;
     }
     const saved = await saveApprovalApprover(prepareSavePayload());
-    message.success('审批人分支已保存');
-    await selectFlow(selectedFlow.value);
+    message.success('分支条件已保存');
+    await loadPageFlowDetails(selectedPageCode.value);
     setEditor('approver', saved, `approver:${saved.id}`);
   }
 }
 
 async function deleteCurrent() {
-  if (!selectedKind.value) return;
+  if (selectedKind.value === 'page') {
+    await removeSelectedPage();
+    return;
+  }
 
   if (selectedKind.value === 'flow') {
     await removeSelectedFlow();
     return;
   }
 
-  if (selectedKind.value === 'condition') {
-    if (draft.value.conditionId) await deleteApprovalCondition(draft.value.conditionId);
-    conditions.value = conditions.value.filter(item => item !== selectedPayload.value);
-    message.success('入口条件已删除');
-    await selectFlow(selectedFlow.value);
-    return;
-  }
-
   if (selectedKind.value === 'node') {
     if (draft.value.nodeId) await deleteApprovalNode(draft.value.nodeId);
-    nodes.value = nodes.value.filter(item => item !== selectedPayload.value);
     message.success('审批节点已删除');
-    await selectFlow(selectedFlow.value);
+    await loadPageFlowDetails(selectedPageCode.value);
+    setEditor('flow', selectedFlow.value, `flow:${selectedFlow.value?.flowId}`);
     return;
   }
 
   if (selectedKind.value === 'approver') {
     if (draft.value.id) await deleteApprovalApprover(draft.value.id);
-    const nodeId = Number(draft.value.nodeId);
-    approversByNode.value = {
-      ...approversByNode.value,
-      [nodeId]: (approversByNode.value[nodeId] || []).filter(item => item !== selectedPayload.value)
-    };
-    message.success('审批人分支已删除');
-    await selectFlow(selectedFlow.value);
+    message.success('分支条件已删除');
+    await loadPageFlowDetails(selectedPageCode.value);
+    const node = getFlowDetail(selectedFlow.value?.flowId).nodes.find(item => Number(item.nodeId) === Number(draft.value.nodeId));
+    setEditor(node ? 'node' : 'flow', node || selectedFlow.value, node ? `node:${node.nodeId}` : `flow:${selectedFlow.value?.flowId}`);
   }
+}
+
+async function removeSelectedPage() {
+  if (!selectedPageCode.value) return;
+  await deleteApprovalPage(selectedPageCode.value);
+  message.success('当前页面下的审批配置已全部删除');
+  flows.value = flows.value.filter(flow => flow.pageCode !== selectedPageCode.value);
+  flowDetails.value = {};
+  selectedFlow.value = null;
+  setEditor('page', selectedPage.value || { pageCode: selectedPageCode.value }, `page:${selectedPageCode.value}`);
 }
 
 async function removeSelectedFlow() {
   if (!selectedFlow.value) return;
   if (!selectedFlow.value.flowId) {
     flows.value = flows.value.filter(flow => flow !== selectedFlow.value);
-    await selectFlow(visibleFlows.value[0] || null);
+    selectedFlow.value = null;
+    setEditor('page', selectedPage.value || { pageCode: selectedPageCode.value }, `page:${selectedPageCode.value}`);
     return;
   }
   await deleteApprovalFlow(selectedFlow.value.flowId);
-  message.success('审批流已删除');
-  await loadFlows();
+  message.success('审批项目已删除');
+  const deletedFlowId = Number(selectedFlow.value.flowId);
+  flows.value = flows.value.filter(flow => Number(flow.flowId) !== deletedFlowId);
+  const nextDetails = { ...flowDetails.value };
+  delete nextDetails[deletedFlowId];
+  flowDetails.value = nextDetails;
+  selectedFlow.value = null;
+  setEditor('page', selectedPage.value || { pageCode: selectedPageCode.value }, `page:${selectedPageCode.value}`);
 }
 
 function updateEnabled(value: boolean) {
   draft.value.isEnabled = value ? 1 : 0;
 }
 
+function updateConditionEnabled(value: boolean) {
+  draft.value.conditionEnabled = value ? 1 : 0;
+}
+
 function clearPageFilter() {
   activePageCodeFilter.value = '';
+  selectedPageCode.value = '';
   loadFlows();
 }
 
 async function applyPageFilter(pageCode: string) {
   activePageCodeFilter.value = pageCode;
   await nextTick();
-  const flow = flows.value.find(item => item.pageCode === pageCode);
-  if (flow) {
-    await selectFlow(flow);
-  } else {
-    await selectFlow(null);
-    message.info(`当前页面还没有配置审批流：${pageCode}`);
-  }
+  const page = visiblePages.value.find(item => item.pageCode === pageCode) || { pageCode };
+  await selectPage(page.pageCode);
 }
 
 onMounted(async () => {
@@ -586,58 +648,56 @@ watch(
 
 <template>
   <div class="approval-workbench">
-    <aside class="flow-list">
+    <aside class="page-list">
       <div class="panel-head">
         <div>
-          <div class="title">审批流</div>
+          <div class="title">页面</div>
           <div v-if="activePageCodeFilter" class="subtitle">当前页面：{{ activePageCodeFilter }}</div>
         </div>
         <NSpace size="small">
           <NButton v-if="activePageCodeFilter" size="small" quaternary @click="clearPageFilter">全部</NButton>
-          <NButton size="small" type="primary" @click="addFlow">新增</NButton>
-          <NPopconfirm @positive-click="removeSelectedFlow">
+          <NPopconfirm @positive-click="removeSelectedPage">
             <template #trigger>
-              <NButton size="small" type="error" :disabled="!selectedFlow">删除</NButton>
+              <NButton size="small" type="error" :disabled="!selectedPageCode">删除</NButton>
             </template>
-            删除审批流会同时删除入口条件、审批节点和审批人分支，确定继续？
+            删除页面审批配置会硬删该页面下所有审批项目、节点、分支和相关审批实例，确定继续？
           </NPopconfirm>
         </NSpace>
       </div>
-      <div class="flow-items">
+      <div class="page-items">
         <button
-          v-for="flow in visibleFlows"
-          :key="flow.flowId || flow._tempKey"
-          class="flow-item"
-          :class="{ active: selectedFlow === flow || selectedFlow?.flowId === flow.flowId }"
+          v-for="page in visiblePages"
+          :key="page.pageCode"
+          class="page-item"
+          :class="{ active: selectedPageCode === page.pageCode }"
           type="button"
-          @click="selectFlow(flow)"
+          @click="selectPage(page.pageCode)"
         >
-          <span class="flow-name">{{ flow.flowName || '未命名审批流' }}</span>
-          <span class="flow-meta">{{ flow.pageCode || '-' }} · 优先级 {{ flow.flowPriority ?? '-' }}</span>
+          <span class="page-name">{{ pageLabel(page) }}</span>
+          <span class="page-meta">{{ page.pageCode }}</span>
         </button>
-        <NEmpty v-if="!visibleFlows.length && !loading" description="暂无审批流" />
+        <NEmpty v-if="!visiblePages.length && !loading" description="暂无页面" />
       </div>
     </aside>
 
     <main class="tree-panel">
       <div class="panel-head">
         <div>
-          <div class="title">{{ selectedFlow?.flowName || '请选择审批流' }}</div>
-          <div class="subtitle">树中只展示真实配置项：入口条件、审批级别、审批人分支。</div>
+          <div class="title">{{ selectedPage ? pageLabel(selectedPage) : '请选择页面' }}</div>
+          <div class="subtitle">点击审批项目可直接填写入口条件；点击审批节点可填写节点条件。</div>
         </div>
         <NSpace size="small">
-          <NButton size="small" :disabled="!selectedFlow?.flowId" @click="addCondition">新增入口条件</NButton>
-          <NButton size="small" :disabled="!selectedFlow?.flowId" @click="addNode">新增审批级别</NButton>
+          <NButton size="small" type="primary" :disabled="!selectedPageCode" @click="addFlow">新增审批项目</NButton>
+          <NButton size="small" :disabled="!selectedFlow?.flowId" @click="addNode">新增审批节点</NButton>
           <NButton size="small" :disabled="selectedKind !== 'node' && selectedKind !== 'approver'" @click="addApprover">
-            新增审批分支
+            新增分支条件
           </NButton>
         </NSpace>
       </div>
 
       <div class="tree-shell">
         <NAlert type="info" :bordered="false" class="help-box">
-          总入口条件不满足：无需审批，自动通过。入口条件满足后按审批级别顺序执行。
-          本级条件不满足：系统管理员自动驳回。本级条件满足但没有审批分支命中：该级无人认领自动通过。
+          入口条件不满足：无需审批，自动通过。节点条件不满足：系统管理员自动驳回。节点条件满足但没有分支命中：该级无人认领自动通过。
         </NAlert>
 
         <NTree
@@ -650,7 +710,7 @@ watch(
           :render-label="renderLabel"
           @update:selected-keys="handleTreeSelect"
         />
-        <NEmpty v-else description="请选择或新建审批流" />
+        <NEmpty v-else description="当前页面暂无审批项目" />
       </div>
     </main>
 
@@ -661,25 +721,37 @@ watch(
           <div class="subtitle">{{ selectedKind || '未选择' }}</div>
         </div>
         <NSpace v-if="selectedKind" size="small">
-          <NButton size="small" type="primary" @click="saveCurrent">保存</NButton>
+          <NButton v-if="selectedKind !== 'page'" size="small" type="primary" @click="saveCurrent">保存</NButton>
           <NPopconfirm @positive-click="deleteCurrent">
             <template #trigger>
               <NButton size="small" type="error">删除</NButton>
             </template>
-            确定删除当前配置？
+            确定硬删当前配置及其下级数据？
           </NPopconfirm>
         </NSpace>
       </div>
 
       <div class="editor-body">
-        <NEmpty v-if="!selectedKind" description="选择树上的流程、条件、节点或分支进行编辑" />
+        <NEmpty v-if="!selectedKind" description="选择页面、审批项目、审批节点或分支条件进行编辑" />
 
         <NForm v-else label-placement="top" size="small">
+          <template v-if="selectedKind === 'page'">
+            <NFormItem label="页面名称">
+              <NInput :value="pageLabel(draft)" readonly />
+            </NFormItem>
+            <NFormItem label="页面编码">
+              <NInput :value="draft.pageCode" readonly />
+            </NFormItem>
+            <NAlert type="warning" :bordered="false">
+              删除页面会删除该页面下所有审批项目、审批节点、分支条件和相关审批实例。
+            </NAlert>
+          </template>
+
           <template v-if="selectedKind === 'flow'">
             <NFormItem label="页面编码">
-              <NInput v-model:value="draft.pageCode" />
+              <NInput v-model:value="draft.pageCode" readonly />
             </NFormItem>
-            <NFormItem label="流程名称">
+            <NFormItem label="审批项目名称">
               <NInput v-model:value="draft.flowName" />
             </NFormItem>
             <div class="form-grid">
@@ -690,22 +762,13 @@ watch(
                 <NInputNumber v-model:value="draft.flowVersion" :min="1" />
               </NFormItem>
             </div>
-            <NFormItem label="启用">
-              <NSwitch :value="Number(draft.isEnabled) === 1" @update:value="updateEnabled" />
-            </NFormItem>
-            <NFormItem label="备注">
-              <NInput v-model:value="draft.remark" type="textarea" :autosize="{ minRows: 3, maxRows: 6 }" />
-            </NFormItem>
-          </template>
-
-          <template v-if="selectedKind === 'condition'">
             <NFormItem label="入口条件名称">
               <NInput v-model:value="draft.conditionName" />
             </NFormItem>
-            <NFormItem label="条件类型">
+            <NFormItem label="入口条件类型">
               <NSelect v-model:value="draft.conditionMode" :options="conditionModeOptions" />
             </NFormItem>
-            <NFormItem label="SQL 条件">
+            <NFormItem label="入口 SQL 条件">
               <NInput
                 v-model:value="draft.sqlExpr"
                 type="textarea"
@@ -713,11 +776,19 @@ watch(
                 :autosize="{ minRows: 4, maxRows: 10 }"
               />
             </NFormItem>
-            <NFormItem label="异常策略">
+            <NFormItem label="入口异常策略">
               <NSelect v-model:value="draft.onError" :options="onErrorOptions" />
             </NFormItem>
-            <NFormItem label="启用">
-              <NSwitch :value="Number(draft.isEnabled) === 1" @update:value="updateEnabled" />
+            <div class="form-grid">
+              <NFormItem label="审批项目启用">
+                <NSwitch :value="Number(draft.isEnabled) === 1" @update:value="updateEnabled" />
+              </NFormItem>
+              <NFormItem label="入口条件启用">
+                <NSwitch :value="Number(draft.conditionEnabled) === 1" @update:value="updateConditionEnabled" />
+              </NFormItem>
+            </div>
+            <NFormItem label="备注">
+              <NInput v-model:value="draft.remark" type="textarea" :autosize="{ minRows: 3, maxRows: 6 }" />
             </NFormItem>
           </template>
 
@@ -733,18 +804,18 @@ watch(
             <NFormItem label="节点名称">
               <NInput v-model:value="draft.nodeName" />
             </NFormItem>
-            <NFormItem label="本级条件类型">
+            <NFormItem label="节点条件类型">
               <NSelect v-model:value="draft.conditionMode" :options="conditionModeOptions" />
             </NFormItem>
-            <NFormItem label="本级 SQL 条件">
+            <NFormItem label="节点 SQL 条件">
               <NInput
                 v-model:value="draft.sqlExpr"
                 type="textarea"
-                placeholder="本级条件不满足时：系统管理员自动驳回"
+                placeholder="节点条件不满足时：系统管理员自动驳回"
                 :autosize="{ minRows: 4, maxRows: 10 }"
               />
             </NFormItem>
-            <NFormItem label="异常策略">
+            <NFormItem label="节点异常策略">
               <NSelect v-model:value="draft.onError" :options="onErrorOptions" />
             </NFormItem>
             <NFormItem label="启用">
@@ -794,13 +865,13 @@ watch(
 <style scoped>
 .approval-workbench {
   display: grid;
-  grid-template-columns: 280px minmax(460px, 1fr) 360px;
+  grid-template-columns: 280px minmax(520px, 1fr) 360px;
   gap: 12px;
   height: 100%;
   min-height: 0;
 }
 
-.flow-list,
+.page-list,
 .tree-panel,
 .editor-panel {
   display: flex;
@@ -834,7 +905,7 @@ watch(
   font-size: 12px;
 }
 
-.flow-items,
+.page-items,
 .tree-shell,
 .editor-body {
   flex: 1;
@@ -843,7 +914,7 @@ watch(
   padding: 10px;
 }
 
-.flow-item {
+.page-item {
   display: flex;
   width: 100%;
   flex-direction: column;
@@ -857,21 +928,21 @@ watch(
   text-align: left;
 }
 
-.flow-item:hover {
+.page-item:hover {
   background: #f5f7fb;
 }
 
-.flow-item.active {
+.page-item.active {
   border-color: #646cff;
   background: #eef2ff;
 }
 
-.flow-name {
+.page-name {
   color: #202636;
   font-weight: 700;
 }
 
-.flow-meta {
+.page-meta {
   color: #6b7280;
   font-size: 12px;
 }
@@ -899,8 +970,7 @@ watch(
   white-space: nowrap;
 }
 
-.tree-line-folder .tree-label {
-  color: #4b5565;
+.tree-line-flow .tree-label {
   font-weight: 700;
 }
 

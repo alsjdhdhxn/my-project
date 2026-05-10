@@ -178,6 +178,14 @@ export async function deleteApprovalFlow(flowId: number) {
   if (error) throw error;
 }
 
+export async function deleteApprovalPage(pageCode: string) {
+  const { error } = await request<any>({
+    url: `/meta-config/approval/page/${encodeURIComponent(pageCode)}`,
+    method: 'DELETE'
+  });
+  if (error) throw error;
+}
+
 export async function fetchApprovalConditions(flowId: number) {
   const { data } = await request<any[]>({ url: `/meta-config/approval/flow/${flowId}/conditions` });
   return data || [];

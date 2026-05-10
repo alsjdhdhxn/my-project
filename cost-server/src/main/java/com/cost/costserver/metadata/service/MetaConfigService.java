@@ -816,6 +816,19 @@ public class MetaConfigService {
         dynamicMapper.delete("DELETE FROM WF_FLOW_DEF WHERE FLOW_ID=" + flowId);
     }
 
+    @Transactional
+    public void deleteApprovalPage(String pageCode) {
+        List<Map<String, Object>> rows = dynamicMapper.selectList(
+            "SELECT FLOW_ID as \"flowId\" FROM WF_FLOW_DEF WHERE PAGE_CODE=" + sqlString(pageCode)
+        );
+        for (Map<String, Object> row : rows) {
+            Long flowId = longValue(row.get("flowId"));
+            if (flowId != null) {
+                deleteApprovalFlow(flowId);
+            }
+        }
+    }
+
     public List<Map<String, Object>> listApprovalConditions(Long flowId) {
         String sql = "SELECT CONDITION_ID as \"conditionId\", FLOW_ID as \"flowId\", CONDITION_NAME as \"conditionName\", " +
                      "CONDITION_MODE as \"conditionMode\", LOGIC_TREE as \"logicTree\", SQL_EXPR as \"sqlExpr\", " +
