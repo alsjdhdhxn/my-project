@@ -7,6 +7,7 @@ import type { PageComponentWithRules, ToolbarRule } from '@/v3/composables/meta-
 import type { ComponentStateByKey, MetaRuntime } from '@/v3/composables/meta-v3/runtime/types';
 import { handleToolbarAction } from '@/v3/composables/meta-v3/useToolbarAction';
 import { useMasterGridBindings } from '@/v3/composables/meta-v3/useMasterGridBindings';
+import ApprovalActionGroup from '@/v3/components/approval/ApprovalActionGroup.vue';
 
 type GridConfig = {
   width?: string | number;
@@ -155,6 +156,12 @@ async function handleToolbarClick(item: any) {
   });
 }
 
+function getSelectedMasterRow() {
+  const api = runtime?.masterGridApi?.value;
+  const selectedRows = api?.getSelectedRows?.() || [];
+  return selectedRows[0] || null;
+}
+
 function toCssSize(value: string | number | undefined) {
   if (value == null) return undefined;
   return typeof value === 'number' ? `${value}px` : value;
@@ -271,8 +278,9 @@ function handleFilterChanged() {
 <template>
   <div class="meta-grid" :class="gridClass" :style="containerStyle">
     <!-- 工具栏 -->
-    <div v-if="toolbarItems.length > 0" class="toolbar-container">
+    <div v-if="isMasterGrid" class="toolbar-container">
       <NSpace>
+        <ApprovalActionGroup :runtime="runtime" :get-selected-row="getSelectedMasterRow" />
         <NButton
           v-for="item in toolbarItems"
           :key="item.action"

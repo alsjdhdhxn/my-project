@@ -280,6 +280,7 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
   };
 
   runtimeApi = {
+    pageCode,
     masterGridApi,
     detailGridApisByTab,
     activeMasterRowKey,

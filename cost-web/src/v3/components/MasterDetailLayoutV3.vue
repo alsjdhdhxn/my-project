@@ -6,6 +6,7 @@ import { useThemeStore } from '@/store/modules/theme';
 import DetailRowRendererV3 from '@/v3/components/detail/DetailRowRendererV3.vue';
 import DetailPanelV3 from '@/v3/components/detail/DetailPanelV3.vue';
 import AdvancedSearchDialog from '@/v3/components/AdvancedSearchDialog.vue';
+import ApprovalActionGroup from '@/v3/components/approval/ApprovalActionGroup.vue';
 import { useMasterGridBindings } from '@/v3/composables/meta-v3/useMasterGridBindings';
 import { useGridContextMenu } from '@/v3/composables/meta-v3/useGridContextMenu';
 import { handleToolbarAction } from '@/v3/composables/meta-v3/useToolbarAction';
@@ -249,6 +250,12 @@ async function handleToolbarClick(item: any) {
         dialog
       });
   }
+}
+
+function getSelectedMasterRow() {
+  const api = masterGridApi?.value;
+  const selectedRows = api?.getSelectedRows?.() || [];
+  return selectedRows[0] || null;
 }
 
 // 使用全局主题设置的detailViewMode
@@ -679,8 +686,9 @@ function onDetailRowOpened(event: any) {
 <template>
   <div class="master-detail-layout-v3">
     <!-- 工具栏 -->
-    <div v-if="mergedToolbarItems.length > 0" class="toolbar-container">
+    <div class="toolbar-container">
       <NSpace>
+        <ApprovalActionGroup :runtime="runtime" :get-selected-row="getSelectedMasterRow" />
         <template v-for="item in mergedToolbarItems" :key="item.key">
           <!-- 下拉按钮：多个 tab 同名 action 合并 -->
           <NDropdown
