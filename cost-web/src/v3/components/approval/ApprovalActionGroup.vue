@@ -6,6 +6,7 @@ import {
   NDropdown,
   NInput,
   NModal,
+  NSelect,
   NSpace,
   NTabPane,
   NTabs,
@@ -16,10 +17,13 @@ import type { DataTableColumns } from 'naive-ui';
 import {
   applyApproval,
   approveApproval,
+  cancelApproval,
+  delegateApproval,
   fetchApprovalProgress,
   rejectApproval,
   type ApprovalRuntimePayload
 } from '@/service/api/approval-runtime';
+import { fetchAllUsers, type UserSimpleVO } from '@/service/api/role-manage';
 
 const props = defineProps<{
   runtime: any;
@@ -30,8 +34,15 @@ const message = useMessage();
 
 const loading = ref(false);
 const rejectVisible = ref(false);
+const cancelVisible = ref(false);
+const delegateVisible = ref(false);
 const progressVisible = ref(false);
 const rejectReason = ref('');
+const cancelReason = ref('');
+const delegateReason = ref('');
+const delegateUserId = ref<number | null>(null);
+const delegateUsers = ref<UserSimpleVO[]>([]);
+const loadingUsers = ref(false);
 const progressData = ref<any>({ main: {}, details: [], logs: [] });
 
 const dropdownOptions = computed(() =>
@@ -39,6 +50,8 @@ const dropdownOptions = computed(() =>
     { label: '送审', key: 'apply', permission: 'approval.apply' },
     { label: '审批通过', key: 'approve', permission: 'approval.approve' },
     { label: '驳回', key: 'reject', permission: 'approval.reject' },
+    { label: '撤销送审', key: 'cancel', permission: 'approval.cancel' },
+    { label: '强制委派审批人', key: 'delegate', permission: 'approval.delegate' },
     { label: '查看审批进度', key: 'progress', permission: 'approval.progress' }
   ].filter(item => hasButton(item.permission))
 );
@@ -62,12 +75,19 @@ const detailColumns: DataTableColumns<any> = [
 const logColumns: DataTableColumns<any> = [
   { title: '动作', key: 'actionType', width: 120 },
   { title: '操作人', key: 'actionRealName', width: 120, render: row => row.actionRealName || row.actionUsername || '-' },
-  { title: '流转', key: 'toStatus', width: 120, render: row => `${row.fromStatus || '-'} -> ${row.toStatus || '-'}` },
+  { title: '状态', key: 'toStatus', width: 120, render: row => statusText(row.toStatus || row.fromStatus) },
   { title: '意见', key: 'actionComment', minWidth: 180, ellipsis: { tooltip: true } },
   { title: '说明', key: 'detailMessage', minWidth: 220, ellipsis: { tooltip: true } }
 ];
 
 const mainStatus = computed(() => progressData.value?.main?.status || '');
+
+const delegateUserOptions = computed(() =>
+  delegateUsers.value.map(user => ({
+    label: user.realName ? `${user.realName}（${user.username}）` : user.username,
+    value: user.id
+  }))
+);
 
 function renderStatus(status: string) {
   const type =
@@ -81,6 +101,21 @@ function renderStatus(status: string) {
             ? 'info'
             : 'default';
   return hTag(status || '-', type);
+}
+
+function statusText(status?: string) {
+  const statusMap: Record<string, string> = {
+    DRAFT: '草稿',
+    APPROVING: '审批中',
+    PENDING: '待审批',
+    APPROVED: '已通过',
+    REJECTED: '已驳回',
+    CANCELED: '已撤销',
+    WAITING: '等待中',
+    SKIPPED: '已跳过',
+    AUTO_APPROVED: '自动通过'
+  };
+  return status ? statusMap[status] || status : '-';
 }
 
 function hasButton(buttonKey: string) {
@@ -103,6 +138,20 @@ async function handleSelect(key: string) {
   if (key === 'progress') {
     if (!hasButton('approval.progress')) return;
     await openProgress();
+    return;
+  }
+
+  if (key === 'cancel') {
+    if (!hasButton('approval.cancel')) return;
+    if (!buildPayload()) return;
+    cancelReason.value = '';
+    cancelVisible.value = true;
+    return;
+  }
+
+  if (key === 'delegate') {
+    if (!hasButton('approval.delegate')) return;
+    await openDelegate();
     return;
   }
 
@@ -132,6 +181,49 @@ async function submitReject() {
     '已驳回'
   );
   rejectVisible.value = false;
+}
+
+async function submitCancel() {
+  await runAction(
+    () =>
+      cancelApproval({
+        ...requiredPayload(),
+        comment: cancelReason.value.trim()
+      }),
+    '已撤销送审'
+  );
+  cancelVisible.value = false;
+}
+
+async function openDelegate() {
+  if (!buildPayload()) return;
+  delegateUserId.value = null;
+  delegateReason.value = '';
+  delegateVisible.value = true;
+  if (delegateUsers.value.length > 0) return;
+  loadingUsers.value = true;
+  try {
+    delegateUsers.value = await fetchAllUsers();
+  } finally {
+    loadingUsers.value = false;
+  }
+}
+
+async function submitDelegate() {
+  if (!delegateUserId.value) {
+    message.warning('请选择审批人');
+    return;
+  }
+  await runAction(
+    () =>
+      delegateApproval({
+        ...requiredPayload(),
+        targetUserId: delegateUserId.value!,
+        reason: delegateReason.value.trim()
+      }),
+    '已强制委派审批人'
+  );
+  delegateVisible.value = false;
 }
 
 async function openProgress() {
@@ -242,6 +334,50 @@ function refreshGrid() {
       placeholder="请输入驳回原因"
       :autosize="{ minRows: 4, maxRows: 8 }"
     />
+  </NModal>
+
+  <NModal
+    v-model:show="cancelVisible"
+    preset="dialog"
+    title="撤销送审"
+    positive-text="确认撤销"
+    negative-text="取消"
+    :mask-closable="false"
+    @positive-click="submitCancel"
+  >
+    <NInput
+      v-model:value="cancelReason"
+      type="textarea"
+      placeholder="请输入撤销原因，可选"
+      :autosize="{ minRows: 4, maxRows: 8 }"
+    />
+  </NModal>
+
+  <NModal
+    v-model:show="delegateVisible"
+    preset="dialog"
+    title="强制委派审批人"
+    positive-text="确认委派"
+    negative-text="取消"
+    :mask-closable="false"
+    @positive-click="submitDelegate"
+  >
+    <NSpace vertical size="small">
+      <NSelect
+        v-model:value="delegateUserId"
+        :options="delegateUserOptions"
+        :loading="loadingUsers"
+        filterable
+        clearable
+        placeholder="请选择审批人"
+      />
+      <NInput
+        v-model:value="delegateReason"
+        type="textarea"
+        placeholder="委派原因，可选"
+        :autosize="{ minRows: 3, maxRows: 6 }"
+      />
+    </NSpace>
   </NModal>
 
   <NModal v-model:show="progressVisible" preset="card" title="审批进度" class="approval-progress-modal">

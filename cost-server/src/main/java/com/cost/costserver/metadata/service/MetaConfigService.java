@@ -779,7 +779,7 @@ public class MetaConfigService {
                      "FROM WF_FLOW_DEF f " +
                      "LEFT JOIN T_COST_RESOURCE r ON r.PAGE_CODE = f.PAGE_CODE " +
                      "ORDER BY f.PAGE_CODE, f.FLOW_PRIORITY, f.FLOW_VERSION DESC, f.FLOW_ID";
-        return dynamicMapper.selectList(sql);
+        return clobToString(dynamicMapper.selectList(sql));
     }
 
     @Transactional

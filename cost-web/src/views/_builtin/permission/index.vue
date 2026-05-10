@@ -524,16 +524,32 @@ const pageButtons = ref<PageButtonVO[]>([]);
 const selectedButtons = ref<string[]>([]);
 const loadingButtons = ref(false);
 const isAllButtons = ref(true);
+const systemDefaultButtonKeys = new Set([
+  'addRow',
+  'deleteRow',
+  'save',
+  'approval.apply',
+  'approval.approve',
+  'approval.reject',
+  'approval.cancel',
+  'approval.progress',
+  'approval.delegate',
+  'advancedSearch'
+]);
 
 // 按钮按分组显示
 const groupedButtons = computed(() => {
   const groups = new Map<string, PageButtonVO[]>();
+  const seenKeys = new Set<string>();
   for (const btn of pageButtons.value) {
-    const groupName = btn.groupName || '';
+    const groupName = systemDefaultButtonKeys.has(btn.buttonKey) ? '系统默认按钮' : btn.groupName || '';
+    const uniqueKey = getButtonUniqueKey(groupName, btn.buttonKey);
+    if (seenKeys.has(uniqueKey)) continue;
+    seenKeys.add(uniqueKey);
     if (!groups.has(groupName)) {
       groups.set(groupName, []);
     }
-    groups.get(groupName)!.push(btn);
+    groups.get(groupName)!.push({ ...btn, groupName });
   }
   return Array.from(groups.entries()).map(([groupName, buttons]) => ({ groupName, buttons }));
 });
@@ -541,6 +557,15 @@ const groupedButtons = computed(() => {
 // 生成按钮唯一标识（groupName:buttonKey）
 function getButtonUniqueKey(groupName: string, buttonKey: string): string {
   return groupName ? `${groupName}:${buttonKey}` : buttonKey;
+}
+
+function normalizeButtonPolicyKeys(keys: string[]): string[] {
+  const result = new Set<string>();
+  for (const key of keys) {
+    const buttonKey = key.includes(':') ? key.slice(key.lastIndexOf(':') + 1) : key;
+    result.add(systemDefaultButtonKeys.has(buttonKey) ? getButtonUniqueKey('系统默认按钮', buttonKey) : key);
+  }
+  return Array.from(result);
 }
 
 // 编辑列权限弹窗
@@ -746,7 +771,7 @@ async function openEditButton(resource: ResourcePermissionVO) {
   } else {
     isAllButtons.value = false;
     try {
-      selectedButtons.value = JSON.parse(resource.buttonPolicy);
+      selectedButtons.value = normalizeButtonPolicyKeys(JSON.parse(resource.buttonPolicy));
     } catch {
       selectedButtons.value = [];
     }

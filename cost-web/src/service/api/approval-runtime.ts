@@ -9,7 +9,13 @@ export type ApprovalRuntimePayload = {
   billTitle?: string;
   conditionJson?: string;
   detailId?: number | string;
+  approvalId?: number | string;
   comment?: string;
+};
+
+export type ApprovalDelegatePayload = ApprovalRuntimePayload & {
+  targetUserId: number | string;
+  reason?: string;
 };
 
 export function applyApproval(data: ApprovalRuntimePayload) {
@@ -31,6 +37,22 @@ export function approveApproval(data: ApprovalRuntimePayload) {
 export function rejectApproval(data: ApprovalRuntimePayload) {
   return request<any>({
     url: '/approval/runtime/reject',
+    method: 'POST',
+    data
+  });
+}
+
+export function cancelApproval(data: ApprovalRuntimePayload) {
+  return request<any>({
+    url: '/approval/runtime/cancel',
+    method: 'POST',
+    data
+  });
+}
+
+export function delegateApproval(data: ApprovalDelegatePayload) {
+  return request<any>({
+    url: '/approval/runtime/delegate',
     method: 'POST',
     data
   });

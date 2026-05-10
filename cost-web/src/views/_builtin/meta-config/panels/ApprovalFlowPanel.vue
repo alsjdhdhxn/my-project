@@ -201,7 +201,33 @@ function firstEntranceCondition(flow: any) {
 function flowMeta(flow: any) {
   const condition = firstEntranceCondition(flow);
   const mode = condition?.conditionMode || 'ALWAYS';
-  return `优先级 ${flow.flowPriority ?? '-'} / ${mode}`;
+  return `优先级 ${flow.flowPriority ?? '-'} / ${mode}${getFlowOption(flow, 'requireApplicantForSubmit') ? ' / 申请人' : ''}`;
+}
+
+function parseFlowRemark(remark?: string) {
+  const value = text(remark);
+  if (!value.startsWith('{')) return { text: value, options: {} as Record<string, any> };
+  try {
+    const parsed = JSON.parse(value);
+    return {
+      text: typeof parsed.text === 'string' ? parsed.text : '',
+      options: parsed.options && typeof parsed.options === 'object' ? parsed.options : {}
+    };
+  } catch {
+    return { text: value, options: {} as Record<string, any> };
+  }
+}
+
+function buildFlowRemark(row: any) {
+  const plainText = text(row.remarkText);
+  const options = {
+    requireApplicantForSubmit: Number(row.requireApplicantForSubmit) === 1
+  };
+  return options.requireApplicantForSubmit ? JSON.stringify({ text: plainText, options }) : plainText;
+}
+
+function getFlowOption(flow: any, key: string) {
+  return Boolean(parseFlowRemark(flow?.remark).options[key]);
 }
 
 function pageLabel(page: any) {
@@ -243,7 +269,10 @@ function fillNamesForApprover(row: any) {
 
 function flowEditorDraft(flow: any) {
   const row = clone(flow || {});
+  const remark = parseFlowRemark(row.remark);
   const condition = firstEntranceCondition(flow);
+  row.remarkText = remark.text;
+  row.requireApplicantForSubmit = remark.options.requireApplicantForSubmit ? 1 : 0;
   row.entranceConditionId = condition?.conditionId || null;
   row.conditionName = condition?.conditionName || '入口条件';
   row.conditionMode = condition?.conditionMode || 'ALWAYS';
@@ -388,7 +417,9 @@ function addFlow() {
     flowVersion: 1,
     flowPriority: 100,
     isEnabled: 1,
-    remark: ''
+    remark: '',
+    remarkText: '',
+    requireApplicantForSubmit: 0
   };
   flows.value = [row, ...flows.value];
   selectedFlow.value = row;
@@ -491,6 +522,7 @@ async function saveCurrent() {
     }
 
     const flowPayload = prepareSavePayload();
+    flowPayload.remark = buildFlowRemark(flowPayload);
     const conditionPayload = {
       conditionId: flowPayload.entranceConditionId || null,
       flowId: flowPayload.flowId || null,
@@ -508,6 +540,8 @@ async function saveCurrent() {
     delete flowPayload.sqlExpr;
     delete flowPayload.onError;
     delete flowPayload.conditionEnabled;
+    delete flowPayload.remarkText;
+    delete flowPayload.requireApplicantForSubmit;
 
     const saved = await saveApprovalFlow(flowPayload);
     conditionPayload.flowId = saved.flowId;
@@ -787,8 +821,14 @@ watch(
                 <NSwitch :value="Number(draft.conditionEnabled) === 1" @update:value="updateConditionEnabled" />
               </NFormItem>
             </div>
+            <NFormItem label="申请人限制">
+              <NSwitch
+                :value="Number(draft.requireApplicantForSubmit) === 1"
+                @update:value="value => (draft.requireApplicantForSubmit = value ? 1 : 0)"
+              />
+            </NFormItem>
             <NFormItem label="备注">
-              <NInput v-model:value="draft.remark" type="textarea" :autosize="{ minRows: 3, maxRows: 6 }" />
+              <NInput v-model:value="draft.remarkText" type="textarea" :autosize="{ minRows: 3, maxRows: 6 }" />
             </NFormItem>
           </template>
 

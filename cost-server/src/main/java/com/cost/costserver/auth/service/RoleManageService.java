@@ -450,6 +450,19 @@ public class RoleManageService {
         return result;
     }
 
+    private static final Set<String> DEFAULT_BUTTON_KEYS = Set.of(
+        "addRow",
+        "deleteRow",
+        "save",
+        "approval.apply",
+        "approval.approve",
+        "approval.reject",
+        "approval.cancel",
+        "approval.progress",
+        "approval.delegate",
+        "advancedSearch"
+    );
+
     private void addDefaultButtonsToButtons(List<PageButtonVO> result) {
         addDefaultButton(result, "addRow", "新增", "系统默认按钮");
         addDefaultButton(result, "deleteRow", "删除", "系统默认按钮");
@@ -457,7 +470,10 @@ public class RoleManageService {
         addDefaultButton(result, "approval.apply", "送审", "系统默认按钮");
         addDefaultButton(result, "approval.approve", "审批通过", "系统默认按钮");
         addDefaultButton(result, "approval.reject", "驳回", "系统默认按钮");
+        addDefaultButton(result, "approval.cancel", "撤销送审", "系统默认按钮");
         addDefaultButton(result, "approval.progress", "查看审批进度", "系统默认按钮");
+        addDefaultButton(result, "approval.delegate", "强制委派审批人", "系统默认按钮");
+        addDefaultButton(result, "advancedSearch", "高级查询", "系统默认按钮");
     }
 
     private void addDefaultButton(List<PageButtonVO> result, String key, String label, String groupName) {
@@ -506,8 +522,8 @@ public class RoleManageService {
                 continue;
             }
             
-            // 有 action 的才是按钮
-            if (action == null) continue;
+            // 有 action 的才是按钮；系统内置按钮统一归到“系统默认按钮”，避免在表分组里重复显示
+            if (action == null || DEFAULT_BUTTON_KEYS.contains(action)) continue;
             
             PageButtonVO vo = new PageButtonVO();
             vo.setButtonKey(action);

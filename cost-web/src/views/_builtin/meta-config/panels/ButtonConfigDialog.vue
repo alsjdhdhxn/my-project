@@ -121,11 +121,15 @@ function detectExecType(btn: any): 'builtin' | 'procedure' | 'sql' | 'java' {
   return 'builtin';
 }
 
+function getDefaultPosition(action?: string): 'context' | 'toolbar' {
+  return action === 'advancedSearch' ? 'toolbar' : 'context';
+}
+
 function parseButtonFromRaw(raw: any): ButtonItem {
   return {
     action: raw.action || '',
     label: raw.label || '',
-    position: raw.position || 'context',
+    position: raw.position || getDefaultPosition(raw.action),
     toolbarAlias: raw.toolbarAlias || '',
     requiresRow: raw.requiresRow || false,
     confirm: raw.confirm || '',
@@ -150,7 +154,7 @@ function isRemovedAction(action?: unknown): boolean {
 
 function serializeButton(btn: ButtonItem): any {
   const result: any = { action: btn.action, label: btn.label };
-  if (btn.position && btn.position !== 'context') result.position = btn.position;
+  if (btn.position && btn.position !== getDefaultPosition(btn.action)) result.position = btn.position;
   if (btn.toolbarAlias) result.toolbarAlias = btn.toolbarAlias;
   if (btn.requiresRow) result.requiresRow = true;
   if (btn.confirm) result.confirm = btn.confirm;
@@ -232,6 +236,7 @@ function onActionChange(btn: ButtonItem) {
   // 如果选了内置 action，自动设为前端内置
   if (BUILTIN_ACTION_SET.has(btn.action)) {
     btn.execType = 'builtin';
+    btn.position = getDefaultPosition(btn.action);
     // 自动填充 label
     const found = builtinActions.find(a => a.value === btn.action);
     if (found && !btn.label) {

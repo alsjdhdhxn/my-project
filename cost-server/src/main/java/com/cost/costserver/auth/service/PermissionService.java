@@ -107,7 +107,15 @@ public class PermissionService {
             return Collections.emptySet();
         }
         try {
-            return new HashSet<>(JSONUtil.parseArray(buttonPolicy).toList(String.class));
+            Set<String> result = new HashSet<>();
+            for (String key : JSONUtil.parseArray(buttonPolicy).toList(String.class)) {
+                result.add(key);
+                int separatorIndex = key.lastIndexOf(':');
+                if (separatorIndex >= 0 && separatorIndex < key.length() - 1) {
+                    result.add(key.substring(separatorIndex + 1));
+                }
+            }
+            return result;
         } catch (Exception e) {
             log.warn("解析按钮权限失败: {}", buttonPolicy, e);
             return Collections.emptySet();

@@ -366,8 +366,8 @@ function filterButtonsByPosition(items: ButtonItemRule[], position: 'context' | 
       continue;
     }
 
-    // 检查 position
-    const pos = item.position || 'context'; // 默认是 context
+    // 检查 position；高级查询是系统工具栏按钮，历史配置没有 position 时也按工具栏处理
+    const pos = item.position || (item.action === 'advancedSearch' ? 'toolbar' : 'context');
     if (pos !== position && pos !== 'both') continue;
 
     // 递归处理子菜单
