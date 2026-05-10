@@ -807,6 +807,9 @@ public class MetaConfigService {
 
     @Transactional
     public void deleteApprovalFlow(Long flowId) {
+        dynamicMapper.delete("DELETE FROM WF_APPROVAL_LOG WHERE APPROVAL_ID IN (SELECT APPROVAL_ID FROM WF_APPROVAL_MAIN WHERE FLOW_ID=" + flowId + ")");
+        dynamicMapper.delete("DELETE FROM WF_APPROVAL_DETAIL WHERE APPROVAL_ID IN (SELECT APPROVAL_ID FROM WF_APPROVAL_MAIN WHERE FLOW_ID=" + flowId + ")");
+        dynamicMapper.delete("DELETE FROM WF_APPROVAL_MAIN WHERE FLOW_ID=" + flowId);
         dynamicMapper.delete("DELETE FROM WF_FLOW_APPROVER WHERE NODE_ID IN (SELECT NODE_ID FROM WF_FLOW_NODE WHERE FLOW_ID=" + flowId + ")");
         dynamicMapper.delete("DELETE FROM WF_FLOW_NODE WHERE FLOW_ID=" + flowId);
         dynamicMapper.delete("DELETE FROM WF_FLOW_CONDITION WHERE FLOW_ID=" + flowId);
@@ -890,6 +893,8 @@ public class MetaConfigService {
 
     @Transactional
     public void deleteApprovalNode(Long nodeId) {
+        dynamicMapper.delete("DELETE FROM WF_APPROVAL_LOG WHERE DETAIL_ID IN (SELECT DETAIL_ID FROM WF_APPROVAL_DETAIL WHERE NODE_ID=" + nodeId + ")");
+        dynamicMapper.delete("DELETE FROM WF_APPROVAL_DETAIL WHERE NODE_ID=" + nodeId);
         dynamicMapper.delete("DELETE FROM WF_FLOW_APPROVER WHERE NODE_ID=" + nodeId);
         dynamicMapper.delete("DELETE FROM WF_FLOW_NODE WHERE NODE_ID=" + nodeId);
     }
