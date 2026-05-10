@@ -1,12 +1,16 @@
 package com.cost.costserver.auth.controller;
 
 import com.cost.costserver.auth.dto.*;
+import com.cost.costserver.auth.service.PermissionService;
 import com.cost.costserver.auth.service.RoleManageService;
+import com.cost.costserver.common.BusinessException;
 import com.cost.costserver.common.Result;
+import com.cost.costserver.common.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Set;
 
 /**
  * 权限管理控制器（硬编码页面专用）
@@ -17,6 +21,7 @@ import java.util.List;
 public class RoleManageController {
 
     private final RoleManageService roleManageService;
+    private final PermissionService permissionService;
 
     // ==================== 角色管理 ====================
 
@@ -109,6 +114,19 @@ public class RoleManageController {
     @GetMapping("/page/{pageCode}/buttons")
     public Result<List<PageButtonVO>> listPageButtons(@PathVariable String pageCode) {
         return Result.ok(roleManageService.listPageButtons(pageCode));
+    }
+
+    @GetMapping("/page/{pageCode}/my-buttons")
+    public Result<Set<String>> listMyPageButtons(@PathVariable String pageCode) {
+        Long userId = SecurityUtils.getCurrentUserId();
+        if (userId == null) {
+            throw new BusinessException(403, "无权限访问");
+        }
+        PagePermission permission = permissionService.getPagePermission(userId, pageCode);
+        if (permission == null) {
+            throw new BusinessException(403, "无权限访问");
+        }
+        return Result.ok(permission.buttons());
     }
 
     /**

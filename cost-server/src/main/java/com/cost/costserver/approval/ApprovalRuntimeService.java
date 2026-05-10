@@ -3,6 +3,8 @@ package com.cost.costserver.approval;
 import cn.hutool.core.util.StrUtil;
 import com.cost.costserver.common.BusinessException;
 import com.cost.costserver.common.SecurityUtils;
+import com.cost.costserver.auth.dto.PagePermission;
+import com.cost.costserver.auth.service.PermissionService;
 import com.cost.costserver.dynamic.mapper.DynamicMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -22,11 +24,13 @@ public class ApprovalRuntimeService {
 
     private final JdbcTemplate jdbcTemplate;
     private final DynamicMapper dynamicMapper;
+    private final PermissionService permissionService;
 
     @Transactional
     public Map<String, Object> apply(Map<String, Object> request) {
         Long currentUserId = currentUserId();
         String pageCode = requiredText(request, "pageCode");
+        requireButton(pageCode, "approval.apply");
         String tableCode = requiredText(request, "tableCode");
         Long billId = requiredLong(request, "billId");
 
@@ -56,18 +60,21 @@ public class ApprovalRuntimeService {
 
     @Transactional
     public Map<String, Object> approve(Map<String, Object> request) {
+        requireButton(requiredText(request, "pageCode"), "approval.approve");
         Long detailId = resolvePendingDetailId(request);
         return executeDetailProcedure("PKG_WF_APPROVAL.APPROVE_DETAIL", detailId, currentUserId(), text(request.get("comment")));
     }
 
     @Transactional
     public Map<String, Object> reject(Map<String, Object> request) {
+        requireButton(requiredText(request, "pageCode"), "approval.reject");
         String comment = requiredText(request, "comment");
         Long detailId = resolvePendingDetailId(request);
         return executeDetailProcedure("PKG_WF_APPROVAL.REJECT_DETAIL", detailId, currentUserId(), comment);
     }
 
     public Map<String, Object> progress(String pageCode, String tableCode, Long billId) {
+        requireButton(pageCode, "approval.progress");
         Map<String, Object> main = one(
             "SELECT * FROM (" +
                 "SELECT APPROVAL_ID as \"approvalId\", FLOW_ID as \"flowId\", PAGE_CODE as \"pageCode\", PAGE_NAME as \"pageName\", " +
@@ -182,6 +189,14 @@ public class ApprovalRuntimeService {
             throw new BusinessException(401, "未找到当前登录用户：" + username);
         }
         return resolved;
+    }
+
+    private void requireButton(String pageCode, String buttonKey) {
+        Long userId = currentUserId();
+        PagePermission permission = permissionService.getPagePermission(userId, pageCode);
+        if (permission == null || !permission.hasButton(buttonKey)) {
+            throw new BusinessException(403, "无按钮权限：" + buttonKey);
+        }
     }
 
     private Map<String, Object> one(String sql) {

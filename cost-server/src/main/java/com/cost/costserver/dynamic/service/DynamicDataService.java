@@ -964,6 +964,7 @@ public class DynamicDataService {
             throw new BusinessException(400, "主表 tableCode 不能为空");
         }
         master.getData().remove("_tableCode");
+        requireButtonPermission(param.getPageCode(), "save");
 
         // 开始操作日志记录
         String operationType = "added".equals(master.getStatus()) ? "INSERT"
@@ -1118,6 +1119,20 @@ public class DynamicDataService {
             OperationLogContext.LogSession session = OperationLogContext.end();
             operationLogService.saveAsync(session, "FAILED", e.getMessage());
             throw e;
+        }
+    }
+
+    private void requireButtonPermission(String pageCode, String buttonKey) {
+        if (StrUtil.isBlank(pageCode)) {
+            throw new BusinessException(400, "pageCode不能为空");
+        }
+        Long userId = SecurityUtils.getCurrentUserId();
+        if (userId == null) {
+            throw new BusinessException(403, "无权限访问");
+        }
+        PagePermission permission = permissionService.getPagePermission(userId, pageCode);
+        if (permission == null || !permission.hasButton(buttonKey)) {
+            throw new BusinessException(403, "无按钮权限：" + buttonKey);
         }
     }
 

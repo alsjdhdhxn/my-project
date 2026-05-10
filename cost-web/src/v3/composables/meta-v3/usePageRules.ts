@@ -262,6 +262,11 @@ type ComponentConfigWithButtons = {
 };
 
 const REMOVED_BUTTON_ACTIONS = new Set([
+  'add',
+  'addRow',
+  'delete',
+  'deleteRow',
+  'save',
   'clipboard.copy',
   'clipboard_copy',
   'clipboard.paste',

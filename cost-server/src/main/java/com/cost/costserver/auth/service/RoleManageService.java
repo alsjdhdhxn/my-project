@@ -405,6 +405,7 @@ public class RoleManageService {
         );
         
         List<PageButtonVO> result = new ArrayList<>();
+        addDefaultButtonsToButtons(result);
         for (Map<String, Object> comp : components) {
             Object configObj = comp.get("COMPONENT_CONFIG");
             String configJson = convertClobToString(configObj);
@@ -447,6 +448,24 @@ public class RoleManageService {
         addExportConfigsToButtons(pageCode, result);
         
         return result;
+    }
+
+    private void addDefaultButtonsToButtons(List<PageButtonVO> result) {
+        addDefaultButton(result, "addRow", "新增", "系统默认按钮");
+        addDefaultButton(result, "deleteRow", "删除", "系统默认按钮");
+        addDefaultButton(result, "save", "保存", "系统默认按钮");
+        addDefaultButton(result, "approval.apply", "送审", "系统默认按钮");
+        addDefaultButton(result, "approval.approve", "审批通过", "系统默认按钮");
+        addDefaultButton(result, "approval.reject", "驳回", "系统默认按钮");
+        addDefaultButton(result, "approval.progress", "查看审批进度", "系统默认按钮");
+    }
+
+    private void addDefaultButton(List<PageButtonVO> result, String key, String label, String groupName) {
+        PageButtonVO vo = new PageButtonVO();
+        vo.setButtonKey(key);
+        vo.setButtonLabel(label);
+        vo.setGroupName(groupName);
+        result.add(vo);
     }
     
     /**

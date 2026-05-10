@@ -68,6 +68,10 @@ const {
 
 const editingState = ref(false);
 
+const canAddRow = computed(() => runtime.permissions?.hasButton?.('addRow') === true);
+const canDeleteRow = computed(() => runtime.permissions?.hasButton?.('deleteRow') === true);
+const canSave = computed(() => runtime.permissions?.hasButton?.('save') === true);
+
 // 工具栏：合并主表 + 从表 toolbar 按钮
 // 多个 tab 同名 action 合并为下拉按钮
 type MergedToolbarItem = {
@@ -256,6 +260,16 @@ function getSelectedMasterRow() {
   const api = masterGridApi?.value;
   const selectedRows = api?.getSelectedRows?.() || [];
   return selectedRows[0] || null;
+}
+
+function deleteSelectedMasterRows() {
+  const api = masterGridApi?.value;
+  const selectedRows = api?.getSelectedRows?.() || [];
+  if (selectedRows.length === 0) {
+    window.$message?.warning('请先选择要删除的行');
+    return;
+  }
+  selectedRows.forEach((row: any) => deleteMasterRow(row));
 }
 
 // 使用全局主题设置的detailViewMode
@@ -688,6 +702,9 @@ function onDetailRowOpened(event: any) {
     <!-- 工具栏 -->
     <div class="toolbar-container">
       <NSpace>
+        <NButton v-if="canAddRow" type="primary" size="small" @click="addMasterRow">新增</NButton>
+        <NButton v-if="canDeleteRow" type="error" size="small" @click="deleteSelectedMasterRows">删除</NButton>
+        <NButton v-if="canSave" size="small" @click="save">保存</NButton>
         <ApprovalActionGroup :runtime="runtime" :get-selected-row="getSelectedMasterRow" />
         <template v-for="item in mergedToolbarItems" :key="item.key">
           <!-- 下拉按钮：多个 tab 同名 action 合并 -->

@@ -110,6 +110,10 @@ const toolbarItems = computed(() => {
   return toolbar.items.filter((item: any) => item.visible !== false);
 });
 
+const canAddRow = computed(() => runtime?.permissions?.hasButton?.('addRow') === true);
+const canDeleteRow = computed(() => runtime?.permissions?.hasButton?.('deleteRow') === true);
+const canSave = computed(() => runtime?.permissions?.hasButton?.('save') === true);
+
 async function handleToolbarClick(item: any) {
   if (!executeAction) {
     console.warn('[MetaGridV3] executeAction not found in runtime');
@@ -160,6 +164,16 @@ function getSelectedMasterRow() {
   const api = runtime?.masterGridApi?.value;
   const selectedRows = api?.getSelectedRows?.() || [];
   return selectedRows[0] || null;
+}
+
+function deleteSelectedMasterRows() {
+  const api = runtime?.masterGridApi?.value;
+  const selectedRows = api?.getSelectedRows?.() || [];
+  if (selectedRows.length === 0) {
+    window.$message?.warning('请选择要删除的行');
+    return;
+  }
+  selectedRows.forEach((row: any) => runtime?.mutations?.deleteMasterRow?.(row));
 }
 
 function toCssSize(value: string | number | undefined) {
@@ -280,6 +294,9 @@ function handleFilterChanged() {
     <!-- 工具栏 -->
     <div v-if="isMasterGrid" class="toolbar-container">
       <NSpace>
+        <NButton v-if="canAddRow" type="primary" size="small" @click="runtime?.mutations?.addMasterRow?.()">新增</NButton>
+        <NButton v-if="canDeleteRow" type="error" size="small" @click="deleteSelectedMasterRows">删除</NButton>
+        <NButton v-if="canSave" size="small" @click="save?.()">保存</NButton>
         <ApprovalActionGroup :runtime="runtime" :get-selected-row="getSelectedMasterRow" />
         <NButton
           v-for="item in toolbarItems"

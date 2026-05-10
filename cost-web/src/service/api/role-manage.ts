@@ -172,6 +172,11 @@ export async function fetchPageButtons(pageCode: string) {
   return data || [];
 }
 
+export async function fetchMyPageButtons(pageCode: string) {
+  const { data } = await request<string[]>({ url: `/role-manage/page/${pageCode}/my-buttons` });
+  return data || [];
+}
+
 // ==================== 列权限配置 ====================
 
 export interface PageColumnVO {

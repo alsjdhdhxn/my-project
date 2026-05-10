@@ -10,6 +10,11 @@ const LABEL_SAVE_GRID = '保存列配置';
 const LABEL_CUSTOM_EXPORT = '自定义导出';
 
 const REMOVED_ACTIONS = new Set([
+  'add',
+  'addRow',
+  'delete',
+  'deleteRow',
+  'save',
   'clipboard.copy',
   'clipboard_copy',
   'clipboard.paste',
@@ -193,12 +198,6 @@ export function useGridContextMenu(params: {
                 >;
               }
             }
-            console.log('[DEBUG] deleteRow - ctx.type:', ctx.type, 'ctx.tabKey:', ctx.tabKey);
-            console.log(
-              '[DEBUG] deleteRow - resolvedDetailEditable keys:',
-              resolvedDetailEditable ? Object.keys(resolvedDetailEditable) : 'undefined'
-            );
-
             // 检查行是否可编辑（不可编辑的行不允许删除）
             const checkEditable = (row: any, tabKey?: string): boolean => {
               if (!row) return false;
@@ -214,15 +213,8 @@ export function useGridContextMenu(params: {
               } else {
                 // 从表检查
                 const detailChecker = tabKey ? resolvedDetailEditable?.[tabKey] : undefined;
-                console.log(
-                  '[DEBUG] checkEditable - tabKey:',
-                  tabKey,
-                  'detailChecker:',
-                  detailChecker ? 'exists' : 'undefined'
-                );
                 if (detailChecker) {
                   const isEditable = detailChecker(row);
-                  console.log('[DEBUG] checkEditable - row:', row, 'isEditable:', isEditable);
                   if (!isEditable) {
                     notifyError?.('该行不允许删除');
                     return false;

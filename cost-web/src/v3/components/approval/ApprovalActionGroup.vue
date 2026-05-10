@@ -34,12 +34,16 @@ const progressVisible = ref(false);
 const rejectReason = ref('');
 const progressData = ref<any>({ main: {}, details: [], logs: [] });
 
-const dropdownOptions = [
-  { label: '送审', key: 'apply' },
-  { label: '审批通过', key: 'approve' },
-  { label: '驳回', key: 'reject' },
-  { label: '查看审批进度', key: 'progress' }
-];
+const dropdownOptions = computed(() =>
+  [
+    { label: '送审', key: 'apply', permission: 'approval.apply' },
+    { label: '审批通过', key: 'approve', permission: 'approval.approve' },
+    { label: '驳回', key: 'reject', permission: 'approval.reject' },
+    { label: '查看审批进度', key: 'progress', permission: 'approval.progress' }
+  ].filter(item => hasButton(item.permission))
+);
+
+const visible = computed(() => dropdownOptions.value.length > 0);
 
 const detailColumns: DataTableColumns<any> = [
   { title: '级别', key: 'approvalLevel', width: 70 },
@@ -79,12 +83,17 @@ function renderStatus(status: string) {
   return hTag(status || '-', type);
 }
 
+function hasButton(buttonKey: string) {
+  return props.runtime?.permissions?.hasButton?.(buttonKey) === true;
+}
+
 function hTag(label: string, type: any) {
   return h(NTag, { size: 'small', type, bordered: false }, { default: () => label });
 }
 
 async function handleSelect(key: string) {
   if (key === 'reject') {
+    if (!hasButton('approval.reject')) return;
     if (!buildPayload()) return;
     rejectReason.value = '';
     rejectVisible.value = true;
@@ -92,16 +101,19 @@ async function handleSelect(key: string) {
   }
 
   if (key === 'progress') {
+    if (!hasButton('approval.progress')) return;
     await openProgress();
     return;
   }
 
   if (key === 'apply') {
+    if (!hasButton('approval.apply')) return;
     await runAction(() => applyApproval(requiredPayload()), '送审完成');
     return;
   }
 
   if (key === 'approve') {
+    if (!hasButton('approval.approve')) return;
     await runAction(() => approveApproval(requiredPayload()), '审批通过');
   }
 }
@@ -211,7 +223,7 @@ function refreshGrid() {
 </script>
 
 <template>
-  <NDropdown trigger="click" :options="dropdownOptions" @select="handleSelect">
+  <NDropdown v-if="visible" trigger="click" :options="dropdownOptions" @select="handleSelect">
     <NButton type="primary" size="small" :loading="loading">送审</NButton>
   </NDropdown>
 

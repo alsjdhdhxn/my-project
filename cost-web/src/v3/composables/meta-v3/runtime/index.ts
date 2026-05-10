@@ -6,6 +6,7 @@ import { useAdvancedSearch } from '@/v3/composables/meta-v3/useAdvancedSearch';
 import { useUserGridConfig } from '@/v3/composables/meta-v3/useUserGridConfig';
 import { useCustomExport } from '@/v3/composables/meta-v3/useCustomExport';
 import { useWorkingSetStore } from '@/v3/composables/meta-v3/useWorkingSetStore';
+import { fetchMyPageButtons } from '@/service/api/role-manage';
 import { createRuntimeLogger } from './logger';
 import { useRuntimeLookup } from './useRuntimeLookup';
 import { useRuntimeMetadataReload } from './useRuntimeMetadataReload';
@@ -76,6 +77,7 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
   } = meta;
   const gridConfig = useUserGridConfig({ pageCode, notifyError, notifySuccess });
   const isReady = ref(false);
+  const buttonPermissions = ref<Set<string>>(new Set());
   const {
     runtimeStatus,
     runtimeError,
@@ -279,8 +281,25 @@ export function useBaseRuntime(options: BaseRuntimeOptions, features?: RuntimeFe
     reportComponentError
   };
 
+  function hasButtonPermission(buttonKey: string) {
+    const permissions = buttonPermissions.value;
+    return permissions.has('*') || permissions.has(buttonKey);
+  }
+
+  fetchMyPageButtons(pageCode)
+    .then(buttons => {
+      buttonPermissions.value = new Set(buttons || []);
+    })
+    .catch(() => {
+      buttonPermissions.value = new Set();
+    });
+
   runtimeApi = {
     pageCode,
+    permissions: {
+      buttonPermissions,
+      hasButton: hasButtonPermission
+    },
     masterGridApi,
     detailGridApisByTab,
     activeMasterRowKey,
