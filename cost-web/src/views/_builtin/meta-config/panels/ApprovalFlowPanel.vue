@@ -2,6 +2,7 @@
 import { computed, h, inject, nextTick, onMounted, ref, watch } from 'vue';
 import type { Ref } from 'vue';
 import {
+  NAlert,
   NButton,
   NEmpty,
   NForm,
@@ -33,7 +34,7 @@ import {
   saveApprovalNode
 } from '@/service/api/meta-config';
 
-type SelectedKind = 'flow' | 'condition' | 'node' | 'approver' | 'readonly' | '';
+type SelectedKind = 'flow' | 'condition' | 'node' | 'approver' | '';
 
 type ApprovalTreeNode = TreeOption & {
   kind: SelectedKind;
@@ -57,11 +58,12 @@ const selectedKind = ref<SelectedKind>('');
 const selectedPayload = ref<any>(null);
 const draft = ref<any>({});
 const expandedKeys = ref<Array<string | number>>([]);
+const activePageCodeFilter = ref('');
 const loading = ref(false);
 
 const conditionModeOptions = [
   { label: '总是满足', value: 'ALWAYS' },
-  { label: 'SQL条件', value: 'SQL' },
+  { label: 'SQL 条件', value: 'SQL' },
   { label: '可视化条件', value: 'VISUAL' }
 ];
 
@@ -79,6 +81,11 @@ const onErrorOptions = [
   { label: '失败时按不满足处理', value: 'REQUIRE_APPROVAL' },
   { label: '失败时阻断流程', value: 'BLOCK' }
 ];
+
+const visibleFlows = computed(() => {
+  if (!activePageCodeFilter.value) return flows.value;
+  return flows.value.filter(flow => flow.pageCode === activePageCodeFilter.value);
+});
 
 const userOptions = computed(() =>
   (referenceData.value.users || []).map(user => ({
@@ -104,85 +111,41 @@ const deptOptions = computed(() =>
 const treeData = computed<ApprovalTreeNode[]>(() => {
   if (!selectedFlow.value) return [];
 
-  const flowKey = `flow:${selectedFlow.value.flowId || 'new'}`;
-  const entranceChildren: ApprovalTreeNode[] = conditions.value.length
-    ? conditions.value.map(condition => ({
-        key: `condition:${condition.conditionId || condition._tempKey}`,
-        label: condition.conditionName || '总入口条件',
-        kind: 'condition',
-        payload: condition,
-        meta: condition.conditionMode || 'ALWAYS'
-      }))
-    : [
-        {
-          key: 'condition:empty',
-          label: '未配置入口条件：全部需要审批',
-          kind: 'readonly',
-          meta: '默认'
-        }
-      ];
+  const conditionChildren = conditions.value.map(condition => ({
+    key: `condition:${condition.conditionId || condition._tempKey}`,
+    label: condition.conditionName || '入口条件',
+    kind: 'condition' as const,
+    payload: condition,
+    meta: condition.conditionMode || 'ALWAYS'
+  }));
 
   const nodeChildren = [...nodes.value]
     .sort((a, b) => Number(a.approvalLevel || 0) - Number(b.approvalLevel || 0))
     .map(node => {
       const nodeId = Number(node.nodeId);
       const approvers = approversByNode.value[nodeId] || [];
-      const approverChildren: ApprovalTreeNode[] = approvers.length
-        ? approvers.map((approver, index) => ({
-            key: `approver:${approver.id || approver._tempKey}`,
-            label: `审批人分支 ${index + 1}：${approverLabel(approver)}`,
-            kind: 'approver',
-            payload: approver,
-            nodeId,
-            meta: approver.conditionMode || 'ALWAYS'
-          }))
-        : [
-            {
-              key: `approver-empty:${nodeId}`,
-              label: '未配置审批人分支：本级无人认领自动通过',
-              kind: 'readonly',
-              nodeId,
-              meta: '无人认领'
-            }
-          ];
 
       return {
         key: `node:${node.nodeId || node._tempKey}`,
         label: `${node.approvalLevel || '-'}级审批：${node.nodeName || '未命名节点'}`,
-        kind: 'node',
+        kind: 'node' as const,
         payload: node,
         nodeId,
         meta: `${node.approvalMode || 'OR'} / ${node.conditionMode || 'ALWAYS'}`,
-        children: [
-          {
-            key: `node-reject:${node.nodeId || node._tempKey}`,
-            label: '本级条件不满足：系统管理员自动驳回',
-            kind: 'readonly',
-            nodeId,
-            meta: node.conditionMode || 'ALWAYS'
-          },
-          {
-            key: `node-unclaimed:${node.nodeId || node._tempKey}`,
-            label: `${node.approvalLevel || '-'}级条件满足，但无分支认领：无人认领自动通过`,
-            kind: 'readonly',
-            nodeId,
-            meta: '自动通过'
-          },
-          {
-            key: `node-branches:${node.nodeId || node._tempKey}`,
-            label: '本级条件满足，分支命中',
-            kind: 'readonly',
-            nodeId,
-            meta: node.approvalMode || 'OR',
-            children: approverChildren
-          }
-        ]
-      } as ApprovalTreeNode;
+        children: approvers.map((approver, index) => ({
+          key: `approver:${approver.id || approver._tempKey}`,
+          label: `审批人分支 ${index + 1}：${approverLabel(approver)}`,
+          kind: 'approver' as const,
+          payload: approver,
+          nodeId,
+          meta: approver.conditionMode || 'ALWAYS'
+        }))
+      };
     });
 
   return [
     {
-      key: flowKey,
+      key: `flow:${selectedFlow.value.flowId || selectedFlow.value._tempKey || 'new'}`,
       label: selectedFlow.value.flowName || '审批流',
       kind: 'flow',
       payload: selectedFlow.value,
@@ -191,25 +154,10 @@ const treeData = computed<ApprovalTreeNode[]>(() => {
         {
           key: 'entrance',
           label: '总入口条件',
-          kind: 'readonly',
-          meta: '不满足：无需审批，自动通过',
-          children: [
-            ...entranceChildren,
-            {
-              key: 'entrance-pass',
-              label: '满足：进入一级审批',
-              kind: 'readonly',
-              meta: '进入流程'
-            }
-          ]
+          kind: '',
+          children: conditionChildren
         },
-        ...nodeChildren,
-        {
-          key: 'flow-approved',
-          label: '所有需要审批的级别完成：流程通过',
-          kind: 'readonly',
-          meta: '结束'
-        }
+        ...nodeChildren
       ]
     }
   ];
@@ -286,10 +234,8 @@ async function loadFlows(targetFlowId?: number | null) {
     flows.value = await fetchApprovalFlows();
     const target =
       flows.value.find(flow => Number(flow.flowId) === Number(targetFlowId)) ||
-      (filterState?.value?.tab === 'approval'
-        ? flows.value.find(flow => flow.pageCode === filterState.value?.pageCode)
-        : null) ||
-      flows.value[0] ||
+      (activePageCodeFilter.value ? flows.value.find(flow => flow.pageCode === activePageCodeFilter.value) : null) ||
+      visibleFlows.value[0] ||
       null;
     await selectFlow(target);
   } finally {
@@ -303,8 +249,13 @@ async function selectFlow(flow: any) {
   nodes.value = [];
   approversByNode.value = {};
 
-  if (!flow?.flowId) {
-    setEditor('flow', flow, flow?._tempKey || null);
+  if (!flow) {
+    setEditor('', null, null);
+    return;
+  }
+
+  if (!flow.flowId) {
+    setEditor('flow', flow, flow._tempKey || null);
     return;
   }
 
@@ -352,7 +303,7 @@ function handleTreeSelect(keys: Array<string | number>) {
   const key = keys[0];
   if (!key) return;
   const node = findNodeByKey(treeData.value, key);
-  if (!node) return;
+  if (!node || !node.kind) return;
   setEditor(node.kind, node.payload, node.key);
 }
 
@@ -365,11 +316,9 @@ function renderLabel({ option }: { option: TreeOption }) {
         ? 'success'
         : item.kind === 'approver'
           ? 'warning'
-          : item.kind === 'condition'
-            ? 'default'
-            : 'default';
+          : 'default';
 
-  return h('div', { class: ['tree-line', `tree-line-${item.kind || 'readonly'}`] }, [
+  return h('div', { class: ['tree-line', item.kind ? `tree-line-${item.kind}` : 'tree-line-folder'] }, [
     h('span', { class: 'tree-label' }, String(item.label || '')),
     item.meta
       ? h(
@@ -387,11 +336,12 @@ function renderLabel({ option }: { option: TreeOption }) {
 }
 
 function addFlow() {
+  const pageCode = activePageCodeFilter.value || '';
   const row = {
     _isNew: true,
     _tempKey: tempKey('flow'),
     flowId: null,
-    pageCode: '',
+    pageCode,
     pageName: '',
     flowName: '新审批流',
     flowVersion: 1,
@@ -421,12 +371,13 @@ function addCondition() {
     isEnabled: 1
   };
   conditions.value = [...conditions.value, row];
+  expandedKeys.value = [...new Set([...expandedKeys.value, 'entrance'])];
   setEditor('condition', row, `condition:${row._tempKey}`);
 }
 
 function addNode() {
   if (!selectedFlow.value?.flowId) {
-    message.warning('请先保存审批流，再新增审批节点');
+    message.warning('请先保存审批流，再新增审批级别');
     return;
   }
   const maxLevel = Math.max(0, ...nodes.value.map(node => Number(node.approvalLevel) || 0));
@@ -485,6 +436,7 @@ function addApprover() {
     ...approversByNode.value,
     [currentNode.nodeId]: [...(approversByNode.value[currentNode.nodeId] || []), row]
   };
+  expandedKeys.value = [...new Set([...expandedKeys.value, `node:${currentNode.nodeId}`])];
   setEditor('approver', row, `approver:${row._tempKey}`);
 }
 
@@ -496,7 +448,7 @@ function prepareSavePayload() {
 }
 
 async function saveCurrent() {
-  if (!selectedKind.value || selectedKind.value === 'readonly') return;
+  if (!selectedKind.value) return;
 
   if (selectedKind.value === 'flow') {
     if (!text(draft.value.pageCode) || !text(draft.value.flowName)) {
@@ -547,17 +499,10 @@ async function saveCurrent() {
 }
 
 async function deleteCurrent() {
-  if (!selectedKind.value || selectedKind.value === 'readonly') return;
+  if (!selectedKind.value) return;
 
   if (selectedKind.value === 'flow') {
-    if (!draft.value.flowId) {
-      flows.value = flows.value.filter(flow => flow !== selectedPayload.value);
-      await selectFlow(flows.value[0] || null);
-      return;
-    }
-    await deleteApprovalFlow(draft.value.flowId);
-    message.success('审批流已删除');
-    await loadFlows();
+    await removeSelectedFlow();
     return;
   }
 
@@ -589,20 +534,43 @@ async function deleteCurrent() {
   }
 }
 
+async function removeSelectedFlow() {
+  if (!selectedFlow.value) return;
+  if (!selectedFlow.value.flowId) {
+    flows.value = flows.value.filter(flow => flow !== selectedFlow.value);
+    await selectFlow(visibleFlows.value[0] || null);
+    return;
+  }
+  await deleteApprovalFlow(selectedFlow.value.flowId);
+  message.success('审批流已删除');
+  await loadFlows();
+}
+
 function updateEnabled(value: boolean) {
   draft.value.isEnabled = value ? 1 : 0;
 }
 
-function selectFlowByPageCode(pageCode: string) {
+function clearPageFilter() {
+  activePageCodeFilter.value = '';
+  loadFlows();
+}
+
+async function applyPageFilter(pageCode: string) {
+  activePageCodeFilter.value = pageCode;
+  await nextTick();
   const flow = flows.value.find(item => item.pageCode === pageCode);
   if (flow) {
-    selectFlow(flow);
+    await selectFlow(flow);
   } else {
+    await selectFlow(null);
     message.info(`当前页面还没有配置审批流：${pageCode}`);
   }
 }
 
 onMounted(async () => {
+  if (filterState?.value?.tab === 'approval' && filterState.value.pageCode) {
+    activePageCodeFilter.value = filterState.value.pageCode;
+  }
   await loadReferenceData();
   await loadFlows();
 });
@@ -611,7 +579,7 @@ watch(
   () => filterState?.value,
   state => {
     if (state?.tab === 'approval' && state.pageCode) {
-      selectFlowByPageCode(state.pageCode);
+      applyPageFilter(state.pageCode);
     }
   }
 );
@@ -621,12 +589,24 @@ watch(
   <div class="approval-workbench">
     <aside class="flow-list">
       <div class="panel-head">
-        <div class="title">审批流</div>
-        <NButton size="small" type="primary" @click="addFlow">新增</NButton>
+        <div>
+          <div class="title">审批流</div>
+          <div v-if="activePageCodeFilter" class="subtitle">当前页面：{{ activePageCodeFilter }}</div>
+        </div>
+        <NSpace size="small">
+          <NButton v-if="activePageCodeFilter" size="small" quaternary @click="clearPageFilter">全部</NButton>
+          <NButton size="small" type="primary" @click="addFlow">新增</NButton>
+          <NPopconfirm @positive-click="removeSelectedFlow">
+            <template #trigger>
+              <NButton size="small" type="error" :disabled="!selectedFlow">删除</NButton>
+            </template>
+            删除审批流会同时删除入口条件、审批节点和审批人分支，确定继续？
+          </NPopconfirm>
+        </NSpace>
       </div>
       <div class="flow-items">
         <button
-          v-for="flow in flows"
+          v-for="flow in visibleFlows"
           :key="flow.flowId || flow._tempKey"
           class="flow-item"
           :class="{ active: selectedFlow === flow || selectedFlow?.flowId === flow.flowId }"
@@ -636,7 +616,7 @@ watch(
           <span class="flow-name">{{ flow.flowName || '未命名审批流' }}</span>
           <span class="flow-meta">{{ flow.pageCode || '-' }} · 优先级 {{ flow.flowPriority ?? '-' }}</span>
         </button>
-        <NEmpty v-if="!flows.length && !loading" description="暂无审批流" />
+        <NEmpty v-if="!visibleFlows.length && !loading" description="暂无审批流" />
       </div>
     </aside>
 
@@ -644,7 +624,7 @@ watch(
       <div class="panel-head">
         <div>
           <div class="title">{{ selectedFlow?.flowName || '请选择审批流' }}</div>
-          <div class="subtitle">总入口条件不满足时自动通过；本级条件不满足时系统管理员自动驳回。</div>
+          <div class="subtitle">树中只展示真实配置项：入口条件、审批级别、审批人分支。</div>
         </div>
         <NSpace size="small">
           <NButton size="small" :disabled="!selectedFlow?.flowId" @click="addCondition">新增入口条件</NButton>
@@ -656,6 +636,11 @@ watch(
       </div>
 
       <div class="tree-shell">
+        <NAlert type="info" :bordered="false" class="help-box">
+          总入口条件不满足：无需审批，自动通过。入口条件满足后按审批级别顺序执行。
+          本级条件不满足：系统管理员自动驳回。本级条件满足但没有审批分支命中：该级无人认领自动通过。
+        </NAlert>
+
         <NTree
           v-if="treeData.length"
           v-model:expanded-keys="expandedKeys"
@@ -676,7 +661,7 @@ watch(
           <div class="title">属性编辑</div>
           <div class="subtitle">{{ selectedKind || '未选择' }}</div>
         </div>
-        <NSpace v-if="selectedKind && selectedKind !== 'readonly'" size="small">
+        <NSpace v-if="selectedKind" size="small">
           <NButton size="small" type="primary" @click="saveCurrent">保存</NButton>
           <NPopconfirm @positive-click="deleteCurrent">
             <template #trigger>
@@ -689,11 +674,6 @@ watch(
 
       <div class="editor-body">
         <NEmpty v-if="!selectedKind" description="选择树上的流程、条件、节点或分支进行编辑" />
-
-        <div v-else-if="selectedKind === 'readonly'" class="readonly-tip">
-          <div class="readonly-title">规则说明</div>
-          <div>{{ draft.label || selectedPayload?.label || '这是流程内置判断规则，不需要单独保存。' }}</div>
-        </div>
 
         <NForm v-else label-placement="top" size="small">
           <template v-if="selectedKind === 'flow'">
@@ -726,7 +706,7 @@ watch(
             <NFormItem label="条件类型">
               <NSelect v-model:value="draft.conditionMode" :options="conditionModeOptions" />
             </NFormItem>
-            <NFormItem label="SQL条件">
+            <NFormItem label="SQL 条件">
               <NInput
                 v-model:value="draft.sqlExpr"
                 type="textarea"
@@ -734,7 +714,7 @@ watch(
                 :autosize="{ minRows: 4, maxRows: 10 }"
               />
             </NFormItem>
-            <NFormItem label="可视化条件JSON">
+            <NFormItem label="可视化条件 JSON">
               <NInput v-model:value="draft.logicTree" type="textarea" :autosize="{ minRows: 3, maxRows: 8 }" />
             </NFormItem>
             <NFormItem label="异常策略">
@@ -760,11 +740,11 @@ watch(
             <NFormItem label="本级条件类型">
               <NSelect v-model:value="draft.conditionMode" :options="conditionModeOptions" />
             </NFormItem>
-            <NFormItem label="本级SQL条件">
+            <NFormItem label="本级 SQL 条件">
               <NInput
                 v-model:value="draft.sqlExpr"
                 type="textarea"
-                placeholder="条件不满足时：系统管理员自动驳回"
+                placeholder="本级条件不满足时：系统管理员自动驳回"
                 :autosize="{ minRows: 4, maxRows: 10 }"
               />
             </NFormItem>
@@ -797,7 +777,7 @@ watch(
             <NFormItem label="分支条件类型">
               <NSelect v-model:value="draft.conditionMode" :options="conditionModeOptions" />
             </NFormItem>
-            <NFormItem label="分支SQL条件">
+            <NFormItem label="分支 SQL 条件">
               <NInput
                 v-model:value="draft.sqlExpr"
                 type="textarea"
@@ -818,7 +798,7 @@ watch(
 <style scoped>
 .approval-workbench {
   display: grid;
-  grid-template-columns: 260px minmax(460px, 1fr) 360px;
+  grid-template-columns: 280px minmax(460px, 1fr) 360px;
   gap: 12px;
   height: 100%;
   min-height: 0;
@@ -900,6 +880,11 @@ watch(
   font-size: 12px;
 }
 
+.help-box {
+  margin-bottom: 10px;
+  line-height: 1.7;
+}
+
 .tree-shell :deep(.n-tree-node-content) {
   min-height: 34px;
 }
@@ -918,8 +903,9 @@ watch(
   white-space: nowrap;
 }
 
-.tree-line-readonly .tree-label {
-  color: #667085;
+.tree-line-folder .tree-label {
+  color: #4b5565;
+  font-weight: 700;
 }
 
 .tree-tag {
@@ -930,17 +916,6 @@ watch(
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
-}
-
-.readonly-tip {
-  color: #4b5565;
-  line-height: 1.7;
-}
-
-.readonly-title {
-  margin-bottom: 8px;
-  color: #1f2633;
-  font-weight: 700;
 }
 
 @media (max-width: 1180px) {
