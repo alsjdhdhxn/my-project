@@ -109,7 +109,8 @@ const selectedPage = computed(() => {
 const userOptions = computed(() =>
   (referenceData.value.users || []).map(user => ({
     label: `${user.realName || user.username} (${user.id})`,
-    value: Number(user.id)
+    value: Number(user.id),
+    searchText: [user.realName, user.username, user.id].filter(Boolean).join(' ').toLowerCase()
   }))
 );
 
@@ -143,7 +144,7 @@ const treeData = computed<ApprovalTreeNode[]>(() => {
       meta: flowMeta(flow),
       children: nodes.map(node => {
         const nodeId = Number(node.nodeId);
-        const approvers = detail.approversByNode[nodeId] || [];
+        const approvers = groupApprovers(detail.approversByNode[nodeId] || []);
 
         return {
           key: `node:${node.nodeId || node._tempKey}`,
@@ -234,11 +235,93 @@ function pageLabel(page: any) {
   return page.resourceName || page.pageName || page.pageCode || '未命名页面';
 }
 
+function userLabelById(userId: unknown) {
+  const user = optionById(referenceData.value.users || [], userId);
+  if (!user) return '';
+  return user.realName || user.username || '';
+}
+
+function normalizeUserIds(value: unknown): number[] {
+  const values = Array.isArray(value) ? value : value == null || value === '' ? [] : [value];
+  return Array.from(
+    new Set(
+      values
+        .map(item => numberValue(item))
+        .filter((item): item is number => item !== null)
+    )
+  );
+}
+
+function approverGroupKey(approver: any) {
+  if (approver?.targetType !== 'USER') {
+    return `single:${approver?.id || approver?._tempKey || approver?.targetRoleId || ''}`;
+  }
+  return [
+    approver.nodeId ?? '',
+    approver.applyDeptId ?? '',
+    approver.conditionMode || 'ALWAYS',
+    text(approver.sqlExpr),
+    approver.onError || 'REQUIRE_APPROVAL',
+    approver.sortOrder ?? '',
+    approver.isEnabled ?? 1
+  ].join('|');
+}
+
+function groupApprovers(approvers: any[]) {
+  const grouped: any[] = [];
+  const indexMap = new Map<string, number>();
+
+  for (const approver of approvers) {
+    if (approver?.targetType !== 'USER') {
+      grouped.push({
+        ...approver,
+        _members: [approver],
+        targetUserIds: approver.targetUserId ? [Number(approver.targetUserId)] : []
+      });
+      continue;
+    }
+
+    const key = approverGroupKey(approver);
+    const existingIndex = indexMap.get(key);
+    if (existingIndex == null) {
+      grouped.push({
+        ...approver,
+        _members: [approver],
+        targetUserIds: approver.targetUserId ? [Number(approver.targetUserId)] : []
+      });
+      indexMap.set(key, grouped.length - 1);
+      continue;
+    }
+
+    const current = grouped[existingIndex];
+    current._members.push(approver);
+    if (approver.targetUserId != null) {
+      current.targetUserIds = Array.from(new Set([...(current.targetUserIds || []), Number(approver.targetUserId)]));
+    }
+  }
+
+  for (const approver of grouped) {
+    approver.targetUserNames = normalizeUserIds(approver.targetUserIds).map(id => userLabelById(id)).filter(Boolean);
+  }
+
+  return grouped;
+}
+
 function approverLabel(approver: any) {
   if (approver.targetType === 'ROLE') {
     return approver.targetRoleName || approver.targetRoleCode || `角色 ${approver.targetRoleId || '-'}`;
   }
+  const names = Array.isArray(approver.targetUserNames) ? approver.targetUserNames.filter(Boolean) : [];
+  if (names.length) {
+    return names.join('、');
+  }
   return approver.targetUserName || `用户 ${approver.targetUserId || '-'}`;
+}
+
+function filterUserOption(pattern: string, option: { label?: string; searchText?: string } | undefined) {
+  const keyword = text(pattern).toLowerCase();
+  if (!keyword) return true;
+  return (option?.searchText || option?.label || '').toLowerCase().includes(keyword);
 }
 
 function optionById(list: any[], id: unknown) {
@@ -267,6 +350,14 @@ function fillNamesForApprover(row: any) {
   row.targetRoleName = '';
 }
 
+function approverEditorDraft(approver: any) {
+  const row = clone(approver || {});
+  row.targetUserIds = normalizeUserIds(row.targetUserIds ?? row.targetUserId);
+  row.targetUserNames = row.targetUserIds.map((id: number) => userLabelById(id)).filter(Boolean);
+  row._members = Array.isArray(approver?._members) ? clone(approver._members) : approver ? [clone(approver)] : [];
+  return row;
+}
+
 function flowEditorDraft(flow: any) {
   const row = clone(flow || {});
   const remark = parseFlowRemark(row.remark);
@@ -286,7 +377,7 @@ function setEditor(kind: SelectedKind, payload?: any, key?: string | number | nu
   selectedKind.value = kind;
   selectedPayload.value = payload || null;
   selectedKey.value = key ? String(key) : null;
-  draft.value = kind === 'flow' ? flowEditorDraft(payload || {}) : clone(payload || {});
+  draft.value = kind === 'flow' ? flowEditorDraft(payload || {}) : kind === 'approver' ? approverEditorDraft(payload || {}) : clone(payload || {});
 }
 
 async function loadReferenceData() {
@@ -481,6 +572,8 @@ function addApprover() {
     targetType: 'USER',
     targetUserId: null,
     targetUserName: '',
+    targetUserIds: [],
+    targetUserNames: [],
     targetRoleId: null,
     targetRoleCode: '',
     targetRoleName: '',
@@ -573,14 +666,61 @@ async function saveCurrent() {
       message.warning('角色审批分支必须选择角色');
       return;
     }
-    if (draft.value.targetType !== 'ROLE' && !numberValue(draft.value.targetUserId)) {
-      message.warning('用户审批分支必须选择用户');
-      return;
+    const memberRows = Array.isArray(selectedPayload.value?._members) ? selectedPayload.value._members : selectedPayload.value ? [selectedPayload.value] : [];
+    let saved: any = null;
+
+    if (draft.value.targetType !== 'ROLE') {
+      const userIds = normalizeUserIds(draft.value.targetUserIds);
+      if (!userIds.length) {
+        message.warning('用户审批分支必须选择用户');
+        return;
+      }
+
+      const existingByUserId = new Map(
+        memberRows
+          .map((item: any) => [numberValue(item.targetUserId), item] as const)
+          .filter(([userId]) => userId !== null) as Array<[number, any]>
+      );
+
+      const retainedIds = new Set<number>();
+      for (const userId of userIds) {
+        const payload = prepareSavePayload();
+        const user = optionById(referenceData.value.users || [], userId);
+        payload.targetType = 'USER';
+        payload.targetUserId = userId;
+        payload.targetUserName = user ? user.realName || user.username : '';
+        payload.targetRoleId = null;
+        payload.targetRoleCode = '';
+        payload.targetRoleName = '';
+        const existing = existingByUserId.get(userId);
+        payload.id = existing?.id || null;
+        const currentSaved = await saveApprovalApprover(payload);
+        if (currentSaved?.id) retainedIds.add(Number(currentSaved.id));
+        if (!saved) saved = currentSaved;
+      }
+
+      for (const item of memberRows) {
+        if (item?.id && !retainedIds.has(Number(item.id))) {
+          await deleteApprovalApprover(Number(item.id));
+        }
+      }
+    } else {
+      const payload = prepareSavePayload();
+      payload.targetUserId = null;
+      payload.targetUserName = '';
+      payload.id = memberRows[0]?.id || payload.id || null;
+      saved = await saveApprovalApprover(payload);
+      for (const item of memberRows.slice(1)) {
+        if (item?.id) {
+          await deleteApprovalApprover(Number(item.id));
+        }
+      }
     }
-    const saved = await saveApprovalApprover(prepareSavePayload());
+
     message.success('分支条件已保存');
     await loadPageFlowDetails(selectedPageCode.value);
-    setEditor('approver', saved, `approver:${saved.id}`);
+    const node = getFlowDetail(selectedFlow.value?.flowId).nodes.find(item => Number(item.nodeId) === Number(draft.value.nodeId));
+    setEditor(node ? 'node' : 'flow', node || selectedFlow.value, node ? `node:${node.nodeId}` : `flow:${selectedFlow.value?.flowId}`);
   }
 }
 
@@ -604,7 +744,24 @@ async function deleteCurrent() {
   }
 
   if (selectedKind.value === 'approver') {
-    if (draft.value.id) await deleteApprovalApprover(draft.value.id);
+    const memberRows = Array.isArray(selectedPayload.value?._members) ? selectedPayload.value._members : draft.value.id ? [{ id: draft.value.id }] : [];
+    if (memberRows.length) {
+      for (const item of memberRows) {
+        if (item?.id) await deleteApprovalApprover(Number(item.id));
+      }
+    } else if (draft.value._tempKey && selectedFlow.value?.flowId) {
+      const detail = getFlowDetail(selectedFlow.value.flowId);
+      flowDetails.value = {
+        ...flowDetails.value,
+        [selectedFlow.value.flowId]: {
+          ...detail,
+          approversByNode: {
+            ...detail.approversByNode,
+            [draft.value.nodeId]: (detail.approversByNode[draft.value.nodeId] || []).filter(item => item._tempKey !== draft.value._tempKey)
+          }
+        }
+      };
+    }
     message.success('分支条件已删除');
     await loadPageFlowDetails(selectedPageCode.value);
     const node = getFlowDetail(selectedFlow.value?.flowId).nodes.find(item => Number(item.nodeId) === Number(draft.value.nodeId));
@@ -879,8 +1036,17 @@ watch(
               <NSelect v-model:value="draft.targetRoleId" filterable :options="roleOptions" />
             </NFormItem>
             <NFormItem v-else label="审批用户">
-              <NSelect v-model:value="draft.targetUserId" filterable :options="userOptions" />
+              <NSelect
+                v-model:value="draft.targetUserIds"
+                multiple
+                filterable
+                :options="userOptions"
+                :filter="filterUserOption"
+              />
             </NFormItem>
+            <NAlert v-if="draft.targetType !== 'ROLE'" type="info" :bordered="false">
+              同一分支可同时选择多位审批人，保存后会按同条件拆成多条审批记录。
+            </NAlert>
             <NFormItem label="分支条件类型">
               <NSelect v-model:value="draft.conditionMode" :options="conditionModeOptions" />
             </NFormItem>

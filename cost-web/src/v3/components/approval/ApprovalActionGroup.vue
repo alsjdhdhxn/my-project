@@ -30,6 +30,28 @@ const props = defineProps<{
   getSelectedRow: () => any | null;
 }>();
 
+type ApprovalDetailRow = {
+  detailId?: number | string;
+  roundNo?: number | string;
+  nodeId?: number | string;
+  approvalLevel?: number | string;
+  nodeName?: string;
+  approvalMode?: string;
+  targetType?: string;
+  targetUserId?: number | string;
+  targetUserName?: string;
+  targetRoleId?: number | string;
+  targetRoleName?: string;
+  status?: string;
+  operateUserId?: number | string;
+  operateUsername?: string;
+  operateRealName?: string;
+  approveComment?: string;
+  approveTime?: string;
+  operateTime?: string;
+  isForced?: number | string;
+};
+
 const message = useMessage();
 
 const loading = ref(false);
@@ -60,16 +82,15 @@ const visible = computed(() => dropdownOptions.value.length > 0);
 
 const detailColumns: DataTableColumns<any> = [
   { title: '级别', key: 'approvalLevel', width: 70 },
-  { title: '节点', key: 'nodeName', minWidth: 120 },
-  { title: '审批人', key: 'targetUserName', minWidth: 120, render: row => row.targetUserName || row.targetRoleName || '-' },
+  { title: '节点', key: 'nodeName', minWidth: 140 },
+  { title: '预计审批人', key: 'expectedApprovers', minWidth: 220, ellipsis: { tooltip: true } },
+  { title: '实际审批人', key: 'actualApprovers', minWidth: 180, ellipsis: { tooltip: true } },
   {
     title: '状态',
     key: 'status',
-    width: 100,
+    width: 110,
     render: row => renderStatus(row.status)
-  },
-  { title: '处理人', key: 'operateRealName', minWidth: 120, render: row => row.operateRealName || row.operateUsername || '-' },
-  { title: '意见', key: 'approveComment', minWidth: 160, ellipsis: { tooltip: true } }
+  }
 ];
 
 const logColumns: DataTableColumns<any> = [
@@ -81,26 +102,26 @@ const logColumns: DataTableColumns<any> = [
 ];
 
 const mainStatus = computed(() => progressData.value?.main?.status || '');
+const mainStatusText = computed(() => statusText(mainStatus.value) || '暂无审批记录');
+const groupedDetails = computed(() => buildGroupedDetails(progressData.value?.details || [], progressData.value?.main));
 
 const delegateUserOptions = computed(() =>
   delegateUsers.value.map(user => ({
-    label: user.realName ? `${user.realName}（${user.username}）` : user.username,
+    label: user.realName ? `${user.realName} (${user.username})` : user.username,
     value: user.id
   }))
 );
 
 function renderStatus(status: string) {
   const type =
-    status === 'APPROVED'
+    status === 'APPROVED' || status === 'AUTO_APPROVED'
       ? 'success'
       : status === 'REJECTED'
         ? 'error'
-        : status === 'PENDING'
+        : status === 'PENDING' || status === 'APPROVING'
           ? 'warning'
-          : status === 'APPROVING'
-            ? 'info'
-            : 'default';
-  return hTag(status || '-', type);
+          : 'default';
+  return hTag(statusText(status) || '-', type);
 }
 
 function statusText(status?: string) {
@@ -124,6 +145,93 @@ function hasButton(buttonKey: string) {
 
 function hTag(label: string, type: any) {
   return h(NTag, { size: 'small', type, bordered: false }, { default: () => label });
+}
+
+function detailDisplayName(row: ApprovalDetailRow) {
+  if (row.targetType === 'ROLE') {
+    return row.targetRoleName || '-';
+  }
+  return row.targetUserName || '-';
+}
+
+function uniqueJoin(values: Array<string | null | undefined>) {
+  const items = Array.from(
+    new Set(
+      values
+        .map(value => (value || '').trim())
+        .filter(Boolean)
+    )
+  );
+  return items.length ? items.join('、') : '-';
+}
+
+function normalizeForced(value: number | string | undefined) {
+  return Number(value || 0) === 1;
+}
+
+function resolveGroupNodeName(rows: ApprovalDetailRow[]) {
+  const normalName = rows.find(row => !normalizeForced(row.isForced) && row.nodeName)?.nodeName;
+  return normalName || rows.find(row => row.nodeName)?.nodeName || '-';
+}
+
+function summarizeGroupStatus(rows: ApprovalDetailRow[]) {
+  const statuses = rows.map(row => row.status).filter(Boolean) as string[];
+  if (statuses.includes('REJECTED')) return 'REJECTED';
+  if (statuses.includes('PENDING')) return 'PENDING';
+  if (statuses.includes('APPROVING')) return 'APPROVING';
+  if (statuses.includes('APPROVED')) return 'APPROVED';
+  if (statuses.includes('AUTO_APPROVED')) return 'AUTO_APPROVED';
+  if (statuses.includes('CANCELED')) return 'CANCELED';
+  if (statuses.includes('SKIPPED')) return 'SKIPPED';
+  return rows[0]?.status || '';
+}
+
+function buildGroupedDetails(details: ApprovalDetailRow[], main?: any) {
+  const rows = Array.isArray(details) ? details : [];
+  const latestRound =
+    Number(main?.currentRound || 0) ||
+    rows.reduce((max, row) => Math.max(max, Number(row.roundNo || 0)), 0);
+  const roundRows = latestRound > 0 ? rows.filter(row => Number(row.roundNo || 0) === latestRound) : rows;
+  const levelNodeNameMap = new Map<number, string>();
+
+  for (const row of roundRows) {
+    const level = Number(row.approvalLevel || 0);
+    if (!levelNodeNameMap.has(level) && !normalizeForced(row.isForced) && row.nodeName) {
+      levelNodeNameMap.set(level, row.nodeName);
+    }
+  }
+
+  const groups = new Map<string, ApprovalDetailRow[]>();
+  for (const row of roundRows) {
+    const level = Number(row.approvalLevel || 0);
+    const nodeName = normalizeForced(row.isForced) ? levelNodeNameMap.get(level) || row.nodeName || '-' : row.nodeName || '-';
+    const key = `${level}|${nodeName}`;
+    if (!groups.has(key)) {
+      groups.set(key, []);
+    }
+    groups.get(key)!.push(row);
+  }
+
+  return Array.from(groups.values()).map(groupRows => {
+    const actualRows = groupRows.filter(row => ['APPROVED', 'REJECTED'].includes(row.status || ''));
+
+    return {
+      approvalLevel: groupRows[0]?.approvalLevel,
+      nodeName: resolveGroupNodeName(groupRows),
+      expectedApprovers: uniqueJoin(
+        groupRows.map(row =>
+          normalizeForced(row.isForced) ? null : detailDisplayName(row)
+        )
+      ),
+      actualApprovers: uniqueJoin(
+        actualRows.map(row => {
+          const name = row.operateRealName || row.operateUsername || '-';
+          return normalizeForced(row.isForced) ? `${name}（强制委派）` : name;
+        })
+      ),
+      status: summarizeGroupStatus(groupRows)
+    };
+  });
 }
 
 async function handleSelect(key: string) {
@@ -218,7 +326,7 @@ async function submitDelegate() {
     () =>
       delegateApproval({
         ...requiredPayload(),
-        targetUserId: delegateUserId.value!,
+        targetUserId: delegateUserId.value,
         reason: delegateReason.value.trim()
       }),
     '已强制委派审批人'
@@ -253,7 +361,7 @@ async function runAction(action: () => Promise<any>, fallbackMessage: string) {
   try {
     const { data, error } = await action();
     if (error) {
-      message.error(error.message || fallbackMessage + '失败');
+      message.error(error.message || `${fallbackMessage}失败`);
       return;
     }
     message.success(data?.message || fallbackMessage);
@@ -294,7 +402,15 @@ function buildPayload(): ApprovalRuntimePayload | null {
     tableCode,
     billId,
     billNo: firstText(row.billNo, row.BILL_NO, row.batchNo, row.BATCH_NO, row.code, row.CODE),
-    billTitle: firstText(row.billTitle, row.BILL_TITLE, row.projectOrCustomerCode, row.PROJECT_OR_CUSTOMER_CODE, row.inspectionName, row.INSPECTION_NAME, `${pageCode}#${billId}`),
+    billTitle: firstText(
+      row.billTitle,
+      row.BILL_TITLE,
+      row.projectOrCustomerCode,
+      row.PROJECT_OR_CUSTOMER_CODE,
+      row.inspectionName,
+      row.INSPECTION_NAME,
+      `${pageCode}#${billId}`
+    ),
     conditionJson: ''
   };
 }
@@ -328,12 +444,7 @@ function refreshGrid() {
     :mask-closable="false"
     @positive-click="submitReject"
   >
-    <NInput
-      v-model:value="rejectReason"
-      type="textarea"
-      placeholder="请输入驳回原因"
-      :autosize="{ minRows: 4, maxRows: 8 }"
-    />
+    <NInput v-model:value="rejectReason" type="textarea" placeholder="请输入驳回原因" :autosize="{ minRows: 4, maxRows: 8 }" />
   </NModal>
 
   <NModal
@@ -385,13 +496,13 @@ function refreshGrid() {
       <div class="approval-main">
         <span>审批状态：</span>
         <NTag size="small" :type="mainStatus === 'APPROVED' ? 'success' : mainStatus === 'REJECTED' ? 'error' : 'info'">
-          {{ mainStatus || '暂无审批记录' }}
+          {{ mainStatusText }}
         </NTag>
         <span v-if="progressData.main?.approvalId">审批ID：{{ progressData.main.approvalId }}</span>
       </div>
       <NTabs type="line" animated>
         <NTabPane name="details" tab="审批节点">
-          <NDataTable size="small" :columns="detailColumns" :data="progressData.details || []" :pagination="false" />
+          <NDataTable size="small" :columns="detailColumns" :data="groupedDetails" :pagination="false" />
         </NTabPane>
         <NTabPane name="logs" tab="审批记录">
           <NDataTable size="small" :columns="logColumns" :data="progressData.logs || []" :pagination="false" />

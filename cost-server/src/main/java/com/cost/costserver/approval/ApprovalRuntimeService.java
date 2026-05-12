@@ -147,7 +147,7 @@ public class ApprovalRuntimeService {
                 "SELECT APPROVAL_ID as \"approvalId\", FLOW_ID as \"flowId\", PAGE_CODE as \"pageCode\", PAGE_NAME as \"pageName\", " +
                 "TABLE_CODE as \"tableCode\", BILL_ID as \"billId\", BILL_NO as \"billNo\", BILL_TITLE as \"billTitle\", " +
                 "START_USER_ID as \"startUserId\", START_USERNAME as \"startUsername\", START_REAL_NAME as \"startRealName\", " +
-                "START_TIME as \"startTime\", STATUS as \"status\", CURRENT_LEVEL as \"currentLevel\", FINISHED_TIME as \"finishedTime\" " +
+                "START_TIME as \"startTime\", STATUS as \"status\", CURRENT_LEVEL as \"currentLevel\", CURRENT_ROUND as \"currentRound\", FINISHED_TIME as \"finishedTime\" " +
                 "FROM WF_APPROVAL_MAIN WHERE PAGE_CODE=" + sqlString(pageCode) +
                 " AND TABLE_CODE=" + sqlString(tableCode) +
                 " AND BILL_ID=" + billId +
@@ -161,16 +161,16 @@ public class ApprovalRuntimeService {
 
         Long approvalId = longValue(main.get("approvalId"));
         List<Map<String, Object>> details = dynamicMapper.selectList(
-            "SELECT DETAIL_ID as \"detailId\", NODE_ID as \"nodeId\", APPROVAL_LEVEL as \"approvalLevel\", NODE_NAME as \"nodeName\", " +
+            "SELECT DETAIL_ID as \"detailId\", ROUND_NO as \"roundNo\", NODE_ID as \"nodeId\", APPROVAL_LEVEL as \"approvalLevel\", NODE_NAME as \"nodeName\", " +
                 "APPROVAL_MODE as \"approvalMode\", TARGET_TYPE as \"targetType\", TARGET_USER_ID as \"targetUserId\", " +
                 "TARGET_USER_NAME as \"targetUserName\", TARGET_ROLE_ID as \"targetRoleId\", TARGET_ROLE_NAME as \"targetRoleName\", " +
                 "STATUS as \"status\", OPERATE_USER_ID as \"operateUserId\", OPERATE_USERNAME as \"operateUsername\", " +
                 "OPERATE_REAL_NAME as \"operateRealName\", APPROVE_COMMENT as \"approveComment\", APPROVE_TIME as \"approveTime\", " +
-                "OPERATE_TIME as \"operateTime\" FROM WF_APPROVAL_DETAIL WHERE APPROVAL_ID=" + approvalId +
-                " ORDER BY APPROVAL_LEVEL, DETAIL_ID"
+                "OPERATE_TIME as \"operateTime\", NVL(IS_FORCED,0) as \"isForced\" FROM WF_APPROVAL_DETAIL WHERE APPROVAL_ID=" + approvalId +
+                " ORDER BY ROUND_NO DESC, APPROVAL_LEVEL, DETAIL_ID"
         );
         List<Map<String, Object>> logs = dynamicMapper.selectList(
-            "SELECT LOG_ID as \"logId\", APPROVAL_ID as \"approvalId\", DETAIL_ID as \"detailId\", ACTION_TYPE as \"actionType\", " +
+            "SELECT LOG_ID as \"logId\", APPROVAL_ID as \"approvalId\", ROUND_NO as \"roundNo\", DETAIL_ID as \"detailId\", ACTION_TYPE as \"actionType\", " +
                 "ACTION_USER_ID as \"actionUserId\", ACTION_USERNAME as \"actionUsername\", ACTION_REAL_NAME as \"actionRealName\", " +
                 "ACTION_TIME as \"actionTime\", FROM_STATUS as \"fromStatus\", TO_STATUS as \"toStatus\", " +
                 "ACTION_COMMENT as \"actionComment\", DETAIL_MESSAGE as \"detailMessage\" FROM WF_APPROVAL_LOG " +
