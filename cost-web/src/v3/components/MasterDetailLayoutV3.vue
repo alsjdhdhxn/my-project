@@ -5,7 +5,6 @@ import { AgGridVue } from 'ag-grid-vue3';
 import { useThemeStore } from '@/store/modules/theme';
 import DetailRowRendererV3 from '@/v3/components/detail/DetailRowRendererV3.vue';
 import DetailPanelV3 from '@/v3/components/detail/DetailPanelV3.vue';
-import AdvancedSearchDialog from '@/v3/components/AdvancedSearchDialog.vue';
 import ApprovalActionGroup from '@/v3/components/approval/ApprovalActionGroup.vue';
 import { useMasterGridBindings } from '@/v3/composables/meta-v3/useMasterGridBindings';
 import { useGridContextMenu } from '@/v3/composables/meta-v3/useGridContextMenu';
@@ -837,8 +836,6 @@ function onDetailRowOpened(event: any) {
         @filter-changed="onFilterChanged"
       />
     </div>
-
-    <AdvancedSearchDialog :runtime="runtime" />
   </div>
 </template>
 

@@ -287,6 +287,21 @@ const availableUsers = computed(() => {
   return allUsers.value.filter(u => !existingIds.has(u.id));
 });
 
+const availableUserOptions = computed(() =>
+  availableUsers.value.map(u => ({
+    label: `${u.realName || u.username} (${u.username})`,
+    value: u.id,
+    keywords: [u.realName, u.username, String(u.id)].filter(Boolean).join(' ').toLowerCase()
+  }))
+);
+
+function filterAvailableUserOption(pattern: string, option: SelectOption & { keywords?: string }): boolean {
+  const keyword = pattern.trim().toLowerCase();
+  if (!keyword) return true;
+  const label = typeof option?.label === 'string' ? option.label.toLowerCase() : '';
+  return label.includes(keyword) || (option.keywords || '').includes(keyword);
+}
+
 async function handleAddUser() {
   if (!selectedUserId.value || !selectedRoleId.value) return;
   addingUser.value = true;
@@ -1286,9 +1301,11 @@ loadRoles();
     <NModal v-model:show="showAddUserModal" preset="card" title="分配人员" class="w-380px">
       <NSelect
         v-model:value="selectedUserId"
-        :options="availableUsers.map(u => ({ label: `${u.realName || u.username} (${u.username})`, value: u.id }))"
+        :options="availableUserOptions"
+        :filter="filterAvailableUserOption"
         placeholder="请选择用户"
         filterable
+        clearable
         size="small"
       />
       <template #footer>

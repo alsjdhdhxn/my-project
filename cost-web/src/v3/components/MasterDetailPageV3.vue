@@ -4,6 +4,7 @@ import { NEmpty, NSpin, useMessage } from 'naive-ui';
 import { useWebSocket } from '@/v3/composables/meta-v3/useWebSocket';
 import MetaPageRendererV3 from '@/v3/components/meta-v3/renderers/MetaPageRendererV3.vue';
 import LookupDialog from '@/v3/components/LookupDialog.vue';
+import AdvancedSearchDialog from '@/v3/components/AdvancedSearchDialog.vue';
 import { useBaseRuntime } from '@/v3/composables/meta-v3/runtime';
 
 const props = defineProps<{ pageCode: string }>();
@@ -64,6 +65,7 @@ onMounted(async () => {
       @select="onLookupSelect"
       @cancel="onLookupCancel"
     />
+    <AdvancedSearchDialog v-if="isReady" :runtime="runtime" />
   </div>
 </template>
 
