@@ -8,6 +8,9 @@ import com.cost.costserver.common.BusinessException;
 import com.cost.costserver.dynamic.mapper.DynamicMapper;
 import com.cost.costserver.export.entity.ExportConfig;
 import com.cost.costserver.export.mapper.ExportConfigMapper;
+import com.cost.costserver.metadata.dto.ColumnMetadataDTO;
+import com.cost.costserver.metadata.dto.TableMetadataDTO;
+import com.cost.costserver.metadata.service.MetadataService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
@@ -32,6 +35,7 @@ public class RoleManageService {
     private final ResourceMapper resourceMapper;
     private final DynamicMapper dynamicMapper;
     private final ExportConfigMapper exportConfigMapper;
+    private final MetadataService metadataService;
 
     // ==================== 角色管理 ====================
 
@@ -830,58 +834,35 @@ public class RoleManageService {
 
     public List<RowFilterFieldVO> listRowFilterFields(String pageCode) {
         List<RowFilterFieldVO> result = new ArrayList<>();
-        
-        // 1. 查询页面的主表组件（GRID 类型，componentKey 为 masterGrid 或 master）
-        List<Map<String, Object>> components = dynamicMapper.selectList(
-            "SELECT c.COMPONENT_KEY, c.REF_TABLE_CODE " +
-            "FROM T_COST_PAGE_COMPONENT c " +
-            "WHERE c.PAGE_CODE = '" + pageCode.replace("'", "''") + "' " +
-            "AND c.COMPONENT_TYPE = 'GRID' " +
-            "AND c.COMPONENT_KEY IN ('masterGrid', 'master') " +
-            "AND c.DELETED = 0"
-        );
-        
-        if (components.isEmpty()) {
+
+        TableMetadataDTO tableMetadata = metadataService.getTableMetadataByPageCode(pageCode);
+        if (tableMetadata == null || tableMetadata.columns() == null || tableMetadata.columns().isEmpty()) {
             return result;
         }
-        
-        String refTableCode = (String) components.get(0).get("REF_TABLE_CODE");
-        if (refTableCode == null) {
-            return result;
-        }
-        
-        // 2. 查询该表的列元数据
-        List<Map<String, Object>> columns = dynamicMapper.selectList(
-            "SELECT c.COLUMN_NAME, c.HEADER_TEXT, c.DATA_TYPE " +
-            "FROM T_COST_COLUMN_METADATA c " +
-            "JOIN T_COST_TABLE_METADATA m ON c.TABLE_METADATA_ID = m.ID " +
-            "WHERE m.TABLE_CODE = '" + refTableCode.replace("'", "''") + "' " +
-            "AND c.DELETED = 0 " +
-            "ORDER BY c.DISPLAY_ORDER"
-        );
-        
-        // 3. 添加常用审计字段
+
+        // 1. 添加常用审计字段
         result.add(createRowFilterField("CREATE_BY", "创建人", "string"));
         result.add(createRowFilterField("CREATE_TIME", "创建时间", "date"));
         result.add(createRowFilterField("UPDATE_BY", "更新人", "string"));
         result.add(createRowFilterField("UPDATE_TIME", "更新时间", "date"));
-        
-        // 4. 添加业务字段
-        for (Map<String, Object> col : columns) {
-            String columnName = (String) col.get("COLUMN_NAME");
-            String headerText = (String) col.get("HEADER_TEXT");
-            String dataType = (String) col.get("DATA_TYPE");
-            
-            // 跳过已添加的审计字段
+
+        // 2. 添加主表业务字段
+        for (ColumnMetadataDTO col : tableMetadata.columns()) {
+            if (Boolean.TRUE.equals(col.isVirtual())) {
+                continue;
+            }
+
+            String columnName = col.columnName();
+
             if ("CREATE_BY".equals(columnName) || "CREATE_TIME".equals(columnName) ||
                 "UPDATE_BY".equals(columnName) || "UPDATE_TIME".equals(columnName) ||
                 "DELETED".equals(columnName) || "ID".equals(columnName)) {
                 continue;
             }
-            
-            result.add(createRowFilterField(columnName, headerText, mapDataType(dataType)));
+
+            result.add(createRowFilterField(columnName, col.headerText(), mapDataType(col.dataType())));
         }
-        
+
         return result;
     }
     
