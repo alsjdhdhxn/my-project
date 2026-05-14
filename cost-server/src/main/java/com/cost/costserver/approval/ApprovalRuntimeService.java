@@ -94,52 +94,6 @@ public class ApprovalRuntimeService {
         );
     }
 
-    @Transactional
-    public Map<String, Object> delegate(Map<String, Object> request) {
-        String pageCode = requiredText(request, "pageCode");
-        requireButton(pageCode, "approval.delegate");
-        String tableCode = requiredText(request, "tableCode");
-        Long billId = requiredLong(request, "billId");
-        requireApplicantForConfiguredFlow(pageCode, tableCode, billId, currentUserId());
-        Long targetUserId = requiredLong(request, "targetUserId");
-        String reason = text(request.get("reason"));
-
-        Map<String, Object> user = one(
-            "SELECT ID as \"id\", USERNAME as \"username\", REAL_NAME as \"realName\" " +
-                "FROM T_COST_USER WHERE ID=" + targetUserId + " AND STATUS='ACTIVE' AND DELETED=0"
-        );
-        if (user.isEmpty()) {
-            throw new BusinessException(400, "请选择有效的审批人");
-        }
-
-        String targetName = firstNotBlank(text(user.get("realName")), text(user.get("username")));
-        TableMetadataDTO metadata = metadataService.getTableMetadata(tableCode);
-        String targetTable = validateIdentifier(metadata.targetTable(), "targetTable");
-        String pkColumn = validateIdentifier(metadata.pkColumn(), "pkColumn");
-
-        ensureForceApproverColumns(targetTable);
-        int updated = dynamicMapper.update(
-            "UPDATE " + targetTable +
-                " SET FORCE_APPROVER_USER_ID=" + targetUserId +
-                ", FORCE_APPROVER_NAME=" + sqlString(targetName) +
-                ", FORCE_APPROVER_REASON=" + sqlString(reason) +
-                " WHERE " + pkColumn + "=" + billId + " AND DELETED=0"
-        );
-        if (updated == 0) {
-            throw new BusinessException(404, "未找到要委派的单据");
-        }
-
-        boolean reassigned = reassignCurrentPendingDetail(pageCode, tableCode, billId, targetUserId, targetName);
-
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("status", "SUCCESS");
-        result.put("message", reassigned ? "已强制委派当前审批人" : "已设置强制审批人，送审时生效");
-        result.put("targetUserId", targetUserId);
-        result.put("targetUserName", targetName);
-        result.put("activeApprovalReassigned", reassigned);
-        return result;
-    }
-
     public Map<String, Object> progress(String pageCode, String tableCode, Long billId) {
         requireButton(pageCode, "approval.progress");
         Map<String, Object> main = one(
@@ -166,7 +120,7 @@ public class ApprovalRuntimeService {
                 "TARGET_USER_NAME as \"targetUserName\", TARGET_ROLE_ID as \"targetRoleId\", TARGET_ROLE_NAME as \"targetRoleName\", " +
                 "STATUS as \"status\", OPERATE_USER_ID as \"operateUserId\", OPERATE_USERNAME as \"operateUsername\", " +
                 "OPERATE_REAL_NAME as \"operateRealName\", APPROVE_COMMENT as \"approveComment\", APPROVE_TIME as \"approveTime\", " +
-                "OPERATE_TIME as \"operateTime\", NVL(IS_FORCED,0) as \"isForced\" FROM WF_APPROVAL_DETAIL WHERE APPROVAL_ID=" + approvalId +
+                "OPERATE_TIME as \"operateTime\" FROM WF_APPROVAL_DETAIL WHERE APPROVAL_ID=" + approvalId +
                 " ORDER BY ROUND_NO DESC, APPROVAL_LEVEL, DETAIL_ID"
         );
         List<Map<String, Object>> logs = dynamicMapper.selectList(
@@ -220,72 +174,6 @@ public class ApprovalRuntimeService {
             result.put("message", statement.getString(5));
             return result;
         });
-    }
-
-    private void ensureForceApproverColumns(String targetTable) {
-        Long count = dynamicMapper.selectCount(
-            "SELECT COUNT(1) FROM USER_TAB_COLUMNS WHERE TABLE_NAME=UPPER(" + sqlString(targetTable) + ") " +
-                "AND COLUMN_NAME IN ('FORCE_APPROVER_USER_ID','FORCE_APPROVER_NAME','FORCE_APPROVER_REASON')"
-        );
-        if (count == null || count < 3) {
-            throw new BusinessException(400, "当前业务表未配置强制审批人字段");
-        }
-    }
-
-    private boolean reassignCurrentPendingDetail(
-        String pageCode,
-        String tableCode,
-        Long billId,
-        Long targetUserId,
-        String targetName
-    ) {
-        Map<String, Object> main = one(
-            "SELECT * FROM (" +
-                "SELECT APPROVAL_ID as \"approvalId\", CURRENT_ROUND as \"currentRound\", CURRENT_LEVEL as \"currentLevel\" " +
-                "FROM WF_APPROVAL_MAIN WHERE PAGE_CODE=" + sqlString(pageCode) +
-                " AND TABLE_CODE=" + sqlString(tableCode) +
-                " AND BILL_ID=" + billId +
-                " AND STATUS='APPROVING' ORDER BY APPROVAL_ID DESC" +
-            ") WHERE ROWNUM=1"
-        );
-        Long approvalId = longValue(main.get("approvalId"));
-        Long currentRound = longValue(main.get("currentRound"));
-        Long currentLevel = longValue(main.get("currentLevel"));
-        if (approvalId == null || currentRound == null || currentLevel == null) {
-            return false;
-        }
-
-        Map<String, Object> detail = one(
-            "SELECT * FROM (" +
-                "SELECT DETAIL_ID as \"detailId\" FROM WF_APPROVAL_DETAIL " +
-                "WHERE APPROVAL_ID=" + approvalId +
-                " AND ROUND_NO=" + currentRound +
-                " AND APPROVAL_LEVEL=" + currentLevel +
-                " AND STATUS='PENDING' ORDER BY DETAIL_ID" +
-            ") WHERE ROWNUM=1"
-        );
-        Long detailId = longValue(detail.get("detailId"));
-        if (detailId == null) {
-            return false;
-        }
-
-        dynamicMapper.update(
-            "UPDATE WF_APPROVAL_DETAIL SET STATUS='SKIPPED', OPERATE_TIME=SYSTIMESTAMP, " +
-                "UPDATE_BY='system', UPDATE_TIME=SYSTIMESTAMP " +
-                "WHERE APPROVAL_ID=" + approvalId +
-                " AND ROUND_NO=" + currentRound +
-                " AND APPROVAL_LEVEL=" + currentLevel +
-                " AND STATUS='PENDING' AND DETAIL_ID<>" + detailId
-        );
-        dynamicMapper.update(
-            "UPDATE WF_APPROVAL_DETAIL SET NODE_NAME='强制指定审批', APPROVAL_MODE='OR', TARGET_TYPE='USER', " +
-                "TARGET_USER_ID=" + targetUserId +
-                ", TARGET_USER_NAME=" + sqlString(targetName) +
-                ", TARGET_ROLE_ID=NULL, TARGET_ROLE_CODE=NULL, TARGET_ROLE_NAME=NULL, IS_FORCED=1, " +
-                "UPDATE_BY='system', UPDATE_TIME=SYSTIMESTAMP " +
-                "WHERE DETAIL_ID=" + detailId
-        );
-        return true;
     }
 
     private Long resolvePendingDetailId(Map<String, Object> request) {

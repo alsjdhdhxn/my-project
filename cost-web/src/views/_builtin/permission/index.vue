@@ -548,7 +548,6 @@ const systemDefaultButtonKeys = new Set([
   'approval.reject',
   'approval.cancel',
   'approval.progress',
-  'approval.delegate',
   'advancedSearch'
 ]);
 

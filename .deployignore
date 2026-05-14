@@ -7,6 +7,7 @@
 .kiro/**
 ~/**
 docs/**
+backups/**
 CLAUDE.md
 **/.github/**
 deploy-package.tar.gz

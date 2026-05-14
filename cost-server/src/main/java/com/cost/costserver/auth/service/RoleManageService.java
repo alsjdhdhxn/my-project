@@ -463,7 +463,6 @@ public class RoleManageService {
         "approval.reject",
         "approval.cancel",
         "approval.progress",
-        "approval.delegate",
         "advancedSearch"
     );
 
@@ -476,7 +475,6 @@ public class RoleManageService {
         addDefaultButton(result, "approval.reject", "驳回", "系统默认按钮");
         addDefaultButton(result, "approval.cancel", "撤销送审", "系统默认按钮");
         addDefaultButton(result, "approval.progress", "查看审批进度", "系统默认按钮");
-        addDefaultButton(result, "approval.delegate", "强制委派审批人", "系统默认按钮");
         addDefaultButton(result, "advancedSearch", "高级查询", "系统默认按钮");
     }
 

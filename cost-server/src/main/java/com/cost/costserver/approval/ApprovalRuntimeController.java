@@ -38,11 +38,6 @@ public class ApprovalRuntimeController {
         return Result.ok(approvalRuntimeService.cancel(request));
     }
 
-    @PostMapping("/delegate")
-    public Result<Map<String, Object>> delegate(@RequestBody Map<String, Object> request) {
-        return Result.ok(approvalRuntimeService.delegate(request));
-    }
-
     @GetMapping("/progress")
     public Result<Map<String, Object>> progress(
             @RequestParam String pageCode,

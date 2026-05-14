@@ -13,11 +13,6 @@ export type ApprovalRuntimePayload = {
   comment?: string;
 };
 
-export type ApprovalDelegatePayload = ApprovalRuntimePayload & {
-  targetUserId: number | string;
-  reason?: string;
-};
-
 export function applyApproval(data: ApprovalRuntimePayload) {
   return request<any>({
     url: '/approval/runtime/apply',
@@ -45,14 +40,6 @@ export function rejectApproval(data: ApprovalRuntimePayload) {
 export function cancelApproval(data: ApprovalRuntimePayload) {
   return request<any>({
     url: '/approval/runtime/cancel',
-    method: 'POST',
-    data
-  });
-}
-
-export function delegateApproval(data: ApprovalDelegatePayload) {
-  return request<any>({
-    url: '/approval/runtime/delegate',
     method: 'POST',
     data
   });

@@ -6,7 +6,6 @@ import {
   NDropdown,
   NInput,
   NModal,
-  NSelect,
   NSpace,
   NTabPane,
   NTabs,
@@ -18,12 +17,10 @@ import {
   applyApproval,
   approveApproval,
   cancelApproval,
-  delegateApproval,
   fetchApprovalProgress,
   rejectApproval,
   type ApprovalRuntimePayload
 } from '@/service/api/approval-runtime';
-import { fetchAllUsers, type UserSimpleVO } from '@/service/api/role-manage';
 
 const props = defineProps<{
   runtime: any;
@@ -49,7 +46,6 @@ type ApprovalDetailRow = {
   approveComment?: string;
   approveTime?: string;
   operateTime?: string;
-  isForced?: number | string;
 };
 
 const message = useMessage();
@@ -57,14 +53,9 @@ const message = useMessage();
 const loading = ref(false);
 const rejectVisible = ref(false);
 const cancelVisible = ref(false);
-const delegateVisible = ref(false);
 const progressVisible = ref(false);
 const rejectReason = ref('');
 const cancelReason = ref('');
-const delegateReason = ref('');
-const delegateUserId = ref<number | null>(null);
-const delegateUsers = ref<UserSimpleVO[]>([]);
-const loadingUsers = ref(false);
 const progressData = ref<any>({ main: {}, details: [], logs: [] });
 
 const dropdownOptions = computed(() =>
@@ -73,7 +64,6 @@ const dropdownOptions = computed(() =>
     { label: '审批通过', key: 'approve', permission: 'approval.approve' },
     { label: '驳回', key: 'reject', permission: 'approval.reject' },
     { label: '撤销送审', key: 'cancel', permission: 'approval.cancel' },
-    { label: '强制委派审批人', key: 'delegate', permission: 'approval.delegate' },
     { label: '查看审批进度', key: 'progress', permission: 'approval.progress' }
   ].filter(item => hasButton(item.permission))
 );
@@ -104,13 +94,6 @@ const logColumns: DataTableColumns<any> = [
 const mainStatus = computed(() => progressData.value?.main?.status || '');
 const mainStatusText = computed(() => statusText(mainStatus.value) || '暂无审批记录');
 const groupedDetails = computed(() => buildGroupedDetails(progressData.value?.details || [], progressData.value?.main));
-
-const delegateUserOptions = computed(() =>
-  delegateUsers.value.map(user => ({
-    label: user.realName ? `${user.realName} (${user.username})` : user.username,
-    value: user.id
-  }))
-);
 
 function renderStatus(status: string) {
   const type =
@@ -165,13 +148,8 @@ function uniqueJoin(values: Array<string | null | undefined>) {
   return items.length ? items.join('、') : '-';
 }
 
-function normalizeForced(value: number | string | undefined) {
-  return Number(value || 0) === 1;
-}
-
 function resolveGroupNodeName(rows: ApprovalDetailRow[]) {
-  const normalName = rows.find(row => !normalizeForced(row.isForced) && row.nodeName)?.nodeName;
-  return normalName || rows.find(row => row.nodeName)?.nodeName || '-';
+  return rows.find(row => row.nodeName)?.nodeName || '-';
 }
 
 function summarizeGroupStatus(rows: ApprovalDetailRow[]) {
@@ -196,7 +174,7 @@ function buildGroupedDetails(details: ApprovalDetailRow[], main?: any) {
 
   for (const row of roundRows) {
     const level = Number(row.approvalLevel || 0);
-    if (!levelNodeNameMap.has(level) && !normalizeForced(row.isForced) && row.nodeName) {
+    if (!levelNodeNameMap.has(level) && row.nodeName) {
       levelNodeNameMap.set(level, row.nodeName);
     }
   }
@@ -204,7 +182,7 @@ function buildGroupedDetails(details: ApprovalDetailRow[], main?: any) {
   const groups = new Map<string, ApprovalDetailRow[]>();
   for (const row of roundRows) {
     const level = Number(row.approvalLevel || 0);
-    const nodeName = normalizeForced(row.isForced) ? levelNodeNameMap.get(level) || row.nodeName || '-' : row.nodeName || '-';
+    const nodeName = levelNodeNameMap.get(level) || row.nodeName || '-';
     const key = `${level}|${nodeName}`;
     if (!groups.has(key)) {
       groups.set(key, []);
@@ -218,17 +196,8 @@ function buildGroupedDetails(details: ApprovalDetailRow[], main?: any) {
     return {
       approvalLevel: groupRows[0]?.approvalLevel,
       nodeName: resolveGroupNodeName(groupRows),
-      expectedApprovers: uniqueJoin(
-        groupRows.map(row =>
-          normalizeForced(row.isForced) ? null : detailDisplayName(row)
-        )
-      ),
-      actualApprovers: uniqueJoin(
-        actualRows.map(row => {
-          const name = row.operateRealName || row.operateUsername || '-';
-          return normalizeForced(row.isForced) ? `${name}（强制委派）` : name;
-        })
-      ),
+      expectedApprovers: uniqueJoin(groupRows.map(row => detailDisplayName(row))),
+      actualApprovers: uniqueJoin(actualRows.map(row => row.operateRealName || row.operateUsername || '-')),
       status: summarizeGroupStatus(groupRows)
     };
   });
@@ -254,12 +223,6 @@ async function handleSelect(key: string) {
     if (!buildPayload()) return;
     cancelReason.value = '';
     cancelVisible.value = true;
-    return;
-  }
-
-  if (key === 'delegate') {
-    if (!hasButton('approval.delegate')) return;
-    await openDelegate();
     return;
   }
 
@@ -301,37 +264,6 @@ async function submitCancel() {
     '已撤销送审'
   );
   cancelVisible.value = false;
-}
-
-async function openDelegate() {
-  if (!buildPayload()) return;
-  delegateUserId.value = null;
-  delegateReason.value = '';
-  delegateVisible.value = true;
-  if (delegateUsers.value.length > 0) return;
-  loadingUsers.value = true;
-  try {
-    delegateUsers.value = await fetchAllUsers();
-  } finally {
-    loadingUsers.value = false;
-  }
-}
-
-async function submitDelegate() {
-  if (!delegateUserId.value) {
-    message.warning('请选择审批人');
-    return;
-  }
-  await runAction(
-    () =>
-      delegateApproval({
-        ...requiredPayload(),
-        targetUserId: delegateUserId.value,
-        reason: delegateReason.value.trim()
-      }),
-    '已强制委派审批人'
-  );
-  delegateVisible.value = false;
 }
 
 async function openProgress() {
@@ -462,33 +394,6 @@ function refreshGrid() {
       placeholder="请输入撤销原因，可选"
       :autosize="{ minRows: 4, maxRows: 8 }"
     />
-  </NModal>
-
-  <NModal
-    v-model:show="delegateVisible"
-    preset="dialog"
-    title="强制委派审批人"
-    positive-text="确认委派"
-    negative-text="取消"
-    :mask-closable="false"
-    @positive-click="submitDelegate"
-  >
-    <NSpace vertical size="small">
-      <NSelect
-        v-model:value="delegateUserId"
-        :options="delegateUserOptions"
-        :loading="loadingUsers"
-        filterable
-        clearable
-        placeholder="请选择审批人"
-      />
-      <NInput
-        v-model:value="delegateReason"
-        type="textarea"
-        placeholder="委派原因，可选"
-        :autosize="{ minRows: 3, maxRows: 6 }"
-      />
-    </NSpace>
   </NModal>
 
   <NModal v-model:show="progressVisible" preset="card" title="审批进度" class="approval-progress-modal">
