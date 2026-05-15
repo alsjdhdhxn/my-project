@@ -871,7 +871,7 @@ public class MetaConfigService {
     public List<Map<String, Object>> listApprovalNodes(Long flowId) {
         String sql = "SELECT NODE_ID as \"nodeId\", FLOW_ID as \"flowId\", APPROVAL_LEVEL as \"approvalLevel\", NODE_NAME as \"nodeName\", " +
                      "APPROVAL_MODE as \"approvalMode\", CONDITION_MODE as \"conditionMode\", LOGIC_TREE as \"logicTree\", SQL_EXPR as \"sqlExpr\", " +
-                     "ON_ERROR as \"onError\", IS_ENABLED as \"isEnabled\", CREATE_BY as \"createBy\", CREATE_TIME as \"createTime\", " +
+                     "ON_ERROR as \"onError\", ACTION_CONFIG as \"actionConfig\", IS_ENABLED as \"isEnabled\", CREATE_BY as \"createBy\", CREATE_TIME as \"createTime\", " +
                      "UPDATE_BY as \"updateBy\", UPDATE_TIME as \"updateTime\" FROM WF_FLOW_NODE " +
                      "WHERE FLOW_ID=" + flowId + " ORDER BY APPROVAL_LEVEL, NODE_ID";
         return clobToString(dynamicMapper.selectList(sql));
@@ -883,11 +883,12 @@ public class MetaConfigService {
         Long flowId = longValue(node.get("flowId"));
         if (id == null) {
             id = nextId("SEQ_WF_FLOW_NODE");
-            String sql = "INSERT INTO WF_FLOW_NODE (NODE_ID, FLOW_ID, APPROVAL_LEVEL, NODE_NAME, APPROVAL_MODE, CONDITION_MODE, LOGIC_TREE, SQL_EXPR, ON_ERROR, IS_ENABLED, CREATE_BY, CREATE_TIME) VALUES (" +
+            String sql = "INSERT INTO WF_FLOW_NODE (NODE_ID, FLOW_ID, APPROVAL_LEVEL, NODE_NAME, APPROVAL_MODE, CONDITION_MODE, LOGIC_TREE, SQL_EXPR, ON_ERROR, ACTION_CONFIG, IS_ENABLED, CREATE_BY, CREATE_TIME) VALUES (" +
                     id + ", " + flowId + ", " + intValue(node.get("approvalLevel"), 1) + ", " + sqlString(str(node.get("nodeName"))) + ", " +
                     sqlString(defaultStr(node.get("approvalMode"), "OR")) + ", " + sqlString(defaultStr(node.get("conditionMode"), "ALWAYS")) + ", " +
                     sqlClob(str(node.get("logicTree"))) + ", " + sqlClob(str(node.get("sqlExpr"))) + ", " +
-                    sqlString(defaultStr(node.get("onError"), "REQUIRE_APPROVAL")) + ", " + intValue(node.get("isEnabled"), 1) + ", 'admin', SYSTIMESTAMP)";
+                    sqlString(defaultStr(node.get("onError"), "REQUIRE_APPROVAL")) + ", " + sqlClob(str(node.get("actionConfig"))) + ", " +
+                    intValue(node.get("isEnabled"), 1) + ", 'admin', SYSTIMESTAMP)";
             dynamicMapper.insert(sql);
         } else {
             String sql = "UPDATE WF_FLOW_NODE SET APPROVAL_LEVEL=" + intValue(node.get("approvalLevel"), 1) +
@@ -897,11 +898,12 @@ public class MetaConfigService {
                     ", LOGIC_TREE=" + sqlClob(str(node.get("logicTree"))) +
                     ", SQL_EXPR=" + sqlClob(str(node.get("sqlExpr"))) +
                     ", ON_ERROR=" + sqlString(defaultStr(node.get("onError"), "REQUIRE_APPROVAL")) +
+                    ", ACTION_CONFIG=" + sqlClob(str(node.get("actionConfig"))) +
                     ", IS_ENABLED=" + intValue(node.get("isEnabled"), 1) +
                     ", UPDATE_BY='admin', UPDATE_TIME=SYSTIMESTAMP WHERE NODE_ID=" + id;
             dynamicMapper.update(sql);
         }
-        return one("SELECT NODE_ID as \"nodeId\", FLOW_ID as \"flowId\", APPROVAL_LEVEL as \"approvalLevel\", NODE_NAME as \"nodeName\", APPROVAL_MODE as \"approvalMode\", CONDITION_MODE as \"conditionMode\", LOGIC_TREE as \"logicTree\", SQL_EXPR as \"sqlExpr\", ON_ERROR as \"onError\", IS_ENABLED as \"isEnabled\" FROM WF_FLOW_NODE WHERE NODE_ID=" + id);
+        return one("SELECT NODE_ID as \"nodeId\", FLOW_ID as \"flowId\", APPROVAL_LEVEL as \"approvalLevel\", NODE_NAME as \"nodeName\", APPROVAL_MODE as \"approvalMode\", CONDITION_MODE as \"conditionMode\", LOGIC_TREE as \"logicTree\", SQL_EXPR as \"sqlExpr\", ON_ERROR as \"onError\", ACTION_CONFIG as \"actionConfig\", IS_ENABLED as \"isEnabled\" FROM WF_FLOW_NODE WHERE NODE_ID=" + id);
     }
 
     @Transactional

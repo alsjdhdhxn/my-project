@@ -11,6 +11,8 @@ export type ApprovalRuntimePayload = {
   detailId?: number | string;
   approvalId?: number | string;
   comment?: string;
+  actionParams?: Record<string, unknown> | string;
+  actionParamsJson?: string;
 };
 
 export function applyApproval(data: ApprovalRuntimePayload) {
@@ -48,6 +50,18 @@ export function cancelApproval(data: ApprovalRuntimePayload) {
 export function fetchApprovalProgress(params: { pageCode: string; tableCode: string; billId: number | string }) {
   return request<any>({
     url: '/approval/runtime/progress',
+    params
+  });
+}
+
+export function fetchApprovalActionConfig(params: {
+  pageCode: string;
+  tableCode: string;
+  billId: number | string;
+  action: 'approve' | 'reject';
+}) {
+  return request<any>({
+    url: '/approval/runtime/action-config',
     params
   });
 }

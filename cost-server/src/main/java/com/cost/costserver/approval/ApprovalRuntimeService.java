@@ -8,12 +8,15 @@ import com.cost.costserver.auth.service.PermissionService;
 import com.cost.costserver.dynamic.mapper.DynamicMapper;
 import com.cost.costserver.metadata.dto.TableMetadataDTO;
 import com.cost.costserver.metadata.service.MetadataService;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.sql.CallableStatement;
+import java.sql.Clob;
 import java.sql.Connection;
 import java.sql.Types;
 import java.util.LinkedHashMap;
@@ -28,6 +31,7 @@ public class ApprovalRuntimeService {
     private final DynamicMapper dynamicMapper;
     private final PermissionService permissionService;
     private final MetadataService metadataService;
+    private final ObjectMapper objectMapper;
 
     @Transactional
     public Map<String, Object> apply(Map<String, Object> request) {
@@ -64,17 +68,31 @@ public class ApprovalRuntimeService {
 
     @Transactional
     public Map<String, Object> approve(Map<String, Object> request) {
-        requireButton(requiredText(request, "pageCode"), "approval.approve");
+        String pageCode = requiredText(request, "pageCode");
+        requireButton(pageCode, "approval.approve");
         Long detailId = resolvePendingDetailId(request);
-        return executeDetailProcedure("PKG_WF_APPROVAL.APPROVE_DETAIL", detailId, currentUserId(), text(request.get("comment")));
+        Map<String, Object> context = resolveDetailContext(detailId);
+        Map<String, Object> result = executeDetailProcedure("PKG_WF_APPROVAL.APPROVE_DETAIL", detailId, currentUserId(), text(request.get("comment")));
+        Map<String, Object> actionResult = executeNodeAction("approve", context, request);
+        if (!actionResult.isEmpty()) {
+            result.put("nodeAction", actionResult);
+        }
+        return result;
     }
 
     @Transactional
     public Map<String, Object> reject(Map<String, Object> request) {
-        requireButton(requiredText(request, "pageCode"), "approval.reject");
+        String pageCode = requiredText(request, "pageCode");
+        requireButton(pageCode, "approval.reject");
         String comment = requiredText(request, "comment");
         Long detailId = resolvePendingDetailId(request);
-        return executeDetailProcedure("PKG_WF_APPROVAL.REJECT_DETAIL", detailId, currentUserId(), comment);
+        Map<String, Object> context = resolveDetailContext(detailId);
+        Map<String, Object> result = executeDetailProcedure("PKG_WF_APPROVAL.REJECT_DETAIL", detailId, currentUserId(), comment);
+        Map<String, Object> actionResult = executeNodeAction("reject", context, request);
+        if (!actionResult.isEmpty()) {
+            result.put("nodeAction", actionResult);
+        }
+        return result;
     }
 
     @Transactional
@@ -138,6 +156,23 @@ public class ApprovalRuntimeService {
         return result;
     }
 
+    public Map<String, Object> actionConfig(String pageCode, String tableCode, Long billId, String action) {
+        String normalizedAction = normalizeAction(action);
+        requireButton(pageCode, "approve".equals(normalizedAction) ? "approval.approve" : "approval.reject");
+        Long detailId = resolvePendingDetailId(Map.of("pageCode", pageCode, "tableCode", tableCode, "billId", billId));
+        Map<String, Object> context = resolveDetailContext(detailId);
+        NodeAction actionConfig = resolveNodeAction(context, normalizedAction);
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("enabled", actionConfig.enabled());
+        result.put("mode", actionConfig.mode());
+        result.put("procedure", actionConfig.procedure());
+        result.put("params", actionConfig.params());
+        result.put("action", normalizedAction);
+        result.put("detailId", detailId);
+        return result;
+    }
+
     private Map<String, Object> executeDetailProcedure(String procedure, Long detailId, Long currentUserId, String comment) {
         return jdbcTemplate.execute((Connection connection) -> {
             CallableStatement statement = connection.prepareCall("{call " + procedure + "(?,?,?,?,?)}");
@@ -174,6 +209,126 @@ public class ApprovalRuntimeService {
             result.put("message", statement.getString(5));
             return result;
         });
+    }
+
+    private Map<String, Object> executeNodeAction(String action, Map<String, Object> context, Map<String, Object> request) {
+        NodeAction nodeAction = resolveNodeAction(context, action);
+        if (!nodeAction.enabled()) {
+            return Map.of();
+        }
+
+        String procedure = validateProcedureName(nodeAction.procedure());
+        Long billId = longValue(context.get("billId"));
+        if (billId == null) {
+            throw new BusinessException(400, "审批动作缺少页面主表ID");
+        }
+
+        String paramsJson = actionParamsJson(request);
+        jdbcTemplate.execute((Connection connection) -> {
+            CallableStatement statement = connection.prepareCall("{call " + procedure + "(?,?)}");
+            statement.setLong(1, billId);
+            statement.setString(2, paramsJson);
+            return statement;
+        }, (CallableStatement statement) -> {
+            statement.execute();
+            return null;
+        });
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("procedure", procedure);
+        result.put("mode", nodeAction.mode());
+        result.put("billId", billId);
+        return result;
+    }
+
+    private NodeAction resolveNodeAction(Map<String, Object> context, String action) {
+        String actionConfig = text(context.get("actionConfig"));
+        if (StrUtil.isBlank(actionConfig)) {
+            return NodeAction.disabled();
+        }
+        try {
+            JsonNode root = objectMapper.readTree(actionConfig);
+            JsonNode node = root.path(action);
+            String procedure = textValue(node, "procedure");
+            String mode = StrUtil.blankToDefault(textValue(node, "mode"), "AUTO").trim().toUpperCase();
+            boolean enabled = node.path("enabled").isMissingNode() || node.path("enabled").asBoolean(true);
+            if (!enabled || StrUtil.isBlank(procedure)) {
+                return NodeAction.disabled();
+            }
+            return new NodeAction(true, procedure, "MANUAL".equals(mode) ? "MANUAL" : "AUTO", parseActionParams(node.path("params")));
+        } catch (Exception e) {
+            throw new BusinessException(400, "审批节点动作配置JSON格式错误");
+        }
+    }
+
+    private List<Map<String, Object>> parseActionParams(JsonNode paramsNode) {
+        if (paramsNode == null || !paramsNode.isArray()) {
+            return List.of();
+        }
+        try {
+            return objectMapper.convertValue(
+                paramsNode,
+                objectMapper.getTypeFactory().constructCollectionType(List.class, Map.class)
+            );
+        } catch (Exception ignored) {
+            return List.of();
+        }
+    }
+
+    private String actionParamsJson(Map<String, Object> request) {
+        Object raw = request.get("actionParamsJson");
+        if (raw instanceof String rawText && StrUtil.isNotBlank(rawText)) {
+            return rawText;
+        }
+        Object params = request.get("actionParams");
+        if (params == null) {
+            return "{}";
+        }
+        if (params instanceof String text && StrUtil.isNotBlank(text)) {
+            return text;
+        }
+        try {
+            return objectMapper.writeValueAsString(params);
+        } catch (Exception e) {
+            throw new BusinessException(400, "审批动作参数JSON序列化失败");
+        }
+    }
+
+    private Map<String, Object> resolveDetailContext(Long detailId) {
+        Map<String, Object> row = one(
+            "SELECT D.DETAIL_ID as \"detailId\", D.APPROVAL_ID as \"approvalId\", D.NODE_ID as \"nodeId\", " +
+                "D.ROUND_NO as \"roundNo\", D.APPROVAL_LEVEL as \"approvalLevel\", M.PAGE_CODE as \"pageCode\", " +
+                "M.TABLE_CODE as \"tableCode\", M.BILL_ID as \"billId\", N.ACTION_CONFIG as \"actionConfig\" " +
+                "FROM WF_APPROVAL_DETAIL D " +
+                "JOIN WF_APPROVAL_MAIN M ON M.APPROVAL_ID=D.APPROVAL_ID " +
+                "LEFT JOIN WF_FLOW_NODE N ON N.NODE_ID=D.NODE_ID " +
+                "WHERE D.DETAIL_ID=" + detailId
+        );
+        if (row.isEmpty()) {
+            throw new BusinessException(400, "未找到审批明细：" + detailId);
+        }
+        return row;
+    }
+
+    private String normalizeAction(String action) {
+        String normalized = text(action);
+        if (!"approve".equals(normalized) && !"reject".equals(normalized)) {
+            throw new BusinessException(400, "审批动作只能是 approve 或 reject");
+        }
+        return normalized;
+    }
+
+    private String validateProcedureName(String procedure) {
+        String value = text(procedure);
+        if (StrUtil.isBlank(value) || !value.matches("[A-Za-z_][A-Za-z0-9_$#]*(\\.[A-Za-z_][A-Za-z0-9_$#]*){0,2}")) {
+            throw new BusinessException(400, "非法存储过程名称");
+        }
+        return value;
+    }
+
+    private String textValue(JsonNode node, String key) {
+        JsonNode value = node == null ? null : node.get(key);
+        return value == null || value.isNull() ? null : value.asText();
     }
 
     private Long resolvePendingDetailId(Map<String, Object> request) {
@@ -372,6 +527,13 @@ public class ApprovalRuntimeService {
     }
 
     private String text(Object value) {
+        if (value instanceof Clob clob) {
+            try {
+                return clob.getSubString(1, (int) clob.length());
+            } catch (Exception ignored) {
+                return null;
+            }
+        }
         return value == null ? null : String.valueOf(value);
     }
 
@@ -406,5 +568,11 @@ public class ApprovalRuntimeService {
             throw new BusinessException(400, "非法数据库标识：" + name);
         }
         return value;
+    }
+
+    private record NodeAction(boolean enabled, String procedure, String mode, List<Map<String, Object>> params) {
+        private static NodeAction disabled() {
+            return new NodeAction(false, "", "AUTO", List.of());
+        }
     }
 }

@@ -4,6 +4,8 @@ import type { Ref } from 'vue';
 import {
   NAlert,
   NButton,
+  NCheckbox,
+  NDynamicInput,
   NEmpty,
   NForm,
   NFormItem,
@@ -17,7 +19,7 @@ import {
   NTree,
   useMessage
 } from 'naive-ui';
-import type { TreeOption } from 'naive-ui';
+import type { SelectOption, TreeOption } from 'naive-ui';
 import {
   deleteApprovalApprover,
   deleteApprovalFlow,
@@ -85,6 +87,17 @@ const targetTypeOptions = [
 const onErrorOptions = [
   { label: '失败时按不满足处理', value: 'REQUIRE_APPROVAL' },
   { label: '失败时阻断流程', value: 'BLOCK' }
+];
+
+const actionModeOptions = [
+  { label: '后台自动执行', value: 'AUTO' },
+  { label: '前台手动传参', value: 'MANUAL' }
+];
+
+const actionParamTypeOptions = [
+  { label: '文本', value: 'STRING' },
+  { label: '数字', value: 'NUMBER' },
+  { label: '多行文本', value: 'TEXTAREA' }
 ];
 
 const visiblePages = computed(() => {
@@ -318,10 +331,12 @@ function approverLabel(approver: any) {
   return approver.targetUserName || `用户 ${approver.targetUserId || '-'}`;
 }
 
-function filterUserOption(pattern: string, option: { label?: string; searchText?: string } | undefined) {
+function filterUserOption(pattern: string, option: SelectOption | undefined) {
   const keyword = text(pattern).toLowerCase();
   if (!keyword) return true;
-  return (option?.searchText || option?.label || '').toLowerCase().includes(keyword);
+  const searchText = typeof option?.searchText === 'string' ? option.searchText : '';
+  const label = typeof option?.label === 'string' ? option.label : '';
+  return (searchText || label).toLowerCase().includes(keyword);
 }
 
 function optionById(list: any[], id: unknown) {
@@ -373,11 +388,93 @@ function flowEditorDraft(flow: any) {
   return row;
 }
 
+function parseNodeActionConfig(raw?: string) {
+  const defaultValue = {
+    approveProcedure: '',
+    approveMode: 'AUTO',
+    approveParams: [] as any[],
+    rejectProcedure: '',
+    rejectMode: 'AUTO',
+    rejectParams: [] as any[]
+  };
+  if (!text(raw)) {
+    return defaultValue;
+  }
+  try {
+    const parsed = JSON.parse(raw || '{}');
+    return {
+      approveProcedure: text(parsed?.approve?.procedure),
+      approveMode: parsed?.approve?.mode === 'MANUAL' ? 'MANUAL' : 'AUTO',
+      approveParams: normalizeActionParams(parsed?.approve?.params),
+      rejectProcedure: text(parsed?.reject?.procedure),
+      rejectMode: parsed?.reject?.mode === 'MANUAL' ? 'MANUAL' : 'AUTO',
+      rejectParams: normalizeActionParams(parsed?.reject?.params)
+    };
+  } catch {
+    return defaultValue;
+  }
+}
+
+function normalizeActionParams(params: any) {
+  if (!Array.isArray(params)) return [];
+  return params
+    .map(item => ({
+      name: text(item?.name),
+      label: text(item?.label),
+      type: ['NUMBER', 'TEXTAREA'].includes(item?.type) ? item.type : 'STRING',
+      required: Boolean(item?.required),
+      defaultValue: item?.defaultValue == null ? '' : String(item.defaultValue)
+    }))
+    .filter(item => item.name);
+}
+
+function nodeEditorDraft(node: any) {
+  const row = clone(node || {});
+  Object.assign(row, parseNodeActionConfig(row.actionConfig));
+  return row;
+}
+
+function buildNodeActionConfig(row: any) {
+  const config: Record<string, any> = {};
+  if (text(row.approveProcedure)) {
+    config.approve = {
+      procedure: text(row.approveProcedure),
+      mode: row.approveMode === 'MANUAL' ? 'MANUAL' : 'AUTO',
+      params: normalizeActionParams(row.approveParams)
+    };
+  }
+  if (text(row.rejectProcedure)) {
+    config.reject = {
+      procedure: text(row.rejectProcedure),
+      mode: row.rejectMode === 'MANUAL' ? 'MANUAL' : 'AUTO',
+      params: normalizeActionParams(row.rejectParams)
+    };
+  }
+  return Object.keys(config).length ? JSON.stringify(config) : '';
+}
+
+function createActionParam() {
+  return {
+    name: '',
+    label: '',
+    type: 'STRING',
+    required: false,
+    defaultValue: ''
+  };
+}
+
 function setEditor(kind: SelectedKind, payload?: any, key?: string | number | null) {
   selectedKind.value = kind;
   selectedPayload.value = payload || null;
   selectedKey.value = key ? String(key) : null;
-  draft.value = kind === 'flow' ? flowEditorDraft(payload || {}) : kind === 'approver' ? approverEditorDraft(payload || {}) : clone(payload || {});
+  draft.value =
+    kind === 'flow'
+      ? flowEditorDraft(payload || {})
+      : kind === 'node'
+        ? nodeEditorDraft(payload || {})
+        : kind === 'approver'
+          ? approverEditorDraft(payload || {})
+          : clone(payload || {});
 }
 
 async function loadReferenceData() {
@@ -536,6 +633,13 @@ function addNode() {
     sqlExpr: '',
     logicTree: '',
     onError: 'REQUIRE_APPROVAL',
+    actionConfig: '',
+    approveProcedure: '',
+    approveMode: 'AUTO',
+    approveParams: [],
+    rejectProcedure: '',
+    rejectMode: 'AUTO',
+    rejectParams: [],
     isEnabled: 1
   };
   flowDetails.value = {
@@ -651,7 +755,15 @@ async function saveCurrent() {
       message.warning('节点名称不能为空');
       return;
     }
-    const saved = await saveApprovalNode(prepareSavePayload());
+    const payload = prepareSavePayload();
+    payload.actionConfig = buildNodeActionConfig(payload);
+    delete payload.approveProcedure;
+    delete payload.approveMode;
+    delete payload.approveParams;
+    delete payload.rejectProcedure;
+    delete payload.rejectMode;
+    delete payload.rejectParams;
+    const saved = await saveApprovalNode(payload);
     message.success('审批节点已保存');
     await loadPageFlowDetails(selectedPageCode.value);
     const flow = flows.value.find(item => Number(item.flowId) === Number(saved.flowId));
@@ -679,7 +791,7 @@ async function saveCurrent() {
       const existingByUserId = new Map(
         memberRows
           .map((item: any) => [numberValue(item.targetUserId), item] as const)
-          .filter(([userId]) => userId !== null) as Array<[number, any]>
+          .filter((entry: readonly [number | null, any]) => entry[0] !== null) as Array<[number, any]>
       );
 
       const retainedIds = new Set<number>();
@@ -1015,6 +1127,44 @@ watch(
             <NFormItem label="节点异常策略">
               <NSelect v-model:value="draft.onError" :options="onErrorOptions" />
             </NFormItem>
+            <NFormItem label="通过后存储过程">
+              <NInput v-model:value="draft.approveProcedure" placeholder="例如：P_DEMAND_APPROVAL_SET_RECEIVER" />
+            </NFormItem>
+            <NFormItem label="通过后执行模式">
+              <NSelect v-model:value="draft.approveMode" :options="actionModeOptions" />
+            </NFormItem>
+            <NFormItem v-if="draft.approveMode === 'MANUAL'" label="通过后手动参数">
+              <NDynamicInput v-model:value="draft.approveParams" :on-create="createActionParam">
+                <template #default="{ value }">
+                  <div class="action-param-row">
+                    <NInput v-model:value="value.name" placeholder="参数名，例如 receiverName" />
+                    <NInput v-model:value="value.label" placeholder="显示名，例如 接收处理人" />
+                    <NSelect v-model:value="value.type" :options="actionParamTypeOptions" />
+                    <NInput v-model:value="value.defaultValue" placeholder="默认值" />
+                    <NCheckbox v-model:checked="value.required">必填</NCheckbox>
+                  </div>
+                </template>
+              </NDynamicInput>
+            </NFormItem>
+            <NFormItem label="拒绝后存储过程">
+              <NInput v-model:value="draft.rejectProcedure" placeholder="例如：P_DEMAND_APPROVAL_SET_RECEIVER" />
+            </NFormItem>
+            <NFormItem label="拒绝后执行模式">
+              <NSelect v-model:value="draft.rejectMode" :options="actionModeOptions" />
+            </NFormItem>
+            <NFormItem v-if="draft.rejectMode === 'MANUAL'" label="拒绝后手动参数">
+              <NDynamicInput v-model:value="draft.rejectParams" :on-create="createActionParam">
+                <template #default="{ value }">
+                  <div class="action-param-row">
+                    <NInput v-model:value="value.name" placeholder="参数名，例如 receiverName" />
+                    <NInput v-model:value="value.label" placeholder="显示名，例如 接收处理人" />
+                    <NSelect v-model:value="value.type" :options="actionParamTypeOptions" />
+                    <NInput v-model:value="value.defaultValue" placeholder="默认值" />
+                    <NCheckbox v-model:checked="value.required">必填</NCheckbox>
+                  </div>
+                </template>
+              </NDynamicInput>
+            </NFormItem>
             <NFormItem label="启用">
               <NSwitch :value="Number(draft.isEnabled) === 1" @update:value="updateEnabled" />
             </NFormItem>
@@ -1188,6 +1338,14 @@ watch(
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
+}
+
+.action-param-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) minmax(120px, 1fr) 92px minmax(90px, 1fr) 54px;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
 }
 
 @media (max-width: 1180px) {

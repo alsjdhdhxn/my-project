@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { watch } from 'vue';
 import { useFullscreen } from '@vueuse/core';
 import { GLOBAL_HEADER_MENU_ID } from '@/constants/app';
 import { useAppStore } from '@/store/modules/app';
@@ -27,6 +28,13 @@ defineProps<Props>();
 const appStore = useAppStore();
 const themeStore = useThemeStore();
 const { isFullscreen, toggle } = useFullscreen();
+
+// 监听全屏状态变化，触发 resize 让 AG Grid 重新计算尺寸
+watch(isFullscreen, () => {
+  setTimeout(() => {
+    window.dispatchEvent(new Event('resize'));
+  }, 350);
+});
 </script>
 
 <template>

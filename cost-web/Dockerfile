@@ -22,7 +22,7 @@ ENV VITE_BASE_URL=${VITE_BASE_URL}
 ENV VITE_SERVICE_BASE_URL=${VITE_SERVICE_BASE_URL}
 ENV VITE_OTHER_SERVICE_BASE_URL=${VITE_OTHER_SERVICE_BASE_URL}
 
-RUN pnpm install --frozen-lockfile
+RUN --mount=type=cache,target=/pnpm/store pnpm install --frozen-lockfile --store-dir /pnpm/store
 RUN pnpm build
 
 FROM nginx:1.27-alpine

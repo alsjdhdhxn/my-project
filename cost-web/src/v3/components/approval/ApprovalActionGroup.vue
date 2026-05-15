@@ -4,7 +4,10 @@ import {
   NButton,
   NDataTable,
   NDropdown,
+  NForm,
+  NFormItem,
   NInput,
+  NInputNumber,
   NModal,
   NSpace,
   NTabPane,
@@ -17,6 +20,7 @@ import {
   applyApproval,
   approveApproval,
   cancelApproval,
+  fetchApprovalActionConfig,
   fetchApprovalProgress,
   rejectApproval,
   type ApprovalRuntimePayload
@@ -53,9 +57,14 @@ const message = useMessage();
 const loading = ref(false);
 const rejectVisible = ref(false);
 const cancelVisible = ref(false);
+const actionParamsVisible = ref(false);
 const progressVisible = ref(false);
 const rejectReason = ref('');
 const cancelReason = ref('');
+const actionParamDefinitions = ref<any[]>([]);
+const actionParamsForm = ref<Record<string, any>>({});
+const pendingApprovalAction = ref<'approve' | 'reject' | null>(null);
+const pendingApprovalComment = ref('');
 const progressData = ref<any>({ main: {}, details: [], logs: [] });
 
 const dropdownOptions = computed(() =>
@@ -234,7 +243,7 @@ async function handleSelect(key: string) {
 
   if (key === 'approve') {
     if (!hasButton('approval.approve')) return;
-    await runAction(() => approveApproval(requiredPayload()), '审批通过');
+    await prepareApprovalAction('approve');
   }
 }
 
@@ -243,14 +252,7 @@ async function submitReject() {
     message.warning('请填写驳回原因');
     return;
   }
-  await runAction(
-    () =>
-      rejectApproval({
-        ...requiredPayload(),
-        comment: rejectReason.value.trim()
-      }),
-    '已驳回'
-  );
+  await prepareApprovalAction('reject', rejectReason.value.trim());
   rejectVisible.value = false;
 }
 
@@ -286,6 +288,81 @@ async function openProgress() {
   } finally {
     loading.value = false;
   }
+}
+
+async function prepareApprovalAction(action: 'approve' | 'reject', comment = '') {
+  const payload = buildPayload();
+  if (!payload) return;
+
+  loading.value = true;
+  try {
+    const { data, error } = await fetchApprovalActionConfig({
+      pageCode: payload.pageCode,
+      tableCode: payload.tableCode,
+      billId: payload.billId,
+      action
+    });
+    if (error) {
+      message.error(error.message || '读取审批节点动作配置失败');
+      return;
+    }
+
+    if (data?.enabled && data?.mode === 'MANUAL') {
+      pendingApprovalAction.value = action;
+      pendingApprovalComment.value = comment;
+      actionParamDefinitions.value = Array.isArray(data?.params) ? data.params : [];
+      actionParamsForm.value = buildDefaultActionParams(actionParamDefinitions.value);
+      actionParamsVisible.value = true;
+      return;
+    }
+
+    await runApprovalDecision(action, comment, {});
+  } finally {
+    loading.value = false;
+  }
+}
+
+async function submitActionParams() {
+  const missing = actionParamDefinitions.value.find(param => {
+    if (!param?.required) return false;
+    const value = actionParamsForm.value[param.name];
+    return value === null || value === undefined || String(value).trim() === '';
+  });
+  if (missing) {
+    message.warning(`请填写${missing.label || missing.name}`);
+    return false;
+  }
+
+  const action = pendingApprovalAction.value;
+  if (!action) return true;
+  await runApprovalDecision(action, pendingApprovalComment.value, { ...actionParamsForm.value });
+  actionParamsVisible.value = false;
+  pendingApprovalAction.value = null;
+  pendingApprovalComment.value = '';
+  actionParamDefinitions.value = [];
+  actionParamsForm.value = {};
+  return true;
+}
+
+function buildDefaultActionParams(definitions: any[]) {
+  const result: Record<string, any> = {};
+  for (const param of definitions) {
+    if (!param?.name) continue;
+    result[param.name] = param.defaultValue ?? '';
+  }
+  return result;
+}
+
+async function runApprovalDecision(action: 'approve' | 'reject', comment = '', actionParams: Record<string, unknown> = {}) {
+  const payload = {
+    ...requiredPayload(),
+    comment,
+    actionParams
+  };
+  await runAction(
+    () => (action === 'approve' ? approveApproval(payload) : rejectApproval(payload)),
+    action === 'approve' ? '审批通过' : '已驳回'
+  );
 }
 
 async function runAction(action: () => Promise<any>, fallbackMessage: string) {
@@ -396,6 +473,39 @@ function refreshGrid() {
     />
   </NModal>
 
+  <NModal
+    v-model:show="actionParamsVisible"
+    preset="dialog"
+    title="审批动作参数"
+    positive-text="确认提交"
+    negative-text="取消"
+    :mask-closable="false"
+    @positive-click="submitActionParams"
+  >
+    <NForm label-placement="top" size="small">
+      <NFormItem
+        v-for="param in actionParamDefinitions"
+        :key="param.name"
+        :label="`${param.label || param.name}${param.required ? ' *' : ''}`"
+      >
+        <NInputNumber
+          v-if="param.type === 'NUMBER'"
+          v-model:value="actionParamsForm[param.name]"
+          clearable
+          class="action-param-control"
+        />
+        <NInput
+          v-else-if="param.type === 'TEXTAREA'"
+          v-model:value="actionParamsForm[param.name]"
+          type="textarea"
+          :placeholder="param.label || param.name"
+          :autosize="{ minRows: 3, maxRows: 6 }"
+        />
+        <NInput v-else v-model:value="actionParamsForm[param.name]" :placeholder="param.label || param.name" />
+      </NFormItem>
+    </NForm>
+  </NModal>
+
   <NModal v-model:show="progressVisible" preset="card" title="审批进度" class="approval-progress-modal">
     <NSpace vertical size="small">
       <div class="approval-main">
@@ -424,6 +534,10 @@ function refreshGrid() {
   gap: 10px;
   color: #4b5565;
   font-size: 13px;
+}
+
+.action-param-control {
+  width: 100%;
 }
 </style>
 

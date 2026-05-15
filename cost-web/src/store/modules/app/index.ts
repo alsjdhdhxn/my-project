@@ -19,7 +19,16 @@ export const useAppStore = defineStore(SetupStoreId.App, () => {
   const breakpoints = useBreakpoints(breakpointsTailwind);
   const { bool: themeDrawerVisible, setTrue: openThemeDrawer, setFalse: closeThemeDrawer } = useBoolean();
   const { bool: reloadFlag, setBool: setReloadFlag } = useBoolean(true);
-  const { bool: fullContent, toggle: toggleFullContent } = useBoolean();
+  const { bool: fullContent, toggle: _toggleFullContent } = useBoolean();
+
+  /** Toggle full content mode and notify AG Grid to resize */
+  function toggleFullContent() {
+    _toggleFullContent();
+    // 等待 CSS transition 完成后触发 resize，让 AG Grid 重新计算尺寸
+    setTimeout(() => {
+      window.dispatchEvent(new Event('resize'));
+    }, 350);
+  }
   const { bool: contentXScrollable, setBool: setContentXScrollable } = useBoolean();
   const { bool: siderCollapse, setBool: setSiderCollapse, toggle: toggleSiderCollapse } = useBoolean();
   const {

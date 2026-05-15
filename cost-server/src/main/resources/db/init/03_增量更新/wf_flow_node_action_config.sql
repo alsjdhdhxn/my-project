@@ -1,0 +1,23 @@
+-- 审批节点动作配置
+-- 保存通过/拒绝后调用的业务存储过程及执行模式。
+-- 示例：
+-- {
+--   "approve": {"procedure": "P_DEMAND_APPROVAL_SET_RECEIVER", "mode": "MANUAL"},
+--   "reject": {"procedure": "P_DEMAND_APPROVAL_SET_RECEIVER", "mode": "AUTO"}
+-- }
+
+DECLARE
+  V_COUNT NUMBER;
+BEGIN
+  SELECT COUNT(1)
+    INTO V_COUNT
+    FROM USER_TAB_COLUMNS
+   WHERE TABLE_NAME = 'WF_FLOW_NODE'
+     AND COLUMN_NAME = 'ACTION_CONFIG';
+
+  IF V_COUNT = 0 THEN
+    EXECUTE IMMEDIATE 'ALTER TABLE WF_FLOW_NODE ADD (ACTION_CONFIG CLOB)';
+    EXECUTE IMMEDIATE q'[COMMENT ON COLUMN WF_FLOW_NODE.ACTION_CONFIG IS '节点动作配置JSON；配置通过/拒绝后调用的业务存储过程及AUTO/MANUAL模式']';
+  END IF;
+END;
+/

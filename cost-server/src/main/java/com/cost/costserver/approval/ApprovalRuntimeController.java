@@ -45,4 +45,13 @@ public class ApprovalRuntimeController {
             @RequestParam Long billId) {
         return Result.ok(approvalRuntimeService.progress(pageCode, tableCode, billId));
     }
+
+    @GetMapping("/action-config")
+    public Result<Map<String, Object>> actionConfig(
+            @RequestParam String pageCode,
+            @RequestParam String tableCode,
+            @RequestParam Long billId,
+            @RequestParam String action) {
+        return Result.ok(approvalRuntimeService.actionConfig(pageCode, tableCode, billId, action));
+    }
 }
