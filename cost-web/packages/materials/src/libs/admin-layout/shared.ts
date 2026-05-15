@@ -48,7 +48,7 @@ export function createLayoutCssVars(props: AdminLayoutProps) {
   const headerZIndex = maxZIndex - 3;
   const tabZIndex = maxZIndex - 5;
   const siderZIndex = mode === 'vertical' || isMobile ? maxZIndex - 1 : maxZIndex - 4;
-  const mobileSiderZIndex = isMobile ? maxZIndex - 2 : 0;
+  const mobileSiderZIndex = maxZIndex - 2;
   const footerZIndex = maxZIndex - 5;
 
   const cssProps: LayoutCssVarsProps = {

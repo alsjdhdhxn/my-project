@@ -41,7 +41,7 @@ export const useAppStore = defineStore(SetupStoreId.App, () => {
     notifyLayoutResize();
   }
   const { bool: contentXScrollable, setBool: setContentXScrollable } = useBoolean();
-  const { bool: siderCollapse, setBool: setSiderCollapse, toggle: toggleSiderCollapse } = useBoolean();
+  const { bool: siderCollapse, setBool: setSiderCollapse, toggle: toggleSiderCollapse } = useBoolean(true);
   const {
     bool: mixSiderFixed,
     setBool: setMixSiderFixed,
@@ -123,7 +123,8 @@ export const useAppStore = defineStore(SetupStoreId.App, () => {
           if (backup) {
             nextTick(() => {
               themeStore.setThemeLayout(backup.layout);
-              setSiderCollapse(backup.siderCollapse);
+              // 始终保持侧边栏折叠（抽屉模式下默认隐藏）
+              setSiderCollapse(true);
 
               localStg.remove('backupThemeSettingBeforeIsMobile');
             });

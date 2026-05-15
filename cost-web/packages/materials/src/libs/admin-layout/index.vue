@@ -57,8 +57,8 @@ const cssVars = computed(() => createLayoutCssVars(props));
 // config visible
 const showHeader = computed(() => Boolean(slots.header) && props.headerVisible);
 const showTab = computed(() => Boolean(slots.tab) && props.tabVisible);
-const showSider = computed(() => !props.isMobile && Boolean(slots.sider) && props.siderVisible);
-const showMobileSider = computed(() => props.isMobile && Boolean(slots.sider) && props.siderVisible);
+const showSider = computed(() => false);
+const showMobileSider = computed(() => Boolean(slots.sider) && props.siderVisible);
 const showFooter = computed(() => Boolean(slots.footer) && props.footerVisible);
 
 // scroll mode

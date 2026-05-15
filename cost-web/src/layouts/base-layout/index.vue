@@ -138,10 +138,9 @@ function getSiderAndCollapsedWidth(isCollapsed: boolean) {
     :right-footer="themeStore.footer.right"
   >
     <template #header>
-      <GlobalHeader v-bind="headerProps" />
-    </template>
-    <template #tab>
-      <GlobalTab />
+      <GlobalHeader v-bind="headerProps">
+        <GlobalTab embedded />
+      </GlobalHeader>
     </template>
     <template #sider>
       <GlobalSider />
