@@ -19,15 +19,26 @@ export const useAppStore = defineStore(SetupStoreId.App, () => {
   const breakpoints = useBreakpoints(breakpointsTailwind);
   const { bool: themeDrawerVisible, setTrue: openThemeDrawer, setFalse: closeThemeDrawer } = useBoolean();
   const { bool: reloadFlag, setBool: setReloadFlag } = useBoolean(true);
-  const { bool: fullContent, toggle: _toggleFullContent } = useBoolean();
+  const { bool: fullContent, setBool: setFullContentBool, toggle: _toggleFullContent } = useBoolean();
 
-  /** Toggle full content mode and notify AG Grid to resize */
-  function toggleFullContent() {
-    _toggleFullContent();
+  /** Notify AG Grid to resize after layout transition */
+  function notifyLayoutResize() {
     // 等待 CSS transition 完成后触发 resize，让 AG Grid 重新计算尺寸
     setTimeout(() => {
       window.dispatchEvent(new Event('resize'));
     }, 350);
+  }
+
+  /** Set full content mode and notify AG Grid to resize */
+  function setFullContent(value: boolean) {
+    setFullContentBool(value);
+    notifyLayoutResize();
+  }
+
+  /** Toggle full content mode and notify AG Grid to resize */
+  function toggleFullContent() {
+    _toggleFullContent();
+    notifyLayoutResize();
   }
   const { bool: contentXScrollable, setBool: setContentXScrollable } = useBoolean();
   const { bool: siderCollapse, setBool: setSiderCollapse, toggle: toggleSiderCollapse } = useBoolean();
@@ -162,6 +173,7 @@ export const useAppStore = defineStore(SetupStoreId.App, () => {
     themeDrawerVisible,
     openThemeDrawer,
     closeThemeDrawer,
+    setFullContent,
     toggleFullContent,
     contentXScrollable,
     setContentXScrollable,

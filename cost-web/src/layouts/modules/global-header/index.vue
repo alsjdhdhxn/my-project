@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { watch } from 'vue';
-import { useFullscreen } from '@vueuse/core';
+import { ref, watch } from 'vue';
+import { useEventListener, useFullscreen } from '@vueuse/core';
 import { GLOBAL_HEADER_MENU_ID } from '@/constants/app';
 import { useAppStore } from '@/store/modules/app';
 import { useThemeStore } from '@/store/modules/theme';
@@ -27,13 +27,51 @@ defineProps<Props>();
 
 const appStore = useAppStore();
 const themeStore = useThemeStore();
-const { isFullscreen, toggle } = useFullscreen();
+const { isFullscreen, isSupported, enter, exit } = useFullscreen();
+const fullscreenFallbackActive = ref(false);
+
+async function toggleUltimateFullscreen() {
+  if (isFullscreen.value || document.fullscreenElement) {
+    fullscreenFallbackActive.value = false;
+    appStore.setFullContent(false);
+    if (document.fullscreenElement) {
+      await exit();
+    }
+    return;
+  }
+
+  if (fullscreenFallbackActive.value && appStore.fullContent) {
+    fullscreenFallbackActive.value = false;
+    appStore.setFullContent(false);
+    return;
+  }
+
+  appStore.setFullContent(true);
+
+  if (!isSupported.value) {
+    fullscreenFallbackActive.value = true;
+    return;
+  }
+
+  try {
+    await enter();
+    fullscreenFallbackActive.value = false;
+  } catch {
+    fullscreenFallbackActive.value = true;
+    // Keep content fullscreen as a mobile/browser fallback when Fullscreen API is denied.
+  }
+}
 
 // 监听全屏状态变化，触发 resize 让 AG Grid 重新计算尺寸
 watch(isFullscreen, () => {
   setTimeout(() => {
     window.dispatchEvent(new Event('resize'));
   }, 350);
+});
+
+useEventListener(document, 'fullscreenchange', () => {
+  fullscreenFallbackActive.value = false;
+  appStore.setFullContent(Boolean(document.fullscreenElement));
 });
 </script>
 
@@ -47,7 +85,7 @@ watch(isFullscreen, () => {
     </div>
     <div class="h-full flex-y-center justify-end">
       <GlobalSearch v-if="themeStore.header.globalSearch.visible" />
-      <FullScreen v-if="!appStore.isMobile" :full="isFullscreen" @click="toggle" />
+      <FullScreen :full="isFullscreen || appStore.fullContent" @click="toggleUltimateFullscreen" />
       <LangSwitch
         v-if="themeStore.header.multilingual.visible"
         :lang="appStore.locale"
