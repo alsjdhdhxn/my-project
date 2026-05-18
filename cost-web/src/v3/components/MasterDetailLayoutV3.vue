@@ -8,6 +8,7 @@ import DetailPanelV3 from '@/v3/components/detail/DetailPanelV3.vue';
 import ApprovalActionGroup from '@/v3/components/approval/ApprovalActionGroup.vue';
 import { useMasterGridBindings } from '@/v3/composables/meta-v3/useMasterGridBindings';
 import { useGridContextMenu } from '@/v3/composables/meta-v3/useGridContextMenu';
+import { showErrorDialog } from '@/v3/utils/errorDialog';
 import { handleToolbarAction } from '@/v3/composables/meta-v3/useToolbarAction';
 import { ensureRowKey } from '@/v3/logic/calc-engine';
 import { buildRowClassCallback, buildRowEditableCallback } from '@/v3/composables/meta-v3/usePageRules';
@@ -473,7 +474,7 @@ const { getDetailContextMenuItems } = useGridContextMenu({
     id: activeMasterId.value,
     rowKey: activeMasterRowKey.value
   }),
-  notifyError: (msg: string) => window.$message?.error(msg)
+  notifyError: (msg: string) => showErrorDialog(msg)
 });
 
 function handleMasterGridReady(event: any) {

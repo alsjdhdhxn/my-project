@@ -921,9 +921,15 @@ export function useWorkingSetStore(params: {
 
         const { error, data } = await saveDynamicData(paramsToSave);
         if (error) {
-          const errorMessage =
-            (error as any)?.response?.data?.msg || (error as any)?.msg || error.message || '保存失败';
-          saveStats.errors.push(`主表 ${masterId}: ${errorMessage}`);
+          const responseData = (error as any)?.response?.data;
+          const responseDetail = responseData?.data;
+          const errorLines = [
+            `主表 ${masterId}: ${responseData?.msg || (error as any)?.msg || error.message || '保存失败'}`
+          ];
+          if (responseDetail?.oraCode) errorLines.push(`ORA错误码: ${responseDetail.oraCode}`);
+          if (responseDetail?.sql) errorLines.push(`报错SQL: ${responseDetail.sql}`);
+          if (responseDetail?.rootCause) errorLines.push(`根因: ${responseDetail.rootCause}`);
+          saveStats.errors.push(errorLines.join('\n'));
           continue;
         }
 

@@ -3,7 +3,8 @@ import { BACKEND_ERROR_CODE, createFlatRequest, createRequest } from '@sa/axios'
 import { useAuthStore } from '@/store/modules/auth';
 import { getServiceBaseURL } from '@/utils/service';
 import { $t } from '@/locales';
-import { getAuthorization, handleExpiredRequest, showErrorMsg } from './shared';
+import { getAuthorization, handleExpiredRequest } from './shared';
+import { showErrorDialog } from '@/v3/utils/errorDialog';
 import type { RequestInstanceState } from './type';
 
 const isHttpProxy = import.meta.env.DEV && import.meta.env.VITE_HTTP_PROXY === 'Y';
@@ -124,7 +125,24 @@ export const request = createFlatRequest(
         return;
       }
 
-      showErrorMsg(request.state, message);
+      // 向导生成接口自己处理错误弹窗，跳过全局 toast
+      const requestUrl = error.config?.url || '';
+      if (requestUrl.includes('/wizard/generate')) {
+        return;
+      }
+
+      // 提取后端返回的 detail（ORA 码、SQL 等）
+      const responseDetail = error.response?.data?.data;
+      if (responseDetail && (responseDetail.oraCode || responseDetail.sql)) {
+        // 有数据库错误详情，构建带详情的消息
+        const parts: string[] = [message];
+        if (responseDetail.oraCode) parts.push(`ORA错误码: ${responseDetail.oraCode}`);
+        if (responseDetail.sql) parts.push(`报错SQL: ${responseDetail.sql}`);
+        if (responseDetail.rootCause) parts.push(`根因: ${responseDetail.rootCause}`);
+        showErrorDialog(parts.join('\n'));
+      } else {
+        showErrorDialog(message);
+      }
     }
   }
 );

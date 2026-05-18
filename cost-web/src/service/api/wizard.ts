@@ -72,21 +72,25 @@ export interface WizardResult {
 
 // ==================== API 函数 ====================
 
-/** 向导：一键生成页面 */
+/** 向导：一键生成页面（自行处理错误，不触发全局 toast） */
 export async function generateWizard(payload: WizardPayload) {
-  const { data, error } = await request<WizardResult>({
+  const { data, error } = await request<any>({
     url: '/meta-config/wizard/generate',
     method: 'POST',
     data: payload
   });
-  if (error) {
-    // 提取后端返回的错误详情（ORA 错误码、SQL 等）
-    const responseData = (error as any)?.response?.data;
-    const err: any = new Error(responseData?.msg || error.message || '生成失败');
-    err.detail = responseData?.data || null; // { message, oraCode, detail, rootCause }
-    throw err;
+  // 正常成功
+  if (!error && data) {
+    return data as WizardResult;
   }
-  return data;
+  // 后端返回了错误（业务错误或数据库错误）
+  const responseData = (error as any)?.response?.data || (error as any)?.data;
+  const msg = responseData?.msg || (error as any)?.message || '生成失败';
+  const detail = responseData?.data || null; // { message, oraCode, sql, rootCause }
+  const err: any = new Error(msg);
+  err.detail = detail;
+  err.silent = true; // 标记为静默错误，不弹全局 toast
+  throw err;
 }
 
 /** 向导：查询表主键列 */

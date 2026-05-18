@@ -6,6 +6,7 @@ import MetaPageRendererV3 from '@/v3/components/meta-v3/renderers/MetaPageRender
 import LookupDialog from '@/v3/components/LookupDialog.vue';
 import AdvancedSearchDialog from '@/v3/components/AdvancedSearchDialog.vue';
 import { useBaseRuntime } from '@/v3/composables/meta-v3/runtime';
+import { showErrorDialog } from '@/v3/utils/errorDialog';
 
 const props = defineProps<{ pageCode: string }>();
 const message = useMessage();
@@ -13,7 +14,7 @@ const message = useMessage();
 const runtime = useBaseRuntime({
   pageCode: props.pageCode,
   notifyInfo: msg => message.info(msg),
-  notifyError: msg => message.error(msg),
+  notifyError: msg => showErrorDialog(msg),
   notifySuccess: msg => message.success(msg)
 });
 

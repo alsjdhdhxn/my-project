@@ -11,11 +11,23 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    private static final Pattern ORA_PATTERN = Pattern.compile("ORA-\\d+");
+    private static final Pattern SQL_PATTERN_MYBATIS = Pattern.compile(
+            "### SQL:\\s*(.+?)(?=\\s*###|$)", Pattern.DOTALL);
+    private static final Pattern SQL_PATTERN_SPRING = Pattern.compile(
+            "(?:SQL \\[|bad SQL grammar \\[)(.+?)\\]", Pattern.DOTALL);
+    private static final Pattern SQL_PATTERN_DML = Pattern.compile(
+            "((?:INSERT INTO|UPDATE|DELETE FROM)\\s+\\S+.*?)(?=\\s*###|;|$)", Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
 
     /**
      * 业务异常
@@ -72,12 +84,72 @@ public class GlobalExceptionHandler {
     }
 
     /**
-     * 其他未知异常
+     * 其他未知异常 — 提取数据库错误详情（ORA 码、SQL）返回给前端
      */
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Result<?>> handleException(Exception e) {
         log.error("系统异常", e);
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(Result.fail(500, "系统异常，请联系管理员"));
+
+        Map<String, Object> detail = new LinkedHashMap<>();
+        String oraCode = null;
+        String sql = null;
+        String dbMessage = null;
+
+        // 遍历异常链提取 ORA 错误码和 SQL
+        Throwable cursor = e;
+        while (cursor != null) {
+            String msg = cursor.getMessage();
+            if (msg != null) {
+                if (oraCode == null) {
+                    Matcher m = ORA_PATTERN.matcher(msg);
+                    if (m.find()) oraCode = m.group();
+                }
+                if (sql == null) {
+                    // 尝试 MyBatis 格式: ### SQL: ...
+                    Matcher m1 = SQL_PATTERN_MYBATIS.matcher(msg);
+                    if (m1.find()) {
+                        sql = m1.group(1).trim();
+                    } else {
+                        // 尝试 Spring 格式: SQL [...] 或 bad SQL grammar [...]
+                        Matcher m2 = SQL_PATTERN_SPRING.matcher(msg);
+                        if (m2.find()) {
+                            sql = m2.group(1).trim();
+                        } else {
+                            // 尝试直接匹配 DML 语句
+                            Matcher m3 = SQL_PATTERN_DML.matcher(msg);
+                            if (m3.find()) {
+                                sql = m3.group(1).trim();
+                            }
+                        }
+                    }
+                    if (sql != null && sql.length() > 2000) sql = sql.substring(0, 2000);
+                }
+                if (dbMessage == null && msg.contains("ORA-")) {
+                    dbMessage = msg.length() > 500 ? msg.substring(0, 500) : msg;
+                }
+            }
+            if (cursor instanceof java.sql.SQLException && sql == null) {
+                dbMessage = cursor.getMessage();
+            }
+            cursor = cursor.getCause();
+        }
+
+        if (oraCode != null) detail.put("oraCode", oraCode);
+        if (sql != null) detail.put("sql", sql);
+        if (dbMessage != null) detail.put("message", dbMessage);
+
+        // 根因
+        Throwable root = e;
+        while (root.getCause() != null) root = root.getCause();
+        String rootMsg = root.getMessage();
+        if (rootMsg != null && rootMsg.length() > 500) rootMsg = rootMsg.substring(0, 500);
+        detail.put("rootCause", rootMsg);
+
+        String summary = oraCode != null
+                ? oraCode + ": " + (dbMessage != null && dbMessage.length() > 100 ? dbMessage.substring(0, 100) : dbMessage)
+                : "系统异常，请联系管理员";
+
+        return ResponseEntity.status(HttpStatus.OK)
+                .body(Result.fail(500, summary, detail));
     }
 }

@@ -332,23 +332,51 @@ public class MetaConfigController {
             // 提取数据库错误详情
             Map<String, Object> detail = new java.util.LinkedHashMap<>();
             detail.put("message", e.getMessage());
-            Throwable cause = e.getCause() != null ? e.getCause() : e;
-            String causeMsg = cause.getMessage();
-            // 提取 ORA 错误码
-            if (causeMsg != null && causeMsg.contains("ORA-")) {
-                java.util.regex.Matcher m = java.util.regex.Pattern.compile("ORA-\\d+").matcher(causeMsg);
-                if (m.find()) {
-                    detail.put("oraCode", m.group());
+
+            // 遍历整个异常链提取 ORA 错误码和 SQL
+            String oraCode = null;
+            String sql = null;
+            Throwable cursor = e;
+            while (cursor != null) {
+                String msg = cursor.getMessage();
+                if (msg != null) {
+                    // 提取 ORA 错误码
+                    if (oraCode == null && msg.contains("ORA-")) {
+                        java.util.regex.Matcher m = java.util.regex.Pattern.compile("ORA-\\d+").matcher(msg);
+                        if (m.find()) oraCode = m.group();
+                    }
+                    // 提取 SQL（MyBatis BadSqlGrammarException / StatementCallback 等通常包含 SQL）
+                    if (sql == null) {
+                        // 匹配常见格式: "### SQL: ..." 或 "; SQL [...]" 或 "bad SQL grammar [...]"
+                        java.util.regex.Matcher sqlMatcher = java.util.regex.Pattern
+                                .compile("(?:### SQL:|SQL \\[|bad SQL grammar \\[)\\s*(.+?)(?:\\]|###|$)", java.util.regex.Pattern.DOTALL)
+                                .matcher(msg);
+                        if (sqlMatcher.find()) {
+                            sql = sqlMatcher.group(1).trim();
+                            if (sql.length() > 1000) sql = sql.substring(0, 1000);
+                        }
+                    }
                 }
+                // 如果是 SQLException，可以直接取
+                if (cursor instanceof java.sql.SQLException sqlEx && sql == null) {
+                    sql = sqlEx.getMessage();
+                }
+                cursor = cursor.getCause();
             }
-            detail.put("detail", causeMsg);
-            // 提取 SQL（如果是 MyBatis 异常链中有 SQL）
-            Throwable root = cause;
+
+            if (oraCode != null) detail.put("oraCode", oraCode);
+            if (sql != null) detail.put("sql", sql);
+
+            Throwable root = e;
             while (root.getCause() != null) root = root.getCause();
             String rootMsg = root.getMessage();
             if (rootMsg != null && rootMsg.length() > 500) rootMsg = rootMsg.substring(0, 500);
             detail.put("rootCause", rootMsg);
-            return Result.fail(500, "生成失败: " + (causeMsg != null && causeMsg.length() > 100 ? causeMsg.substring(0, 100) : causeMsg), detail);
+
+            String summary = oraCode != null ? oraCode + ": " : "生成失败: ";
+            String causeMsg = e.getCause() != null ? e.getCause().getMessage() : e.getMessage();
+            summary += causeMsg != null && causeMsg.length() > 100 ? causeMsg.substring(0, 100) : causeMsg;
+            return Result.fail(500, summary, detail);
         }
     }
 

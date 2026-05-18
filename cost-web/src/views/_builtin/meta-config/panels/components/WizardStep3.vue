@@ -18,7 +18,7 @@ const generating = ref(false);
 // 错误弹窗状态
 const showErrorModal = ref(false);
 const errorSummary = ref('');
-const errorDetail = ref<{ message?: string; oraCode?: string; detail?: string; rootCause?: string } | null>(null);
+const errorDetail = ref<{ message?: string; oraCode?: string; sql?: string; detail?: string; rootCause?: string } | null>(null);
 
 const masterColCount = computed(() => props.payload.masterTable?.columns?.length || 0);
 const detailColCounts = computed(() =>
@@ -144,9 +144,9 @@ async function handleGenerate() {
           <NCollapseItem title="查看详情" name="detail">
             <div class="error-detail">
               <p v-if="errorDetail.oraCode"><strong>ORA 错误码：</strong>{{ errorDetail.oraCode }}</p>
+              <p v-if="errorDetail.sql"><strong>报错 SQL：</strong></p>
+              <pre v-if="errorDetail.sql" class="error-pre">{{ errorDetail.sql }}</pre>
               <p v-if="errorDetail.message"><strong>错误信息：</strong>{{ errorDetail.message }}</p>
-              <p v-if="errorDetail.detail"><strong>数据库详情：</strong></p>
-              <pre v-if="errorDetail.detail" class="error-pre">{{ errorDetail.detail }}</pre>
               <p v-if="errorDetail.rootCause"><strong>根因：</strong></p>
               <pre v-if="errorDetail.rootCause" class="error-pre">{{ errorDetail.rootCause }}</pre>
             </div>
