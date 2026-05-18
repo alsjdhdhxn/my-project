@@ -10,6 +10,7 @@ import com.cost.costserver.export.entity.ExportConfigDetail;
 import com.cost.costserver.metadata.entity.*;
 import com.cost.costserver.metadata.service.MetaConfigService;
 import com.cost.costserver.metadata.service.MetadataService;
+import com.cost.costserver.metadata.service.WizardGenerateService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +33,7 @@ public class MetaConfigController {
     private final MetaConfigService metaConfigService;
     private final MetadataService metadataService;
     private final AppWebSocketHandler webSocketHandler;
+    private final WizardGenerateService wizardGenerateService;
 
     @ModelAttribute
     public void requireAdminUser() {
@@ -310,5 +312,66 @@ public class MetaConfigController {
             @RequestParam(defaultValue = "CMX") String owner,
             @RequestParam String viewName) {
         return Result.ok(metaConfigService.listViewColumns(owner, viewName));
+    }
+
+    // ==================== 向导 ====================
+
+    @Operation(summary = "向导：一键生成页面")
+    @PostMapping("/wizard/generate")
+    public Result<Object> wizardGenerate(@RequestBody WizardPayload payload) {
+        try {
+            WizardResult result = wizardGenerateService.generate(payload);
+            webSocketHandler.broadcast("META_CONFIG_CHANGED", Map.of(
+                    "entity", "wizard",
+                    "pageCode", result.getPageCode() != null ? result.getPageCode() : ""
+            ));
+            return Result.ok(result);
+        } catch (BusinessException e) {
+            throw e; // 业务异常由全局处理器处理
+        } catch (Exception e) {
+            // 提取数据库错误详情
+            Map<String, Object> detail = new java.util.LinkedHashMap<>();
+            detail.put("message", e.getMessage());
+            Throwable cause = e.getCause() != null ? e.getCause() : e;
+            String causeMsg = cause.getMessage();
+            // 提取 ORA 错误码
+            if (causeMsg != null && causeMsg.contains("ORA-")) {
+                java.util.regex.Matcher m = java.util.regex.Pattern.compile("ORA-\\d+").matcher(causeMsg);
+                if (m.find()) {
+                    detail.put("oraCode", m.group());
+                }
+            }
+            detail.put("detail", causeMsg);
+            // 提取 SQL（如果是 MyBatis 异常链中有 SQL）
+            Throwable root = cause;
+            while (root.getCause() != null) root = root.getCause();
+            String rootMsg = root.getMessage();
+            if (rootMsg != null && rootMsg.length() > 500) rootMsg = rootMsg.substring(0, 500);
+            detail.put("rootCause", rootMsg);
+            return Result.fail(500, "生成失败: " + (causeMsg != null && causeMsg.length() > 100 ? causeMsg.substring(0, 100) : causeMsg), detail);
+        }
+    }
+
+    @Operation(summary = "向导：查询表主键列")
+    @GetMapping("/wizard/pk-column")
+    public Result<String> wizardPkColumn(
+            @RequestParam(defaultValue = "CMX") String owner,
+            @RequestParam String tableName) {
+        String pkColumn = wizardGenerateService.getPkColumn(owner, tableName);
+        if (pkColumn == null) {
+            throw new BusinessException(400, "目标表缺少主键定义: " + tableName);
+        }
+        return Result.ok(pkColumn);
+    }
+
+    @Operation(summary = "向导：级联删除页面及相关元数据")
+    @DeleteMapping("/wizard/cascade/{pageCode}")
+    public Result<Void> wizardCascadeDelete(@PathVariable String pageCode) {
+        wizardGenerateService.cascadeDeleteByPageCode(pageCode);
+        webSocketHandler.broadcast("META_CONFIG_CHANGED", Map.of(
+                "entity", "wizard",
+                "pageCode", pageCode
+        ));
+        return Result.ok();
     }
 }

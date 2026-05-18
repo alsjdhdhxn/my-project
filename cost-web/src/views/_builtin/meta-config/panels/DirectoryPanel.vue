@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, inject, onMounted, ref } from 'vue';
-import { NButton, NPopconfirm, NSpace, useMessage } from 'naive-ui';
+import { NButton, NModal, NPopconfirm, NSpace, useDialog, useMessage } from 'naive-ui';
 import { AgGridVue } from 'ag-grid-vue3';
 import type {
   CellValueChangedEvent,
@@ -11,13 +11,43 @@ import type {
   GridReadyEvent
 } from 'ag-grid-community';
 import { deleteResource, fetchAllResources, saveResource } from '@/service/api/meta-config';
+import { cascadeDeletePage } from '@/service/api/wizard';
+import WizardPanel from './WizardPanel.vue';
 
 const message = useMessage();
+const dialog = useDialog();
 const navigateTo = inject<(tab: string, pageCode: string) => void>('navigateTo')!;
 const gridApi = ref<GridApi | null>(null);
 const rawData = ref<any[]>([]);
 const selectedRow = ref<any>(null);
 const loading = ref(false);
+
+// 页面向导弹窗
+const showWizard = ref(false);
+const wizardParentId = ref<number | null>(null);
+const wizardParentName = ref('');
+
+function openWizard() {
+  // 默认归属菜单 = 当前选中的 DIRECTORY 节点，或选中行的父级
+  if (selectedRow.value?.resourceType === 'DIRECTORY') {
+    wizardParentId.value = selectedRow.value.id;
+    wizardParentName.value = selectedRow.value.resourceName || '';
+  } else if (selectedRow.value?.parentId) {
+    wizardParentId.value = selectedRow.value.parentId;
+    const parent = rawData.value.find(r => r.id === selectedRow.value.parentId);
+    wizardParentName.value = parent?.resourceName || '';
+  } else {
+    // 顶级 PAGE 或未选中 → 默认根目录
+    wizardParentId.value = -1;
+    wizardParentName.value = '根目录（顶级）';
+  }
+  showWizard.value = true;
+}
+
+function onWizardSuccess() {
+  showWizard.value = false;
+  loadData(); // 刷新目录树
+}
 
 // 构建树路径：每行需要一个 string[] 路径，AG Grid Tree Data 用它来构建层级
 const rowData = computed(() => {
@@ -203,12 +233,36 @@ async function handleDelete() {
     rawData.value = rawData.value.filter(r => r.id !== selectedRow.value.id);
     return;
   }
-  try {
-    await deleteResource(selectedRow.value.id);
-    message.success('删除成功');
-    await loadData();
-  } catch (e) {
-    message.error('删除失败');
+
+  const row = selectedRow.value;
+  const pageCode = row.pageCode;
+
+  // 如果是 PAGE 类型且有 pageCode，询问是否级联删除
+  if (row.resourceType === 'PAGE' && pageCode) {
+    dialog.warning({
+      title: '删除确认',
+      content: `是否删除页面「${row.resourceName}」及其相关的所有元数据（表、列、组件、规则、权限）？`,
+      positiveText: '删除全部',
+      negativeText: '取消',
+      onPositiveClick: async () => {
+        try {
+          await cascadeDeletePage(pageCode);
+          message.success('页面及相关元数据已全部删除');
+          await loadData();
+        } catch (e: any) {
+          message.error(e?.message || '删除失败');
+        }
+      }
+    });
+  } else {
+    // DIRECTORY 或无 pageCode 的资源，只删资源本身
+    try {
+      await deleteResource(row.id);
+      message.success('删除成功');
+      await loadData();
+    } catch (e) {
+      message.error('删除失败');
+    }
   }
 }
 
@@ -236,13 +290,8 @@ onMounted(loadData);
   <div class="panel-container">
     <div class="toolbar">
       <NSpace>
-        <NButton size="small" type="primary" @click="handleAddDirectory">新增目录</NButton>
-        <NPopconfirm @positive-click="handleDelete">
-          <template #trigger>
-            <NButton size="small" type="error" :disabled="!selectedRow">删除</NButton>
-          </template>
-          确定删除选中记录？
-        </NPopconfirm>
+        <NButton size="small" type="primary" @click="openWizard">新增页面（向导）</NButton>
+        <NButton size="small" type="error" :disabled="!selectedRow" @click="handleDelete">删除</NButton>
         <NButton size="small" @click="handleSave">保存</NButton>
         <NButton size="small" quaternary @click="loadData">刷新</NButton>
       </NSpace>
@@ -269,6 +318,21 @@ onMounted(loadData);
         @cell-value-changed="onCellValueChanged"
       />
     </div>
+    <!-- 页面向导弹窗 -->
+    <NModal
+      v-model:show="showWizard"
+      preset="card"
+      title="页面创建向导"
+      :style="{ width: '900px', maxHeight: '85vh' }"
+      :body-style="{ overflow: 'auto' }"
+      :mask-closable="false"
+    >
+      <WizardPanel
+        :default-parent-id="wizardParentId"
+        :default-parent-name="wizardParentName"
+        @success="onWizardSuccess"
+      />
+    </NModal>
   </div>
 </template>
 
