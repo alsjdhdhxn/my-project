@@ -3,7 +3,6 @@ import { provide, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { NTabPane, NTabs } from 'naive-ui';
 import UnifiedConfigPage from './panels/unified/UnifiedConfigPage.vue';
-import PagePanel from './panels/PagePanel.vue';
 import LookupPanel from './panels/LookupPanel.vue';
 
 const route = useRoute();
@@ -35,9 +34,6 @@ watch(
     <NTabs v-model:value="activeTab" type="line" animated>
       <NTabPane name="unified" tab="一体化配置">
         <UnifiedConfigPage />
-      </NTabPane>
-      <NTabPane name="page" tab="页面管理">
-        <PagePanel />
       </NTabPane>
       <NTabPane name="lookup" tab="Lookup管理">
         <LookupPanel />

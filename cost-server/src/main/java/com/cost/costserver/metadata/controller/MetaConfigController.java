@@ -11,7 +11,6 @@ import com.cost.costserver.metadata.entity.*;
 import com.cost.costserver.metadata.service.MetaConfigService;
 import com.cost.costserver.metadata.service.MetadataService;
 import com.cost.costserver.metadata.service.WizardGenerateService;
-import com.cost.costserver.metadata.service.ColumnOverrideMigrationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -35,7 +34,6 @@ public class MetaConfigController {
     private final MetadataService metadataService;
     private final AppWebSocketHandler webSocketHandler;
     private final WizardGenerateService wizardGenerateService;
-    private final ColumnOverrideMigrationService columnOverrideMigrationService;
 
     @ModelAttribute
     public void requireAdminUser() {
@@ -412,31 +410,5 @@ public class MetaConfigController {
                 "pageCode", pageCode
         ));
         return Result.ok();
-    }
-
-    // ==================== 迁移工具 ====================
-
-    @Operation(summary = "迁移：拆分共享表为页面独有")
-    @GetMapping("/migration/split-tables")
-    public Result<Map<String, Object>> migrationSplitTables() {
-        return Result.ok(columnOverrideMigrationService.splitSharedTables());
-    }
-
-    @Operation(summary = "迁移：COLUMN_OVERRIDE 写入列元数据")
-    @GetMapping("/migration/migrate-overrides")
-    public Result<Map<String, Object>> migrationMigrateOverrides() {
-        return Result.ok(columnOverrideMigrationService.migrateColumnOverrides());
-    }
-
-    @Operation(summary = "迁移：无 COLUMN_OVERRIDE 的表补默认值")
-    @GetMapping("/migration/mark-unmigrated")
-    public Result<Integer> migrationMarkUnmigrated() {
-        return Result.ok(columnOverrideMigrationService.markUnmigratedTables());
-    }
-
-    @Operation(summary = "迁移：验证无共享表残留")
-    @GetMapping("/migration/verify")
-    public Result<Map<String, List<String>>> migrationVerify() {
-        return Result.ok(columnOverrideMigrationService.verify());
     }
 }

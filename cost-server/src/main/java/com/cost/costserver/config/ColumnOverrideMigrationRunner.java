@@ -8,10 +8,9 @@ import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
 
 /**
- * 应用启动时自动执行迁移。
- * 幂等：已迁移的数据不会重复处理。
+ * 迁移已完成，本类已禁用。
  */
-@Component
+// @Component
 @RequiredArgsConstructor
 @Slf4j
 public class ColumnOverrideMigrationRunner implements ApplicationRunner {

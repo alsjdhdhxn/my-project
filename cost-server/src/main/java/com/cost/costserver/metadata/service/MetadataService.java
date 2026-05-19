@@ -88,12 +88,7 @@ public class MetadataService {
         TableMetadataDTO base = getTableMetadata(tableCode);
         List<ColumnMetadataDTO> columns = base.columns();
 
-        // 双读模式：已迁移的列直接使用自身属性，未迁移的走旧 COLUMN_OVERRIDE
-        boolean allMigrated = columns.stream().allMatch(c -> Integer.valueOf(1).equals(c.migrated()));
-        if (!allMigrated) {
-            // 旧逻辑兜底：从 COLUMN_OVERRIDE 合并
-            columns = applyColumnOverrides(columns, loadColumnOverrides(pageCode, gridKey));
-        }
+        // 列属性直接从 COLUMN_METADATA 读取（COLUMN_OVERRIDE 已废弃）
 
         // 页面权限（仅收紧，不放开）
         columns = applyPermission(columns, permission, gridKey);
