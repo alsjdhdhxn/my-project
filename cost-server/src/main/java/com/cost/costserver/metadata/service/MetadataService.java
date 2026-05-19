@@ -86,12 +86,16 @@ public class MetadataService {
             Long userId,
             boolean applyUserPreferences) {
         TableMetadataDTO base = getTableMetadata(tableCode);
-        // COLUMN_OVERRIDE now merged on backend for metadata/table endpoint.
         List<ColumnMetadataDTO> columns = base.columns();
-        // 1) 列配置（表元数据）基线
-        // 2) 列覆盖（仅收紧，不放开）
-        columns = applyColumnOverrides(columns, loadColumnOverrides(pageCode, gridKey));
-        // 3) 页面权限（仅收紧，不放开）
+
+        // 双读模式：已迁移的列直接使用自身属性，未迁移的走旧 COLUMN_OVERRIDE
+        boolean allMigrated = columns.stream().allMatch(c -> Integer.valueOf(1).equals(c.migrated()));
+        if (!allMigrated) {
+            // 旧逻辑兜底：从 COLUMN_OVERRIDE 合并
+            columns = applyColumnOverrides(columns, loadColumnOverrides(pageCode, gridKey));
+        }
+
+        // 页面权限（仅收紧，不放开）
         columns = applyPermission(columns, permission, gridKey);
         if (applyUserPreferences) {
             columns = applyUserPreferences(columns, userId, pageCode, gridKey);
@@ -646,7 +650,8 @@ public class MetadataService {
                 col.lookupConfigId(),
                 defaultValue,
                 rulesConfig,
-                col.isVirtual());
+                col.isVirtual(),
+                col.migrated());
     }
 
     private record ColumnOverride(

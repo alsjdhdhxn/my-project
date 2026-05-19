@@ -615,6 +615,32 @@ public class MetaConfigService {
     // ==================== 视图列查询 ====================
 
     /**
+     * 查询数据库中的表/视图列表（从 DBA_OBJECTS，支持模糊搜索）
+     */
+    public List<Map<String, Object>> listDbObjects(String owner, String keyword, String types) {
+        String safeOwner = owner.toUpperCase().replace("'", "''");
+        // 解析类型
+        String[] typeArr = types.toUpperCase().split(",");
+        String inClause = java.util.Arrays.stream(typeArr)
+                .map(t -> "'" + t.trim() + "'")
+                .collect(java.util.stream.Collectors.joining(","));
+
+        StringBuilder sql = new StringBuilder();
+        sql.append("SELECT OBJECT_NAME, OBJECT_TYPE FROM DBA_OBJECTS WHERE OWNER = '")
+                .append(safeOwner).append("' AND OBJECT_TYPE IN (").append(inClause).append(")");
+
+        if (keyword != null && !keyword.trim().isEmpty()) {
+            String safeKeyword = keyword.toUpperCase().replace("'", "''");
+            sql.append(" AND OBJECT_NAME LIKE '%").append(safeKeyword).append("%'");
+        }
+
+        sql.append(" ORDER BY OBJECT_TYPE, OBJECT_NAME");
+        // 限制返回数量避免过多
+        String finalSql = "SELECT * FROM (" + sql + ") WHERE ROWNUM <= 100";
+        return dynamicMapper.selectList(finalSql);
+    }
+
+    /**
      * 查询视图/表的物理列结构（从 DBA_TAB_COLUMNS）
      */
     public List<Map<String, Object>> listViewColumns(String owner, String viewName) {

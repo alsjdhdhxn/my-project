@@ -1,0 +1,59 @@
+<script setup lang="ts">
+import { onMounted, ref } from 'vue';
+import { NButton, NDataTable, NSpace, useMessage } from 'naive-ui';
+import { fetchAllExportConfigs } from '@/service/api/meta-config';
+
+const props = defineProps<{
+  pageCode: string;
+}>();
+
+const message = useMessage();
+const configs = ref<any[]>([]);
+const loading = ref(false);
+
+const columns = [
+  { title: '导出名称', key: 'exportName' },
+  { title: '导出编码', key: 'exportCode' },
+  { title: '主表Sheet', key: 'masterSheetName' },
+  { title: '排序', key: 'displayOrder', width: 60 }
+];
+
+async function loadConfigs() {
+  loading.value = true;
+  try {
+    const all = await fetchAllExportConfigs();
+    configs.value = (all || []).filter((c: any) => c.pageCode === props.pageCode);
+  } catch {
+    message.error('加载导出配置失败');
+  } finally {
+    loading.value = false;
+  }
+}
+
+onMounted(loadConfigs);
+</script>
+
+<template>
+  <div class="section-export">
+    <NDataTable
+      v-if="configs.length > 0"
+      :columns="columns"
+      :data="configs"
+      :row-key="(row: any) => row.id"
+      size="small"
+      :bordered="false"
+      :loading="loading"
+    />
+    <p v-else class="empty-hint">暂无导出配置</p>
+  </div>
+</template>
+
+<style scoped>
+.section-export {
+  padding: 8px 0;
+}
+.empty-hint {
+  color: #999;
+  font-size: 13px;
+}
+</style>

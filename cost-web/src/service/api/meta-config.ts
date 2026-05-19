@@ -238,3 +238,9 @@ export async function fetchApprovalReferenceData() {
   const { data } = await request<Record<string, any[]>>({ url: '/meta-config/approval/reference-data' });
   return data || {};
 }
+
+/** 查询数据库表/视图列表（模糊搜索） */
+export async function fetchDbObjects(keyword?: string, types = 'TABLE,VIEW', owner = 'CMX') {
+  const { data } = await request<any[]>({ url: '/meta-config/db-objects', params: { keyword, types, owner } });
+  return data || [];
+}

@@ -205,33 +205,7 @@ public class WizardGenerateService {
             }
         }
 
-        // Step 6: Create PageRules (COLUMN_OVERRIDE)
-        // Master grid COLUMN_OVERRIDE
-        PageRule masterOverride = new PageRule();
-        masterOverride.setPageCode(pageCode);
-        masterOverride.setComponentKey(masterTable.getTableCode());
-        masterOverride.setRuleType("COLUMN_OVERRIDE");
-        masterOverride.setRules(buildColumnOverrideJson(masterTable.getColumns()));
-        masterOverride.setSortOrder(1);
-        masterOverride.setDescription("向导自动生成-主表列覆盖");
-        metaConfigService.saveRule(masterOverride);
-        totalCreated++;
-
-        // Detail grids COLUMN_OVERRIDE
-        if (detailTables != null) {
-            for (int i = 0; i < detailTables.size(); i++) {
-                WizardTable detail = detailTables.get(i);
-                PageRule detailOverride = new PageRule();
-                detailOverride.setPageCode(pageCode);
-                detailOverride.setComponentKey(detail.getTableCode());
-                detailOverride.setRuleType("COLUMN_OVERRIDE");
-                detailOverride.setRules(buildColumnOverrideJson(detail.getColumns()));
-                detailOverride.setSortOrder(2 + i);
-                detailOverride.setDescription("向导自动生成-从表列覆盖");
-                metaConfigService.saveRule(detailOverride);
-                totalCreated++;
-            }
-        }
+        // Step 6: 列属性已直接写入 COLUMN_METADATA（visible/editable/width 等），不再生成 COLUMN_OVERRIDE 规则
 
         // Clear metadata cache
         metadataService.clearCache(null);
@@ -449,6 +423,15 @@ public class WizardGenerateService {
             col.setIsVirtual(wc.getIsVirtual() != null ? wc.getIsVirtual() : 0);
             col.setSortable(1);
             col.setFilterable(wc.getFilterable() != null && wc.getFilterable() ? 1 : 0);
+            // 列属性直接写入（不再生成 COLUMN_OVERRIDE）
+            boolean isVirtual = wc.getIsVirtual() != null && wc.getIsVirtual() == 1
+                    && StrUtil.isBlank(wc.getTargetColumn());
+            col.setVisible(wc.getVisible() != null && wc.getVisible() ? 1 : 0);
+            col.setEditable(isVirtual ? 0 : (wc.getEditable() != null && wc.getEditable() ? 1 : 0));
+            col.setSearchable(wc.getFilterable() != null && wc.getFilterable() ? 1 : 0);
+            col.setWidth(computeWidth(wc));
+            col.setCellEditor(mapCellEditor(wc.getWidgetType()));
+            col.setMigrated(1);
             metaConfigService.saveColumn(col);
             count++;
         }

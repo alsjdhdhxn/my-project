@@ -27,6 +27,13 @@ public class TableMetadata {
     /** 后端验证规则 JSON */
     private String validationRules;
 
+    /** 归属页面编码（页面独有后填） */
+    private String pageCode;
+    /** 归属组件标识 */
+    private String componentKey;
+    /** 拆分前原始表编码 */
+    private String sourceTableCode;
+
     @TableLogic
     private Integer deleted;
 

@@ -2,15 +2,15 @@
 import { provide, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { NTabPane, NTabs } from 'naive-ui';
+import UnifiedConfigPage from './panels/unified/UnifiedConfigPage.vue';
 import DirectoryPanel from './panels/DirectoryPanel.vue';
-import TablePanel from './panels/TablePanel.vue';
 import PagePanel from './panels/PagePanel.vue';
 import LookupPanel from './panels/LookupPanel.vue';
 import ExportConfigPanel from './panels/ExportConfigPanel.vue';
 import ApprovalFlowPanel from './panels/ApprovalFlowPanel.vue';
 
 const route = useRoute();
-const activeTab = ref(typeof route.query.tab === 'string' ? route.query.tab : 'directory');
+const activeTab = ref(typeof route.query.tab === 'string' ? route.query.tab : 'unified');
 
 /** 跳转到指定 tab 并携带过滤条件 */
 const filterState = ref<{ tab: string; pageCode: string } | null>(null);
@@ -36,11 +36,11 @@ watch(
 <template>
   <div class="meta-config-page">
     <NTabs v-model:value="activeTab" type="line" animated>
+      <NTabPane name="unified" tab="一体化配置">
+        <UnifiedConfigPage />
+      </NTabPane>
       <NTabPane name="directory" tab="目录管理">
         <DirectoryPanel />
-      </NTabPane>
-      <NTabPane name="table" tab="表管理">
-        <TablePanel />
       </NTabPane>
       <NTabPane name="page" tab="页面管理">
         <PagePanel />

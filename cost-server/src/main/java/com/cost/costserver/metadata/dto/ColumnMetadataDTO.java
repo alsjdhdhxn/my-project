@@ -24,9 +24,13 @@ public record ColumnMetadataDTO(
     Long lookupConfigId,
     String defaultValue,
     String rulesConfig,
-    Boolean isVirtual
+    Boolean isVirtual,
+    Integer migrated
 ) {
     public static ColumnMetadataDTO from(ColumnMetadata entity) {
+        // 如果已迁移(MIGRATED=1)，从实体新字段读取；否则用默认值（兼容旧数据）
+        boolean isMigrated = entity.getMigrated() != null && entity.getMigrated() == 1;
+
         return new ColumnMetadataDTO(
             entity.getId(),
             entity.getColumnName(),
@@ -35,23 +39,29 @@ public record ColumnMetadataDTO(
             entity.getHeaderText(),
             entity.getDataType(),
             entity.getDisplayOrder(),
-            null,
-            true,
-            true,
-            false,
-            intToBoolean(entity.getFilterable()),
+            isMigrated ? entity.getWidth() : null,
+            isMigrated ? intToBoolean(entity.getVisible(), true) : true,
+            isMigrated ? intToBoolean(entity.getEditable(), true) : true,
+            isMigrated ? intToBoolean(entity.getRequired(), false) : false,
+            isMigrated ? intToBoolean(entity.getSearchable(), false) : intToBoolean(entity.getFilterable()),
             intToBoolean(entity.getSortable()),
-            null,
+            isMigrated ? entity.getPinned() : null,
             entity.getDictType(),
             null,
-            null,
-            null,
-            intToBoolean(entity.getIsVirtual())
+            isMigrated ? entity.getDefaultValue() : null,
+            isMigrated ? entity.getRulesConfig() : null,
+            intToBoolean(entity.getIsVirtual()),
+            entity.getMigrated()
         );
     }
 
     private static Boolean intToBoolean(Integer value) {
         return value != null && value == 1;
+    }
+
+    private static Boolean intToBoolean(Integer value, boolean defaultValue) {
+        if (value == null) return defaultValue;
+        return value == 1;
     }
 
     /**
@@ -63,7 +73,7 @@ public record ColumnMetadataDTO(
             this.headerText, this.dataType, this.displayOrder, this.width,
             visible, editable,
             this.required, this.searchable, this.sortable, this.pinned, this.dictType, this.lookupConfigId,
-            this.defaultValue, this.rulesConfig, this.isVirtual
+            this.defaultValue, this.rulesConfig, this.isVirtual, this.migrated
         );
     }
 }

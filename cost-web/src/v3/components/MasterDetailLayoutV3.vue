@@ -72,6 +72,38 @@ const canAddRow = computed(() => runtime.permissions?.hasButton?.('addRow') === 
 const canDeleteRow = computed(() => runtime.permissions?.hasButton?.('deleteRow') === true);
 const canSave = computed(() => runtime.permissions?.hasButton?.('save') === true);
 
+// 从表内置按钮下拉选项
+const detailAddOptions = computed(() =>
+  detailTabs.value.map(tab => ({ label: `新增${tab.title || tab.key}`, key: tab.key }))
+);
+const detailDeleteOptions = computed(() =>
+  detailTabs.value.map(tab => ({ label: `删除${tab.title || tab.key}`, key: tab.key }))
+);
+
+function handleDetailAdd(tabKey: string) {
+  const { masterId, masterRowKey } = resolveActiveMasterContext();
+  if (masterId == null) {
+    window.$message?.warning('请先选择主表记录');
+    return;
+  }
+  addDetailRow(masterId, tabKey, masterRowKey || undefined);
+}
+
+function handleDetailDelete(tabKey: string) {
+  const { masterId, masterRowKey } = resolveActiveMasterContext();
+  if (masterId == null) {
+    window.$message?.warning('请先选择主表记录');
+    return;
+  }
+  const api = detailGridApisByTab.value[tabKey];
+  const selectedRows = api?.getSelectedRows?.() || [];
+  if (selectedRows.length === 0) {
+    window.$message?.warning('请先选择要删除的明细行');
+    return;
+  }
+  selectedRows.forEach((row: any) => deleteDetailRow(masterId, tabKey, row, masterRowKey || undefined));
+}
+
 // 工具栏：合并主表 + 从表 toolbar 按钮
 // 多个 tab 同名 action 合并为下拉按钮
 type MergedToolbarItem = {
@@ -705,6 +737,25 @@ function onDetailRowOpened(event: any) {
         <NButton v-if="canAddRow" type="primary" size="small" @click="addMasterRow">新增</NButton>
         <NButton v-if="canDeleteRow" type="error" size="small" @click="deleteSelectedMasterRows">删除</NButton>
         <NButton v-if="canSave" size="small" @click="save">保存</NButton>
+
+        <!-- 从表内置按钮：明细新增/删除（有从表时自动显示） -->
+        <template v-if="hasDetailTabs">
+          <!-- 只有一个从表：直接显示按钮 -->
+          <template v-if="detailTabs.length === 1">
+            <NButton size="small" @click="handleDetailAdd(detailTabs[0].key)">明细新增</NButton>
+            <NButton size="small" type="error" @click="handleDetailDelete(detailTabs[0].key)">明细删除</NButton>
+          </template>
+          <!-- 多个从表：下拉按钮 -->
+          <template v-else>
+            <NDropdown trigger="click" :options="detailAddOptions" @select="handleDetailAdd">
+              <NButton size="small">明细新增 ▾</NButton>
+            </NDropdown>
+            <NDropdown trigger="click" :options="detailDeleteOptions" @select="handleDetailDelete">
+              <NButton size="small" type="error">明细删除 ▾</NButton>
+            </NDropdown>
+          </template>
+        </template>
+
         <ApprovalActionGroup :runtime="runtime" :get-selected-row="getSelectedMasterRow" />
         <template v-for="item in mergedToolbarItems" :key="item.key">
           <!-- 下拉按钮：多个 tab 同名 action 合并 -->
