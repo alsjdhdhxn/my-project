@@ -52,9 +52,9 @@ public record ColumnMetadataDTO(
 
     /**
      * 将独立的 cellEditor 字段合并到 rulesConfig JSON 中（前端从此读取编辑器配置）
+     * 同时将 cellEditorParams 中的 lookup 配置转换为 rulesConfig.lookup 格式
      */
     private static String mergeEditorIntoRulesConfig(String rulesConfig, String cellEditor) {
-        if (cellEditor == null || cellEditor.isBlank()) return rulesConfig;
         try {
             com.fasterxml.jackson.databind.ObjectMapper om = new com.fasterxml.jackson.databind.ObjectMapper();
             com.fasterxml.jackson.databind.node.ObjectNode node;
@@ -63,10 +63,28 @@ public record ColumnMetadataDTO(
             } else {
                 node = om.createObjectNode();
             }
-            // 只在 rulesConfig 中没有 cellEditor 时补入
-            if (!node.has("cellEditor")) {
+
+            // 合并 cellEditor
+            if (cellEditor != null && !cellEditor.isBlank() && !node.has("cellEditor")) {
                 node.put("cellEditor", cellEditor);
             }
+
+            // 将 cellEditorParams.lookupCode + mapping 转为 lookup.code + mapping 格式
+            // 前端 extractLookupRules 读的是 config.lookup.code / config.lookup.mapping
+            if (node.has("cellEditorParams")) {
+                var params = node.get("cellEditorParams");
+                if (params.isObject() && params.has("lookupCode") && !node.has("lookup")) {
+                    var lookupNode = om.createObjectNode();
+                    lookupNode.put("code", params.get("lookupCode").asText());
+                    if (params.has("mapping")) lookupNode.set("mapping", params.get("mapping"));
+                    if (params.has("noFillback")) lookupNode.set("noFillback", params.get("noFillback"));
+                    if (params.has("filterField")) lookupNode.set("filterField", params.get("filterField"));
+                    if (params.has("filterColumn")) lookupNode.set("filterColumn", params.get("filterColumn"));
+                    if (params.has("filterValueFrom")) lookupNode.set("filterValueFrom", params.get("filterValueFrom"));
+                    node.set("lookup", lookupNode);
+                }
+            }
+
             return om.writeValueAsString(node);
         } catch (Exception e) {
             return rulesConfig;
