@@ -187,7 +187,8 @@ watch(
     } catch {
       buttons.value = [];
     }
-  }
+  },
+  { immediate: true }
 );
 
 // ---- 操作 ----

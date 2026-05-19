@@ -76,7 +76,8 @@ watch(
       items.value = [];
     }
     await loadAvailableFields();
-  }
+  },
+  { immediate: true }
 );
 
 /** 兼容旧格式（单条件）和新格式（多条件） */

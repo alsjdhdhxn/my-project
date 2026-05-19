@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
-import { NButton, NDataTable, NSpace, useMessage } from 'naive-ui';
-import { fetchAllExportConfigs } from '@/service/api/meta-config';
+import { NButton, NDataTable, NModal, NSpace, useMessage } from 'naive-ui';
+import { fetchAllExportConfigs, deleteExportConfig, saveExportConfig } from '@/service/api/meta-config';
+import ExportConfigPanel from '../../ExportConfigPanel.vue';
 
 const props = defineProps<{
   pageCode: string;
@@ -10,6 +11,7 @@ const props = defineProps<{
 const message = useMessage();
 const configs = ref<any[]>([]);
 const loading = ref(false);
+const showExportEditor = ref(false);
 
 const columns = [
   { title: '导出名称', key: 'exportName' },
@@ -30,6 +32,10 @@ async function loadConfigs() {
   }
 }
 
+function openEditor() {
+  showExportEditor.value = true;
+}
+
 onMounted(loadConfigs);
 </script>
 
@@ -45,6 +51,19 @@ onMounted(loadConfigs);
       :loading="loading"
     />
     <p v-else class="empty-hint">暂无导出配置</p>
+    <div class="export-actions">
+      <NButton size="small" @click="openEditor">管理导出配置</NButton>
+    </div>
+
+    <NModal
+      v-model:show="showExportEditor"
+      preset="card"
+      title="导出配置管理"
+      :style="{ width: '900px', maxHeight: '80vh' }"
+      :body-style="{ overflow: 'auto' }"
+    >
+      <ExportConfigPanel />
+    </NModal>
   </div>
 </template>
 
@@ -55,5 +74,8 @@ onMounted(loadConfigs);
 .empty-hint {
   color: #999;
   font-size: 13px;
+}
+.export-actions {
+  margin-top: 8px;
 }
 </style>

@@ -709,7 +709,7 @@ public class RoleManageService {
             .collect(Collectors.joining(","));
 
         List<Map<String, Object>> columnMetas = dynamicMapper.selectList(
-            "SELECT m.TABLE_CODE, c.ID AS COLUMN_ID, c.COLUMN_NAME, c.HEADER_TEXT " +
+            "SELECT m.TABLE_CODE, c.ID AS COLUMN_ID, c.COLUMN_NAME, c.HEADER_TEXT, c.VISIBLE, c.EDITABLE " +
             "FROM T_COST_COLUMN_METADATA c " +
             "JOIN T_COST_TABLE_METADATA m ON c.TABLE_METADATA_ID = m.ID " +
             "WHERE m.TABLE_CODE IN (" + tableCodeList + ") AND c.DELETED = 0 " +
@@ -728,9 +728,11 @@ public class RoleManageService {
             vo.setId(numberValue(cm.get("COLUMN_ID")));
             vo.setColumnName(columnName);
             vo.setHeaderText((String) cm.get("HEADER_TEXT"));
-            // T_COST_COLUMN_METADATA 没有 visible/editable 字段，基线默认为可见可编辑。
-            vo.setVisible(true);
-            vo.setEditable(true);
+            // 从 COLUMN_METADATA 的 VISIBLE/EDITABLE 字段读取（迁移后已有值）
+            Object visibleVal = cm.get("VISIBLE");
+            Object editableVal = cm.get("EDITABLE");
+            vo.setVisible(visibleVal == null || !"0".equals(visibleVal.toString()));
+            vo.setEditable(editableVal == null || !"0".equals(editableVal.toString()));
             result.computeIfAbsent(tableCode, k -> new ArrayList<>()).add(vo);
         }
         return result;

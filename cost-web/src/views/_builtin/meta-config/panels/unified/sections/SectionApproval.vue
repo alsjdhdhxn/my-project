@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
-import { NButton, NDataTable, useMessage } from 'naive-ui';
+import { NButton, NDataTable, NModal, useMessage } from 'naive-ui';
 import { fetchApprovalFlows } from '@/service/api/meta-config';
+import ApprovalFlowPanel from '../../ApprovalFlowPanel.vue';
 
 const props = defineProps<{
   pageCode: string;
@@ -10,6 +11,7 @@ const props = defineProps<{
 const message = useMessage();
 const flows = ref<any[]>([]);
 const loading = ref(false);
+const showApprovalEditor = ref(false);
 
 const columns = [
   { title: '流程名称', key: 'flowName' },
@@ -28,6 +30,10 @@ async function loadFlows() {
   }
 }
 
+function openEditor() {
+  showApprovalEditor.value = true;
+}
+
 onMounted(loadFlows);
 </script>
 
@@ -43,6 +49,19 @@ onMounted(loadFlows);
       :loading="loading"
     />
     <p v-else class="empty-hint">暂无审批流配置</p>
+    <div class="approval-actions">
+      <NButton size="small" @click="openEditor">管理审批流</NButton>
+    </div>
+
+    <NModal
+      v-model:show="showApprovalEditor"
+      preset="card"
+      title="审批流配置"
+      :style="{ width: '1000px', maxHeight: '80vh' }"
+      :body-style="{ overflow: 'auto', height: '70vh' }"
+    >
+      <ApprovalFlowPanel />
+    </NModal>
   </div>
 </template>
 
@@ -53,5 +72,8 @@ onMounted(loadFlows);
 .empty-hint {
   color: #999;
   font-size: 13px;
+}
+.approval-actions {
+  margin-top: 8px;
 }
 </style>

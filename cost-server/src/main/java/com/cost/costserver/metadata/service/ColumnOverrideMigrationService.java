@@ -185,6 +185,74 @@ public class ColumnOverrideMigrationService {
         return dynamicMapper.update(sql);
     }
 
+    /**
+     * 将 DEFAULT_VALUE 中 type=multi 的值迁移到 RULES_CONFIG.cellEditorParams.values，
+     * 然后清除 DEFAULT_VALUE（多选值不是"默认值"，是"选项值"）
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public int migrateMultiDefaultToEditorParams() {
+        List<ColumnMetadata> allCols = columnMetadataMapper.selectList(
+            new LambdaQueryWrapper<ColumnMetadata>().eq(ColumnMetadata::getDeleted, 0));
+
+        int migrated = 0;
+        for (ColumnMetadata col : allCols) {
+            String dv = col.getDefaultValue();
+            if (StrUtil.isBlank(dv)) continue;
+
+            try {
+                JsonNode dvNode = objectMapper.readTree(dv);
+                if (!dvNode.isObject()) continue;
+                String type = dvNode.has("type") ? dvNode.get("type").asText() : "";
+                if (!"multi".equals(type)) continue;
+
+                // 提取 values 数组
+                JsonNode valueNode = dvNode.get("value");
+                if (valueNode == null || !valueNode.isArray()) continue;
+
+                List<String> values = new ArrayList<>();
+                for (JsonNode v : valueNode) {
+                    if (v.isTextual() && !v.asText().isBlank()) values.add(v.asText());
+                }
+                if (values.isEmpty()) continue;
+
+                // 写入 RULES_CONFIG.cellEditorParams.values
+                ObjectNode rulesConfig;
+                if (StrUtil.isNotBlank(col.getRulesConfig())) {
+                    try {
+                        rulesConfig = (ObjectNode) objectMapper.readTree(col.getRulesConfig());
+                    } catch (Exception e) {
+                        rulesConfig = objectMapper.createObjectNode();
+                    }
+                } else {
+                    rulesConfig = objectMapper.createObjectNode();
+                }
+
+                // 只在没有 cellEditorParams 时写入（避免覆盖已有配置）
+                if (!rulesConfig.has("cellEditorParams")) {
+                    ObjectNode params = objectMapper.createObjectNode();
+                    params.set("values", objectMapper.valueToTree(values));
+                    rulesConfig.set("cellEditorParams", params);
+                    col.setRulesConfig(objectMapper.writeValueAsString(rulesConfig));
+                }
+
+                // 确保 cellEditor 设为下拉
+                if (StrUtil.isBlank(col.getCellEditor())) {
+                    col.setCellEditor("agSelectCellEditor");
+                }
+
+                // 清除 DEFAULT_VALUE（多选值不是默认值）
+                col.setDefaultValue(null);
+
+                columnMetadataMapper.updateById(col);
+                migrated++;
+                log.info("[多选值迁移] 列 {} (ID={}) 的多选值已迁移到 cellEditorParams", col.getColumnName(), col.getId());
+            } catch (Exception e) {
+                log.warn("[多选值迁移] 列 {} 处理失败: {}", col.getId(), e.getMessage());
+            }
+        }
+        return migrated;
+    }
+
     // ==================== 验证 ====================
 
     /**

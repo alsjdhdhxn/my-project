@@ -78,7 +78,8 @@ watch(
       items.value = [];
     }
     await loadAvailableFields();
-  }
+  },
+  { immediate: true }
 );
 
 function normalizeRule(r: any): StyleRule {

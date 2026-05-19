@@ -2,7 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import { NButton, NInput, NLayout, NLayoutSider, NTree, useMessage } from 'naive-ui';
 import type { TreeOption } from 'naive-ui';
-import { fetchAllResources } from '@/service/api/meta-config';
+import { fetchAllResources, saveResource } from '@/service/api/meta-config';
 import PageConfigPanel from './PageConfigPanel.vue';
 import DirectoryInfoPanel from './DirectoryInfoPanel.vue';
 
@@ -124,6 +124,45 @@ function onWizardSuccess() {
   loadResources();
 }
 
+async function handleTreeDrop({ node, dragNode, dropPosition }: any) {
+  // node: 目标节点, dragNode: 被拖拽的节点, dropPosition: 'before'|'inside'|'after'
+  const dragId = dragNode.key as number;
+  const targetId = node.key as number;
+  const dragResource = rawResources.value.find(r => r.id === dragId);
+  const targetResource = rawResources.value.find(r => r.id === targetId);
+  if (!dragResource || !targetResource) return;
+
+  if (dropPosition === 'inside') {
+    // 拖入目标内部 → 改变父级
+    dragResource.parentId = targetId;
+  } else {
+    // before/after → 同级排序，父级和目标一致
+    dragResource.parentId = targetResource.parentId;
+  }
+
+  // 重算同级排序
+  const siblings = rawResources.value
+    .filter(r => r.parentId === dragResource.parentId && r.id !== dragId)
+    .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+
+  const targetIndex = siblings.findIndex(r => r.id === targetId);
+  const insertAt = dropPosition === 'after' ? targetIndex + 1 : targetIndex;
+  siblings.splice(insertAt < 0 ? siblings.length : insertAt, 0, dragResource);
+
+  // 更新排序号
+  for (let i = 0; i < siblings.length; i++) {
+    siblings[i].sortOrder = i;
+  }
+
+  // 保存变更的资源
+  try {
+    await Promise.all(siblings.map(r => saveResource(r)));
+    await loadResources();
+  } catch {
+    message.error('排序保存失败');
+  }
+}
+
 onMounted(loadResources);
 </script>
 
@@ -141,8 +180,10 @@ onMounted(loadResources);
           :loading="loading"
           block-line
           selectable
+          draggable
           default-expand-all
           @update:selected-keys="handleSelect"
+          @drop="handleTreeDrop"
         />
       </div>
       <div class="sider-footer">

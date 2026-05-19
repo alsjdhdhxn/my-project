@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
-import { NButton, NCollapse, NCollapseItem, NInput, NModal, NSpace, NTag, useMessage } from 'naive-ui';
-import { fetchRulesByComponent, savePageRule } from '@/service/api/meta-config';
+import { NButton, NCollapse, NCollapseItem, NSpace, NTag, useMessage } from 'naive-ui';
+import { fetchRulesByComponent } from '@/service/api/meta-config';
 import ButtonConfigDialog from '../../ButtonConfigDialog.vue';
 import GridOptionsDialog from '../../GridOptionsDialog.vue';
 import GridStyleDialog from '../../GridStyleDialog.vue';
@@ -33,14 +33,23 @@ async function loadRules(componentKey: string) {
 }
 
 // 获取按钮列表
+// 内置按钮 action（不需要在页面配置中显示）
+const BUILTIN_ACTIONS = new Set([
+  'addRow', 'deleteRow', 'save', 'query', 'advancedSearch',
+  'copyRow', 'saveGridConfig', 'approval', 'submit'
+]);
+
 function getButtons(comp: any): any[] {
   try {
     const config = comp.componentConfig ? JSON.parse(comp.componentConfig) : {};
+    let buttons: any[];
     if (config.tabs) {
-      // TABS 组件：合并所有 tab 的 buttons
-      return config.tabs.flatMap((t: any) => t.buttons || []);
+      buttons = config.tabs.flatMap((t: any) => t.buttons || []);
+    } else {
+      buttons = config.buttons || [];
     }
-    return config.buttons || [];
+    // 过滤掉内置按钮，只展示自定义按钮
+    return buttons.filter((btn: any) => !BUILTIN_ACTIONS.has(btn.action));
   } catch {
     return [];
   }
@@ -116,34 +125,6 @@ function onDialogSave() {
   // 通知父组件刷新（按钮配置修改了 componentConfig）
   emit('refresh');
   activeDialog.value = '';
-}
-
-async function saveLookupJson() {
-  try {
-    const parsed = JSON.parse(dialogJson.value);
-    if (!Array.isArray(parsed)) {
-      message.error('Lookup 配置必须是 JSON 数组');
-      return;
-    }
-  } catch {
-    message.error('JSON 格式错误，请检查');
-    return;
-  }
-  try {
-    const ruleData = {
-      ...activeRuleRow.value,
-      pageCode: props.pageCode,
-      componentKey: activeComp.value?.componentKey,
-      ruleType: 'LOOKUP',
-      rules: dialogJson.value
-    };
-    await savePageRule(ruleData);
-    message.success('Lookup 配置已保存');
-    if (activeComp.value) loadRules(activeComp.value.componentKey);
-    activeDialog.value = '';
-  } catch (e: any) {
-    message.error(e?.message || '保存失败');
-  }
 }
 
 // 展开时加载规则
@@ -240,14 +221,6 @@ onMounted(() => {
             <span class="row-summary">{{ getGridOptionsSummary(comp.componentKey) }}</span>
             <NButton size="tiny" type="primary" quaternary @click="openDialog('GRID_OPTIONS', comp)">可视化编辑</NButton>
           </div>
-
-          <!-- Lookup -->
-          <div class="behavior-row">
-            <span class="row-icon">🔍</span>
-            <span class="row-label">Lookup</span>
-            <span class="row-summary">{{ getLookupSummary(comp.componentKey) }}</span>
-            <NButton size="tiny" type="primary" quaternary @click="openDialog('LOOKUP', comp)">可视化编辑</NButton>
-          </div>
         </div>
       </NCollapseItem>
     </NCollapse>
@@ -293,28 +266,6 @@ onMounted(() => {
       @update:show="activeDialog = ''"
       @save="onDialogSave"
     />
-    <!-- Lookup: 简易 JSON 编辑弹窗 -->
-    <NModal
-      v-if="activeDialog === 'LOOKUP'"
-      :show="true"
-      preset="card"
-      title="Lookup 配置"
-      :style="{ width: '700px' }"
-      @update:show="activeDialog = ''"
-    >
-      <NInput
-        v-model:value="dialogJson"
-        type="textarea"
-        :autosize="{ minRows: 10, maxRows: 20 }"
-        placeholder="JSON 数组格式"
-      />
-      <template #footer>
-        <NSpace justify="end">
-          <NButton size="small" @click="activeDialog = ''">取消</NButton>
-          <NButton size="small" type="primary" @click="saveLookupJson">保存</NButton>
-        </NSpace>
-      </template>
-    </NModal>
     <ButtonConfigDialog
       v-if="activeDialog === 'BUTTON'"
       :show="true"

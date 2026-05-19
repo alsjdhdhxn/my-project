@@ -665,7 +665,8 @@ watch(
     await loadAvailableFields();
     parseRulesJson();
     dialogReady.value = true;
-  }
+  },
+  { immediate: true }
 );
 
 // ==================== 解析 ====================

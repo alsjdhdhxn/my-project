@@ -43,7 +43,8 @@ watch(
     } catch {
       options.value = {};
     }
-  }
+  },
+  { immediate: true }
 );
 
 const saving = ref(false);

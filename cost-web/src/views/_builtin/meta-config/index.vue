@@ -3,11 +3,8 @@ import { provide, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { NTabPane, NTabs } from 'naive-ui';
 import UnifiedConfigPage from './panels/unified/UnifiedConfigPage.vue';
-import DirectoryPanel from './panels/DirectoryPanel.vue';
 import PagePanel from './panels/PagePanel.vue';
 import LookupPanel from './panels/LookupPanel.vue';
-import ExportConfigPanel from './panels/ExportConfigPanel.vue';
-import ApprovalFlowPanel from './panels/ApprovalFlowPanel.vue';
 
 const route = useRoute();
 const activeTab = ref(typeof route.query.tab === 'string' ? route.query.tab : 'unified');
@@ -39,20 +36,11 @@ watch(
       <NTabPane name="unified" tab="一体化配置">
         <UnifiedConfigPage />
       </NTabPane>
-      <NTabPane name="directory" tab="目录管理">
-        <DirectoryPanel />
-      </NTabPane>
       <NTabPane name="page" tab="页面管理">
         <PagePanel />
       </NTabPane>
       <NTabPane name="lookup" tab="Lookup管理">
         <LookupPanel />
-      </NTabPane>
-      <NTabPane name="export" tab="导出配置">
-        <ExportConfigPanel />
-      </NTabPane>
-      <NTabPane name="approval" tab="审批流配置">
-        <ApprovalFlowPanel />
       </NTabPane>
     </NTabs>
   </div>

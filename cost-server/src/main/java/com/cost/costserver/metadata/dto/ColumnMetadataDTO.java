@@ -31,6 +31,9 @@ public record ColumnMetadataDTO(
         // 如果已迁移(MIGRATED=1)，从实体新字段读取；否则用默认值（兼容旧数据）
         boolean isMigrated = entity.getMigrated() != null && entity.getMigrated() == 1;
 
+        // 合并 cellEditor 到 rulesConfig（前端从 rulesConfig.cellEditor 读取编辑器配置）
+        String rulesConfig = isMigrated ? mergeEditorIntoRulesConfig(entity.getRulesConfig(), entity.getCellEditor()) : null;
+
         return new ColumnMetadataDTO(
             entity.getId(),
             entity.getColumnName(),
@@ -49,10 +52,33 @@ public record ColumnMetadataDTO(
             entity.getDictType(),
             null,
             isMigrated ? entity.getDefaultValue() : null,
-            isMigrated ? entity.getRulesConfig() : null,
+            rulesConfig,
             intToBoolean(entity.getIsVirtual()),
             entity.getMigrated()
         );
+    }
+
+    /**
+     * 将独立的 cellEditor 字段合并到 rulesConfig JSON 中（前端从此读取编辑器配置）
+     */
+    private static String mergeEditorIntoRulesConfig(String rulesConfig, String cellEditor) {
+        if (cellEditor == null || cellEditor.isBlank()) return rulesConfig;
+        try {
+            com.fasterxml.jackson.databind.ObjectMapper om = new com.fasterxml.jackson.databind.ObjectMapper();
+            com.fasterxml.jackson.databind.node.ObjectNode node;
+            if (rulesConfig != null && !rulesConfig.isBlank()) {
+                node = (com.fasterxml.jackson.databind.node.ObjectNode) om.readTree(rulesConfig);
+            } else {
+                node = om.createObjectNode();
+            }
+            // 只在 rulesConfig 中没有 cellEditor 时补入
+            if (!node.has("cellEditor")) {
+                node.put("cellEditor", cellEditor);
+            }
+            return om.writeValueAsString(node);
+        } catch (Exception e) {
+            return rulesConfig;
+        }
     }
 
     private static Boolean intToBoolean(Integer value) {
