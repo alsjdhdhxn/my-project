@@ -40,7 +40,7 @@ const totalEntities = computed(() => {
     count += dt.columns?.length || 0;
   }
   count += 1 + (props.payload.detailTables || []).length + 1; // components (root + master + details)
-  count += 1 + (props.payload.detailTables || []).length; // COLUMN_OVERRIDE rules
+  count += 1 + (props.payload.detailTables || []).length; // page rules
   return count;
 });
 

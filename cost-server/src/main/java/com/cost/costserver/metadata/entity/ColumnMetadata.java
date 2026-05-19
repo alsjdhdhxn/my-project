@@ -43,8 +43,6 @@ public class ColumnMetadata {
     private String defaultValue;
     /** 扩展配置JSON */
     private String rulesConfig;
-    /** 迁移状态：0=未迁移 1=已迁移 */
-    private Integer migrated;
 
     @TableLogic
     private Integer deleted;

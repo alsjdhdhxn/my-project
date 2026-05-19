@@ -832,7 +832,7 @@ async function openEditColumn(resource: ResourcePermissionVO) {
     }
     columnPermissions.value = {};
 
-    // 初始化每个表格的列权限（如果没有配置，则使用 COLUMN_OVERRIDE 的默认值）
+    // 初始化每个表格的列权限（基于 COLUMN_METADATA 的 visible/editable 默认值）
     for (const table of pageTableColumns.value) {
       columnPermissions.value[table.tableKey] = {};
       const scopedPolicy =

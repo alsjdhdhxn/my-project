@@ -551,7 +551,8 @@ public class RoleManageService {
     
     /**
      * 获取页面的所有表格及其列信息（用于列权限配置）
-     * 从 COLUMN_OVERRIDE 规则中提取列的 visible 和 editable 配置
+     * 获取页面的所有表格及其列信息（用于列权限配置）
+     * 列的 visible/editable 直接从 T_COST_COLUMN_METADATA 读取
      */
     public List<PageTableColumnsVO> listPageColumns(String pageCode) {
         List<PageTableColumnsVO> result = new ArrayList<>();
@@ -565,20 +566,6 @@ public class RoleManageService {
             "AND c.DELETED = 0 " +
             "ORDER BY c.SORT_ORDER"
         );
-
-        Map<String, String> columnOverrideRules = new HashMap<>();
-        List<Map<String, Object>> rules = dynamicMapper.selectList(
-            "SELECT COMPONENT_KEY, RULES FROM T_COST_PAGE_RULE " +
-            "WHERE PAGE_CODE = '" + escapedPageCode + "' " +
-            "AND RULE_TYPE = 'COLUMN_OVERRIDE' AND DELETED = 0"
-        );
-        for (Map<String, Object> rule : rules) {
-            String componentKey = (String) rule.get("COMPONENT_KEY");
-            String rulesJson = convertClobToString(rule.get("RULES"));
-            if (componentKey != null && rulesJson != null) {
-                columnOverrideRules.put(componentKey, rulesJson);
-            }
-        }
 
         Set<String> tableCodes = new HashSet<>();
         for (Map<String, Object> comp : components) {
@@ -605,7 +592,6 @@ public class RoleManageService {
                     result,
                     addedTableKeys,
                     convertClobToString(comp.get("COMPONENT_CONFIG")),
-                    columnOverrideRules,
                     baseColumnsByTableCode
                 );
                 continue;
@@ -618,8 +604,6 @@ public class RoleManageService {
                 continue;
             }
 
-            String rulesJson = resolveOverrideRules(componentKey, columnOverrideRules);
-            ColumnOverrideSettingIndex overrideMap = parseColumnOverrideSettings(rulesJson);
             List<PageColumnVO> baseColumns = refTableCode != null
                 ? baseColumnsByTableCode.getOrDefault(refTableCode, Collections.emptyList())
                 : Collections.emptyList();
@@ -627,7 +611,8 @@ public class RoleManageService {
             PageTableColumnsVO tableVO = new PageTableColumnsVO();
             tableVO.setTableKey(componentKey);
             tableVO.setTableName(tableName != null ? tableName : componentKey);
-            tableVO.setColumns(applyOverrideRestrictions(baseColumns, overrideMap));
+            // 直接使用列元数据的 visible/editable（COLUMN_OVERRIDE 已废弃）
+            tableVO.setColumns(baseColumns);
             result.add(tableVO);
         }
 
@@ -654,7 +639,6 @@ public class RoleManageService {
             List<PageTableColumnsVO> result,
             Set<String> addedTableKeys,
             String configJson,
-            Map<String, String> columnOverrideRules,
             Map<String, List<PageColumnVO>> baseColumnsByTableCode) {
         if (configJson == null) return;
         try {
@@ -671,8 +655,6 @@ public class RoleManageService {
 
                 String tabTitle = tab.getStr("title");
                 String tableCode = tab.getStr("tableCode");
-                String rulesJson = resolveOverrideRules(tabKey, columnOverrideRules);
-                ColumnOverrideSettingIndex overrideMap = parseColumnOverrideSettings(rulesJson);
                 List<PageColumnVO> baseColumns = tableCode != null
                     ? baseColumnsByTableCode.getOrDefault(tableCode, Collections.emptyList())
                     : Collections.emptyList();
@@ -680,7 +662,8 @@ public class RoleManageService {
                 PageTableColumnsVO tableVO = new PageTableColumnsVO();
                 tableVO.setTableKey(tabKey);
                 tableVO.setTableName(tabTitle != null ? tabTitle : tabKey);
-                tableVO.setColumns(applyOverrideRestrictions(baseColumns, overrideMap));
+                // 直接使用列元数据（COLUMN_OVERRIDE 已废弃）
+                tableVO.setColumns(baseColumns);
                 result.add(tableVO);
             }
         } catch (Exception e) {

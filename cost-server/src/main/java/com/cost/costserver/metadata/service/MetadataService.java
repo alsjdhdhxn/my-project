@@ -645,8 +645,7 @@ public class MetadataService {
                 col.lookupConfigId(),
                 defaultValue,
                 rulesConfig,
-                col.isVirtual(),
-                col.migrated());
+                col.isVirtual());
     }
 
     private record ColumnOverride(

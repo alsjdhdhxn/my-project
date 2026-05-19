@@ -67,7 +67,6 @@ inclusion: always
 | DELETED | NUMBER(1) | 软删除标记 |
 
 RULE_TYPE 枚举值：
-- COLUMN_OVERRIDE — 列覆盖（visible、editable、width、cellEditor、precision 等）
 - CELL_EDITABLE — 单元格级可编辑规则（基于条件控制哪些字段可编辑）
 - ROW_EDITABLE — 行级可编辑规则
 - GRID_STYLE — 行/单元格样式规则（backgroundColor、color 等）
@@ -81,6 +80,8 @@ RULE_TYPE 枚举值：
 - RELATION — 关联关系
 - ROLE_BINDING — 角色绑定
 - NESTED_CONFIG / SUMMARY_CONFIG — 嵌套/汇总配置
+
+注意：COLUMN_OVERRIDE 已废弃，列的 visible/editable/width 等属性直接存储在 T_COST_COLUMN_METADATA 表中。
 
 ## T_COST_PAGE_COMPONENT（页面组件）
 
@@ -132,9 +133,9 @@ RULE_TYPE 枚举值：
 
 ## 关键业务规则（踩坑记录）
 
-1. COLUMN_OVERRIDE 只能覆盖已有列的属性，不能创建新列。列的来源只有 T_COST_COLUMN_METADATA。
-2. 可编辑优先级：COLUMN_OVERRIDE editable:false > CELL_EDITABLE > COLUMN_OVERRIDE editable:true
-3. T_COST_COLUMN_METADATA 没有 VISIBLE 和 EDITABLE 字段，这两个属性完全由 COLUMN_OVERRIDE 规则决定。
-4. 权限配置 UI（listPageColumns）应以 T_COST_COLUMN_METADATA 为基础列表，COLUMN_OVERRIDE 只决定默认勾选状态。
+1. 列的 visible/editable/width/cellEditor 等属性直接存储在 T_COST_COLUMN_METADATA 中，每个页面独有自己的列元数据。
+2. 可编辑优先级：COLUMN_METADATA editable → CELL_EDITABLE 条件规则 → 权限收紧
+3. T_COST_COLUMN_METADATA 有 VISIBLE 和 EDITABLE 字段，直接控制列的显示和编辑状态。
+4. 权限配置 UI（listPageColumns）以 T_COST_COLUMN_METADATA 为基础列表，读取 VISIBLE/EDITABLE 作为基线。
 5. admin 用户绕过所有权限检查（isSuperAdmin()）。
 6. 前端 WebSocket 推送后，editable/rowClass/rowStyle 回调必须动态获取最新规则，不能用闭包捕获旧值。

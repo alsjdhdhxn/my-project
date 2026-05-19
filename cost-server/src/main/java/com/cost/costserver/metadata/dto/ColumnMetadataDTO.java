@@ -24,16 +24,9 @@ public record ColumnMetadataDTO(
     Long lookupConfigId,
     String defaultValue,
     String rulesConfig,
-    Boolean isVirtual,
-    Integer migrated
+    Boolean isVirtual
 ) {
     public static ColumnMetadataDTO from(ColumnMetadata entity) {
-        // 如果已迁移(MIGRATED=1)，从实体新字段读取；否则用默认值（兼容旧数据）
-        boolean isMigrated = entity.getMigrated() != null && entity.getMigrated() == 1;
-
-        // 合并 cellEditor 到 rulesConfig（前端从 rulesConfig.cellEditor 读取编辑器配置）
-        String rulesConfig = isMigrated ? mergeEditorIntoRulesConfig(entity.getRulesConfig(), entity.getCellEditor()) : null;
-
         return new ColumnMetadataDTO(
             entity.getId(),
             entity.getColumnName(),
@@ -42,19 +35,18 @@ public record ColumnMetadataDTO(
             entity.getHeaderText(),
             entity.getDataType(),
             entity.getDisplayOrder(),
-            isMigrated ? entity.getWidth() : null,
-            isMigrated ? intToBoolean(entity.getVisible(), true) : true,
-            isMigrated ? intToBoolean(entity.getEditable(), true) : true,
-            isMigrated ? intToBoolean(entity.getRequired(), false) : false,
-            isMigrated ? intToBoolean(entity.getSearchable(), false) : intToBoolean(entity.getFilterable()),
+            entity.getWidth(),
+            intToBoolean(entity.getVisible(), true),
+            intToBoolean(entity.getEditable(), true),
+            intToBoolean(entity.getRequired(), false),
+            intToBoolean(entity.getSearchable(), false),
             intToBoolean(entity.getSortable()),
-            isMigrated ? entity.getPinned() : null,
+            entity.getPinned(),
             entity.getDictType(),
             null,
-            isMigrated ? entity.getDefaultValue() : null,
-            rulesConfig,
-            intToBoolean(entity.getIsVirtual()),
-            entity.getMigrated()
+            entity.getDefaultValue(),
+            mergeEditorIntoRulesConfig(entity.getRulesConfig(), entity.getCellEditor()),
+            intToBoolean(entity.getIsVirtual())
         );
     }
 
@@ -99,7 +91,7 @@ public record ColumnMetadataDTO(
             this.headerText, this.dataType, this.displayOrder, this.width,
             visible, editable,
             this.required, this.searchable, this.sortable, this.pinned, this.dictType, this.lookupConfigId,
-            this.defaultValue, this.rulesConfig, this.isVirtual, this.migrated
+            this.defaultValue, this.rulesConfig, this.isVirtual
         );
     }
 }

@@ -116,9 +116,6 @@ public class MetaConfigService {
         } else {
             ColumnMetadata existing = columnMetadataMapper.selectById(c.getId());
             columnMetadataMapper.updateById(c);
-            if (existing != null) {
-                migrateColumnLinkedConfigs(existing, c);
-            }
         }
         return c;
     }

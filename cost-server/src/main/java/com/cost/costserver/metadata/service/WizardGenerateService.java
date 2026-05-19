@@ -431,7 +431,6 @@ public class WizardGenerateService {
             col.setSearchable(wc.getFilterable() != null && wc.getFilterable() ? 1 : 0);
             col.setWidth(computeWidth(wc));
             col.setCellEditor(mapCellEditor(wc.getWidgetType()));
-            col.setMigrated(1);
             metaConfigService.saveColumn(col);
             count++;
         }
