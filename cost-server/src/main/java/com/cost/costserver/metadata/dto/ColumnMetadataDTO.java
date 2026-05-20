@@ -85,6 +85,8 @@ public record ColumnMetadataDTO(
                 }
             }
 
+            // 如果最终是空对象，返回 null 而不是 "{}"
+            if (node.isEmpty()) return null;
             return om.writeValueAsString(node);
         } catch (Exception e) {
             return rulesConfig;

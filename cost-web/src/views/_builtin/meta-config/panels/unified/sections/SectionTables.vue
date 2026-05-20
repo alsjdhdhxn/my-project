@@ -321,8 +321,7 @@ async function reimportColumns(table: any) {
         editable: isReal ? 1 : 0,
         searchable: 0,
         sortable: 1,
-        filterable: 0,
-        migrated: 1
+        filterable: 0
       };
       existingCols.push(newCol);
       addedCount++;

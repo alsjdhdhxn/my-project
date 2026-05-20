@@ -26,6 +26,8 @@ declare namespace Api {
       editable: boolean;
       required: boolean;
       searchable: boolean;
+      sortable?: boolean;
+      filterable?: boolean;
       visible?: boolean;
       pinned?: 'left' | 'right' | null;
       width?: number;

@@ -49,7 +49,7 @@ export function metaToColDef(col: ColumnMetadata): ColDef {
     field: col.columnName,
     headerName: col.headerText,
     editable: Boolean(col.editable),
-    sortable: true,
+    sortable: col.sortable !== false,
     resizable: true,
     context: {
       metaColumnId: col.id,

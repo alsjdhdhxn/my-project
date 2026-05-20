@@ -48,32 +48,47 @@ export function parseValidationRules(columns: ColumnMetadata[]): ValidationRule[
   const rules: ValidationRule[] = [];
 
   for (const col of columns) {
-    if (!col.rulesConfig) continue;
+    let hasRule = false;
+    let required = false;
+    let notZero = false;
+    let min: number | undefined;
+    let max: number | undefined;
+    let pattern: string | undefined;
+    let ruleMessage: string | undefined;
 
-    try {
-      const config = JSON.parse(col.rulesConfig);
-      const validation = config.validation || config;
+    // 列级 required 字段（来自 T_COST_COLUMN_METADATA.REQUIRED）
+    if ((col as any).required === true || (col as any).required === 1) {
+      required = true;
+      hasRule = true;
+    }
 
-      // 只有配置了验证规则才添加
-      if (
-        validation.required ||
-        validation.notZero ||
-        validation.min !== undefined ||
-        validation.max !== undefined ||
-        validation.pattern
-      ) {
-        rules.push({
-          field: col.columnName,
-          required: validation.required,
-          notZero: validation.notZero,
-          min: validation.min,
-          max: validation.max,
-          pattern: validation.pattern,
-          message: validation.message
-        });
+    // rulesConfig 中的验证配置
+    if (col.rulesConfig) {
+      try {
+        const config = JSON.parse(col.rulesConfig);
+        const validation = config.validation || config;
+
+        if (validation.required) { required = true; hasRule = true; }
+        if (validation.notZero) { notZero = true; hasRule = true; }
+        if (validation.min !== undefined) { min = validation.min; hasRule = true; }
+        if (validation.max !== undefined) { max = validation.max; hasRule = true; }
+        if (validation.pattern) { pattern = validation.pattern; hasRule = true; }
+        if (validation.message) ruleMessage = validation.message;
+      } catch (e) {
+        console.warn(`[Validator] 解析 ${col.columnName} 的 rulesConfig 失败:`, e);
       }
-    } catch (e) {
-      console.warn(`[Validator] 解析 ${col.columnName} 的 rulesConfig 失败:`, e);
+    }
+
+    if (hasRule) {
+      rules.push({
+        field: col.columnName,
+        required,
+        notZero,
+        min,
+        max,
+        pattern,
+        message: ruleMessage
+      });
     }
   }
 

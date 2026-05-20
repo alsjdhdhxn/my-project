@@ -23,6 +23,7 @@ type RawColumnMeta = {
   headerText?: string;
   dataType?: string;
   visible?: boolean;
+  searchable?: boolean;
   dictType?: string;
   lookupCode?: string;
   rulesConfig?: string;
@@ -244,7 +245,7 @@ function buildFieldDefinitions(params: {
     const lookupRuleMap = buildLookupRuleMap(lookupRules);
     for (const column of columns || []) {
       const field = String(column?.columnName || '').trim();
-      if (field && column?.visible !== false) {
+      if (field && column?.visible !== false && column?.searchable !== false) {
         const key = normalizeFieldKey(tableKey, field);
         if (!seen.has(key)) {
           seen.add(key);
