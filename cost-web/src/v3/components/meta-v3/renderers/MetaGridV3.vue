@@ -110,6 +110,12 @@ const toolbarItems = computed(() => {
   return toolbar.items.filter((item: any) => item.visible !== false);
 });
 
+const NAIVE_BUTTON_TYPES = new Set(['default', 'primary', 'info', 'success', 'warning', 'error', 'tertiary']);
+function toNaiveButtonType(type?: string): 'default' | 'primary' | 'info' | 'success' | 'warning' | 'error' | 'tertiary' {
+  if (type && NAIVE_BUTTON_TYPES.has(type)) return type as any;
+  return 'default';
+}
+
 const canAddRow = computed(() => runtime?.permissions?.hasButton?.('addRow') === true);
 const canDeleteRow = computed(() => runtime?.permissions?.hasButton?.('deleteRow') === true);
 const canSave = computed(() => runtime?.permissions?.hasButton?.('save') === true);
@@ -301,7 +307,7 @@ function handleFilterChanged() {
         <NButton
           v-for="item in toolbarItems"
           :key="item.action"
-          :type="item.type || 'default'"
+          :type="toNaiveButtonType(item.buttonType)"
           :disabled="item.disabled"
           size="small"
           @click="handleToolbarClick(item)"

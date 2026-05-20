@@ -1,4 +1,4 @@
-import { type Ref, ref, watch } from 'vue';
+import { type MaybeRef, type Ref, ref, unref, watch } from 'vue';
 import type { CellValueChangedEvent, ColDef, GridReadyEvent } from 'ag-grid-community';
 import type { CustomExportConfig } from '@/service/api/export-config';
 import { useGridContextMenu } from '@/v3/composables/meta-v3/useGridContextMenu';
@@ -24,11 +24,11 @@ const wrappedEditableColumns = new WeakSet<ColDef>();
 
 type MasterGridBindingDeps = {
   masterGridApi: Ref<any>;
-  masterGridKey: Ref<string | null> | string | null;
-  masterCellEditableRules?: Ref<CellEditableRule[]> | CellEditableRule[];
-  masterRowEditableRules?: Ref<RowEditableRule[]> | RowEditableRule[];
-  masterRowClassRules?: Ref<RowClassRule[]> | RowClassRule[];
-  masterSumFields?: Ref<string[]> | string[];
+  masterGridKey: MaybeRef<string | null>;
+  masterCellEditableRules?: MaybeRef<CellEditableRule[]>;
+  masterRowEditableRules?: MaybeRef<RowEditableRule[]>;
+  masterRowClassRules?: MaybeRef<RowClassRule[]>;
+  masterSumFields?: MaybeRef<string[]>;
   addMasterRow: () => void;
   deleteMasterRow: (row: any) => void;
   copyMasterRow: (row: any) => void;
@@ -37,7 +37,7 @@ type MasterGridBindingDeps = {
   copyDetailRow: (masterId: number, tabKey: string, row: any, masterRowKey?: string) => void;
   save: () => void;
   saveGridConfig?: (gridKey: string, api: any, columnApi: any) => void;
-  customExportConfigs?: Ref<CustomExportConfig[]> | CustomExportConfig[];
+  customExportConfigs?: MaybeRef<CustomExportConfig[]>;
   executeCustomExport?: (exportCode: string, mode: 'all' | 'current') => void;
   executeAction?: (
     actionCode: string,
@@ -72,8 +72,8 @@ export function useMasterGridBindings(params: {
   let _cachedEditableCallback: ((params: any) => boolean) | undefined;
 
   function getEditableCallback(): ((params: any) => boolean) | undefined {
-    const cellRules = deps.masterCellEditableRules?.value ?? deps.masterCellEditableRules ?? [];
-    const rowRules = deps.masterRowEditableRules?.value ?? deps.masterRowEditableRules ?? [];
+    const cellRules = unref(deps.masterCellEditableRules) ?? [];
+    const rowRules = unref(deps.masterRowEditableRules) ?? [];
     // 规则引用没变就复用缓存
     if (cellRules === _cachedCellRules && rowRules === _cachedRowRules) {
       return _cachedEditableCallback;
@@ -160,7 +160,7 @@ export function useMasterGridBindings(params: {
   let _cachedRowStyleCallback: ((params: any) => Record<string, string> | undefined) | undefined;
 
   function getLatestRowClassCallback() {
-    const rules = deps.masterRowClassRules?.value ?? deps.masterRowClassRules ?? [];
+    const rules = unref(deps.masterRowClassRules) ?? [];
     if (rules === _cachedStyleRules) return _cachedRowClassCallback;
     _cachedStyleRules = rules;
     _cachedRowClassCallback = buildRowClassCallback(rules);
@@ -169,7 +169,7 @@ export function useMasterGridBindings(params: {
   }
 
   function getLatestRowStyleCallback() {
-    const rules = deps.masterRowClassRules?.value ?? deps.masterRowClassRules ?? [];
+    const rules = unref(deps.masterRowClassRules) ?? [];
     if (rules !== _cachedStyleRules) {
       _cachedStyleRules = rules;
       _cachedRowClassCallback = buildRowClassCallback(rules);
@@ -179,7 +179,7 @@ export function useMasterGridBindings(params: {
   }
 
   const dataSource = params.dataSource;
-  const sumFields = deps.masterSumFields?.value ?? deps.masterSumFields ?? [];
+  const sumFields = unref(deps.masterSumFields) ?? [];
 
   /** 更新主表底部汇总行（从当前已渲染的行数据直接计算） */
   function updatePinnedSumRow() {
@@ -217,7 +217,7 @@ export function useMasterGridBindings(params: {
   }
 
   const resolveGridKey = (key?: string | null) => (key && key.trim().length > 0 ? key : 'masterGrid');
-  const masterGridKey = resolveGridKey(deps.masterGridKey?.value ?? deps.masterGridKey);
+  const masterGridKey = resolveGridKey(unref(deps.masterGridKey));
 
   const { getMasterContextMenuItems } = useGridContextMenu({
     addMasterRow: deps.addMasterRow,
@@ -280,11 +280,11 @@ export function useMasterGridBindings(params: {
     }
   }
 
-  function onCellEditingStarted() {
+  function onCellEditingStarted(_event?: any) {
     isUserEditing.value = true;
   }
 
-  function onCellEditingStopped() {
+  function onCellEditingStopped(_event?: any) {
     isUserEditing.value = false;
   }
 

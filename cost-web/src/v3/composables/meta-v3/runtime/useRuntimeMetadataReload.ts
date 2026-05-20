@@ -29,7 +29,7 @@ type RuntimeMetadataReloadOptions = {
   masterGridApi: Ref<any>;
   detailGridApisByTab: Ref<Record<string, any>>;
   detailCache: Map<string, any>;
-  resolveMasterRowKey: (masterId: number) => string;
+  resolveMasterRowKey: (masterId: number) => string | null;
   rowStateApi: RowStateApi;
   applyGridConfig: (gridKey: string, api: any, columnApi: any, sourceColumnDefs: any[]) => Promise<void>;
   loadComponents: () => Promise<boolean>;

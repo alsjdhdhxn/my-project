@@ -240,7 +240,9 @@ const local: App.I18n.Schema = {
     500: 'Server Error',
     dynamic: 'Dynamic',
     'iframe-page': 'Iframe',
-    home: 'Home'
+    home: 'Home',
+    'meta-config': 'Metadata Config',
+    permission: 'Permission'
   },
   page: {
     login: {

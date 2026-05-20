@@ -457,6 +457,16 @@ declare namespace App {
             };
             fixedHeaderAndTab: string;
           };
+          detailViewMode: {
+            title: string;
+            tab: string;
+            stack: string;
+          };
+          masterDetailMode: {
+            title: string;
+            masterDetail: string;
+            split: string;
+          };
         };
         general: {
           title: string;

@@ -50,6 +50,8 @@ declare namespace Api {
         | 'FORM'
         | 'BUTTON'
         | 'TABS'
+        | 'DETAIL_GRID'
+        | 'MASTER_DETAIL'
         | 'LOGIC_AGG'
         | 'LOGIC_BROADCAST'
         | 'LOGIC_FIELD'

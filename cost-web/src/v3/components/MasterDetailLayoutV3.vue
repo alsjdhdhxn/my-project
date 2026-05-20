@@ -74,10 +74,10 @@ const canSave = computed(() => runtime.permissions?.hasButton?.('save') === true
 
 // 从表内置按钮下拉选项
 const detailAddOptions = computed(() =>
-  detailTabs.value.map(tab => ({ label: `新增${tab.title || tab.key}`, key: tab.key }))
+  detailTabs.value.map((tab: { title?: string; key: string }) => ({ label: `新增${tab.title || tab.key}`, key: tab.key }))
 );
 const detailDeleteOptions = computed(() =>
-  detailTabs.value.map(tab => ({ label: `删除${tab.title || tab.key}`, key: tab.key }))
+  detailTabs.value.map((tab: { title?: string; key: string }) => ({ label: `删除${tab.title || tab.key}`, key: tab.key }))
 );
 
 function handleDetailAdd(tabKey: string) {
@@ -110,7 +110,7 @@ type MergedToolbarItem = {
   key: string;
   action?: string;
   label?: string;
-  type?: string;
+  type?: 'default' | 'primary' | 'info' | 'success' | 'warning' | 'error' | 'tertiary';
   disabled?: boolean;
   confirm?: string;
   requiresRow?: boolean;

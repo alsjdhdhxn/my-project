@@ -179,9 +179,9 @@ function refreshLayout() {
           :apply-grid-config="applyGridConfig"
           :on-cell-value-changed="
             event =>
-              onDetailCellValueChanged(event, activeMasterId!, activeTabConfig.key, activeMasterRowKey || undefined)
+              onDetailCellValueChanged(event, activeMasterId!, activeTabConfig!.key, activeMasterRowKey || undefined)
           "
-          :on-cell-clicked="event => onDetailCellClicked(event, activeMasterId!, activeTabConfig.key)"
+          :on-cell-clicked="event => onDetailCellClicked(event, activeMasterId!, activeTabConfig!.key)"
           :on-cell-editing-started="onCellEditingStarted"
           :on-cell-editing-stopped="onCellEditingStopped"
           :sum-fields="detailSumFieldsByTab?.[activeTabConfig.key]"

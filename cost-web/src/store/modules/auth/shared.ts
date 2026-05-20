@@ -8,7 +8,7 @@ export const AUTH_IDLE_TIMEOUT_EVENT = 'auth:idle-timeout';
 let hasMigratedLegacyStorage = false;
 let hasSetupActivityListener = false;
 let lastActivityWriteAt = 0;
-let inactivityCheckTimer: ReturnType<typeof setInterval> | null = null;
+let inactivityCheckTimer: number | null = null;
 
 function migrateLegacyAuthStorage() {
   if (hasMigratedLegacyStorage) return;

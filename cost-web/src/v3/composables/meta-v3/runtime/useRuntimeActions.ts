@@ -29,7 +29,7 @@ type RuntimeActionsParams = {
   data: {
     detailCache?: Map<string, any>;
     getMasterRowByRowKey: (rowKey: string) => any;
-    reloadMasterRow: (rowId: number, rowKey: string) => Promise<void>;
+    reloadMasterRow: (rowId: number, rowKey?: string) => Promise<any>;
     loadDetailData: (masterId: number, rowKey: string) => Promise<void>;
     clearAllCache: () => void;
   };

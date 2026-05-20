@@ -52,7 +52,7 @@ export function useGridContextMenu(params: {
   /** 执行后端 action */
   executeAction?: (
     actionCode: string,
-    options?: { data?: Record<string, any>; selectedRow?: Record<string, any> | null }
+    options?: { data?: Record<string, any>; selectedRow?: Record<string, any> | null; refreshMode?: string }
   ) => Promise<void>;
   /** 主表行是否可编辑的回调（用于控制删除权限） */
   isRowEditable?: (row: any) => boolean;
@@ -60,6 +60,8 @@ export function useGridContextMenu(params: {
   isDetailRowEditableByTab?:
     | Record<string, ((row: any) => boolean) | undefined>
     | { value?: Record<string, ((row: any) => boolean) | undefined> };
+  /** 获取当前主表行上下文 */
+  getActiveMaster?: () => { id: number | null; rowKey: string | null };
   /** 提示消息 */
   notifyError?: (message: string) => void;
 }) {

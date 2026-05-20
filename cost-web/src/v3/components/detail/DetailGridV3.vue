@@ -208,7 +208,7 @@ function onGridReady(event: GridReadyEvent) {
       applyOrder: false
     });
   });
-  props.applyGridConfig?.(props.tab.key, event.api, event.columnApi, props.columns);
+  props.applyGridConfig?.(props.tab.key, event.api, null, props.columns);
 
   if (props.tab.initialSort && props.tab.initialSort.length > 0) {
     event.api.applyColumnState({
