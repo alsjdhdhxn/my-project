@@ -1,6 +1,7 @@
 import type { AxiosResponse } from 'axios';
 import { BACKEND_ERROR_CODE, createFlatRequest, createRequest } from '@sa/axios';
 import { useAuthStore } from '@/store/modules/auth';
+import { isAuthShuttingDown } from '@/store/modules/auth/shared';
 import { getServiceBaseURL } from '@/utils/service';
 import { $t } from '@/locales';
 import { getAuthorization, handleExpiredRequest } from './shared';
@@ -9,6 +10,35 @@ import type { RequestInstanceState } from './type';
 
 const isHttpProxy = import.meta.env.DEV && import.meta.env.VITE_HTTP_PROXY === 'Y';
 const { baseURL, otherBaseURL } = getServiceBaseURL(import.meta.env, isHttpProxy);
+
+function getRequestPath(url: string) {
+  if (!url) return '';
+
+  try {
+    return new URL(url, window.location.origin).pathname;
+  } catch {
+    return url.split('?')[0] || url;
+  }
+}
+
+function shouldSilenceLoggedOutRequestError(url: string) {
+  if (!isAuthShuttingDown() && getAuthorization()) return false;
+
+  const path = getRequestPath(url);
+  if (!path) return false;
+
+  const publicAuthPaths = ['/auth/login', '/auth/refreshToken'];
+  if (publicAuthPaths.includes(path)) return false;
+
+  return (
+    path.startsWith('/api/') ||
+    path.startsWith('/role-manage/') ||
+    path.startsWith('/route/') ||
+    path.startsWith('/meta-config/') ||
+    path === '/auth/getUserInfo' ||
+    path === '/auth/changePassword'
+  );
+}
 
 export const request = createFlatRequest(
   {
@@ -125,8 +155,13 @@ export const request = createFlatRequest(
         return;
       }
 
-      // 向导生成接口自己处理错误弹窗，跳过全局 toast
       const requestUrl = error.config?.url || '';
+      // During auth teardown, protected requests from still-mounted pages may finish late.
+      if (shouldSilenceLoggedOutRequestError(requestUrl)) {
+        return;
+      }
+
+      // 向导生成接口自己处理错误弹窗，跳过全局 toast
       if (requestUrl.includes('/wizard/generate')) {
         return;
       }

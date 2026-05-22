@@ -1,20 +1,27 @@
 <script setup lang="ts">
-import { onMounted } from 'vue';
+import { onBeforeUnmount, onMounted, ref } from 'vue';
 import { NEmpty, NSpin, useMessage } from 'naive-ui';
 import { useWebSocket } from '@/v3/composables/meta-v3/useWebSocket';
 import MetaPageRendererV3 from '@/v3/components/meta-v3/renderers/MetaPageRendererV3.vue';
 import LookupDialog from '@/v3/components/LookupDialog.vue';
 import AdvancedSearchDialog from '@/v3/components/AdvancedSearchDialog.vue';
 import { useBaseRuntime } from '@/v3/composables/meta-v3/runtime';
+import { getToken, isAuthShuttingDown } from '@/store/modules/auth/shared';
 import { showErrorDialog } from '@/v3/utils/errorDialog';
 
 const props = defineProps<{ pageCode: string }>();
 const message = useMessage();
+const disposed = ref(false);
+
+function notifyRuntimeError(msg: string) {
+  if (disposed.value || isAuthShuttingDown() || !getToken()) return;
+  showErrorDialog(msg);
+}
 
 const runtime = useBaseRuntime({
   pageCode: props.pageCode,
   notifyInfo: msg => message.info(msg),
-  notifyError: msg => showErrorDialog(msg),
+  notifyError: notifyRuntimeError,
   notifySuccess: msg => message.success(msg)
 });
 
@@ -41,6 +48,10 @@ subscribe('META_CONFIG_CHANGED', payload => {
 
 onMounted(async () => {
   await init();
+});
+
+onBeforeUnmount(() => {
+  disposed.value = true;
 });
 </script>
 

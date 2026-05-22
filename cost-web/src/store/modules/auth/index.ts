@@ -9,7 +9,7 @@ import { SetupStoreId } from '@/enum';
 import { $t } from '@/locales';
 import { useRouteStore } from '../route';
 import { useTabStore } from '../tab';
-import { clearAuthStorage, getToken, markAuthActivity, setAuthTokens } from './shared';
+import { beginAuthShutdown, clearAuthStorage, getToken, markAuthActivity, setAuthTokens } from './shared';
 
 export const useAuthStore = defineStore(SetupStoreId.Auth, () => {
   const route = useRoute();
@@ -45,6 +45,7 @@ export const useAuthStore = defineStore(SetupStoreId.Auth, () => {
     const { preserveRedirect = true } = options || {};
     const shouldRedirectToLogin = !route.meta.constant;
 
+    beginAuthShutdown();
     recordUserId();
 
     clearAuthStorage();

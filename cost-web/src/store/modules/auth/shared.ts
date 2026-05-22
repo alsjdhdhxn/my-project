@@ -9,6 +9,22 @@ let hasMigratedLegacyStorage = false;
 let hasSetupActivityListener = false;
 let lastActivityWriteAt = 0;
 let inactivityCheckTimer: number | null = null;
+let isAuthShutdown = false;
+
+/** Mark that auth teardown has started so late protected request failures can be ignored. */
+export function beginAuthShutdown() {
+  isAuthShutdown = true;
+}
+
+/** Clear auth teardown state after a new session is established. */
+export function endAuthShutdown() {
+  isAuthShutdown = false;
+}
+
+/** Whether the app is tearing down the current authenticated session. */
+export function isAuthShuttingDown() {
+  return isAuthShutdown;
+}
 
 function migrateLegacyAuthStorage() {
   if (hasMigratedLegacyStorage) return;
@@ -102,6 +118,7 @@ export function setupAuthActivityTracking() {
 
 /** Set auth tokens */
 export function setAuthTokens(token: string, refreshToken: string) {
+  endAuthShutdown();
   sessionStg.set('token', token);
   sessionStg.set('refreshToken', refreshToken);
   markAuthActivity(true);
