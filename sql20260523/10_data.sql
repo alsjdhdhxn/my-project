@@ -1,4 +1,5 @@
 -- Filtered from 10_data.sql at 2026-05-23 21:49:44
+-- Refreshed as regular Git blob after trimming large export.
 SET DEFINE OFF;
 
 -- Data for T_COST_COLUMN_METADATA
